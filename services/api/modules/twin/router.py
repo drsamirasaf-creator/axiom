@@ -69,3 +69,35 @@ def lineage(dataset_id: int, db: Session = Depends(get_db),
                    .order_by(fin_models.FinancialDataset.id).first()
     return {"root_dataset_id": root.id, "versions": chain,
             "syncs_completed": len(chain) - 1}
+
+
+class ReforecastIn(BaseModel):
+    dataset_id: int
+    persist: bool = False
+
+
+@router.post("/reforecast")
+def reforecast(body: ReforecastIn, db: Session = Depends(get_db),
+               tenant: str = Depends(_tenant)):
+    """Propose replacing the remaining committed forecast with a trend
+    re-forecast fitted on post-sync evidence (ADR-009). A proposal until
+    persisted — the user approval gate, same posture as ADR-006."""
+    ds = db.get(fin_models.FinancialDataset, body.dataset_id)
+    if not ds or ds.tenant != tenant:
+        raise HTTPException(status_code=404, detail="dataset not found")
+    try:
+        prop = engines.reforecast_proposal(ds.data)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    out = {k: v for k, v in prop.items() if k != "proposed_dataset"}
+    if body.persist:
+        row = fin_models.FinancialDataset(
+            tenant=tenant, enterprise_id=ds.enterprise_id,
+            name=f"{ds.name} — re-forecast",
+            standard=prop["proposed_dataset"]["company"]["standard"],
+            ownership=prop["proposed_dataset"]["company"]["ownership"],
+            source="forecast", data=prop["proposed_dataset"],
+            validation={"warnings": []}, parent_dataset_id=ds.id)
+        db.add(row); db.commit(); db.refresh(row)
+        out["persisted_dataset_id"] = row.id
+    return out

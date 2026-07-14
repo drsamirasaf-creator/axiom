@@ -605,3 +605,13 @@ GLOSSARY.update({
     "Dataset Lineage": "The version chain of a company's data: each actuals sync creates a child dataset; the parent plan is preserved untouched as the twin's memory.",
     "Actuals": "Reported results for a period that was previously a forecast year; supplying them moves the year from plan to history and triggers a twin sync.",
 })
+
+
+# ---- Phase 10 glossary terms -------------------------------------------------
+GLOSSARY.update({
+    "Value-Risk Frontier": "Candidate capital structures scored on two objectives: expected enterprise value (Monte Carlo mean) and the tail solvency margin (CVaR95 minus the recapitalized debt). Only Pareto-efficient points — where neither objective can improve without hurting the other — are rational places to stand; the risk-aversion dial chooses among them explicitly.",
+    "Tail Solvency Margin": "How much enterprise value remains above the debt even in the average of the worst 5% of simulated scenarios: CVaR95(EV) minus D/E-implied recapitalized debt.",
+    "Pareto Efficient": "A point no alternative beats on both objectives simultaneously. Dominated points are never rational choices regardless of risk preferences.",
+    "Re-Forecast Proposal": "After a twin sync, AXIOM can propose replacing the remaining committed forecast years with a trend forecast refitted on the post-sync evidence — shown as a side-by-side comparison and applied only if you persist it.",
+    "About This Page": "Every workspace carries a plain-language explanation of what it does, the benefit it offers, and how to start — served from the platform itself so words and features never drift apart.",
+})

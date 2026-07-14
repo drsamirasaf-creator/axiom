@@ -158,3 +158,44 @@ def test_twin_actuals_and_lineage_flow(client):
     r = client.get(f"/api/v1/twin/lineage/{cid}",
                    headers={"Authorization": f"Bearer {other['token']}"})
     assert r.status_code == 404
+
+
+# -------------------- Phase 10: platform, frontier, reforecast --------------
+
+def test_platform_endpoints_public(client):
+    a = client.get("/api/v1/platform/about").json()
+    assert a["contact"]["email"] == "samir@theregentfinancial.com"
+    assert a["intro_video_url"] is None
+    p = client.get("/api/v1/platform/pages").json()
+    assert {"dashboard", "data_input", "valuation", "benchmarking",
+            "twin_monitoring"} <= set(p)
+
+
+def test_frontier_and_reforecast_endpoints(client):
+    from tests.numerical.test_twin_checkpoints import ACTUALS_2026
+    s = _register(client, "frontier@example.com")
+    h = {"Authorization": f"Bearer {s['token']}"}
+    pid = client.post("/api/v1/financials/datasets", headers=h,
+                      json={"name": "M", "data": meridian()}).json()["id"]
+    f = client.get(f"/api/v1/intelligence/frontier/{pid}?n_paths=400",
+                   headers=h)
+    assert f.status_code == 200
+    assert f.json()["recommended"]["pareto_efficient"] is True
+    cid = client.post("/api/v1/twin/actuals", headers=h,
+                      json={"dataset_id": pid, "year": 2026,
+                            **ACTUALS_2026}).json()["child_dataset_id"]
+    r = client.post("/api/v1/twin/reforecast", headers=h,
+                    json={"dataset_id": cid, "persist": True})
+    assert r.status_code == 200
+    body = r.json()
+    assert "persisted_dataset_id" in body and "proposed_dataset" not in body
+    lin = client.get(f"/api/v1/twin/lineage/{body['persisted_dataset_id']}",
+                     headers=h).json()
+    assert lin["syncs_completed"] == 2 and lin["root_dataset_id"] == pid
+
+
+def test_phase10_glossary_terms(client):
+    g = client.get("/api/v1/metrics/glossary").json()
+    for term in ("Value-Risk Frontier", "Tail Solvency Margin",
+                 "Pareto Efficient", "Re-Forecast Proposal"):
+        assert term in g and len(g[term]) > 20, term

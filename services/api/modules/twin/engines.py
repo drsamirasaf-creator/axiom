@@ -223,3 +223,49 @@ def sync(parent: dict, year: int, actuals: dict,
               "checkpoints": checkpoints,
               "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
     return child, report
+
+
+def reforecast_proposal(child: dict) -> dict:
+    """Close the twin loop (Phase 10, ADR-009): after an actuals sync,
+    propose replacing the REMAINING committed forecast years with a fresh
+    trend forecast fitted on the child's (now longer) historical evidence.
+    A proposal only — nothing changes until the user persists it: the same
+    approval posture as ADR-006, without needing AI at all.
+    Returns the proposal with drivers, per-year comparison vs the current
+    committed plan, and the proposed dataset."""
+    remaining = list(child["periods"].get("forecast", []))
+    if not remaining:
+        raise ValueError("no remaining forecast years to re-forecast; the "
+                         "plan horizon is fully actualized")
+    hist_only = {"company": dict(child["company"]),
+                 "periods": {"historical": list(child["periods"]["historical"]),
+                             "forecast": []},
+                 "income_statement": {k: dict(v) for k, v in
+                                      child["income_statement"].items()},
+                 "balance_sheet": {k: dict(v) for k, v in
+                                   child["balance_sheet"].items()},
+                 "cash_flow": {k: dict(v) for k, v in
+                               child["cash_flow"].items()}}
+    proposed = fin.auto_forecast(hist_only, {"horizon": len(remaining)})
+    provenance = proposed.pop("_forecast_provenance")
+    dp = fin.derive_series(child)       # current committed plan
+    dn = fin.derive_series(proposed)    # proposed plan
+    comparison = []
+    for y in remaining:
+        i_c, i_n = dp["years"].index(y), dn["years"].index(y)
+        comparison.append({
+            "year": y,
+            "revenue_committed": dp["revenue"][i_c],
+            "revenue_proposed": dn["revenue"][i_n],
+            "fcff_committed": dp["fcff"][i_c],
+            "fcff_proposed": dn["fcff"][i_n]})
+    checkpoints = [{
+        "name": "same_horizon", "value": len(remaining),
+        "expected": len(proposed["periods"]["forecast"]),
+        "pass": proposed["periods"]["forecast"] == remaining}]
+    return {"proposal": "replace remaining committed forecast years with a "
+                        "trend re-forecast fitted on the post-sync evidence",
+            "remaining_years": remaining, "drivers": provenance,
+            "comparison": comparison, "proposed_dataset": proposed,
+            "checkpoints": checkpoints,
+            "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}

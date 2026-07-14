@@ -167,3 +167,19 @@ def recommendations(dataset_id: int, db: Session = Depends(get_db),
         return engines.recommend(row.data)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.get("/frontier/{dataset_id}")
+def value_risk_frontier(dataset_id: int, risk_aversion: float = 0.5,
+                        n_paths: int = 1000,
+                        db: Session = Depends(get_db),
+                        tenant: str = Depends(_tenant)):
+    """Multi-objective frontier over capital structure (Vol II Ch 12;
+    ADR-009): expected EV vs the tail solvency margin, Pareto-filtered."""
+    ds = _get_dataset(db, tenant, dataset_id)
+    try:
+        return engines.frontier(ds.data, risk_aversion=risk_aversion,
+                                n_paths=min(max(n_paths, 200), 5000))
+    except ValueError as e:
+        from fastapi import HTTPException as _H
+        raise _H(status_code=422, detail=str(e))

@@ -285,3 +285,98 @@ def recommend(data: dict) -> dict:
             "forecast_drivers": drivers, "recommendations": moves,
             "checkpoints": checkpoints,
             "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+# ---- 4. Multi-objective frontier (Vol II Ch 12; Phase 10, ADR-009) ----------
+
+def frontier(data: dict, de_grid: list | None = None,
+             risk_aversion: float = 0.5, n_paths: int = 1000,
+             terminal_growth: float = 0.025) -> dict:
+    """Value-vs-tail-risk frontier over capital structure.
+
+    For each candidate D/E on the grid: WACC from the published
+    distress-adjusted curve (same curve as Health v1), then the full
+    seeded Monte Carlo valuation at that WACC, then the recapitalized
+    debt D(de) = de/(1+de) x mean EV. Two objectives per point:
+      value  = mean simulated EV                       (maximize)
+      safety = tail solvency margin
+             = CVaR95(EV) - D(de)                      (maximize)
+    i.e. how much enterprise value remains above the debt even in the
+    average of the worst 5% of scenarios. Leverage raises value (cheaper
+    WACC, up to the distress penalty) while eating the tail cushion —
+    the genuine Ch-12 trade-off. A point is Pareto-efficient if no other
+    beats it on both. The recommendation maximizes
+    (1-lambda) x value + lambda x safety: the lambda dial chooses WHERE
+    on the frontier to stand, explicitly.
+    """
+    if not (0.0 <= risk_aversion <= 1.0):
+        raise ValueError("risk_aversion must lie in [0,1]")
+    company = dict(data["company"])
+    T = float(company["tax_rate"])
+    derived = fin.derive_series(data)
+    n_h = derived["n_historical"]
+    ys = str(derived["years"][n_h - 1])
+    bs = data["balance_sheet"]
+    debt = bs["short_term_debt"][ys] + bs["long_term_debt"][ys]
+    if company["ownership"] == "public":
+        e_mkt = float(company["shares_outstanding"]) * float(company["share_price"])
+        x_cur = debt / e_mkt if e_mkt else 0.0
+        beta_u = float(company["beta"]) / (1 + (1 - T) * x_cur)
+    else:
+        x_cur = float(company["target_debt_to_equity"])
+        beta_u = float(company["unlevered_industry_beta"])
+
+    grid = de_grid if de_grid is not None else [k * 0.25 for k in range(0, 9)]
+    if not (2 <= len(grid) <= 25):
+        raise ValueError("de_grid must contain 2-25 points")
+    mode = "proforma" if data["periods"].get("forecast") else "auto_forecast"
+
+    points = []
+    for x in grid:
+        w = _wacc_curve_point(company, beta_u, x)
+        r = val.run(data, mode,
+                    {"wacc_override": w, "terminal_growth": terminal_growth},
+                    {"n_paths": n_paths})
+        ra = r["risk_adjusted"]
+        d_recap = x / (1 + x) * ra["mean"]
+        margin = ra["cvar95"] - d_recap
+        points.append({"de": round(x, 4), "wacc": round(w, 6),
+                       "value_mean_ev": ra["mean"],
+                       "debt_recap": round(d_recap, 2),
+                       "safety_tail_margin": round(margin, 2),
+                       "std": ra["std"],
+                       "objective": round((1 - risk_aversion) * ra["mean"]
+                                          + risk_aversion * margin, 2)})
+    for p in points:   # Pareto filter: maximize both objectives
+        p["pareto_efficient"] = not any(
+            (q["value_mean_ev"] >= p["value_mean_ev"]
+             and q["safety_tail_margin"] >= p["safety_tail_margin"]
+             and (q["value_mean_ev"] > p["value_mean_ev"]
+                  or q["safety_tail_margin"] > p["safety_tail_margin"]))
+            for q in points)
+    best = max(points, key=lambda p: p["objective"])
+    cur_w = _wacc_curve_point(company, beta_u, x_cur)
+    checkpoints = [
+        {"name": "recommended_is_pareto", "value": best["de"],
+         "expected": "pareto_efficient", "pass": best["pareto_efficient"]},
+        {"name": "some_point_dominated_or_all_efficient",
+         "value": sum(1 for p in points if p["pareto_efficient"]),
+         "expected": ">= 1",
+         "pass": any(p["pareto_efficient"] for p in points)},
+    ]
+    n = [f"Frontier over capital structure (lambda = {risk_aversion:g}): "
+         f"the risk-adjusted optimum is D/E = {best['de']:g} "
+         f"(WACC {best['wacc']:.2%}); expected EV {best['value_mean_ev']:,.1f} "
+         f"with a worst-5% solvency cushion of "
+         f"{best['safety_tail_margin']:,.1f} above the recapitalized debt.",
+         f"The company currently stands at D/E = {x_cur:.2f} "
+         f"(WACC {cur_w:.2%}).",
+         "Each point trades expected enterprise value against the tail "
+         "solvency margin (CVaR95 minus recapitalized debt); only "
+         "Pareto-efficient points are rational places to stand — lambda "
+         "chooses among them, explicitly."]
+    return {"risk_aversion_lambda": risk_aversion, "mode": mode,
+            "current_de": round(x_cur, 4), "points": points,
+            "recommended": best, "narrative": n,
+            "checkpoints": checkpoints,
+            "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
