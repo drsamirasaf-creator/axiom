@@ -2,12 +2,14 @@
 
 The computational platform of the Dynamic Corporate Transformation (DCT) ecosystem.
 
-Phase 4 — Enterprise State CRUD, the REO engine (eight certified problems),
-the Dynamics & Simulation engine, the Risk & Valuation engine, and the
-Learning Lab (the generalization duel, k-means, the quadratic regret
-identity, Q-learning, knowledge-augmented optimization, and the ANFIS/Sugeno
-bench), deployed as a modular monolith (SPEC-008 §19.3) in a controlled
-monorepo (§18.2). Schema is Alembic-managed (ADR-003).
+Phase 5 — the Research and Educational edition, complete: Enterprise State,
+the REO engine (8 certified problems), the Dynamics & Simulation engine (4
+scenarios), the Risk & Valuation engine (4 analyses), the Learning Lab (6
+experiments), and the Course Workspace — 32 AXIOM modules, 22 live
+experiences, honoring the DCT course site's ?module= deep links. A modular
+monolith (SPEC-008 §19.3) in a controlled monorepo (§18.2), schema
+Alembic-managed (ADR-003), every engine certified against the DCT course
+laboratories.
 
 - Backend: FastAPI (`services/api`), Python-owned mathematics (SPEC-008 §7.1)
 - Persistence: PostgreSQL on Railway (SQLite fallback for local/dev/tests)

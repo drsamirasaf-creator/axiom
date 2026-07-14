@@ -54,7 +54,7 @@ def test_reo_bad_params_422(client):
 def test_education_registry(client):
     mods = client.get("/api/v1/education/modules").json()
     assert len(mods) == 32
-    assert sum(1 for m in mods if m["status"] == "live") == 13
+    assert sum(1 for m in mods if m["status"] == "live") == 14
     assert mods[16]["seed"] == 26201 and mods[16]["volume"] == "II"
 
 def test_simulation_run_and_provenance(client):
@@ -131,3 +131,34 @@ def test_learning_unknown_404_and_bad_params_422(client):
     r = client.post("/api/v1/learning/run",
                     json={"experiment": "anfis_sugeno", "params": {"mode": "psychic"}})
     assert r.status_code == 422
+
+
+def test_education_module_detail_deep_link(client):
+    r = client.get("/api/v1/education/modules/axiom-07")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["any_live"] is True and len(body["volumes"]) == 2
+    vol2 = next(m for m in body["volumes"] if m["volume"] == "II")
+    keys = {e["key"] for e in vol2["experiences"]}
+    assert keys == {"dp_switch", "value_iteration"}
+    assert vol2["course_links"]["chapter"].endswith("/chapters/v2ch07.html")
+
+def test_education_unknown_slug_404(client):
+    assert client.get("/api/v1/education/modules/axiom-99").status_code == 404
+
+def test_education_summary(client):
+    s = client.get("/api/v1/education/summary").json()
+    assert s["modules_total"] == 32 and s["modules_live"] == 14
+    assert s["experiences_total"] == 22
+
+def test_every_experience_key_resolves_to_a_real_engine(client):
+    reg = {
+        "reo": {p["problem"] for p in client.get("/api/v1/reo/problems").json()},
+        "simulation": {s["scenario"] for s in client.get("/api/v1/simulation/scenarios").json()},
+        "risk": {a["analysis"] for a in client.get("/api/v1/risk/analyses").json()},
+        "learning": {e["experiment"] for e in client.get("/api/v1/learning/experiments").json()},
+    }
+    mods = client.get("/api/v1/education/modules").json()
+    for m in mods:
+        for e in m["experiences"]:
+            assert e["key"] in reg[e["kind"]], f'{m["slug"]}: {e["kind"]}/{e["key"]} missing'
