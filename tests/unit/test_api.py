@@ -54,7 +54,7 @@ def test_reo_bad_params_422(client):
 def test_education_registry(client):
     mods = client.get("/api/v1/education/modules").json()
     assert len(mods) == 32
-    assert sum(1 for m in mods if m["status"] == "live") == 7
+    assert sum(1 for m in mods if m["status"] == "live") == 10
     assert mods[16]["seed"] == 26201 and mods[16]["volume"] == "II"
 
 def test_simulation_run_and_provenance(client):
@@ -89,3 +89,24 @@ def test_phase2_problems_solve_via_api(client):
         body = r.json()["result"]
         assert body["all_checkpoints_pass"] is True
         assert abs(body["solution"][key] - expected) < 5e-4
+
+
+def test_risk_analyses_and_provenance(client):
+    r = client.get("/api/v1/risk/analyses")
+    assert {a["analysis"] for a in r.json()} == {"chance_constraint", "dro_flip",
+                                                 "robust_radius", "gbm_valuation"}
+    r = client.post("/api/v1/risk/run", json={"analysis": "dro_flip", "params": {}})
+    assert r.status_code == 201
+    body = r.json()["result"]
+    assert body["all_checkpoints_pass"] is True
+    assert abs(body["solution"]["flip_radius"] - 0.125) < 5e-4
+    runs = client.get("/api/v1/risk/runs").json()
+    assert runs and runs[0]["analysis"] == "dro_flip"
+
+def test_risk_unknown_analysis_404(client):
+    assert client.post("/api/v1/risk/run", json={"analysis": "nope"}).status_code == 404
+
+def test_risk_bad_params_422(client):
+    r = client.post("/api/v1/risk/run",
+                    json={"analysis": "chance_constraint", "params": {"mu": -1}})
+    assert r.status_code == 422
