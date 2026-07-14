@@ -180,24 +180,28 @@ def gbm_valuation(params):
 REGISTRY = {
     "chance_constraint": {
         "engine": chance_constraint, "title": "Chance-Constrained Sizing",
+        "category": "risk",
         "course_ref": "Vol II Ch 9 · seed 26209",
         "description": "Size the investment so the requirement holds with confidence; the certainty premium priced per level.",
         "params": {"mu": 2.0, "sigma": 0.5, "required": 10.0,
                    "confidence_levels": [0.5, 0.8, 0.9, 0.95, 0.99]}},
     "dro_flip": {
         "engine": dro_flip, "title": "DRO Flip Map (TV Ambiguity Ball)",
+        "category": "risk",
         "course_ref": "Vol II Ch 11 · seed 26211",
         "description": "Bold B wins nominally; steady A wins robustly — the exact flip radius found by bisection at 0.125.",
         "params": {"probs": [0.4, 0.3, 0.2, 0.1], "A": [5.0, 5.0, 5.0, 3.0],
                    "B": [12.0, 8.0, 1.0, -6.0], "delta_max": 0.4, "n_grid": 33}},
     "robust_radius": {
         "engine": robust_radius, "title": "Data-Driven Robustness Radius",
+        "category": "risk",
         "course_ref": "Vol II Ch 11 · seed 26211",
         "description": "delta_n = c/sqrt(n): more data shrinks the ambiguity ball until the evidence licenses the bold choice at n = 20.",
         "params": {"c": 0.55, "n_max": 100, "flip_radius": 0.125,
                    "probs": [0.4, 0.3, 0.2, 0.1], "B": [12.0, 8.0, 1.0, -6.0]}},
     "gbm_valuation": {
         "engine": gbm_valuation, "title": "GBM Valuation Fan",
+        "category": "valuation",
         "course_ref": "Vol I Ch 8 · seed 26108",
         "description": "Exact lognormal value fan: mean, median, and quantile bands — the volatility drag shown, not asserted.",
         "params": {"S0": 100.0, "mu": 0.08, "sigma": 0.2, "T": 5.0,

@@ -312,3 +312,32 @@ def test_document_plumbing_honest_status(client):
     assert doc["size_bytes"] == 25 and doc["ai_analysis"] is None  # Phase 7
     docs = client.get("/api/v1/financials/documents").json()
     assert docs[0]["filename"] == "strategy.txt"
+
+
+# ----------------- Phase 6.1: tab split + tooltip glossary ------------------
+
+def test_risk_analyses_carry_tab_category(client):
+    r = client.get("/api/v1/risk/analyses")
+    cats = {a["analysis"]: a["category"] for a in r.json()}
+    assert cats["gbm_valuation"] == "valuation"          # Valuation tab
+    assert {cats["chance_constraint"], cats["dro_flip"],
+            cats["robust_radius"]} == {"risk"}           # Risk Analysis tab
+
+
+def test_glossary_covers_tabs_and_headline_terms(client):
+    g = client.get("/api/v1/metrics/glossary").json()
+    for term in ("Dashboard", "Data Input", "Valuation", "Risk Analysis",
+                 "FCFF", "FCFE", "WACC", "EVA (Economic Profit)",
+                 "Enterprise Health Index", "DLOM", "CVaR95",
+                 "Risk-Adjusted Enterprise Value", "GBM Valuation Fan",
+                 "DRO Flip Map (TV Ambiguity Ball)", "Volatility Drag"):
+        assert term in g and len(g[term]) > 20, term
+
+
+def test_kpi_strip_carries_definitions(client):
+    r = client.post("/api/v1/financials/datasets",
+                    json={"name": "Meridian tooltips", "data": _meridian()})
+    mid = r.json()["id"]
+    dash = client.get(f"/api/v1/metrics/dashboard/{mid}").json()
+    for card in dash["kpi_strip"]:
+        assert card["definition"], f"missing definition for {card['kpi']}"

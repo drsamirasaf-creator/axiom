@@ -158,6 +158,13 @@ def list_documents(limit: int = 50, db: Session = Depends(get_db),
              .limit(min(limit, 200)).all()
 
 
+@metrics_router.get("/glossary")
+def glossary():
+    """Tooltip definitions for every tab title, section header, chart title,
+    and KPI — backend-owned so the words live beside the mathematics."""
+    return engines.GLOSSARY
+
+
 @metrics_router.get("/dashboard/{dataset_id}")
 def dashboard(dataset_id: int, valuation_run_id: int | None = None,
               db: Session = Depends(get_db), tenant: str = Depends(_tenant)):

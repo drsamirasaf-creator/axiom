@@ -433,7 +433,8 @@ def dashboard_metrics(data: dict, valuation_result: dict | None = None) -> dict:
     def kpi(name, c, p, fmt="number"):
         trend = None if p in (None, 0) or c is None else _r((c - p) / abs(p), 4)
         return {"kpi": name, "current": _r(c), "previous": _r(p),
-                "trend": trend, "format": fmt}
+                "trend": trend, "format": fmt,
+                "definition": GLOSSARY.get(name, "")}
 
     strip = [
         kpi("Revenue", derived["revenue"][i], derived["revenue"][j]),
@@ -476,3 +477,84 @@ def dashboard_metrics(data: dict, valuation_result: dict | None = None) -> dict:
                            "fcff": derived["fcff"], "fcfe": derived["fcfe"]},
             "checkpoints": checkpoints,
             "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+# ---------------------------------------------------------------------------
+# Tooltip glossary — the single backend-owned source for every (i) tooltip
+# on tab titles, section headers, chart titles, and KPI cards, so the words
+# live beside the mathematics they describe (SPEC-008 §7.1 in spirit:
+# definitions, like numbers, come from the API).
+# ---------------------------------------------------------------------------
+
+GLOSSARY = {
+    # ---- tabs -------------------------------------------------------------
+    "Dashboard": "The executive cockpit: the KPI strip, the Enterprise Health Index, and trend charts for the selected company dataset.",
+    "Data Input": "Where company financials enter AXIOM: locked GAAP/IFRS templates, spreadsheet upload, direct entry, and supporting documents.",
+    "Valuation": "Enterprise valuation results: discounted cash flow value, the enterprise-value bridge, sensitivity, and the risk-adjusted (Monte Carlo) value distribution.",
+    "Risk Analysis": "Risk measurement and robust decision analysis: chance-constrained sizing, distributionally robust decisions, and data-driven robustness radii.",
+    # ---- KPI strip ---------------------------------------------------------
+    "Revenue": "Total sales for the period, before any costs.",
+    "EBITDA": "Earnings before interest, taxes, depreciation, and amortization — operating profitability before capital-structure and non-cash charges.",
+    "Net Income": "Profit after all operating costs, interest, and taxes.",
+    "FCFF": "Free cash flow to the firm: EBIT x (1 - tax rate) + D&A - CapEx - increase in net working capital. Cash available to all capital providers.",
+    "FCFE": "Free cash flow to equity: FCFF - after-tax interest + net borrowing. Cash available to shareholders after debt service.",
+    "ROA": "Return on assets: net income / total assets.",
+    "ROE": "Return on equity: net income / total shareholders' equity.",
+    "ROIC": "Return on invested capital: after-tax operating profit (NOPAT) / (debt + equity + preferred + minority - cash).",
+    "WACC": "Weighted average cost of capital: the blended after-tax return required by debt and equity investors; the DCF discount rate.",
+    "EVA (Economic Profit)": "Economic value added: NOPAT - WACC x invested capital. Positive EVA means the company earns more than its capital costs.",
+    "Net Debt": "Short-term plus long-term debt minus cash and equivalents.",
+    "Current Ratio": "Current assets (cash + other current assets) / current liabilities including short-term debt. A liquidity gauge.",
+    "Debt / Equity": "Total debt divided by total equity — the leverage of the capital structure.",
+    "Revenue CAGR (hist)": "Compound annual growth rate of revenue across the historical years supplied.",
+    "Enterprise Value (DCF)": "Present value of forecast free cash flows to the firm plus the discounted terminal value.",
+    "Risk-Adjusted Enterprise Value": "RAEV = (1 - lambda) x mean + lambda x CVaR95 of the Monte Carlo enterprise-value distribution; lambda is the risk-aversion dial (0 = risk-neutral, 1 = tail-only).",
+    # ---- health & status ----------------------------------------------------
+    "Enterprise Health Index": "A published 0-100 composite: 35% value-creation spread (ROIC - WACC), 25% liquidity, 20% leverage comfort, 20% growth. Formula in ADR-005; an REO-distance version arrives in Phase 7.",
+    "Value Creation": "Logistic score of the ROIC - WACC spread: above-WACC returns push the score toward 1.",
+    "Liquidity": "Current ratio scored against a 1.5x benchmark.",
+    "Leverage": "Debt/equity comfort: full score at D/E <= 1, declining to zero at D/E = 3.",
+    "Growth": "Historical revenue CAGR scored against a 5% anchor (10% or better scores 1).",
+    "Optimization Status": "Value-creating when ROIC exceeds WACC; value-eroding otherwise. The REO-based distance-from-optimum status arrives in Phase 7.",
+    # ---- valuation workspace -------------------------------------------------
+    "DCF": "Discounted cash flow: enterprise value as the present value of forecast FCFF plus terminal value, discounted at WACC.",
+    "Pro Forma Mode": "The client supplies forecast statements; AXIOM derives FCFF from them exactly as given and discounts at WACC.",
+    "Auto-Forecast Mode": "AXIOM fits trend drivers (growth, margins, capex, working capital) from the historicals — each overridable — builds the pro forma, then runs the same DCF.",
+    "Forecast Drivers": "The fitted assumptions behind an AXIOM forecast: revenue growth, EBIT margin, D&A %, CapEx %, and NWC % of revenue. Shown so every AXIOM-chosen number is visible and overridable.",
+    "Terminal Growth": "The perpetual growth rate applied after the explicit forecast; must be below WACC.",
+    "Terminal Value": "Value of all cash flows beyond the forecast horizon: FCFF_final x (1 + g) / (WACC - g).",
+    "PV of Explicit FCFF": "Present value of the forecast-period free cash flows.",
+    "EV Bridge": "The waterfall from discounted cash flows to equity: PV of FCFF + PV of terminal value = enterprise value; less net debt, preferred, and minority interest; less DLOM for private companies.",
+    "Enterprise Value": "The value of the whole operating business, to all capital providers.",
+    "Equity Value": "Enterprise value minus net debt, preferred equity, and minority interest — the shareholders' claim.",
+    "DLOM": "Discount for lack of marketability, applied to private-company equity value (never to WACC) to reflect illiquidity.",
+    "Value per Share": "Post-DLOM equity value divided by shares outstanding (public companies only).",
+    "Sensitivity Analysis": "Enterprise value recomputed over a grid of WACC and terminal-growth values around the base case; the center cell is the headline EV.",
+    "Monte Carlo Valuation": "Thousands of seeded random paths perturb revenue growth and EBIT margin; each path is discounted, producing an enterprise-value distribution rather than a single number.",
+    "EV Distribution": "Histogram of simulated enterprise values across all Monte Carlo paths.",
+    "VaR95": "Value at risk at 95%: the shortfall of the 5th-percentile enterprise value below the deterministic EV.",
+    "CVaR95": "Conditional value at risk: the average enterprise value across the worst 5% of simulated paths.",
+    "Risk Aversion (lambda)": "The RAEV dial in [0,1]: 0 weights only the mean (risk-neutral); 1 weights only CVaR95 (tail-only).",
+    "Seed": "The random-number seed. The same seed reproduces the identical distribution — every stochastic result is replayable.",
+    "Sigma Growth": "Standard deviation of the annual shock applied to revenue growth in the simulation.",
+    "Sigma Margin": "Standard deviation of the annual shock applied to EBIT margin in the simulation.",
+    "Checkpoints": "Self-certification embedded in every engine result: internal identities the computation must satisfy (bridge sums, sensitivity center, seeded statistics). Green means all pass.",
+    # ---- risk workspace --------------------------------------------------------
+    "Chance-Constrained Sizing": "Choose the investment size so a requirement holds with a stated confidence level; the premium for more certainty is priced explicitly.",
+    "DRO Flip Map (TV Ambiguity Ball)": "Distributionally robust choice under total-variation ambiguity: as the ambiguity radius grows, the optimal decision flips from the bold option to the steady one at an exact radius.",
+    "Ambiguity Radius": "How far the true probability distribution may deviate (in total variation) from the estimated one; larger radius = less trust in the data.",
+    "Flip Radius": "The exact ambiguity radius at which the robust-optimal decision changes.",
+    "Data-Driven Robustness Radius": "Shrinks the ambiguity ball as evidence accumulates (delta = c / sqrt(n)); shows how much data licenses the bolder choice.",
+    "GBM Valuation Fan": "Exact lognormal value fan under geometric Brownian motion: mean, median, and quantile bands — making volatility drag visible.",
+    "Volatility Drag": "Under GBM the median grows at mu - sigma^2/2, below the mean growth mu: volatility drags the typical outcome below the average one.",
+    "Certificates": "Mathematical optimality evidence returned with a solution (e.g. KKT residuals, duality gaps) — proof, not assertion.",
+    # ---- data input -----------------------------------------------------------
+    "Accounting Standard": "US GAAP or IFRS; sets the statement labels in templates and display. The canonical line items beneath are identical.",
+    "Ownership": "Public (market beta, share price) or private (industry beta relevered at target D/E, size and specific-risk premia, DLOM).",
+    "Historical Periods": "Actual reported years; at least one is required. Ratios and trend drivers are fitted from these.",
+    "Forecast Periods": "Pro forma years (up to 10), supplied by the client or generated by AXIOM's trend forecaster.",
+    "Net Borrowing": "Debt issued minus debt repaid during the period; a component of FCFE.",
+    "Net Working Capital": "Other current assets minus current liabilities excluding debt; its year-over-year increase consumes free cash flow.",
+    "Template": "A protected GAAP or IFRS workbook with fixed labels and highlighted input cells. The lock is guidance; the server re-validates every cell on upload.",
+    "Documents": "Supporting files (strategic plans, board memos) stored with a dataset. AI-assisted analysis arrives in Phase 7 behind explainability and approval gates.",
+}

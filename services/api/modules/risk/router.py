@@ -13,7 +13,9 @@ def _tenant(x_axiom_tenant: str | None = Header(default=None)) -> str:
 
 @router.get("/analyses")
 def list_analyses():
-    return [{"analysis": key, "title": meta["title"], "course_ref": meta["course_ref"],
+    return [{"analysis": key, "title": meta["title"],
+             "category": meta["category"],       # 'risk' | 'valuation' tab routing
+             "course_ref": meta["course_ref"],
              "description": meta["description"], "default_params": meta["params"]}
             for key, meta in engines.REGISTRY.items()]
 
