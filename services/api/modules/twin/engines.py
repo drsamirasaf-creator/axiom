@@ -269,3 +269,115 @@ def reforecast_proposal(child: dict) -> dict:
             "comparison": comparison, "proposed_dataset": proposed,
             "checkpoints": checkpoints,
             "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+# ---- Enterprise Simulation (Phase 12, ADR-011) ------------------------------
+# The Business-grade Dynamics & Simulation: the CLIENT'S enterprise
+# projected forward under published scenario shifts — trajectory fans for
+# revenue, FCFF, and cash, with distress probabilities per year.
+
+SIM_SEED = 26120
+SCENARIOS = {
+    "baseline":   {"growth_shift": 0.00, "margin_shift": 0.00, "sigma_scale": 1.0},
+    "optimistic": {"growth_shift": 0.02, "margin_shift": 0.01, "sigma_scale": 1.0},
+    "recession":  {"growth_shift": -0.04, "margin_shift": -0.02, "sigma_scale": 1.5},
+}
+
+
+def simulate(data: dict, scenario: str = "baseline", horizon: int = 5,
+             n_paths: int = 2000, seed: int = SIM_SEED,
+             custom: dict | None = None) -> dict:
+    """Seeded scenario fan on the client's fitted trend drivers.
+    Cash path assumes no new financing (net borrowing 0, no dividends):
+    cash_t = cash_{t-1} + FCFE_t with FCFE = FCFF - interest x (1 - T) —
+    a deliberately conservative liquidity view, stated, not hidden."""
+    import random as _random
+    if scenario == "custom":
+        sc = {"growth_shift": 0.0, "margin_shift": 0.0, "sigma_scale": 1.0,
+              **(custom or {})}
+    elif scenario in SCENARIOS:
+        sc = dict(SCENARIOS[scenario])
+    else:
+        raise ValueError(f"scenario must be one of "
+                         f"{sorted(SCENARIOS) + ['custom']}")
+    if not (1 <= horizon <= 10):
+        raise ValueError("horizon must be 1-10 years")
+    if not (200 <= n_paths <= 10000):
+        raise ValueError("n_paths must be 200-10000")
+    if not (0.1 <= sc["sigma_scale"] <= 5.0):
+        raise ValueError("sigma_scale must be in [0.1, 5]")
+
+    drivers = _fit_drivers(data)
+    company = data["company"]
+    T = float(company["tax_rate"])
+    hist = data["periods"]["historical"]
+    ys = str(hist[-1])
+    rev0 = data["income_statement"]["revenue"][ys]
+    cash0 = data["balance_sheet"]["cash"][ys]
+    nwc0 = (data["balance_sheet"]["other_current_assets"][ys]
+            - data["balance_sheet"]["current_liabilities_ex_debt"][ys])
+    interest = data["income_statement"]["interest_expense"][ys]
+    g = drivers["revenue_growth"] + sc["growth_shift"]
+    m = drivers["ebit_margin"] + sc["margin_shift"]
+    da, cx, nw = (drivers["da_pct_revenue"], drivers["capex_pct_revenue"],
+                  drivers["nwc_pct_revenue"])
+    sig_g, sig_m = 0.02 * sc["sigma_scale"], 0.01 * sc["sigma_scale"]
+
+    rng = _random.Random(seed)
+    years = [hist[-1] + k for k in range(1, horizon + 1)]
+    rev_paths = [[] for _ in years]
+    fcff_paths = [[] for _ in years]
+    cash_paths = [[] for _ in years]
+    p_cash_neg_ever = 0
+    for _ in range(n_paths):
+        rev, nwc_prev, cash = rev0, nwc0, cash0
+        went_negative = False
+        for k in range(horizon):
+            rev *= (1 + g + rng.gauss(0.0, sig_g))
+            m_k = m + rng.gauss(0.0, sig_m)
+            nwc_k = nw * rev
+            fcff = (m_k * (1 - T) + da - cx) * rev - (nwc_k - nwc_prev)
+            nwc_prev = nwc_k
+            cash += fcff - interest * (1 - T)
+            went_negative = went_negative or cash < 0
+            rev_paths[k].append(rev)
+            fcff_paths[k].append(fcff)
+            cash_paths[k].append(cash)
+        p_cash_neg_ever += went_negative
+    def bands(per_year):
+        out = []
+        for k, xs in enumerate(per_year):
+            xs = sorted(xs)
+            def pct(p): return round(xs[min(int(p * n_paths), n_paths - 1)], 2)
+            out.append({"year": years[k], "p05": pct(0.05), "p25": pct(0.25),
+                        "p50": pct(0.50), "p75": pct(0.75), "p95": pct(0.95)})
+        return out
+    p_fcff_neg = [round(sum(1 for f in fcff_paths[k] if f < 0) / n_paths, 4)
+                  for k in range(horizon)]
+    result = {
+        "scenario": scenario, "shifts": sc, "seed": seed, "n_paths": n_paths,
+        "drivers_used": {**drivers,
+                         "growth_effective": round(g, 6),
+                         "ebit_margin_effective": round(m, 6)},
+        "financing_assumption": ("no new financing: cash accrues "
+                                 "FCFF - after-tax interest; dividends and "
+                                 "net borrowing held at zero"),
+        "years": years,
+        "revenue_fan": bands(rev_paths),
+        "fcff_fan": bands(fcff_paths),
+        "cash_fan": bands(cash_paths),
+        "p_negative_fcff_by_year": p_fcff_neg,
+        "p_cash_below_zero_ever": round(p_cash_neg_ever / n_paths, 4)}
+    med1 = result["revenue_fan"][0]["p50"]
+    checkpoints = [
+        {"name": "median_year1_revenue_near_drift",
+         "value": med1, "expected": round(rev0 * (1 + g), 2),
+         "pass": abs(med1 - rev0 * (1 + g)) < 0.03 * rev0},
+        {"name": "fans_ordered",
+         "value": "p05<=p50<=p95", "expected": True,
+         "pass": all(b["p05"] <= b["p50"] <= b["p95"]
+                     for fan in ("revenue_fan", "fcff_fan", "cash_fan")
+                     for b in result[fan])}]
+    result["checkpoints"] = checkpoints
+    result["all_checkpoints_pass"] = all(c["pass"] for c in checkpoints)
+    return result

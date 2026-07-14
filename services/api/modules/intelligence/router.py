@@ -185,3 +185,17 @@ def value_risk_frontier(dataset_id: int, risk_aversion: float = 0.5,
     except ValueError as e:
         from fastapi import HTTPException as _H
         raise _H(status_code=422, detail=str(e))
+
+
+@router.get("/risk-profile/{dataset_id}")
+def enterprise_risk_profile(dataset_id: int, db: Session = Depends(get_db),
+                            tenant: str = Depends(_tenant)):
+    """The Business-grade Risk Analysis: coverage confidence, EV tail
+    anatomy, ambiguity resilience, and the published Risk Grade — the
+    course's machinery on the client's own data (ADR-011)."""
+    ds = _get_dataset(db, tenant, dataset_id)
+    try:
+        return engines.risk_profile(ds.data)
+    except ValueError as e:
+        from fastapi import HTTPException as _H
+        raise _H(status_code=422, detail=str(e))

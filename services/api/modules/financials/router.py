@@ -105,6 +105,44 @@ def get_dataset(dataset_id: int, db: Session = Depends(get_db),
     return _get_dataset(db, tenant, dataset_id)
 
 
+@router.get("/datasets/{dataset_id}/profile")
+def enterprise_profile(dataset_id: int, db: Session = Depends(get_db),
+                       tenant: str = Depends(_tenant)):
+    """One-call summary for the Business Enterprise page (ADR-011):
+    company card, data coverage, lineage depth, documents, and the latest
+    valuation headline."""
+    row = _get_dataset(db, tenant, dataset_id)
+    data = row.data
+    from ..valuation.models import ValuationRun
+    vr = db.query(ValuationRun).filter_by(tenant=tenant, dataset_id=row.id)\
+           .order_by(ValuationRun.id.desc()).first()
+    docs = db.query(models.EnterpriseDocument)\
+             .filter_by(tenant=tenant).filter(
+                 models.EnterpriseDocument.dataset_id == row.id).count()
+    depth = 0
+    cursor = row
+    while cursor.parent_dataset_id:
+        depth += 1
+        cursor = db.get(models.FinancialDataset, cursor.parent_dataset_id)
+    c = data["company"]
+    latest = None
+    if vr:
+        det = vr.result.get("deterministic", {})
+        ra = vr.result.get("risk_adjusted", {})
+        latest = {"run_id": vr.id, "mode": vr.mode,
+                  "enterprise_value": det.get("enterprise_value"),
+                  "raev": ra.get("raev"), "created_at": vr.created_at}
+    return {"dataset_id": row.id, "name": row.name, "source": row.source,
+            "company": {k: c.get(k) for k in
+                        ("name", "ownership", "standard", "currency",
+                         "sector", "tax_rate")},
+            "coverage": {"historical": data["periods"]["historical"],
+                         "forecast": data["periods"].get("forecast", [])},
+            "lineage_depth": depth, "root_is_self": depth == 0,
+            "documents_attached": docs, "latest_valuation": latest,
+            "created_at": row.created_at}
+
+
 @router.get("/datasets/{dataset_id}/derived")
 def derived_series(dataset_id: int, db: Session = Depends(get_db),
                    tenant: str = Depends(_tenant)):
@@ -118,11 +156,13 @@ def forecast_dataset(dataset_id: int, body: schemas.ForecastRequest,
                      tenant: str = Depends(_tenant),
                authed: bool = Depends(_authed)):
     row = _get_dataset(db, tenant, dataset_id)
-    if body.persist and not authed:
-        from ...core.config import require_auth
-        from ..identity.deps import WRITE_401
-        if require_auth():
-            raise HTTPException(status_code=401, detail=WRITE_401)
+    if body.persist:
+        from ..identity.deps import write_allowance, enforce_write
+        # authed flag alone is not entitlement: route through the one gate
+        from fastapi import Request  # noqa: F401  (dep-free re-check)
+        enforce_write({"authenticated": authed,
+                       "plan": _plan_of(db, tenant) if authed else None,
+                       "tenant": tenant})
     try:
         fc = engines.auto_forecast(row.data, body.assumptions)
     except ValueError as e:
@@ -193,3 +233,9 @@ def dashboard(dataset_id: int, valuation_run_id: int | None = None,
         if vr:
             valuation_result = vr.result
     return engines.dashboard_metrics(row.data, valuation_result)
+
+
+def _plan_of(db, tenant: str) -> str:
+    from ..identity.models import User
+    u = db.query(User).filter_by(tenant=tenant).first()
+    return (u.plan or "free") if u else "free"

@@ -103,16 +103,13 @@ def read_tenant(authorization: str | None = Header(default=None),
 def write_tenant(authorization: str | None = Header(default=None),
                  x_axiom_tenant: str | None = Header(default=None),
                  db: Session = Depends(get_db)) -> str:
-    """Writes are the conversion point: with AXIOM_REQUIRE_AUTH on,
-    anonymous write attempts get the register invitation."""
-    user, _ = _session_user(db, authorization)
-    if user:
-        return user.tenant
-    if authorization:
-        raise HTTPException(status_code=401,
-                            detail="invalid or expired session token")
-    if require_auth():
-        raise HTTPException(status_code=401, detail=WRITE_401)
+    """Writes are the conversion point: anonymous -> 401 register
+    invitation (flag AXIOM_REQUIRE_AUTH); authenticated on the free plan
+    -> 402 upgrade invitation (flag AXIOM_REQUIRE_PLAN, ADR-011)."""
+    allow = write_allowance(authorization, db)
+    enforce_write(allow)
+    if allow["authenticated"]:
+        return allow["tenant"]
     return (x_axiom_tenant or "").strip()[:64] or SHOWCASE_TENANT
 
 
@@ -120,3 +117,39 @@ def is_authenticated(authorization: str | None = Header(default=None),
                      db: Session = Depends(get_db)) -> bool:
     user, _ = _session_user(db, authorization)
     return user is not None
+
+
+# ---- Phase 12 (ADR-011): server-side entitlement ----------------------------
+from ...core.config import require_plan  # noqa: E402
+
+WRITE_402 = ("AXIOM Business required: your account is on the free plan, "
+             "which includes the full sandbox and all of AXIOM Education. "
+             "To create and analyze your own company data, upgrade to AXIOM "
+             "Business — or contact Regent Financial at "
+             "samir@theregentfinancial.com.")
+
+
+def write_allowance(authorization: str | None = Header(default=None),
+                    db: Session = Depends(get_db)) -> dict:
+    """Who is asking, and what may they write? Never raises for anonymous —
+    callers decide via enforce_write."""
+    user, _ = _session_user(db, authorization)
+    if user:
+        return {"authenticated": True, "plan": user.plan or "free",
+                "tenant": user.tenant}
+    if authorization:
+        raise HTTPException(status_code=401,
+                            detail="invalid or expired session token")
+    return {"authenticated": False, "plan": None, "tenant": None}
+
+
+def enforce_write(allow: dict):
+    """The single write gate: anonymous -> register invitation (401);
+    authenticated free plan -> upgrade invitation (402, when the plan flag
+    is on); business plan -> pass."""
+    if allow["authenticated"]:
+        if require_plan() and allow["plan"] != "business":
+            raise HTTPException(status_code=402, detail=WRITE_402)
+        return
+    if require_auth():
+        raise HTTPException(status_code=401, detail=WRITE_401)

@@ -88,11 +88,13 @@ def reforecast(body: ReforecastIn, db: Session = Depends(get_db),
     ds = db.get(fin_models.FinancialDataset, body.dataset_id)
     if not ds or ds.tenant != tenant:
         raise HTTPException(status_code=404, detail="dataset not found")
-    if body.persist and not authed:
-        from ...core.config import require_auth
-        from ..identity.deps import WRITE_401
-        if require_auth():
-            raise HTTPException(status_code=401, detail=WRITE_401)
+    if body.persist:
+        from ..identity.deps import write_allowance, enforce_write
+        # authed flag alone is not entitlement: route through the one gate
+        from fastapi import Request  # noqa: F401  (dep-free re-check)
+        enforce_write({"authenticated": authed,
+                       "plan": _plan_of(db, tenant) if authed else None,
+                       "tenant": tenant})
     try:
         prop = engines.reforecast_proposal(ds.data)
     except ValueError as e:
@@ -109,3 +111,35 @@ def reforecast(body: ReforecastIn, db: Session = Depends(get_db),
         db.add(row); db.commit(); db.refresh(row)
         out["persisted_dataset_id"] = row.id
     return out
+
+
+def _plan_of(db, tenant: str) -> str:
+    from ..identity.models import User
+    u = db.query(User).filter_by(tenant=tenant).first()
+    return (u.plan or "free") if u else "free"
+
+
+class SimulateIn(BaseModel):
+    dataset_id: int
+    scenario: str = "baseline"          # baseline | optimistic | recession | custom
+    horizon: int = 5
+    n_paths: int = 2000
+    seed: int = engines.SIM_SEED
+    custom: dict | None = None
+
+
+@router.post("/simulate")
+def simulate_enterprise(body: SimulateIn, db: Session = Depends(get_db),
+                        tenant: str = Depends(_tenant)):
+    """The Business-grade Dynamics & Simulation: the client's enterprise
+    projected under published scenario shifts (ADR-011). Pure compute —
+    open to sandbox visitors like all interactive analytics."""
+    ds = db.get(fin_models.FinancialDataset, body.dataset_id)
+    if not ds or ds.tenant != tenant:
+        raise HTTPException(status_code=404, detail="dataset not found")
+    try:
+        return engines.simulate(ds.data, body.scenario, body.horizon,
+                                min(max(body.n_paths, 200), 10000),
+                                body.seed, body.custom)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))

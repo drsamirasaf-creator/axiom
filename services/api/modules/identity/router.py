@@ -19,6 +19,7 @@ class UserOut(BaseModel):
     id: int
     email: str
     tenant: str
+    plan: str = "free"
     created_at: datetime
 
 
@@ -76,4 +77,44 @@ def logout(sess: models.AuthSession = Depends(deps.current_session),
 
 @router.get("/me", response_model=UserOut)
 def me(user: models.User = Depends(deps.current_user)):
+    return user
+
+
+# ---- Phase 12 (ADR-011): entitlement administration -------------------------
+from fastapi import Header
+from ...core.config import admin_token
+
+PLANS = ("free", "business")
+
+
+class GrantIn(BaseModel):
+    email: str
+    plan: str
+
+
+@router.post("/admin/grant", response_model=UserOut)
+def grant_plan(body: GrantIn,
+               x_axiom_admin_token: str | None = Header(default=None),
+               db: Session = Depends(get_db)):
+    """Set a user's plan. Guarded by the AXIOM_ADMIN_TOKEN shared secret —
+    the manual bridge from the payment gateway until a webhook lands
+    (ADR-011). Unset secret = admin operations disabled, honestly."""
+    secret = admin_token()
+    if not secret:
+        raise HTTPException(status_code=503,
+                            detail="admin operations are not configured "
+                                   "(AXIOM_ADMIN_TOKEN is unset)")
+    import hmac as _hmac
+    if not (x_axiom_admin_token
+            and _hmac.compare_digest(x_axiom_admin_token, secret)):
+        raise HTTPException(status_code=403, detail="invalid admin token")
+    if body.plan not in PLANS:
+        raise HTTPException(status_code=422,
+                            detail=f"plan must be one of {PLANS}")
+    user = db.query(models.User).filter_by(
+        email=body.email.strip().lower()).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="user not found")
+    user.plan = body.plan
+    db.commit(); db.refresh(user)
     return user

@@ -290,3 +290,93 @@ def test_seed_idempotent():
                      "Meridian Industries (showcase) — re-forecast",
                      "Halcyon Components (showcase)"):
         assert expected in names
+
+
+# ------------------- Phase 12: entitlements + client engines ----------------
+
+def test_plan_defaults_free_and_admin_grant(client, monkeypatch):
+    s = _register(client, "buyer@example.com")
+    assert s["user"]["plan"] == "free"
+    # admin ops disabled without the secret
+    r = client.post("/api/v1/auth/admin/grant",
+                    json={"email": "buyer@example.com", "plan": "business"})
+    assert r.status_code == 503
+    monkeypatch.setenv("AXIOM_ADMIN_TOKEN", "regent-secret")
+    r = client.post("/api/v1/auth/admin/grant",
+                    json={"email": "buyer@example.com", "plan": "business"},
+                    headers={"X-Axiom-Admin-Token": "wrong"})
+    assert r.status_code == 403
+    r = client.post("/api/v1/auth/admin/grant",
+                    json={"email": "buyer@example.com", "plan": "business"},
+                    headers={"X-Axiom-Admin-Token": "regent-secret"})
+    assert r.status_code == 200 and r.json()["plan"] == "business"
+    me = client.get("/api/v1/auth/me",
+                    headers={"Authorization": f"Bearer {s['token']}"}).json()
+    assert me["plan"] == "business"
+
+
+def test_plan_flag_402_for_free_writes(client, monkeypatch):
+    monkeypatch.setenv("AXIOM_REQUIRE_AUTH", "true")
+    monkeypatch.setenv("AXIOM_REQUIRE_PLAN", "true")
+    monkeypatch.setenv("AXIOM_ADMIN_TOKEN", "regent-secret")
+    free = _register(client, "freeuser@example.com")
+    hf = {"Authorization": f"Bearer {free['token']}"}
+    r = client.post("/api/v1/financials/datasets", headers=hf,
+                    json={"name": "mine", "data": meridian()})
+    assert r.status_code == 402
+    assert "AXIOM Business" in r.json()["detail"]
+    # free users still read (their empty tenant) and browse the sandbox
+    assert client.get("/api/v1/financials/datasets", headers=hf).json() == []
+    # upgrade -> the same write succeeds
+    client.post("/api/v1/auth/admin/grant",
+                json={"email": "freeuser@example.com", "plan": "business"},
+                headers={"X-Axiom-Admin-Token": "regent-secret"})
+    r = client.post("/api/v1/financials/datasets", headers=hf,
+                    json={"name": "mine", "data": meridian()})
+    assert r.status_code == 201
+    # persist paths honor the plan gate too: a downgraded owner may still
+    # READ and preview on their own data, but persisting demands the plan.
+    # (Against someone else's dataset the tenant 404 fires first, by
+    # design — the gate never leaks what you cannot see.)
+    from tests.fixtures.refcases import halcyon as _h
+    r = client.post("/api/v1/financials/datasets", headers=hf,
+                    json={"name": "mine-h", "data": _h()})
+    hid = r.json()["id"]
+    client.post("/api/v1/auth/admin/grant",
+                json={"email": "freeuser@example.com", "plan": "free"},
+                headers={"X-Axiom-Admin-Token": "regent-secret"})
+    r = client.post(f"/api/v1/financials/datasets/{hid}/forecast",
+                    headers=hf, json={"assumptions": {}, "persist": True})
+    assert r.status_code == 402
+    r = client.post(f"/api/v1/financials/datasets/{hid}/forecast",
+                    headers=hf, json={"assumptions": {}, "persist": False})
+    assert r.status_code == 200          # preview stays open
+
+
+def test_business_engines_endpoints(client):
+    ds = client.get("/api/v1/financials/datasets").json()
+    plan = [d for d in ds
+            if d["name"] == "Meridian Industries (showcase)"][0]
+    rp = client.get(f"/api/v1/intelligence/risk-profile/{plan['id']}")
+    assert rp.status_code == 200
+    body = rp.json()
+    assert body["risk_grade"]["grade"] == "A"
+    assert body["all_checkpoints_pass"] is True
+    sim = client.post("/api/v1/twin/simulate",
+                      json={"dataset_id": plan["id"], "scenario": "recession"})
+    assert sim.status_code == 200
+    assert sim.json()["shifts"]["sigma_scale"] == 1.5
+    prof = client.get(f"/api/v1/financials/datasets/{plan['id']}/profile")
+    assert prof.status_code == 200
+    p = prof.json()
+    assert p["company"]["name"] == "Meridian Industries Inc."
+    assert p["latest_valuation"]["enterprise_value"] is not None
+    assert p["coverage"]["forecast"] == [2026, 2027, 2028, 2029, 2030]
+
+
+def test_phase12_glossary(client):
+    g = client.get("/api/v1/metrics/glossary").json()
+    for term in ("Enterprise Risk Profile", "Coverage Confidence",
+                 "Risk Grade", "Enterprise Simulation", "Scenario Shifts",
+                 "AXIOM Business Plan"):
+        assert term in g and len(g[term]) > 20, term

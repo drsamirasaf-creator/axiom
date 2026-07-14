@@ -621,3 +621,15 @@ GLOSSARY.update({
 GLOSSARY.update({
     "Sandbox": "The fully populated showcase every visitor sees without an account: real engines running on fictional reference companies (Meridian Industries, Halcyon Components), including a complete plan-to-actuals-to-re-forecast story. Read and explore everything; creating or changing data is where a free account begins — and everything you enter stays private to it.",
 })
+
+
+# ---- Phase 12 glossary -------------------------------------------------------
+GLOSSARY.update({
+    "Enterprise Risk Profile": "The Business-grade risk view of YOUR company: the probability that next year's free cash flow covers the interest bill (with the 95%-confidence floor), the enterprise-value tail (VaR/CVaR), how much distributional ambiguity the valuation survives, and a Risk Grade from four published indicator bands.",
+    "Coverage Confidence": "From thousands of seeded simulations of next year's FCFF: the probability it covers the interest bill, and the FCFF level you can rely on with 95% confidence — the buffer (or shortfall) against debt service.",
+    "Risk Grade": "A to E from four indicators scored against published bands (interest coverage, current ratio, FCFF margin, debt/equity — the last inverted): 2 points green, 1 amber, 0 red; A from 7 of 8 points.",
+    "Enterprise Simulation": "Your company projected forward on its fitted drivers under published scenario shifts, as trajectory fans (5th-95th percentile bands) for revenue, FCFF, and cash — with the probability of negative FCFF each year and of cash falling below zero under a stated no-new-financing assumption.",
+    "Scenario Shifts": "Published, not hidden: optimistic = growth +2pp, margin +1pp; recession = growth -4pp, margin -2pp, volatility x1.5; custom lets you set all three.",
+    "Enterprise Profile": "The one-glance summary of a company in AXIOM: profile, data coverage, version lineage, attached documents, and the latest valuation headline.",
+    "AXIOM Business Plan": "The paid tier: create and analyze your own companies privately — data input, saved valuations, twin monitoring, AI document analysis, the risk profile, and enterprise simulation. The sandbox and all of AXIOM Education stay free.",
+})

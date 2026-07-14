@@ -380,3 +380,141 @@ def frontier(data: dict, de_grid: list | None = None,
             "recommended": best, "narrative": n,
             "checkpoints": checkpoints,
             "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+# ---- 5. Enterprise Risk Profile (Phase 12, ADR-011) -------------------------
+# The Business-grade Risk Analysis: the course's machinery (chance
+# constraints, tail measures, DRO ambiguity) applied to the CLIENT'S data.
+
+RISK_GRADE_BANDS = {   # indicator -> (green_min, amber_min); below amber = red
+    "interest_coverage": (4.0, 2.0),        # EBIT / interest
+    "current_ratio": (1.5, 1.0),
+    "fcff_margin": (0.06, 0.02),            # FCFF / revenue (latest hist)
+    "debt_to_equity": (0.8, 1.5),           # LOWER is better (inverted)
+}
+GRADE_MAP = {8: "A", 7: "A", 6: "B", 5: "B", 4: "C", 3: "C", 2: "D", 1: "D",
+             0: "E"}
+COVERAGE_SEED = 26121
+
+
+def risk_profile(data: dict, n_paths: int = 4000,
+                 terminal_growth: float = 0.025) -> dict:
+    """Deterministic, seeded, self-certifying. Four panels:
+    (1) debt-service coverage confidence: the simulated year-1 FCFF
+        distribution against the interest bill — P(coverage), the 95%-
+        confidence FCFF floor, and the buffer/(shortfall) at that floor;
+    (2) tail anatomy of enterprise value (the seeded MC from valuation);
+    (3) ambiguity resilience: the DRO stress breakeven radius vs net debt;
+    (4) a Risk Grade from four published indicator bands (2 points green,
+        1 amber, 0 red; A >= 7 ... E = 0), direction-aware."""
+    import random as _random
+    company = data["company"]
+    T = float(company["tax_rate"])
+    mode = "proforma" if data["periods"].get("forecast") else "auto_forecast"
+    working = data if mode == "proforma" else fin.auto_forecast(data, {})
+    derived = fin.derive_series(working)
+    n_h = derived["n_historical"]
+    ys = str(derived["years"][n_h - 1])
+    rev0 = derived["revenue"][n_h - 1]
+    rev1 = derived["revenue"][n_h]
+    g1 = rev1 / rev0 - 1.0
+    m1 = derived["ebit"][n_h] / rev1
+    IS, CF = working["income_statement"], working["cash_flow"]
+    y1 = str(derived["years"][n_h])
+    da_pct = IS["depreciation_amortization"][y1] / rev1
+    capex_pct = CF["capex"][y1] / rev1
+    nwc_pct = derived["nwc"][n_h] / rev1
+    nwc0 = derived["nwc"][n_h - 1]
+    interest = IS["interest_expense"][ys]
+
+    rng = _random.Random(COVERAGE_SEED)
+    fcff1 = []
+    for _ in range(n_paths):
+        g = g1 + rng.gauss(0.0, 0.02)
+        m = m1 + rng.gauss(0.0, 0.01)
+        r = rev0 * (1 + g)
+        fcff1.append((m * (1 - T) + da_pct - capex_pct) * r
+                     - (nwc_pct * r - nwc0))
+    fcff1.sort()
+    p_cover = sum(1 for f in fcff1 if f >= interest) / n_paths
+    floor95 = fcff1[max(int(0.05 * n_paths) - 1, 0)]
+    coverage = {
+        "interest_bill": round(interest, 4),
+        "fcff_year1_mean": round(sum(fcff1) / n_paths, 4),
+        "fcff_year1_p05": round(floor95, 4),
+        "coverage_probability": round(p_cover, 4),
+        "buffer_at_95pct_confidence": round(floor95 - interest, 4),
+        "seed": COVERAGE_SEED, "n_paths": n_paths,
+        "reading": ("even in the worst 5% of scenarios, year-1 FCFF covers "
+                    "the interest bill" if floor95 >= interest else
+                    "at 95% confidence, year-1 FCFF can fall short of the "
+                    "interest bill by the stated amount")}
+
+    v = val.run(working, "proforma", {"terminal_growth": terminal_growth})
+    ra = v["risk_adjusted"]
+    tail = {"ev_mean": ra["mean"], "ev_std": ra["std"],
+            "percentiles": ra["percentiles"], "var95": ra["var95"],
+            "cvar95": ra["cvar95"], "raev": ra["raev"], "seed": ra["seed"]}
+
+    st = val.stress(working, "proforma")
+    ambiguity = {"breakeven_radius": st["breakeven_radius"],
+                 "resilient_beyond": st["resilient_beyond"],
+                 "threshold": st.get("threshold"),
+                 "reading": ("no ambiguity radius tested erodes enterprise "
+                             "value below net debt" if st["breakeven_radius"]
+                             is None else "the valuation conclusion flips at "
+                             "the stated ambiguity radius")}
+
+    ratios = derived["ratios"][n_h - 1]
+    ind_values = {
+        "interest_coverage": round(ratios["ebit"] / interest, 4)
+                             if interest else None,
+        "current_ratio": ratios["current_ratio"],
+        "fcff_margin": round((derived["fcff"][n_h - 1] or 0) / rev0, 4)
+                       if rev0 else None,
+        "debt_to_equity": ratios["debt_to_equity"]}
+    indicators, score = [], 0
+    for k, (green, amber) in RISK_GRADE_BANDS.items():
+        x = ind_values[k]
+        if x is None:
+            indicators.append({"indicator": k, "value": None, "rag": None,
+                               "points": 0})
+            continue
+        if k == "debt_to_equity":               # lower is better
+            rag = "green" if x <= green else "amber" if x <= amber else "red"
+        else:
+            rag = "green" if x >= green else "amber" if x >= amber else "red"
+        pts = {"green": 2, "amber": 1, "red": 0}[rag]
+        score += pts
+        indicators.append({"indicator": k, "value": x, "rag": rag,
+                           "points": pts,
+                           "bands": {"green": green, "amber": amber,
+                                     "direction": "lower_better"
+                                     if k == "debt_to_equity"
+                                     else "higher_better"}})
+    grade = GRADE_MAP[score]
+
+    n = [f"Risk grade {grade} ({score}/8 points across four published "
+         f"indicator bands).",
+         f"Debt-service coverage: probability {p_cover:.1%} that year-1 "
+         f"FCFF covers the {interest:,.1f} interest bill; the 95%-confidence "
+         f"FCFF floor is {floor95:,.1f} "
+         f"({'a buffer of ' + format(floor95 - interest, ',.1f') if floor95 >= interest else 'a shortfall of ' + format(interest - floor95, ',.1f')}).",
+         f"Enterprise value tail: mean {ra['mean']:,.1f}, CVaR95 "
+         f"{ra['cvar95']:,.1f} (VaR95 {ra['var95']:,.1f}).",
+         ambiguity["reading"].capitalize() + "."]
+
+    checkpoints = [
+        {"name": "coverage_prob_in_unit_interval", "value": p_cover,
+         "expected": "[0,1]", "pass": 0.0 <= p_cover <= 1.0},
+        {"name": "grade_matches_score", "value": grade,
+         "expected": GRADE_MAP[score], "pass": grade == GRADE_MAP[score]},
+        {"name": "tail_orders", "value": ra["cvar95"],
+         "expected": "<= p05 <= mean",
+         "pass": ra["cvar95"] <= ra["percentiles"]["p05"] <= ra["mean"]}]
+    return {"mode": mode, "as_of_year": derived["years"][n_h - 1],
+            "coverage": coverage, "tail": tail, "ambiguity": ambiguity,
+            "risk_grade": {"grade": grade, "score": score, "max_score": 8,
+                           "indicators": indicators},
+            "narrative": n, "checkpoints": checkpoints,
+            "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}

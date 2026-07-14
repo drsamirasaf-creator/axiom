@@ -43,3 +43,16 @@ def allowed_origins() -> list[str]:
 
 def ai_rate_limit_per_hour() -> int:
     return int(os.environ.get("AXIOM_AI_RATE_LIMIT", "10"))
+
+
+def require_plan() -> bool:
+    """ADR-011: when true, Business writes require plan == 'business'
+    (server-side entitlement — the paywall enforced at the API). Flip on
+    Railway once payments are live."""
+    return os.environ.get("AXIOM_REQUIRE_PLAN", "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def admin_token() -> str | None:
+    """Shared secret for entitlement grants; unset = admin ops disabled."""
+    return os.environ.get("AXIOM_ADMIN_TOKEN") or None
