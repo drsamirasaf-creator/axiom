@@ -18,10 +18,11 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
     description=("The computational platform of the Dynamic Corporate Transformation "
-                 "ecosystem. Phase 1: Enterprise State, the REO engine's certified "
-                 "GEOP problems, and the Dynamics & Simulation engine with digital "
-                 "twin synchronization. Mathematics lives here, never in the "
-                 "frontend (SPEC-008 §7.1)."))
+                 "ecosystem. Phase 2: Enterprise State, the REO engine (static, "
+                 "dynamic, multi-objective, and nonlinear certified problems), and "
+                 "the Dynamics & Simulation engine with digital twin "
+                 "synchronization. Mathematics lives here, never in the frontend "
+                 "(SPEC-008 §7.1)."))
 
 # ADR-002: v0 is the open educational edition; CORS is wide until identity lands.
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
@@ -29,7 +30,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
 
 @app.get("/health", tags=["platform"])
 def health():
-    return {"status": "ok", "service": "axiom-api", "phase": 1}
+    return {"status": "ok", "service": "axiom-api", "phase": 2}
 
 app.include_router(enterprise_router)
 app.include_router(reo_router)

@@ -32,8 +32,10 @@ def test_tenant_isolation(client):
 
 def test_reo_solve_and_provenance(client):
     r = client.get("/api/v1/reo/problems")
-    assert {p["problem"] for p in r.json()} == {"allocation_sqrt", "quadratic_form",
-                                                "duality_demo", "switch_family"}
+    names = {p["problem"] for p in r.json()}
+    assert names == {"allocation_sqrt", "quadratic_form", "duality_demo",
+                     "switch_family", "dp_switch", "value_iteration",
+                     "pareto_frontier", "kkt_circle"}
     r = client.post("/api/v1/reo/solve", json={"problem": "switch_family", "params": {}})
     assert r.status_code == 201
     body = r.json()["result"]
@@ -52,7 +54,7 @@ def test_reo_bad_params_422(client):
 def test_education_registry(client):
     mods = client.get("/api/v1/education/modules").json()
     assert len(mods) == 32
-    assert sum(1 for m in mods if m["status"] == "live") == 4
+    assert sum(1 for m in mods if m["status"] == "live") == 7
     assert mods[16]["seed"] == 26201 and mods[16]["volume"] == "II"
 
 def test_simulation_run_and_provenance(client):
@@ -76,3 +78,14 @@ def test_simulation_bad_params_422(client):
     r = client.post("/api/v1/simulation/run",
                     json={"scenario": "twin_sync", "params": {"gains": [2.0]}})
     assert r.status_code == 422
+
+
+def test_phase2_problems_solve_via_api(client):
+    for problem, key, expected in (("dp_switch", "V0", 39.6863),
+                                   ("value_iteration", "V_G", 70.0),
+                                   ("kkt_circle", "lambda_star", 0.5)):
+        r = client.post("/api/v1/reo/solve", json={"problem": problem, "params": {}})
+        assert r.status_code == 201
+        body = r.json()["result"]
+        assert body["all_checkpoints_pass"] is True
+        assert abs(body["solution"][key] - expected) < 5e-4
