@@ -644,3 +644,20 @@ GLOSSARY.update({
     "Readiness Premium Adjustment": "Low readiness suggests raising a private company's specific-risk premium by up to 2pp; high readiness, relief of up to 1pp. Always a proposal — applied only through the explicit approval step, creating a new dataset version.",
     "Executive Brief": "Four questions, answered from certified engines and ended in words: Where is my company now? What is likely to happen next? What should I change? Which decision creates the greatest risk-adjusted value?",
 })
+
+
+# ---- Phase 13.5 glossary -----------------------------------------------------
+GLOSSARY.update({
+    "Shapley Value Bridge": "The enterprise-value gap between two twins attributed to each calibrated driver by the Shapley formula over all driver coalitions — the only attribution that is exactly additive and order-independent (game theory's fairness axioms, applied to your value bridge).",
+    "Wasserstein Distance": "The average amount of value that would have to 'move' to turn one twin's simulated future into the other's — a distance between entire futures, not between two point forecasts.",
+    "Jensen-Shannon Distance": "A 0-to-1 measure of how much two simulated futures overlap: 0 means indistinguishable futures, 1 means they never touch.",
+    "First-Passage Catch-Up": "From thousands of simulated paths: the probability, year by year, that the lagging twin's revenue reaches the leading twin's median trajectory — and the median year it happens, if it does.",
+    "Bayesian Driver Shrinkage": "Posterior beliefs about each driver: a precision-weighted blend of the planning twin's drivers (the prior) and the actuals twin's refit (the evidence), with the published weight — how much one more year of data SHOULD move your mind.",
+    "Effective Duration (Enterprise)": "The percentage of enterprise value lost per 100bp rise in the discount rate — your company priced like a bond. Long-duration firms live in the terminal value.",
+    "Jensen Convexity Premium": "Because DCF value is convex in the discount rate, rate UNCERTAINTY adds expected value: E[EV] exceeds EV at the expected rate by about half the convexity times the rate variance.",
+    "Sobol Attribution": "The share of cash-flow variance caused by each source of uncertainty (growth vs margin), measured by freezing each in turn on common random numbers — which risk is actually worth managing.",
+    "Extreme Value Tail": "A Generalized Pareto law fitted to the worst simulated outcomes (peaks over threshold), giving 1-in-100 and 1-in-1000 shortfall estimates beyond the range simulation alone can visit reliably, plus the tail index xi (heavier than exponential when positive).",
+    "Shadow Price": "The marginal equity value of relaxing a constraint by one unit — the Lagrange multiplier of the optimization. A positive shadow price names the constraint that is actually binding your company's value.",
+    "Volatility Drag": "The gap between ensemble-average growth (what a portfolio of identical firms earns) and time-average growth (what your one firm lives): roughly half the variance of growth. Reducing volatility reclaims it.",
+    "Ke Regime Map": "The optimal strategy re-solved at the cost of equity minus and plus 100bp — showing how the hurdle rate steers the recommended growth and financing, not just the valuation.",
+})

@@ -277,6 +277,7 @@ def reforecast_proposal(child: dict) -> dict:
 # revenue, FCFF, and cash, with distress probabilities per year.
 
 SIM_SEED = 26120
+from math import log as _math_log  # noqa: E402
 SCENARIOS = {
     "baseline":   {"growth_shift": 0.00, "margin_shift": 0.00, "sigma_scale": 1.0},
     "optimistic": {"growth_shift": 0.02, "margin_shift": 0.01, "sigma_scale": 1.0},
@@ -294,7 +295,7 @@ def simulate(data: dict, scenario: str = "baseline", horizon: int = 5,
     import random as _random
     if scenario == "custom":
         sc = {"growth_shift": 0.0, "margin_shift": 0.0, "sigma_scale": 1.0,
-              **(custom or {})}
+              "sigma_g_scale": 1.0, "sigma_m_scale": 1.0, **(custom or {})}
     elif scenario in SCENARIOS:
         sc = dict(SCENARIOS[scenario])
     else:
@@ -321,10 +322,12 @@ def simulate(data: dict, scenario: str = "baseline", horizon: int = 5,
     m = drivers["ebit_margin"] + sc["margin_shift"]
     da, cx, nw = (drivers["da_pct_revenue"], drivers["capex_pct_revenue"],
                   drivers["nwc_pct_revenue"])
-    sig_g, sig_m = 0.02 * sc["sigma_scale"], 0.01 * sc["sigma_scale"]
+    sig_g = 0.02 * sc["sigma_scale"] * float(sc.get("sigma_g_scale", 1.0))
+    sig_m = 0.01 * sc["sigma_scale"] * float(sc.get("sigma_m_scale", 1.0))
 
     rng = _random.Random(seed)
     years = [hist[-1] + k for k in range(1, horizon + 1)]
+    log_growth_sum = 0.0                # for the ergodicity block
     rev_paths = [[] for _ in years]
     fcff_paths = [[] for _ in years]
     cash_paths = [[] for _ in years]
@@ -333,7 +336,9 @@ def simulate(data: dict, scenario: str = "baseline", horizon: int = 5,
         rev, nwc_prev, cash = rev0, nwc0, cash0
         went_negative = False
         for k in range(horizon):
-            rev *= (1 + g + rng.gauss(0.0, sig_g))
+            gr = 1 + g + rng.gauss(0.0, sig_g)
+            rev *= gr
+            log_growth_sum += _math_log(max(gr, 1e-9))
             m_k = m + rng.gauss(0.0, sig_m)
             nwc_k = nw * rev
             fcff = (m_k * (1 - T) + da - cx) * rev - (nwc_k - nwc_prev)
@@ -368,6 +373,20 @@ def simulate(data: dict, scenario: str = "baseline", horizon: int = 5,
         "cash_fan": bands(cash_paths),
         "p_negative_fcff_by_year": p_fcff_neg,
         "p_cash_below_zero_ever": round(p_cash_neg_ever / n_paths, 4)}
+    # ---- ergodicity block (Phase 13.5): time-average vs ensemble growth ----
+    # The ensemble (arithmetic) growth is what a portfolio of many such
+    # firms earns; the time-average (geometric) is what THIS firm lives.
+    # Their difference is the volatility drag ~ sigma^2/2 — invisible to
+    # spreadsheet forecasting, decisive over decades.
+    g_time = log_growth_sum / (n_paths * horizon)
+    g_ens = _math_log(1 + g)
+    result["ergodicity"] = {
+        "ensemble_growth_log": round(g_ens, 6),
+        "time_average_growth_log": round(g_time, 6),
+        "volatility_drag": round(g_ens - g_time, 6),
+        "reading": ("the gap between ensemble and time-average growth is "
+                    "the volatility drag this firm pays for living one "
+                    "path; halving revenue volatility reclaims most of it")}
     med1 = result["revenue_fan"][0]["p50"]
     checkpoints = [
         {"name": "median_year1_revenue_near_drift",
@@ -381,3 +400,252 @@ def simulate(data: dict, scenario: str = "baseline", horizon: int = 5,
     result["checkpoints"] = checkpoints
     result["all_checkpoints_pass"] = all(c["pass"] for c in checkpoints)
     return result
+
+
+# ---- The Twin Comparison Observatory (Phase 13.5, ADR-013) ------------------
+# Comparing two versions of the enterprise (plan vs actuals, plan vs
+# re-forecast) with mathematics unavailable in financial-BI tooling:
+#   1. A SHAPLEY VALUE BRIDGE: the EV gap between the twins attributed
+#      exactly to six calibrated drivers by the Shapley formula over all
+#      2^6 driver coalitions — game-theoretically fair, additive to the
+#      cent (the only attribution scheme with that guarantee).
+#   2. DISTRIBUTIONAL DIVERGENCE between the twins' simulated futures:
+#      Wasserstein-1 (earth-mover), Jensen-Shannon distance, and
+#      Gaussian Kullback-Leibler, per metric.
+#   3. TRAJECTORY GEOMETRY: the median-path gap curve, its exponential
+#      divergence/convergence rate (fitted in log space), max-gap year.
+#   4. FIRST-PASSAGE CATCH-UP: per-year probability that twin B's
+#      simulated revenue path has reached twin A's median trajectory,
+#      with the median catch-up year (seed 26122).
+#   5. BAYESIAN DRIVER SHRINKAGE: posterior driver beliefs as the
+#      precision-weighted blend of the prior twin's drivers and the
+#      other twin's refitted evidence, with the published weights.
+
+OBS_SEED = 26122
+
+
+def _shapley_ev(rev0: float, g: float, m: float, da: float, cx: float,
+                nw: float, wacc: float, T: float, gT: float = 0.025,
+                horizon: int = 5) -> float:
+    """Deterministic EV from a driver tuple: 5 explicit years + perpetuity."""
+    ev, rev, nwc_prev = 0.0, rev0, nw * rev0
+    for t in range(1, horizon + 1):
+        rev *= (1 + g)
+        nwc_t = nw * rev
+        fcff = (m * (1 - T) + da - cx) * rev - (nwc_t - nwc_prev)
+        nwc_prev = nwc_t
+        ev += fcff / (1 + wacc) ** t
+    fcff_T = (m * (1 - T) + da - cx) * rev - nw * rev * gT
+    ev += fcff_T * (1 + gT) / (wacc - gT) / (1 + wacc) ** horizon
+    return ev
+
+
+def compare(data_a: dict, data_b: dict, n_paths: int = 2000) -> dict:
+    import math as _math
+    from itertools import combinations
+    from ..financials import engines as fin_e
+    from ..valuation import engines as val_e
+
+    T = float(data_a["company"]["tax_rate"])
+    wacc = val_e.run(data_a, "proforma" if data_a["periods"].get("forecast")
+                     else "auto_forecast", {}, {"n_paths": 100}
+                     )["deterministic"]["wacc_used"]
+    da_, db_ = _fit_drivers(data_a), _fit_drivers(data_b)
+    ya = str(data_a["periods"]["historical"][-1])
+    yb = str(data_b["periods"]["historical"][-1])
+    rev_a = data_a["income_statement"]["revenue"][ya]
+    rev_b = data_b["income_statement"]["revenue"][yb]
+
+    # ---- 1. Shapley value bridge (six players, exact) ---------------------
+    PLAYERS = ["starting_revenue", "revenue_growth", "ebit_margin",
+               "da_pct_revenue", "capex_pct_revenue", "nwc_pct_revenue"]
+    va = {"starting_revenue": rev_a, "revenue_growth": da_["revenue_growth"],
+          "ebit_margin": da_["ebit_margin"],
+          "da_pct_revenue": da_["da_pct_revenue"],
+          "capex_pct_revenue": da_["capex_pct_revenue"],
+          "nwc_pct_revenue": da_["nwc_pct_revenue"]}
+    vb = {"starting_revenue": rev_b, "revenue_growth": db_["revenue_growth"],
+          "ebit_margin": db_["ebit_margin"],
+          "da_pct_revenue": db_["da_pct_revenue"],
+          "capex_pct_revenue": db_["capex_pct_revenue"],
+          "nwc_pct_revenue": db_["nwc_pct_revenue"]}
+
+    def val_of(coalition: frozenset) -> float:
+        z = {p: (vb[p] if p in coalition else va[p]) for p in PLAYERS}
+        return _shapley_ev(z["starting_revenue"], z["revenue_growth"],
+                           z["ebit_margin"], z["da_pct_revenue"],
+                           z["capex_pct_revenue"], z["nwc_pct_revenue"],
+                           wacc, T)
+
+    cache = {}
+    for r in range(7):
+        for S in combinations(PLAYERS, r):
+            cache[frozenset(S)] = val_of(frozenset(S))
+    fact = [_math.factorial(k) for k in range(7)]
+    phi = {}
+    for p in PLAYERS:
+        others = [q for q in PLAYERS if q != p]
+        s = 0.0
+        for r in range(6):
+            for S in combinations(others, r):
+                S = frozenset(S)
+                w = fact[len(S)] * fact[5 - len(S)] / fact[6]
+                s += w * (cache[S | {p}] - cache[S])
+        phi[p] = s
+    ev_a, ev_b = cache[frozenset()], cache[frozenset(PLAYERS)]
+    bridge = {"ev_twin_a": round(ev_a, 2), "ev_twin_b": round(ev_b, 2),
+              "total_gap": round(ev_b - ev_a, 2),
+              "attribution": [{"driver": p, "shapley_value": round(phi[p], 2),
+                               "value_a": round(va[p], 6),
+                               "value_b": round(vb[p], 6)}
+                              for p in sorted(PLAYERS,
+                                              key=lambda x: -abs(phi[x]))],
+              "additivity_residual": round(ev_b - ev_a - sum(phi.values()), 6),
+              "note": ("exact Shapley attribution over all 64 driver "
+                       "coalitions on a common valuation kernel (WACC held "
+                       "at the subject's certified rate)")}
+
+    # ---- 2. distributional divergence of simulated futures ----------------
+    sim_a = simulate(data_a, "baseline", n_paths=n_paths)
+    sim_b = simulate(data_b, "baseline", n_paths=n_paths)
+
+    def _samples(dat, seedoff):
+        import random as _r
+        d = _fit_drivers(dat)
+        ysx = str(dat["periods"]["historical"][-1])
+        r0 = dat["income_statement"]["revenue"][ysx]
+        rng = _r.Random(OBS_SEED + seedoff)
+        out_rev, out_fcff = [], []
+        Tn = float(dat["company"]["tax_rate"])
+        nwc0 = d["nwc_pct_revenue"] * r0
+        for _ in range(n_paths):
+            rev, nwcp = r0, nwc0
+            for _k in range(5):
+                rev *= (1 + d["revenue_growth"] + rng.gauss(0, 0.02))
+                mm = d["ebit_margin"] + rng.gauss(0, 0.01)
+                nwck = d["nwc_pct_revenue"] * rev
+                f = (mm * (1 - Tn) + d["da_pct_revenue"]
+                     - d["capex_pct_revenue"]) * rev - (nwck - nwcp)
+                nwcp = nwck
+            out_rev.append(rev); out_fcff.append(f)
+        return sorted(out_rev), sorted(out_fcff)
+
+    ra, fa = _samples(data_a, 0)
+    rb, fb = _samples(data_b, 1)
+
+    def _divergences(xa, xb):
+        n = len(xa)
+        w1 = sum(abs(a - b) for a, b in zip(xa, xb)) / n
+        mu_a, mu_b = sum(xa) / n, sum(xb) / n
+        va_ = sum((x - mu_a) ** 2 for x in xa) / (n - 1)
+        vb2 = sum((x - mu_b) ** 2 for x in xb) / (n - 1)
+        kl = (_math.log(_math.sqrt(vb2 / va_))
+              + (va_ + (mu_a - mu_b) ** 2) / (2 * vb2) - 0.5)
+        lo, hi = min(xa[0], xb[0]), max(xa[-1], xb[-1])
+        bins = 30
+        h = (hi - lo) / bins or 1.0
+        pa = [0.0] * bins; pb = [0.0] * bins
+        for x in xa: pa[min(int((x - lo) / h), bins - 1)] += 1 / n
+        for x in xb: pb[min(int((x - lo) / h), bins - 1)] += 1 / n
+        def _kld(p, q):
+            return sum(pi * _math.log(pi / qi) for pi, qi in zip(p, q)
+                       if pi > 0 and qi > 0)
+        mmix = [(p + q) / 2 for p, q in zip(pa, pb)]
+        js = _math.sqrt(max(0.0, (_kld(pa, mmix) + _kld(pb, mmix)) / 2))
+        return {"wasserstein_1": round(w1, 3),
+                "jensen_shannon_distance": round(js, 4),
+                "kl_gaussian_a_to_b": round(kl, 4),
+                "mean_a": round(mu_a, 2), "mean_b": round(mu_b, 2)}
+
+    divergence = {"horizon_revenue": _divergences(ra, rb),
+                  "horizon_fcff": _divergences(fa, fb),
+                  "seed": OBS_SEED, "n_paths": n_paths,
+                  "reading": ("Wasserstein-1 is the average value that must "
+                              "'move' to turn one twin's future into the "
+                              "other's; Jensen-Shannon (0-1) measures "
+                              "distributional overlap; KL is the "
+                              "information lost describing twin A's future "
+                              "with twin B's model")}
+
+    # ---- 3. trajectory geometry -------------------------------------------
+    gap = [{"year": pa_["year"],
+            "gap": round(pb_["p50"] - pa_["p50"], 2),
+            "gap_pct": round((pb_["p50"] - pa_["p50"]) / pa_["p50"], 4)}
+           for pa_, pb_ in zip(sim_a["revenue_fan"], sim_b["revenue_fan"])]
+    abs_gaps = [abs(g_["gap"]) for g_ in gap]
+    lam = None
+    if all(g_ > 1e-9 for g_ in abs_gaps):
+        xs = list(range(len(abs_gaps)))
+        ys_ = [_math.log(g_) for g_ in abs_gaps]
+        n_ = len(xs)
+        xb_ = sum(xs) / n_; yb_ = sum(ys_) / n_
+        lam = (sum((x - xb_) * (y - yb_) for x, y in zip(xs, ys_))
+               / sum((x - xb_) ** 2 for x in xs))
+    geometry = {"median_gap_by_year": gap,
+                "max_gap_year": max(gap, key=lambda g_: abs(g_["gap"]))["year"],
+                "log_gap_slope_per_year": round(lam, 4) if lam is not None else None,
+                "regime": (None if lam is None else
+                           "diverging" if lam > 0.02 else
+                           "converging" if lam < -0.02 else "parallel")}
+
+    # ---- 4. first-passage catch-up ----------------------------------------
+    target = [b_["p50"] for b_ in sim_a["revenue_fan"]]
+    import random as _r
+    rng = _r.Random(OBS_SEED + 7)
+    d_b = _fit_drivers(data_b)
+    hit_year = []
+    for _ in range(n_paths):
+        rev = rev_b; hit = None
+        for k in range(5):
+            rev *= (1 + d_b["revenue_growth"] + rng.gauss(0, 0.02))
+            if hit is None and rev >= target[k]:
+                hit = k + 1
+        hit_year.append(hit)
+    p_by = [round(sum(1 for h in hit_year if h is not None and h <= k)
+                  / n_paths, 4) for k in range(1, 6)]
+    hits = sorted(h for h in hit_year if h is not None)
+    catchup = {"target": "twin A's median revenue trajectory",
+               "p_caught_up_by_year": p_by,
+               "median_catch_up_year": (hits[len(hits) // 2]
+                                        if len(hits) >= n_paths / 2 else None),
+               "p_never_within_horizon": round(
+                   sum(1 for h in hit_year if h is None) / n_paths, 4),
+               "seed": OBS_SEED + 7}
+
+    # ---- 5. Bayesian driver shrinkage --------------------------------------
+    n_a = len(data_a["periods"]["historical"])
+    n_b = len(data_b["periods"]["historical"])
+    k_new = max(n_b - n_a, 1)
+    w_ev = k_new / (n_a + k_new)
+    shrink = [{"driver": k, "prior_twin_a": round(da_[k], 6),
+               "evidence_twin_b": round(db_[k], 6),
+               "posterior": round((1 - w_ev) * da_[k] + w_ev * db_[k], 6),
+               "evidence_weight": round(w_ev, 4)} for k in da_]
+
+    checkpoints = [
+        {"name": "shapley_additivity", "value": bridge["additivity_residual"],
+         "expected": 0.0, "pass": abs(bridge["additivity_residual"]) < 1e-3},
+        {"name": "wasserstein_nonnegative",
+         "value": divergence["horizon_fcff"]["wasserstein_1"],
+         "expected": ">= 0",
+         "pass": divergence["horizon_fcff"]["wasserstein_1"] >= 0},
+        {"name": "catchup_monotone", "value": p_by,
+         "expected": "non-decreasing", "pass": p_by == sorted(p_by)},
+    ]
+    n = [f"The twins are {bridge['total_gap']:+,.1f} apart in enterprise "
+         f"value; the Shapley bridge attributes the largest share to "
+         f"{bridge['attribution'][0]['driver'].replace('_', ' ')} "
+         f"({bridge['attribution'][0]['shapley_value']:+,.1f}).",
+         f"Their simulated futures are {divergence['horizon_fcff']['wasserstein_1']:,.1f} "
+         f"apart in FCFF terms (Wasserstein-1) with Jensen-Shannon distance "
+         f"{divergence['horizon_fcff']['jensen_shannon_distance']:.3f}; the "
+         f"median trajectories are {geometry['regime'] or 'incomparable'}.",
+         (f"Probability the lagging twin catches the leader's median path "
+          f"within the horizon: {p_by[-1]:.0%}.")]
+    return {"twin_a": data_a["company"]["name"],
+            "twin_b": data_b["company"]["name"],
+            "shapley_bridge": bridge, "divergence": divergence,
+            "trajectory_geometry": geometry, "catch_up": catchup,
+            "driver_shrinkage": shrink, "narrative": n,
+            "checkpoints": checkpoints,
+            "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}

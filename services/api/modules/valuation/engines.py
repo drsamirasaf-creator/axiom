@@ -300,3 +300,81 @@ def stress(data: dict, mode: str, assumptions: dict | None = None,
             "resilient_beyond": resilient_beyond,
             "checkpoints": checkpoints,
             "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+# ---- Valuation analytics: the enterprise as a bond (Phase 13.5, ADR-013) ---
+
+def analytics(data: dict, mode: str, sigma_wacc: float = 0.01) -> dict:
+    """Higher-order valuation mathematics unavailable in BI tooling:
+    - EFFECTIVE DURATION and CONVEXITY of the enterprise with respect to
+      its discount rate — the firm priced like a fixed-income instrument:
+        duration  = -(1/EV) dEV/dw   (years-like semi-elasticity)
+        convexity =  (1/EV) d2EV/dw2
+      by central differences (dw = 25bp) on the certified DCF.
+    - TERMINAL-GROWTH DELTA/GAMMA the same way (dg = 10bp).
+    - The JENSEN CONVEXITY PREMIUM: with the discount rate uncertain
+      (sigma_wacc, default 100bp), E[EV(w)] exceeds EV(E[w]) by
+      approximately 0.5 x d2EV/dw2 x sigma^2 — value created by convexity
+      itself, computed exactly from a 3-point Gauss-Hermite quadrature.
+    """
+    base = run(data, mode)
+    ev0 = base["deterministic"]["enterprise_value"]
+    w0 = base["deterministic"]["wacc_used"]
+    gT0 = base["deterministic"]["terminal_growth"]
+
+    def ev_at(w=None, g=None):
+        a = {}
+        if w is not None:
+            a["wacc_override"] = w
+        if g is not None:
+            a["terminal_growth"] = g
+        return run(data, mode, a, {"n_paths": 100}
+                   )["deterministic"]["enterprise_value"]
+
+    dw = 0.0025
+    up, dn = ev_at(w=w0 + dw), ev_at(w=w0 - dw)
+    duration = -(up - dn) / (2 * dw) / ev0
+    convexity = (up - 2 * ev0 + dn) / dw ** 2 / ev0
+    dg = 0.001
+    gu, gd = ev_at(g=gT0 + dg), ev_at(g=gT0 - dg)
+    g_delta = (gu - gd) / (2 * dg)
+    g_gamma = (gu - 2 * ev0 + gd) / dg ** 2
+
+    import math as _math
+    nodes = [(-_math.sqrt(3) * sigma_wacc, 1 / 6), (0.0, 2 / 3),
+             (_math.sqrt(3) * sigma_wacc, 1 / 6)]
+    e_ev = sum(wt * ev_at(w=max(w0 + eps, gT0 + 0.005)) for eps, wt in nodes)
+    jensen = e_ev - ev0
+
+    checkpoints = [
+        {"name": "duration_positive", "value": round(duration, 2),
+         "expected": "> 0 (value falls as the rate rises)",
+         "pass": duration > 0},
+        {"name": "convexity_positive", "value": round(convexity, 1),
+         "expected": "> 0 (DCF is convex in the rate)", "pass": convexity > 0},
+        {"name": "jensen_matches_convexity",
+         "value": round(jensen, 2),
+         "expected": round(0.5 * convexity * ev0 * sigma_wacc ** 2, 2),
+         "pass": abs(jensen - 0.5 * convexity * ev0 * sigma_wacc ** 2)
+                 < max(0.15 * abs(jensen), 1.0)}]
+    n = [f"Effective duration {duration:.1f}: a 100bp rise in the discount "
+         f"rate costs about {duration:.1f}% of enterprise value "
+         f"({ev0 * duration / 100:,.1f}).",
+         f"Convexity {convexity:,.0f}: the relationship is curved in the "
+         f"firm's favor — with the rate uncertain (sigma "
+         f"{sigma_wacc:.0%}), that curvature is worth {jensen:,.1f} of "
+         f"expected value (the Jensen premium).",
+         f"Terminal-growth delta {g_delta:,.0f} per unit: each 10bp of "
+         f"long-run growth is worth {g_delta * 0.001:,.1f}."]
+    return {"enterprise_value": ev0, "wacc": w0, "terminal_growth": gT0,
+            "rate_sensitivity": {"effective_duration": round(duration, 3),
+                                 "convexity": round(convexity, 2),
+                                 "dv01_like": round(ev0 * duration / 10000, 3)},
+            "terminal_growth_sensitivity": {"delta": round(g_delta, 2),
+                                            "gamma": round(g_gamma, 2)},
+            "jensen_convexity_premium": {"sigma_wacc": sigma_wacc,
+                                         "expected_ev_under_uncertainty":
+                                             round(e_ev, 2),
+                                         "premium": round(jensen, 2)},
+            "narrative": n, "checkpoints": checkpoints,
+            "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}

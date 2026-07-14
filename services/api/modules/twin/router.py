@@ -143,3 +143,20 @@ def simulate_enterprise(body: SimulateIn, db: Session = Depends(get_db),
                                 body.seed, body.custom)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.get("/compare/{dataset_a}/{dataset_b}")
+def compare_twins(dataset_a: int, dataset_b: int,
+                  db: Session = Depends(get_db),
+                  tenant: str = Depends(_tenant)):
+    """The Twin Comparison Observatory (ADR-013): Shapley value bridge,
+    distributional divergences, trajectory geometry, first-passage
+    catch-up, and Bayesian driver shrinkage between any two versions."""
+    a = db.get(fin_models.FinancialDataset, dataset_a)
+    b = db.get(fin_models.FinancialDataset, dataset_b)
+    if not a or a.tenant != tenant or not b or b.tenant != tenant:
+        raise HTTPException(status_code=404, detail="dataset not found")
+    try:
+        return engines.compare(a.data, b.data)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))

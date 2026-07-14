@@ -303,3 +303,29 @@ def executive_brief_post(dataset_id: int, body: BriefIn,
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
     return engines.executive_brief(ds.data, readiness=readiness)
+
+
+@router.get("/risk-analytics/{dataset_id}")
+def risk_analytics_route(dataset_id: int, db: Session = Depends(get_db),
+                         tenant: str = Depends(_tenant)):
+    """EVT tail estimation and Sobol variance attribution (ADR-013)."""
+    ds = _get_dataset(db, tenant, dataset_id)
+    try:
+        return engines.risk_analytics(ds.data)
+    except ValueError as e:
+        from fastapi import HTTPException as _H
+        raise _H(status_code=422, detail=str(e))
+
+
+@router.get("/optimize-analytics/{dataset_id}")
+def optimize_analytics_route(dataset_id: int, horizon: int = 5,
+                             db: Session = Depends(get_db),
+                             tenant: str = Depends(_tenant)):
+    """Shadow prices of the binding constraints and the cost-of-equity
+    regime map (ADR-013)."""
+    ds = _get_dataset(db, tenant, dataset_id)
+    try:
+        return engines.optimize_analytics(ds.data, horizon=horizon)
+    except ValueError as e:
+        from fastapi import HTTPException as _H
+        raise _H(status_code=422, detail=str(e))

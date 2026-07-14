@@ -440,3 +440,32 @@ def test_phase13_glossary(client):
     for term in ("Dynamic Optimizer", "Optimization Uplift",
                  "Transformation Readiness", "ANFIS", "Executive Brief"):
         assert term in g and len(g[term]) > 20, term
+
+
+# --------------------- Phase 13.5: analytics endpoints -----------------------
+
+def test_observatory_and_analytics_endpoints(client):
+    ds = client.get("/api/v1/financials/datasets").json()
+    plan = [d for d in ds
+            if d["name"] == "Meridian Industries (showcase)"][0]
+    child = [d for d in ds
+             if "showcase) — 2026 actuals" in d["name"]][0]
+    c = client.get(f"/api/v1/twin/compare/{plan['id']}/{child['id']}")
+    assert c.status_code == 200
+    body = c.json()
+    assert abs(body["shapley_bridge"]["additivity_residual"]) < 1e-3
+    assert body["all_checkpoints_pass"] is True
+    va = client.get(f"/api/v1/valuation/analytics/{plan['id']}")
+    assert va.status_code == 200
+    assert va.json()["rate_sensitivity"]["effective_duration"] > 0
+    ra = client.get(f"/api/v1/intelligence/risk-analytics/{plan['id']}")
+    assert ra.status_code == 200
+    assert "extreme_value_tail" in ra.json()
+    oa = client.get(f"/api/v1/intelligence/optimize-analytics/{plan['id']}")
+    assert oa.status_code == 200
+    assert "shadow_prices" in oa.json()
+    # cross-tenant compare is a 404, both directions
+    s = _register(client, "observer@example.com")
+    h = {"Authorization": f"Bearer {s['token']}"}
+    assert client.get(f"/api/v1/twin/compare/{plan['id']}/{child['id']}",
+                      headers=h).status_code == 404

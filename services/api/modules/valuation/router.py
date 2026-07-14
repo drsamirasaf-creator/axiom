@@ -98,3 +98,19 @@ def list_runs(limit: int = 20, db: Session = Depends(get_db),
               tenant: str = Depends(_tenant)):
     return db.query(models.ValuationRun).filter_by(tenant=tenant)\
              .order_by(models.ValuationRun.id.desc()).limit(min(limit, 100)).all()
+
+
+@router.get("/analytics/{dataset_id}")
+def valuation_analytics(dataset_id: int, db: Session = Depends(get_db),
+                        tenant: str = Depends(_tenant)):
+    """The enterprise as a bond: effective duration, convexity, DV01,
+    terminal-growth Greeks, and the Jensen convexity premium (ADR-013)."""
+    from ..financials import models as fin_models
+    ds = db.get(fin_models.FinancialDataset, dataset_id)
+    if not ds or ds.tenant != tenant:
+        raise HTTPException(status_code=404, detail="dataset not found")
+    mode = "proforma" if ds.data["periods"].get("forecast") else "auto_forecast"
+    try:
+        return engines.analytics(ds.data, mode)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
