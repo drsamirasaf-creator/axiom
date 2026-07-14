@@ -19,7 +19,7 @@ V2 = ["Introduction to Enterprise Optimization","The General Enterprise Optimiza
  "Artificial Intelligence for Enterprise Optimization",
  "Enterprise Digital Twins and Autonomous Transformation",
  "Enterprise Applications and Integrated Case Studies"]
-LIVE = {"II-3", "II-4", "II-5", "II-7", "II-9", "II-11", "II-12", "II-15", "I-6", "I-8"}   # Phases 0-3
+LIVE = {"II-3", "II-4", "II-5", "II-7", "II-9", "II-10", "II-11", "II-12", "II-13", "II-14", "II-15", "I-6", "I-8"}   # Phases 0-4
 
 def _mods():
     out = []

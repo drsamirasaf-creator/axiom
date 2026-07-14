@@ -54,7 +54,7 @@ def test_reo_bad_params_422(client):
 def test_education_registry(client):
     mods = client.get("/api/v1/education/modules").json()
     assert len(mods) == 32
-    assert sum(1 for m in mods if m["status"] == "live") == 10
+    assert sum(1 for m in mods if m["status"] == "live") == 13
     assert mods[16]["seed"] == 26201 and mods[16]["volume"] == "II"
 
 def test_simulation_run_and_provenance(client):
@@ -109,4 +109,25 @@ def test_risk_unknown_analysis_404(client):
 def test_risk_bad_params_422(client):
     r = client.post("/api/v1/risk/run",
                     json={"analysis": "chance_constraint", "params": {"mu": -1}})
+    assert r.status_code == 422
+
+
+def test_learning_experiments_and_provenance(client):
+    r = client.get("/api/v1/learning/experiments")
+    assert {e["experiment"] for e in r.json()} == {
+        "generalization_duel", "kmeans_clustering", "prediction_regret",
+        "q_learning", "knowledge_augmented", "anfis_sugeno"}
+    r = client.post("/api/v1/learning/run", json={"experiment": "q_learning", "params": {}})
+    assert r.status_code == 201
+    body = r.json()["result"]
+    assert body["all_checkpoints_pass"] is True
+    assert body["solution"]["sweep_policy_correct"] == 5
+    assert body["solution"]["sweeps_to_tol"] == 173
+    runs = client.get("/api/v1/learning/runs").json()
+    assert runs and runs[0]["experiment"] == "q_learning"
+
+def test_learning_unknown_404_and_bad_params_422(client):
+    assert client.post("/api/v1/learning/run", json={"experiment": "nope"}).status_code == 404
+    r = client.post("/api/v1/learning/run",
+                    json={"experiment": "anfis_sugeno", "params": {"mode": "psychic"}})
     assert r.status_code == 422

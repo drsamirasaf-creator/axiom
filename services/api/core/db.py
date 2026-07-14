@@ -53,5 +53,6 @@ def ensure_schema(url: str | None = None):
             os.environ["DATABASE_URL"] = prev
 
 def init_db():
-    from ..modules.risk import models as _risk   # noqa: F401  (metadata registration)
+    from ..modules.risk import models as _risk           # noqa: F401
+    from ..modules.learning import models as _learning   # noqa: F401
     ensure_schema()

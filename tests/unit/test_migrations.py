@@ -6,7 +6,7 @@ from services.api.modules.enterprise_state.models import Enterprise, StateSnapsh
 from services.api.modules.optimization.models import OptimizationRun
 
 ALL = {"enterprises", "state_snapshots", "optimization_runs",
-       "simulation_runs", "risk_runs", "alembic_version"}
+       "simulation_runs", "risk_runs", "learning_runs", "alembic_version"}
 
 def _url():
     return "sqlite:///" + tempfile.mktemp(suffix=".db")

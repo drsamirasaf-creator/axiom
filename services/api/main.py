@@ -12,6 +12,7 @@ from .modules.enterprise_state.router import router as enterprise_router
 from .modules.optimization.router import router as reo_router
 from .modules.simulation.router import router as simulation_router
 from .modules.risk.router import router as risk_router
+from .modules.learning.router import router as learning_router
 from .modules.education.router import router as education_router
 
 app = FastAPI(
@@ -19,12 +20,11 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
     description=("The computational platform of the Dynamic Corporate Transformation "
-                 "ecosystem. Phase 3: Enterprise State, the REO engine (static, "
-                 "dynamic, multi-objective, nonlinear), the Dynamics & Simulation "
-                 "engine with digital twin synchronization, and the Risk & "
-                 "Valuation engine (chance constraints, DRO flip maps, data-driven "
-                 "radii, lognormal valuation fans). Mathematics lives here, never "
-                 "in the frontend (SPEC-008 §7.1)."))
+                 "ecosystem. Phase 4: Enterprise State, the REO engine, the "
+                 "Dynamics & Simulation engine, the Risk & Valuation engine, and "
+                 "the Learning Lab (generalization, clustering, decision regret, "
+                 "Q-learning, knowledge-augmented optimization, ANFIS). "
+                 "Mathematics lives here, never in the frontend (SPEC-008 §7.1)."))
 
 # ADR-002: v0 is the open educational edition; CORS is wide until identity lands.
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
@@ -32,10 +32,11 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
 
 @app.get("/health", tags=["platform"])
 def health():
-    return {"status": "ok", "service": "axiom-api", "phase": 3}
+    return {"status": "ok", "service": "axiom-api", "phase": 4}
 
 app.include_router(enterprise_router)
 app.include_router(reo_router)
 app.include_router(simulation_router)
 app.include_router(risk_router)
+app.include_router(learning_router)
 app.include_router(education_router)
