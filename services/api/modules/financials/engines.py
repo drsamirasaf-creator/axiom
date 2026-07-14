@@ -594,3 +594,14 @@ GLOSSARY.update({
     "Benchmark Excess": "Actual value minus the implied (benchmark-typical) value on the subject's own scale; positive means outperformance in currency terms.",
     "Context KPI": "Displayed but never scored or colored — e.g. CapEx/Revenue, where intensity reflects strategy rather than performance.",
 })
+
+
+# ---- Phase 9: digital twin glossary terms -----------------------------------
+GLOSSARY.update({
+    "Twin Monitoring": "The digital-twin loop: when a period closes, actual results are compared against the committed plan, forecast accuracy is scored, model drivers are re-estimated, and the valuation drift is measured — without ever mutating the original plan.",
+    "Forecast Accuracy": "Traffic lights on plan-vs-actual: revenue within 2% is green, within 5% amber; EBIT margin within 1pp green, 2.5pp amber; FCFF within 5% green, 15% amber. Overall status is the worst of the three.",
+    "Driver Drift": "How much each fitted trend driver (growth, margins, capex, working-capital intensity) moved once the new actual year entered the evidence.",
+    "Valuation Drift": "Realized enterprise value versus the value the plan implied for the same date, via the roll-forward identity EV_expected = EV_plan x (1 + WACC) - planned first-period FCFF. Same date, same horizon — a fair comparison.",
+    "Dataset Lineage": "The version chain of a company's data: each actuals sync creates a child dataset; the parent plan is preserved untouched as the twin's memory.",
+    "Actuals": "Reported results for a period that was previously a forecast year; supplying them moves the year from plan to history and triggers a twin sync.",
+})

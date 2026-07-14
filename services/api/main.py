@@ -19,6 +19,7 @@ from .modules.financials.router import metrics_router
 from .modules.valuation.router import router as valuation_router
 from .modules.benchmarks.router import router as benchmarks_router
 from .modules.identity.router import router as auth_router
+from .modules.twin.router import router as twin_router
 from .modules.intelligence.router import router as intelligence_router
 
 app = FastAPI(
@@ -44,7 +45,7 @@ app.add_middleware(CORSMiddleware, allow_origins=allowed_origins(),
 
 @app.get("/health", tags=["platform"])
 def health():
-    return {"status": "ok", "service": "axiom-api", "phase": 8}
+    return {"status": "ok", "service": "axiom-api", "phase": 9}
 
 app.include_router(enterprise_router)
 app.include_router(reo_router)
@@ -57,4 +58,5 @@ app.include_router(metrics_router)
 app.include_router(valuation_router)
 app.include_router(benchmarks_router)
 app.include_router(auth_router)
+app.include_router(twin_router)
 app.include_router(intelligence_router)

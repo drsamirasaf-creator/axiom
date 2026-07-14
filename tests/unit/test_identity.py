@@ -127,3 +127,34 @@ def test_ai_rate_limit_429(client, monkeypatch):
     # no API key in tests: first two hit the honest 503, third hits the limit
     assert codes[0] == 503 and codes[1] == 503 and codes[2] == 429
     intel_router._ai_rate_reset()
+
+
+# ---------------------- Phase 9: twin endpoints (authed) --------------------
+
+def test_twin_actuals_and_lineage_flow(client):
+    from tests.numerical.test_twin_checkpoints import ACTUALS_2026
+    s = _register(client, "twin@example.com")
+    h = {"Authorization": f"Bearer {s['token']}"}
+    r = client.post("/api/v1/financials/datasets", headers=h,
+                    json={"name": "Meridian plan", "data": meridian()})
+    pid = r.json()["id"]
+    r = client.post("/api/v1/twin/actuals", headers=h,
+                    json={"dataset_id": pid, "year": 2026, **ACTUALS_2026})
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["report"]["overall_accuracy"] == "amber"
+    assert abs(body["report"]["valuation_drift"]["drift"] - (-2.44)) < 0.05
+    cid = body["child_dataset_id"]
+    # lineage from either end resolves the same chain
+    lin = client.get(f"/api/v1/twin/lineage/{cid}", headers=h).json()
+    assert lin["root_dataset_id"] == pid and lin["syncs_completed"] == 1
+    assert [v["dataset_id"] for v in lin["versions"]] == [pid, cid]
+    # out-of-order actuals against the CHILD (2027 is now next) -> 2026 fails
+    r = client.post("/api/v1/twin/actuals", headers=h,
+                    json={"dataset_id": cid, "year": 2026, **ACTUALS_2026})
+    assert r.status_code == 422
+    # tenant isolation holds for twin routes too
+    other = _register(client, "nottwin@example.com")
+    r = client.get(f"/api/v1/twin/lineage/{cid}",
+                   headers={"Authorization": f"Bearer {other['token']}"})
+    assert r.status_code == 404

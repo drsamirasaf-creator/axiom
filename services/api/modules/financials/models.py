@@ -19,7 +19,11 @@ class FinancialDataset(Base):
     name: Mapped[str] = mapped_column(String(160))
     standard: Mapped[str] = mapped_column(String(16))        # us_gaap | ifrs
     ownership: Mapped[str] = mapped_column(String(16))       # public | private
-    source: Mapped[str] = mapped_column(String(16))          # direct | upload | forecast
+    source: Mapped[str] = mapped_column(String(16))          # direct | upload | forecast | actuals
+    # Phase 9 lineage: an actuals sync creates a child version rather than
+    # mutating history; the chain is the twin's memory (ADR-008).
+    parent_dataset_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_datasets.id"), nullable=True, index=True)
     data: Mapped[dict] = mapped_column(JSON)                 # canonical dataset
     validation: Mapped[dict] = mapped_column(JSON)           # warnings at ingest
     created_at: Mapped[datetime] = mapped_column(
