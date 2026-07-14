@@ -2,7 +2,7 @@
 
 The computational platform of the Dynamic Corporate Transformation (DCT) ecosystem.
 
-Phase 7 — the Intelligence Layer: AI document analysis behind three
+Phase 7.5 — Benchmarking: sector/peer comparison on scale-free KPIs with implied-value translation, a published Benchmark Performance Index (weighted geometric mean, clamped scores), direction-aware traffic lights, deterministic narrative generation, and curated-vs-custom-peer benchmark sourcing (Product §7.17). Built on Phase 7 — the Intelligence Layer: AI document analysis behind three
 deterministic gates (whitelisted fields, published bounds, verbatim
 source-quote verification) with per-suggestion user approval, the
 REO-distance Enterprise Health Index on a published distress-adjusted WACC

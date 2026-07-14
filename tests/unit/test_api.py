@@ -472,3 +472,49 @@ def test_glossary_covers_phase7_terms(client):
                  "Transformation Recommendations", "DRO Stress Test",
                  "Breakeven Ambiguity Radius"):
         assert term in g and len(g[term]) > 20, term
+
+
+# ------------------------- Phase 7.5: Benchmarking --------------------------
+
+def test_benchmark_sectors_endpoint(client):
+    r = client.get("/api/v1/benchmarks/sectors")
+    body = r.json()
+    assert "Industrials" in body["sectors"] and len(body["sectors"]) >= 10
+    assert body["source"]["kind"] == "curated"
+    dirs = {k["kpi"]: k["direction"] for k in body["kpis"]}
+    assert dirs["debt_to_equity"] == "lower" and dirs["capex_pct_revenue"] == "context"
+
+
+def test_benchmark_compare_endpoint(client):
+    r = client.post("/api/v1/financials/datasets",
+                    json={"name": "Meridian bench", "data": _meridian()})
+    mid = r.json()["id"]
+    r = client.post("/api/v1/benchmarks/compare",
+                    json={"dataset_id": mid, "sector": "Industrials"})
+    assert r.status_code == 200
+    body = r.json()
+    assert abs(body["benchmark_performance_index"] - 142.62) < 0.05
+    assert body["narrative"] and body["all_checkpoints_pass"] is True
+    # unknown sector -> 404 with pointer; no sector anywhere -> 422
+    assert client.post("/api/v1/benchmarks/compare",
+                       json={"dataset_id": mid, "sector": "Nope"}).status_code == 404
+    assert client.post("/api/v1/benchmarks/compare",
+                       json={"dataset_id": mid}).status_code == 422
+
+
+def test_benchmark_glossary_terms(client):
+    g = client.get("/api/v1/metrics/glossary").json()
+    for term in ("Benchmarking", "Benchmark Performance Index",
+                 "Implied Value", "Custom Peer Set", "Traffic Light",
+                 "Context KPI"):
+        assert term in g and len(g[term]) > 20, term
+
+
+def test_sector_warning_on_direct_input(client):
+    ds = _meridian()
+    ds["company"]["sector"] = "Underwater Basket Weaving"
+    r = client.post("/api/v1/financials/datasets",
+                    json={"name": "odd sector", "data": ds})
+    assert r.status_code == 201
+    assert any("no curated benchmark" in w
+               for w in r.json()["validation"]["warnings"])

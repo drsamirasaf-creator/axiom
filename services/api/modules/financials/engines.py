@@ -132,6 +132,13 @@ def validate_dataset(data: dict) -> dict:
             if assets and abs(assets - le) > 0.005 * abs(assets):
                 warnings.append(f"balance sheet does not balance in {y}: "
                                 f"assets {assets:.2f} vs L+E {le:.2f}")
+        sector = company.get("sector")
+        if sector:
+            from ..benchmarks import data as _bmk
+            if sector not in _bmk.BENCHMARKS:
+                warnings.append(f"company.sector '{sector}' has no curated "
+                                "benchmark; Benchmarking will need a custom "
+                                "peer set or a sector override")
         tr = company.get("tax_rate", 0.0)
         if not (0.0 <= tr < 0.6):
             warnings.append("tax_rate outside [0, 0.6) — please verify")
@@ -573,3 +580,17 @@ GLOSSARY = {
     "Worst-Case Enterprise Value": "The mean enterprise value under the least favorable distribution within the ambiguity ball.",
     "Breakeven Ambiguity Radius": "The radius at which worst-case enterprise value falls to the senior-claims threshold (net debt + preferred + minority) — equity survives any smaller mistrust of the model.",
 }
+
+
+# ---- Phase 7.5: benchmarking glossary terms --------------------------------
+GLOSSARY.update({
+    "Benchmarking": "The subject company's KPIs compared apples-to-apples against sector averages or a custom peer set, on scale-free ratios that are independent of size and reporting currency.",
+    "Benchmark Performance Index": "100 x weighted geometric mean of direction-adjusted KPI scores (actual/benchmark, inverted where lower is better, clamped to [0.5, 1.5]). 100 = exactly in line with peers; 115 = outperforming by ~15% across the board. Weights are published per KPI.",
+    "Implied Value": "The benchmark translated onto the subject's own scale: e.g. the sector net margin times the subject's revenue gives the net income a sector-typical performer would earn on those books, shown beside the actual.",
+    "Sector Average": "The curated benchmark ratio for the selected sector (AXIOM Curated Set v1 — representative values for research/education). For advisory work, supply a custom peer set instead.",
+    "Custom Peer Set": "Named peers whose raw figures you supply; AXIOM computes each peer's ratios and benchmarks against their arithmetic mean — fully auditable, and the advisory-grade path.",
+    "Traffic Light": "Green: direction-adjusted score >= 1.10 (outperforming by 10%+). Amber: 0.90-1.10 (in line). Red: below 0.90. The score inverts for lower-is-better KPIs such as Debt/Equity.",
+    "Net Margin": "Net income divided by revenue.",
+    "Benchmark Excess": "Actual value minus the implied (benchmark-typical) value on the subject's own scale; positive means outperformance in currency terms.",
+    "Context KPI": "Displayed but never scored or colored — e.g. CapEx/Revenue, where intensity reflects strategy rather than performance.",
+})

@@ -17,6 +17,7 @@ from .modules.education.router import router as education_router
 from .modules.financials.router import router as financials_router
 from .modules.financials.router import metrics_router
 from .modules.valuation.router import router as valuation_router
+from .modules.benchmarks.router import router as benchmarks_router
 from .modules.intelligence.router import router as intelligence_router
 
 app = FastAPI(
@@ -52,4 +53,5 @@ app.include_router(education_router)
 app.include_router(financials_router)
 app.include_router(metrics_router)
 app.include_router(valuation_router)
+app.include_router(benchmarks_router)
 app.include_router(intelligence_router)
