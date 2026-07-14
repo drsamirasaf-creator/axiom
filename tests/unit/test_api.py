@@ -341,3 +341,134 @@ def test_kpi_strip_carries_definitions(client):
     dash = client.get(f"/api/v1/metrics/dashboard/{mid}").json()
     for card in dash["kpi_strip"]:
         assert card["definition"], f"missing definition for {card['kpi']}"
+
+
+# --------------------------- Phase 7: Intelligence Layer --------------------
+
+def _upload_doc(client, text, content_type="text/plain", dataset_id=None):
+    data = {"note": "test doc"}
+    if dataset_id:
+        data["dataset_id"] = str(dataset_id)
+    r = client.post("/api/v1/financials/documents",
+                    files={"file": ("plan.txt", text.encode(), content_type)},
+                    data=data)
+    assert r.status_code == 201
+    return r.json()["id"]
+
+
+def test_analyze_503_when_ai_unconfigured(client, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    did = _upload_doc(client, "Revenue growth of 5% (0.05) is planned.")
+    r = client.post(f"/api/v1/intelligence/documents/{did}/analyze")
+    assert r.status_code == 503
+    assert "ANTHROPIC_API_KEY" in r.json()["detail"]
+
+
+def test_analyze_415_for_binary_document(client):
+    r = client.post("/api/v1/financials/documents",
+                    files={"file": ("plan.pdf", b"%PDF-1.4 ...",
+                                    "application/pdf")})
+    did = r.json()["id"]
+    r = client.post(f"/api/v1/intelligence/documents/{did}/analyze")
+    assert r.status_code == 415
+
+
+def test_analyze_decide_flow_with_mocked_ai(client, monkeypatch):
+    """Full journey with the AI seam mocked: analyze -> gates -> decisions
+    -> valuation-ready assumptions -> valuation run."""
+    import json as _json
+    from services.api.modules.intelligence import ai_client
+    doc_text = ("Strategic plan: we target revenue growth of 8% (0.08) and "
+                "an EBIT margin of 15% (0.15). Long-run inflation-like "
+                "terminal growth of 2% (0.02) is assumed.")
+    model_reply = _json.dumps([
+        {"field": "revenue_growth", "value": 0.08, "rationale": "stated target",
+         "source_quote": "revenue growth of 8% (0.08)"},
+        {"field": "ebit_margin", "value": 0.15, "rationale": "stated margin",
+         "source_quote": "an EBIT margin of 15% (0.15)"},
+        {"field": "terminal_growth", "value": 0.02, "rationale": "stated",
+         "source_quote": "terminal growth of 2% (0.02)"},
+        {"field": "revenue_growth", "value": 0.30, "rationale": "hallucinated",
+         "source_quote": "we will triple revenue overnight"}])
+    monkeypatch.setattr(ai_client, "complete",
+                        lambda system, user_text, max_tokens=2000: model_reply)
+    from tests.fixtures.refcases import halcyon
+    ds = client.post("/api/v1/financials/datasets",
+                     json={"name": "Halcyon AI", "data": halcyon()}).json()
+    did = _upload_doc(client, doc_text, dataset_id=ds["id"])
+    r = client.post(f"/api/v1/intelligence/documents/{did}/analyze")
+    assert r.status_code == 200
+    a = r.json()
+    assert a["status"] == "proposed" and len(a["suggestions"]) == 3
+    assert len(a["rejected"]) == 1                     # hallucinated quote gated
+    assert all(s["verified_quote"] for s in a["suggestions"])
+    # persisted on the document
+    docs = client.get("/api/v1/financials/documents").json()
+    assert any(d["id"] == did and d["ai_analysis"]["status"] == "proposed"
+               for d in docs)
+    # decide: accept growth + terminal, reject margin
+    r = client.post(f"/api/v1/intelligence/documents/{did}/decisions",
+                    json={"decisions": {0: "accept", 1: "reject", 2: "accept"}})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "decided"
+    va = body["valuation_assumptions"]
+    assert va["terminal_growth"] == 0.02
+    assert va["forecast"] == {"revenue_growth": 0.08}
+    # assumptions run through the certified engine
+    r = client.post("/api/v1/valuation/run",
+                    json={"dataset_id": ds["id"], "mode": "auto_forecast",
+                          "assumptions": va})
+    assert r.status_code == 201
+    assert r.json()["result"]["provenance"]["revenue_growth"] == 0.08
+
+
+def test_decisions_409_without_analysis(client):
+    did = _upload_doc(client, "no analysis yet")
+    r = client.post(f"/api/v1/intelligence/documents/{did}/decisions",
+                    json={"decisions": {0: "accept"}})
+    assert r.status_code == 409
+
+
+def test_reo_health_endpoint(client):
+    r = client.post("/api/v1/financials/datasets",
+                    json={"name": "Meridian health", "data": _meridian()})
+    mid = r.json()["id"]
+    h = client.get(f"/api/v1/intelligence/health/{mid}").json()
+    assert abs(h["health_index"] - 95.5) < 0.05
+    assert h["version"] == "reo_distance_v1"
+    assert len(h["wacc_curve"]) >= 10
+
+
+def test_recommendations_endpoint(client):
+    from tests.fixtures.refcases import halcyon
+    r = client.post("/api/v1/financials/datasets",
+                    json={"name": "Halcyon recs", "data": halcyon()})
+    hid = r.json()["id"]
+    recs = client.get(f"/api/v1/intelligence/recommendations/{hid}").json()
+    assert recs["recommendations"][0]["move"] == "optimal_capital_structure"
+    assert recs["all_checkpoints_pass"] is True
+    assert all("expected_ev_impact" in m for m in recs["recommendations"])
+
+
+def test_stress_endpoint_persists_run(client):
+    r = client.post("/api/v1/financials/datasets",
+                    json={"name": "Meridian stress", "data": _meridian()})
+    mid = r.json()["id"]
+    r = client.post("/api/v1/valuation/stress",
+                    json={"dataset_id": mid, "mode": "proforma"})
+    assert r.status_code == 201
+    res = r.json()["result"]
+    assert res["resilient_beyond"] == 0.5
+    assert res["all_checkpoints_pass"] is True
+    runs = client.get("/api/v1/valuation/runs").json()
+    assert any(x["mode"] == "dro_stress" for x in runs)
+
+
+def test_glossary_covers_phase7_terms(client):
+    g = client.get("/api/v1/metrics/glossary").json()
+    for term in ("AI Document Analysis", "Source Quote", "Approval Gate",
+                 "Enterprise Health Index (REO)", "Optimal Capital Structure",
+                 "Transformation Recommendations", "DRO Stress Test",
+                 "Breakeven Ambiguity Radius"):
+        assert term in g and len(g[term]) > 20, term

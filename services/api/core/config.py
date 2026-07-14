@@ -15,3 +15,12 @@ DEMO_TENANT = "demo"
 def tenant_from_header(value) -> str:
     """ADR-002: real identity deferred; a tenant header scopes all rows."""
     return (value or DEMO_TENANT).strip()[:64] or DEMO_TENANT
+
+
+def anthropic_api_key() -> str | None:
+    """ADR-006: unset key means AI features honestly report 503, never mock."""
+    return os.environ.get("ANTHROPIC_API_KEY") or None
+
+
+def ai_model() -> str:
+    return os.environ.get("AXIOM_AI_MODEL", "claude-sonnet-4-6")

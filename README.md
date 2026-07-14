@@ -2,7 +2,16 @@
 
 The computational platform of the Dynamic Corporate Transformation (DCT) ecosystem.
 
-Phase 6 — the Financial Core: the Data Input workspace (locked US GAAP and
+Phase 7 — the Intelligence Layer: AI document analysis behind three
+deterministic gates (whitelisted fields, published bounds, verbatim
+source-quote verification) with per-suggestion user approval, the
+REO-distance Enterprise Health Index on a published distress-adjusted WACC
+curve, the transformation path recommender priced through the certified
+valuation engine, and the DRO stress panel (TV-ambiguity worst-case EV,
+breakeven radius) — the AI proposes, deterministic gates and certified
+engines dispose (ADR-006). Live AI calls are mocked in the suite and
+smoke-tested via scripts/ai_smoke.py; ANTHROPIC_API_KEY configures the
+deployment. Built on Phase 6 — the Financial Core: the Data Input workspace (locked US GAAP and
 IFRS templates with server-side cell-level validation, direct JSON entry,
 document plumbing), FCFF/FCFE and WACC engines (public CAPM and private
 Hamada-relevered modes), the three-mode Enterprise Valuation engine
@@ -15,7 +24,7 @@ Dynamics & Simulation engine, the Risk & Valuation engine, the Learning
 Lab, and the Course Workspace — honoring the DCT course site's ?module=
 deep links. A modular monolith (SPEC-008 §19.3) in a controlled monorepo
 (§18.2), schema Alembic-managed (ADR-003), every engine certified by
-checkpoint batteries (88 tests), reference companies hand-verified
+checkpoint batteries (110 tests), reference companies hand-verified
 (tests/fixtures/refcases.py: Meridian public/GAAP, Halcyon private/IFRS).
 
 - Backend: FastAPI (`services/api`), Python-owned mathematics (SPEC-008 §7.1)

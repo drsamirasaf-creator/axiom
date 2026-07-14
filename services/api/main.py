@@ -17,20 +17,23 @@ from .modules.education.router import router as education_router
 from .modules.financials.router import router as financials_router
 from .modules.financials.router import metrics_router
 from .modules.valuation.router import router as valuation_router
+from .modules.intelligence.router import router as intelligence_router
 
 app = FastAPI(
     title="AXIOM",
     version="0.1.0",
     lifespan=lifespan,
     description=("The computational platform of the Dynamic Corporate Transformation "
-                 "ecosystem. Phase 6 adds the Financial Core: the Data Input "
-                 "workspace (GAAP/IFRS templates, uploads, direct entry, "
-                 "document plumbing), FCFF/FCFE and WACC engines, the "
-                 "three-mode Enterprise Valuation engine with the stochastic "
-                 "risk-adjusted layer, and the Executive Dashboard KPI strip "
-                 "with the Enterprise Health Index (SPEC-004 Product §5/§7/§8, "
-                 "Math §3; ADR-005). Mathematics lives here, never in the "
-                 "frontend (SPEC-008 §7.1)."))
+                 "ecosystem. Phase 7 adds the Intelligence Layer: AI document "
+                 "analysis behind deterministic explainability gates (verbatim "
+                 "source quotes, whitelisted fields, published bounds, user "
+                 "approval per Product §6.15), the REO-distance Enterprise "
+                 "Health Index, the transformation path recommender priced "
+                 "through the certified valuation engine, and the DRO stress "
+                 "panel (TV-ambiguity worst-case EV + breakeven radius). Built "
+                 "on the Phase 6 Financial Core. The AI proposes; deterministic "
+                 "gates and certified engines dispose (ADR-006). Mathematics "
+                 "lives here, never in the frontend (SPEC-008 §7.1)."))
 
 # ADR-002: v0 is the open educational edition; CORS is wide until identity lands.
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
@@ -38,7 +41,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
 
 @app.get("/health", tags=["platform"])
 def health():
-    return {"status": "ok", "service": "axiom-api", "phase": 6}
+    return {"status": "ok", "service": "axiom-api", "phase": 7}
 
 app.include_router(enterprise_router)
 app.include_router(reo_router)
@@ -49,3 +52,4 @@ app.include_router(education_router)
 app.include_router(financials_router)
 app.include_router(metrics_router)
 app.include_router(valuation_router)
+app.include_router(intelligence_router)

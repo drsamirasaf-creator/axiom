@@ -47,6 +47,36 @@ def run_valuation(body: schemas.ValuationRequest, db: Session = Depends(get_db),
     return row
 
 
+class StressRequest(schemas.ValuationRequest):
+    radii: list[float] | None = None
+    threshold_override: float | None = None
+
+
+@router.post("/stress", response_model=schemas.ValuationRunOut, status_code=201)
+def run_stress(body: StressRequest, db: Session = Depends(get_db),
+               tenant: str = Depends(_tenant)):
+    """DRO stress panel: TV-ambiguity worst-case EV curve + breakeven
+    radius (ADR-006 §4)."""
+    ds = db.get(fin_models.FinancialDataset, body.dataset_id)
+    if not ds or ds.tenant != tenant:
+        raise HTTPException(status_code=404, detail="dataset not found")
+    try:
+        result = engines.stress(ds.data, body.mode, body.assumptions,
+                                body.monte_carlo, body.radii,
+                                body.threshold_override)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    row = models.ValuationRun(tenant=tenant, dataset_id=body.dataset_id,
+                              mode="dro_stress",
+                              params={"assumptions": body.assumptions,
+                                      "monte_carlo": body.monte_carlo,
+                                      "radii": body.radii,
+                                      "threshold_override": body.threshold_override},
+                              result=result)
+    db.add(row); db.commit(); db.refresh(row)
+    return row
+
+
 @router.get("/runs", response_model=list[schemas.ValuationRunOut])
 def list_runs(limit: int = 20, db: Session = Depends(get_db),
               tenant: str = Depends(_tenant)):

@@ -51,7 +51,7 @@ def _dcf(fcff: list, wacc_value: float, terminal_growth: float):
 
 
 def run(data: dict, mode: str, assumptions: dict | None = None,
-        monte_carlo: dict | None = None) -> dict:
+        monte_carlo: dict | None = None, _keep_paths: bool = False) -> dict:
     a = dict(assumptions or {})
     mc = dict(monte_carlo or {})
     g_term = float(a.get("terminal_growth", 0.025))
@@ -222,6 +222,81 @@ def run(data: dict, mode: str, assumptions: dict | None = None,
             "var95": _r(ev - pct(0.05), 2), "cvar95": _r(cvar95, 2),
             "raev": _r(raev, 2),
             "histogram": {"bin_start": _r(lo, 2), "bin_width": _r(width, 2),
-                          "counts": counts}},
+                          "counts": counts},
+            **({"_paths": evs} if _keep_paths else {})},
         "checkpoints": checkpoints,
         "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+def stress(data: dict, mode: str, assumptions: dict | None = None,
+           monte_carlo: dict | None = None, radii: list | None = None,
+           threshold_override: float | None = None) -> dict:
+    """DRO stress panel (ADR-006 §4): distributionally robust valuation
+    under a total-variation ambiguity ball around the simulated EV
+    distribution (Product §8.14 meets the Phase 3 DRO machinery, Vol II
+    Ch 11). For each radius delta, the adversary moves up to delta of
+    probability mass from the best simulated outcomes onto the worst one
+    (exact TV worst case, reusing risk.engines._tv_worst_case); the curve
+    shows how fast the worst-case mean EV degrades as trust in the
+    estimated distribution erodes.
+
+    Breakeven ambiguity radius: the delta at which the worst-case mean EV
+    falls to the senior-claims threshold (net debt + preferred + minority
+    by default; threshold_override supports scenario analysis against a
+    custom claim level), found by bisection. None with resilient_beyond
+    reported when the valuation survives the whole tested range.
+    """
+    from ..risk.engines import _tv_worst_case
+    base = run(data, mode, assumptions, monte_carlo, _keep_paths=True)
+    evs = base["risk_adjusted"].pop("_paths")
+    n = len(evs)
+    probs = [1.0 / n] * n
+    radii = radii or [0.0, 0.025, 0.05, 0.10, 0.15, 0.20]
+    if any(not (0.0 <= d <= 0.5) for d in radii):
+        raise ValueError("ambiguity radii must lie in [0, 0.5]")
+    radii = sorted(set(float(d) for d in radii))
+    curve = [{"delta": _r(d), "worst_case_mean": _r(_tv_worst_case(evs, probs, d), 2)}
+             for d in radii]
+    det = base["deterministic"]
+    threshold = (float(threshold_override) if threshold_override is not None
+                 else det["net_debt"] + det["preferred_equity"]
+                 + det["minority_interest"])
+
+    def gap(d):
+        return _tv_worst_case(evs, probs, d) - threshold
+    d_max = 0.5
+    breakeven, resilient_beyond = None, None
+    if gap(0.0) <= 0:
+        breakeven = 0.0
+    elif gap(d_max) > 0:
+        resilient_beyond = d_max
+    else:
+        lo, hi = 0.0, d_max
+        for _ in range(60):
+            mid = (lo + hi) / 2.0
+            if gap(mid) > 0:
+                lo = mid
+            else:
+                hi = mid
+        breakeven = _r((lo + hi) / 2.0)
+
+    mean = base["risk_adjusted"]["mean"]
+    monotone = all(curve[k]["worst_case_mean"] >= curve[k + 1]["worst_case_mean"]
+                   - 1e-6 for k in range(len(curve) - 1))
+    checkpoints = [
+        {"name": "wc_at_zero_equals_mean", "value": curve[0]["worst_case_mean"],
+         "expected": mean,
+         "pass": radii[0] != 0.0 or abs(curve[0]["worst_case_mean"] - mean) < 0.02},
+        {"name": "worst_case_monotone_nonincreasing", "value": monotone,
+         "expected": True, "pass": monotone}]
+    return {"mode": mode, "threshold": _r(threshold, 2),
+            "threshold_source": ("override" if threshold_override is not None
+                                 else "net_debt + preferred + minority"),
+            "base": {"enterprise_value": det["enterprise_value"],
+                     "mc_mean": mean, "raev": base["risk_adjusted"]["raev"],
+                     "seed": base["risk_adjusted"]["seed"],
+                     "n_paths": base["risk_adjusted"]["n_paths"]},
+            "curve": curve, "breakeven_radius": breakeven,
+            "resilient_beyond": resilient_beyond,
+            "checkpoints": checkpoints,
+            "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
