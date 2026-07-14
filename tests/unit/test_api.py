@@ -162,3 +162,153 @@ def test_every_experience_key_resolves_to_a_real_engine(client):
     for m in mods:
         for e in m["experiences"]:
             assert e["key"] in reg[e["kind"]], f'{m["slug"]}: {e["kind"]}/{e["key"]} missing'
+
+
+# --------------------------- Phase 6: Financial Core ------------------------
+
+def _meridian():
+    from tests.fixtures.refcases import meridian
+    return meridian()
+
+
+def test_financial_templates_download(client):
+    r = client.get("/api/v1/financials/templates")
+    assert {t["standard"] for t in r.json()} == {"us_gaap", "ifrs"}
+    for std in ("us_gaap", "ifrs"):
+        r = client.get(f"/api/v1/financials/templates/{std}")
+        assert r.status_code == 200
+        assert r.content[:2] == b"PK"           # xlsx zip magic
+        assert "spreadsheetml" in r.headers["content-type"]
+    assert client.get("/api/v1/financials/templates/frs102").status_code == 404
+
+
+def test_dataset_direct_input_and_derived(client):
+    r = client.post("/api/v1/financials/datasets",
+                    json={"name": "Meridian FY25", "data": _meridian()})
+    assert r.status_code == 201
+    ds = r.json()
+    assert ds["standard"] == "us_gaap" and ds["ownership"] == "public"
+    r = client.get(f"/api/v1/financials/datasets/{ds['id']}/derived")
+    d = r.json()
+    i = d["years"].index(2025)
+    assert abs(d["fcff"][i] - 124.95) < 5e-4
+    assert abs(d["fcfe"][i] - 126.95) < 5e-4
+
+
+def test_dataset_direct_input_validation_422(client):
+    bad = _meridian()
+    del bad["income_statement"]["revenue"]["2025"]
+    bad["company"].pop("beta")
+    r = client.post("/api/v1/financials/datasets",
+                    json={"name": "broken", "data": bad})
+    assert r.status_code == 422
+    detail = " ".join(r.json()["detail"])
+    assert "revenue[2025]" in detail and "company.beta" in detail
+
+
+def test_template_fill_and_upload_roundtrip(client):
+    """The full client journey: download template, fill it, upload it."""
+    import io
+    from openpyxl import load_workbook
+    from services.api.modules.financials import templates as tpl
+    m = _meridian()
+    content = client.get("/api/v1/financials/templates/us_gaap").content
+    wb = load_workbook(io.BytesIO(content))
+    ws = wb["Company"]
+    values = {"name": m["company"]["name"], "ownership": "public",
+              "currency": "USD"}
+    for r_i, (field, label, applies) in enumerate(tpl.COMPANY_ROWS, start=2):
+        ws[f"B{r_i}"] = values.get(field, m["company"].get(field))
+    years = m["periods"]["historical"] + m["periods"]["forecast"]
+    kinds = ["Historical"] * 5 + ["Forecast"] * 5
+    for block, keys in tpl.BLOCK_KEYS.items():
+        ws = wb[tpl.LABELS["us_gaap"]["sheets"][block]]
+        for c, (y, k) in enumerate(zip(years, kinds), start=tpl.FIRST_YEAR_COL):
+            ws.cell(row=3, column=c, value=k)
+            ws.cell(row=4, column=c, value=y)
+        for r_i, key in enumerate(keys, start=5):
+            for c, y in enumerate(years, start=tpl.FIRST_YEAR_COL):
+                ws.cell(row=r_i, column=c, value=m[block][key][str(y)])
+    buf = io.BytesIO(); wb.save(buf)
+    r = client.post("/api/v1/financials/datasets/upload",
+                    files={"file": ("meridian.xlsx", buf.getvalue(),
+                                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
+    assert r.status_code == 201, r.text
+    ds = r.json()
+    assert ds["source"] == "upload"
+    d = client.get(f"/api/v1/financials/datasets/{ds['id']}/derived").json()
+    assert abs(d["fcff"][d["years"].index(2025)] - 124.95) < 5e-4
+
+
+def test_upload_rejects_foreign_workbook(client):
+    import io
+    from openpyxl import Workbook
+    wb = Workbook(); buf = io.BytesIO(); wb.save(buf)
+    r = client.post("/api/v1/financials/datasets/upload",
+                    files={"file": ("random.xlsx", buf.getvalue(), "application/octet-stream")})
+    assert r.status_code == 422
+    assert "AXIOM financial template" in str(r.json()["detail"])
+
+
+def test_forecast_endpoint_and_persist(client):
+    from tests.fixtures.refcases import halcyon
+    r = client.post("/api/v1/financials/datasets",
+                    json={"name": "Halcyon FY25", "data": halcyon()})
+    hid = r.json()["id"]
+    r = client.post(f"/api/v1/financials/datasets/{hid}/forecast",
+                    json={"assumptions": {"horizon": 5}, "persist": True})
+    assert r.status_code == 200
+    body = r.json()
+    assert abs(body["provenance"]["revenue_growth"] - 0.05948) < 5e-5
+    assert body["derived"]["n_forecast"] == 5
+    assert "dataset_id" in body
+
+
+def test_valuation_three_modes_and_runs(client):
+    r = client.get("/api/v1/valuation/modes")
+    assert {m["mode"] for m in r.json()} == {"proforma", "auto_forecast"}
+    r = client.post("/api/v1/financials/datasets",
+                    json={"name": "Meridian for valuation", "data": _meridian()})
+    mid = r.json()["id"]
+    r = client.post("/api/v1/valuation/run",
+                    json={"dataset_id": mid, "mode": "proforma"})
+    assert r.status_code == 201
+    res = r.json()["result"]
+    assert res["all_checkpoints_pass"] is True
+    assert abs(res["deterministic"]["enterprise_value"] - 2481.3499) < 5e-2
+    assert abs(res["risk_adjusted"]["raev"] - 2313.27) < 0.05
+    # wrong mode for this dataset -> 422; unknown dataset -> 404
+    assert client.post("/api/v1/valuation/run",
+                       json={"dataset_id": mid, "mode": "auto_forecast"}).status_code == 422
+    assert client.post("/api/v1/valuation/run",
+                       json={"dataset_id": 99999, "mode": "proforma"}).status_code == 404
+    runs = client.get("/api/v1/valuation/runs").json()
+    assert runs and runs[0]["dataset_id"] == mid
+
+
+def test_dashboard_metrics_endpoint(client):
+    r = client.post("/api/v1/financials/datasets",
+                    json={"name": "Meridian dash", "data": _meridian()})
+    mid = r.json()["id"]
+    client.post("/api/v1/valuation/run",
+                json={"dataset_id": mid, "mode": "proforma"})
+    r = client.get(f"/api/v1/metrics/dashboard/{mid}")
+    assert r.status_code == 200
+    dash = r.json()
+    strip = {k["kpi"]: k["current"] for k in dash["kpi_strip"]}
+    assert abs(strip["ROE"] - 0.240046) < 5e-4
+    assert abs(strip["EVA (Economic Profit)"] - 86.7075) < 5e-3
+    assert "Risk-Adjusted Enterprise Value" in strip     # valuation attached
+    assert abs(dash["health"]["health_index"] - 96.36) < 0.05
+
+
+def test_document_plumbing_honest_status(client):
+    r = client.post("/api/v1/financials/documents",
+                    files={"file": ("strategy.txt", b"Five-year strategic plan.",
+                                    "text/plain")},
+                    data={"note": "board strategy memo"})
+    assert r.status_code == 201
+    doc = r.json()
+    assert doc["size_bytes"] == 25 and doc["ai_analysis"] is None  # Phase 7
+    docs = client.get("/api/v1/financials/documents").json()
+    assert docs[0]["filename"] == "strategy.txt"

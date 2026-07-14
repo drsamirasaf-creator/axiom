@@ -2,14 +2,21 @@
 
 The computational platform of the Dynamic Corporate Transformation (DCT) ecosystem.
 
-Phase 5 — the Research and Educational edition, complete: Enterprise State,
-the REO engine (8 certified problems), the Dynamics & Simulation engine (4
-scenarios), the Risk & Valuation engine (4 analyses), the Learning Lab (6
-experiments), and the Course Workspace — 32 AXIOM modules, 22 live
-experiences, honoring the DCT course site's ?module= deep links. A modular
-monolith (SPEC-008 §19.3) in a controlled monorepo (§18.2), schema
-Alembic-managed (ADR-003), every engine certified against the DCT course
-laboratories.
+Phase 6 — the Financial Core: the Data Input workspace (locked US GAAP and
+IFRS templates with server-side cell-level validation, direct JSON entry,
+document plumbing), FCFF/FCFE and WACC engines (public CAPM and private
+Hamada-relevered modes), the three-mode Enterprise Valuation engine
+(client pro forma DCF, AXIOM trend-forecast DCF, each with the seeded
+Monte Carlo risk-adjusted layer and RAEV), and the Executive Dashboard KPI
+strip with the published Enterprise Health Index (SPEC-004 Product
+§5/§7/§8, Math §3; ADR-005). Built on Phase 5's Research and Educational
+edition: Enterprise State, the REO engine (8 certified problems), the
+Dynamics & Simulation engine, the Risk & Valuation engine, the Learning
+Lab, and the Course Workspace — honoring the DCT course site's ?module=
+deep links. A modular monolith (SPEC-008 §19.3) in a controlled monorepo
+(§18.2), schema Alembic-managed (ADR-003), every engine certified by
+checkpoint batteries (88 tests), reference companies hand-verified
+(tests/fixtures/refcases.py: Meridian public/GAAP, Halcyon private/IFRS).
 
 - Backend: FastAPI (`services/api`), Python-owned mathematics (SPEC-008 §7.1)
 - Persistence: PostgreSQL on Railway (SQLite fallback for local/dev/tests)
