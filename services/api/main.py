@@ -18,6 +18,7 @@ from .modules.financials.router import router as financials_router
 from .modules.financials.router import metrics_router
 from .modules.valuation.router import router as valuation_router
 from .modules.benchmarks.router import router as benchmarks_router
+from .modules.identity.router import router as auth_router
 from .modules.intelligence.router import router as intelligence_router
 
 app = FastAPI(
@@ -36,13 +37,14 @@ app = FastAPI(
                  "gates and certified engines dispose (ADR-006). Mathematics "
                  "lives here, never in the frontend (SPEC-008 §7.1)."))
 
-# ADR-002: v0 is the open educational edition; CORS is wide until identity lands.
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
-                   allow_headers=["*"])
+# ADR-007: origins from AXIOM_ALLOWED_ORIGINS (default "*" until set).
+from .core.config import allowed_origins
+app.add_middleware(CORSMiddleware, allow_origins=allowed_origins(),
+                   allow_methods=["*"], allow_headers=["*"])
 
 @app.get("/health", tags=["platform"])
 def health():
-    return {"status": "ok", "service": "axiom-api", "phase": 7}
+    return {"status": "ok", "service": "axiom-api", "phase": 8}
 
 app.include_router(enterprise_router)
 app.include_router(reo_router)
@@ -54,4 +56,5 @@ app.include_router(financials_router)
 app.include_router(metrics_router)
 app.include_router(valuation_router)
 app.include_router(benchmarks_router)
+app.include_router(auth_router)
 app.include_router(intelligence_router)

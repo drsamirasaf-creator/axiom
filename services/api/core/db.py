@@ -57,4 +57,5 @@ def init_db():
     from ..modules.learning import models as _learning     # noqa: F401
     from ..modules.financials import models as _financials # noqa: F401
     from ..modules.valuation import models as _valuation   # noqa: F401
+    from ..modules.identity import models as _identity      # noqa: F401
     ensure_schema()

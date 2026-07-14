@@ -7,7 +7,8 @@ from services.api.modules.optimization.models import OptimizationRun
 
 ALL = {"enterprises", "state_snapshots", "optimization_runs",
        "simulation_runs", "risk_runs", "learning_runs", "alembic_version",
-       "financial_datasets", "valuation_runs", "enterprise_documents"}
+       "financial_datasets", "valuation_runs", "enterprise_documents",
+       "users", "auth_sessions"}
 
 def _url():
     return "sqlite:///" + tempfile.mktemp(suffix=".db")

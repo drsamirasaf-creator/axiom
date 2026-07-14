@@ -10,8 +10,9 @@ from . import data, engines
 router = APIRouter(prefix="/api/v1/benchmarks", tags=["benchmarking"])
 
 
-def _tenant(x_axiom_tenant: str | None = Header(default=None)) -> str:
-    return tenant_from_header(x_axiom_tenant)
+# ADR-007: tenancy via session when authenticated; the legacy header
+# path stays until AXIOM_REQUIRE_AUTH is flipped (then 401).
+from ..identity.deps import request_tenant as _tenant  # noqa: E402
 
 
 class CompareRequest(BaseModel):

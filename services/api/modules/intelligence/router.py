@@ -16,8 +16,35 @@ router = APIRouter(prefix="/api/v1/intelligence", tags=["intelligence"])
 TEXT_TYPES = ("text/plain", "text/markdown", "text/csv", "application/json")
 
 
-def _tenant(x_axiom_tenant: str | None = Header(default=None)) -> str:
-    return tenant_from_header(x_axiom_tenant)
+# ADR-007: tenancy via session when authenticated; the legacy header
+# path stays until AXIOM_REQUIRE_AUTH is flipped (then 401).
+from ..identity.deps import request_tenant as _tenant  # noqa: E402
+
+
+# --- AI call rate limit (ADR-007 §4): in-memory per-tenant window. -----------
+# Single-replica appropriate (we run 1 replica); a multi-replica future moves
+# this to the database or Redis — noted in the ADR, not silently assumed.
+import time as _time
+from ...core.config import ai_rate_limit_per_hour
+
+_AI_CALLS: dict[str, list[float]] = {}
+
+
+def _ai_rate_check(tenant: str):
+    from fastapi import HTTPException as _HTTP
+    limit = ai_rate_limit_per_hour()
+    now = _time.monotonic()
+    calls = [t for t in _AI_CALLS.get(tenant, []) if now - t < 3600.0]
+    if len(calls) >= limit:
+        raise _HTTP(status_code=429,
+                    detail=f"AI analysis rate limit reached "
+                           f"({limit}/hour per account); try again later")
+    calls.append(now)
+    _AI_CALLS[tenant] = calls
+
+
+def _ai_rate_reset():   # test hook
+    _AI_CALLS.clear()
 
 
 def _get_document(db, tenant, document_id) -> fin_models.EnterpriseDocument:
@@ -35,8 +62,10 @@ class DecisionIn(BaseModel):
 def analyze_document(document_id: int, db: Session = Depends(get_db),
                      tenant: str = Depends(_tenant)):
     """AI document analysis behind deterministic gates (ADR-006 §1).
+    Rate-limited per tenant (ADR-007 §4) since every call costs money.
     Suggestions are PROPOSALS: nothing reaches a valuation until the user
     accepts it through /decisions (Product §6.15)."""
+    _ai_rate_check(tenant)
     doc = _get_document(db, tenant, document_id)
     if not any(doc.content_type.startswith(t) for t in TEXT_TYPES):
         raise HTTPException(
