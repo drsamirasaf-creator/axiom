@@ -3,9 +3,11 @@ import os
 
 def database_url() -> str:
     url = os.environ.get("DATABASE_URL", "sqlite:///./axiom.db")
-    # Railway/Heroku style postgres:// -> SQLAlchemy 2.x scheme
+    # Railway/Heroku style postgres:// -> SQLAlchemy 2.x + psycopg3 scheme
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
     return url
 
 DEMO_TENANT = "demo"
