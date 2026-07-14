@@ -199,3 +199,107 @@ def enterprise_risk_profile(dataset_id: int, db: Session = Depends(get_db),
     except ValueError as e:
         from fastapi import HTTPException as _H
         raise _H(status_code=422, detail=str(e))
+
+
+# ---- Phase 13 (ADR-012): the brain ------------------------------------------
+
+class ReadinessIn(BaseModel):
+    responses: dict
+
+
+@router.post("/readiness")
+def transformation_readiness(body: ReadinessIn):
+    """ANFIS readiness assessment — pure compute, open to all (it touches
+    no company data). Returns the fired rules: the explanation IS the
+    output."""
+    try:
+        return engines.anfis_readiness(body.responses)
+    except ValueError as e:
+        from fastapi import HTTPException as _H
+        raise _H(status_code=422, detail=str(e))
+
+
+class ReadinessApplyIn(BaseModel):
+    dataset_id: int
+    responses: dict
+
+
+@router.post("/readiness/apply", status_code=201)
+def apply_readiness(body: ReadinessApplyIn, db: Session = Depends(get_db),
+                    tenant: str = Depends(_writer)):
+    """Fold the ANFIS-suggested specific-risk-premium adjustment into a NEW
+    dataset version (private companies only) — the explicit-approval step,
+    write-gated like every change to company data (ADR-006 posture)."""
+    from ..financials import models as fin_models
+    ds = db.get(fin_models.FinancialDataset, body.dataset_id)
+    if not ds or ds.tenant != tenant:
+        raise HTTPException(status_code=404, detail="dataset not found")
+    if ds.data["company"]["ownership"] != "private":
+        raise HTTPException(status_code=422,
+                            detail="the readiness premium adjustment applies "
+                                   "to private companies (public discount "
+                                   "rates come from market beta)")
+    try:
+        a = engines.anfis_readiness(body.responses)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    delta = a["suggested_premium_adjustment"]["delta"]
+    new_data = {k: (dict(v) if isinstance(v, dict) else v)
+                for k, v in ds.data.items()}
+    new_data["company"] = dict(ds.data["company"])
+    srp = float(new_data["company"]["specific_risk_premium"]) + delta
+    new_data["company"]["specific_risk_premium"] = round(max(srp, 0.0), 6)
+    row = fin_models.FinancialDataset(
+        tenant=tenant, enterprise_id=ds.enterprise_id,
+        name=f"{ds.name} — readiness-adjusted",
+        standard=new_data["company"]["standard"],
+        ownership="private", source="forecast", data=new_data,
+        validation={"warnings": []}, parent_dataset_id=ds.id)
+    db.add(row); db.commit(); db.refresh(row)
+    return {"dataset_id": row.id, "parent_dataset_id": ds.id,
+            "assessment": a,
+            "specific_risk_premium": {
+                "before": ds.data["company"]["specific_risk_premium"],
+                "after": new_data["company"]["specific_risk_premium"],
+                "delta_applied": delta}}
+
+
+@router.get("/optimize/{dataset_id}")
+def dynamic_optimize(dataset_id: int, horizon: int = 5,
+                     db: Session = Depends(get_db),
+                     tenant: str = Depends(_tenant)):
+    """The client-calibrated stochastic dynamic optimizer (ADR-012):
+    growth-and-leverage DP on the company's fitted drivers."""
+    ds = _get_dataset(db, tenant, dataset_id)
+    try:
+        return engines.dp_optimize(ds.data, horizon=horizon)
+    except ValueError as e:
+        from fastapi import HTTPException as _H
+        raise _H(status_code=422, detail=str(e))
+
+
+class BriefIn(BaseModel):
+    readiness_responses: dict | None = None
+
+
+@router.get("/executive-brief/{dataset_id}")
+def executive_brief_get(dataset_id: int, db: Session = Depends(get_db),
+                        tenant: str = Depends(_tenant)):
+    ds = _get_dataset(db, tenant, dataset_id)
+    return engines.executive_brief(ds.data)
+
+
+@router.post("/executive-brief/{dataset_id}")
+def executive_brief_post(dataset_id: int, body: BriefIn,
+                         db: Session = Depends(get_db),
+                         tenant: str = Depends(_tenant)):
+    """The four questions, with an optional readiness questionnaire folded
+    into Q1 — the subscriber value proposition as an API contract."""
+    ds = _get_dataset(db, tenant, dataset_id)
+    readiness = None
+    if body.readiness_responses:
+        try:
+            readiness = engines.anfis_readiness(body.readiness_responses)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    return engines.executive_brief(ds.data, readiness=readiness)

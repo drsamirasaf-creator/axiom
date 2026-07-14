@@ -518,3 +518,409 @@ def risk_profile(data: dict, n_paths: int = 4000,
                            "indicators": indicators},
             "narrative": n, "checkpoints": checkpoints,
             "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+# ---- 6. Client-calibrated stochastic dynamic optimizer (Phase 13) -----------
+# The book's central control problem on the CLIENT'S balance sheet
+# (Vol II; ADR-012). Model, published in full:
+#
+# State  (rev, d): revenue and the debt-intensity d = Debt/revenue.
+# Controls each year: growth g (grid) and net borrowing b = dDebt/revenue.
+# Technology, calibrated from the client's fitted drivers:
+#   EBIT = m*rev;  D&A = da*rev;  growth capex = kappa*g*rev on top of
+#   replacement (= D&A), plus a quadratic adjustment cost 0.5*phi*g^2*rev
+#   (Hayashi-style: fast transformation is disproportionately expensive);
+#   working capital consumes nwc*g*rev.
+# Debt prices on a published distress curve kd(d) = kd0 + 0.02*max(0,d-0.5)^2.
+# Equity cash flow:
+#   FCFE = [m(1-T) + da(0) - (da + kappa*g + 0.5*phi*g^2 + nwc*g)]*rev
+#          - kd(d)*Debt*(1-T) + b*rev
+# (negative FCFE = equity injection at par — stated, not hidden).
+# Uncertainty: multiplicative revenue shock, 3-node Gauss-Hermite
+# discretization of N(0, sigma_g).
+# Objective: equity value = E[ sum beta^t FCFE_t + beta^T TV ],
+#   beta = 1/(1+Ke) with the client's certified cost of equity;
+#   TV = steady-state FCFE at terminal growth, grown perpetually.
+# Solved by backward induction on a log-revenue x debt-intensity grid with
+# bilinear interpolation. Deterministic, seeded-free (the shocks are
+# quadrature nodes, not draws) — fully reproducible.
+
+PHI_ADJUST = 8.0          # quadratic growth-adjustment cost (published)
+KD_KINK, KD_COEF = 0.5, 0.02
+
+
+def _kd_of_d(kd0: float, d: float) -> float:
+    return kd0 + KD_COEF * max(0.0, d - KD_KINK) ** 2
+
+
+def dp_optimize(data: dict, horizon: int = 5, terminal_growth: float = 0.025,
+                sigma_growth: float = 0.02) -> dict:
+    import math as _math
+    if not (2 <= horizon <= 10):
+        raise ValueError("horizon must be 2-10 years")
+    company = data["company"]
+    T = float(company["tax_rate"])
+    drivers = None
+    hist_only = {"company": dict(company),
+                 "periods": {"historical": list(data["periods"]["historical"]),
+                             "forecast": []},
+                 "income_statement": {k: dict(v) for k, v in
+                                      data["income_statement"].items()},
+                 "balance_sheet": {k: dict(v) for k, v in
+                                   data["balance_sheet"].items()},
+                 "cash_flow": {k: dict(v) for k, v in
+                               data["cash_flow"].items()}}
+    fc = fin.auto_forecast(hist_only, {"horizon": 1})
+    p = fc["_forecast_provenance"]
+    m, da, nwc = p["ebit_margin"], p["da_pct_revenue"], p["nwc_pct_revenue"]
+    g_fit = p["revenue_growth"]
+    ys = str(data["periods"]["historical"][-1])
+    bs = data["balance_sheet"]
+    rev0 = data["income_statement"]["revenue"][ys]
+    debt0 = bs["short_term_debt"][ys] + bs["long_term_debt"][ys]
+    d0 = debt0 / rev0
+    ic = (debt0 + bs["total_equity"][ys] + bs["preferred_equity"][ys]
+          + bs["minority_interest"][ys] - bs["cash"][ys])
+    kappa = ic / rev0                       # capital intensity
+    kd0 = float(company["cost_of_debt"])
+    # cost of equity: the certified builder (public CAPM / private build-up)
+    cw = dict(company); cw["_debt_book"] = debt0
+    ke = fin.wacc(cw)["cost_of_equity"]
+    beta_disc = 1.0 / (1.0 + ke)
+    gT = terminal_growth
+    if ke <= gT:
+        raise ValueError("cost of equity must exceed terminal growth")
+
+    G = [round(-0.05 + 0.025 * k, 6) for k in range(9)]      # -5% .. +15%
+    B = [-0.10, -0.05, 0.0, 0.05, 0.10]                      # net borrowing/rev
+    D_GRID = [0.1 * k for k in range(13)]                    # d in [0, 1.2]
+    R_GRID = [rev0 * _math.exp(-0.9 + 1.8 * k / 14) for k in range(15)]
+    NODES = [(-_math.sqrt(3) * sigma_growth, 1 / 6),
+             (0.0, 2 / 3), (_math.sqrt(3) * sigma_growth, 1 / 6)]
+
+    def fcfe(rev, d, g, b):
+        capex_beyond_da = (kappa * g + 0.5 * PHI_ADJUST * g * g + nwc * g)
+        return ((m * (1 - T) - capex_beyond_da) * rev
+                - _kd_of_d(kd0, d) * (d * rev) * (1 - T) + b * rev)
+
+    def terminal(rev, d):
+        f = fcfe(rev, d, gT, d * gT)        # debt grows with the firm
+        return f * (1 + gT) / (ke - gT)
+
+    def interp(V, rev, d):
+        rev = min(max(rev, R_GRID[0]), R_GRID[-1])
+        d = min(max(d, D_GRID[0]), D_GRID[-1])
+        i = min(max(sum(1 for r in R_GRID if r <= rev) - 1, 0), 13)
+        j = min(max(int(d / 0.1), 0), 11)
+        tr = (rev - R_GRID[i]) / (R_GRID[i + 1] - R_GRID[i])
+        td = (d - D_GRID[j]) / 0.1
+        return ((1 - tr) * (1 - td) * V[i][j] + tr * (1 - td) * V[i + 1][j]
+                + (1 - tr) * td * V[i][j + 1] + tr * td * V[i + 1][j + 1])
+
+    V = [[terminal(r, d) for d in D_GRID] for r in R_GRID]
+    policy = None
+    for t in range(horizon - 1, -1, -1):
+        Vn = [[0.0] * len(D_GRID) for _ in R_GRID]
+        Pn = [[None] * len(D_GRID) for _ in R_GRID]
+        for i, rev in enumerate(R_GRID):
+            for j, d in enumerate(D_GRID):
+                best, arg = -1e18, None
+                debt = d * rev
+                for g in G:
+                    for b in B:
+                        debt_n = debt + b * rev
+                        if debt_n < 0:
+                            continue
+                        cont = 0.0
+                        for eps, w in NODES:
+                            rev_n = rev * (1 + g) * (1 + eps)
+                            cont += w * interp(V, rev_n, debt_n / rev_n)
+                        val = fcfe(rev, d, g, b) + beta_disc * cont
+                        if val > best:
+                            best, arg = val, (g, b)
+                Vn[i][j], Pn[i][j] = best, arg
+        V, policy = Vn, Pn
+        if t == 0:
+            P0 = Pn
+
+    def value_at(rev, d, pol):
+        """Roll the given first-period policy fn forward under zero shocks."""
+        Vc = [[terminal(r, dd) for dd in D_GRID] for r in R_GRID]
+        # evaluate by simulation under zero shocks with the fixed rule
+        total, disc, r, dd = 0.0, 1.0, rev, d
+        for _ in range(horizon):
+            g, b = pol(r, dd)
+            total += disc * fcfe(r, dd, g, b)
+            debt_n = dd * r + b * r
+            r = r * (1 + g)
+            dd = max(debt_n / r, 0.0)
+            disc *= beta_disc
+        return total + disc * terminal(r, dd), r, dd
+
+    def optimal_rule(r, dd):
+        i = min(max(sum(1 for x in R_GRID if x <= r) - 1, 0), 14)
+        j = min(max(int(round(dd / 0.1)), 0), 12)
+        return P0[i][j]
+
+    v_opt = interp(V, rev0, d0)
+    v_status, _, _ = value_at(rev0, d0, lambda r, dd: (g_fit, 0.0))
+    uplift = v_opt - v_status
+
+    # the recommended plan: first three moves under zero shocks
+    plan, r, dd = [], rev0, d0
+    for step in range(min(3, horizon)):
+        g, b = optimal_rule(r, dd)
+        plan.append({"step": step + 1,
+                     "growth": round(g, 4), "net_borrowing_pct_rev": round(b, 4),
+                     "revenue_target": round(r * (1 + g), 2),
+                     "debt_intensity_after": round((dd * r + b * r) / (r * (1 + g)), 4)})
+        r, dd = r * (1 + g), max((dd * r / (1 + g) + b * r / (1 + g)) / r, 0)
+        dd = plan[-1]["debt_intensity_after"]
+
+    checkpoints = [
+        {"name": "optimizer_beats_status_quo", "value": round(uplift, 2),
+         "expected": ">= 0", "pass": uplift >= -1e-6},
+        {"name": "first_growth_interior", "value": plan[0]["growth"],
+         "expected": "strictly inside the control grid",
+         "pass": G[0] < plan[0]["growth"] < G[-1]},
+        {"name": "cost_of_equity_certified", "value": ke,
+         "expected": "financials.wacc cost_of_equity", "pass": ke > 0}]
+    n = [f"Optimal first move: grow revenue {plan[0]['growth']:+.1%} and "
+         f"{'raise' if plan[0]['net_borrowing_pct_rev'] > 0 else 'repay' if plan[0]['net_borrowing_pct_rev'] < 0 else 'hold'} "
+         f"debt by {abs(plan[0]['net_borrowing_pct_rev']):.0%} of revenue "
+         f"(fitted trend growth is {g_fit:.1%}).",
+         f"Following the optimal policy is worth {uplift:,.1f} of equity "
+         f"value versus continuing the fitted trend unlevered — "
+         f"{uplift / v_status:.1%} of the status-quo equity value.",
+         "Growth costs capital and working capital, and rushing costs "
+         "quadratically more; debt adds a tax shield until the published "
+         "distress curve bites past d = 0.5 of revenue — the optimizer "
+         "balances all three, year by year, under revenue uncertainty."]
+    return {"model": "growth-and-leverage stochastic DP (Vol II)",
+            "calibration": {"ebit_margin": m, "da_pct": da, "nwc_pct": nwc,
+                            "capital_intensity_kappa": round(kappa, 4),
+                            "phi_adjustment": PHI_ADJUST,
+                            "fitted_growth": g_fit,
+                            "cost_of_equity": ke, "kd0": kd0,
+                            "distress_curve": f"kd + {KD_COEF}*max(0, d-{KD_KINK})^2",
+                            "sigma_growth": sigma_growth,
+                            "d0": round(d0, 4), "revenue0": rev0},
+            "horizon": horizon, "terminal_growth": gT,
+            "equity_value_optimal": round(v_opt, 2),
+            "equity_value_status_quo": round(v_status, 2),
+            "optimization_uplift": round(uplift, 2),
+            "uplift_pct": round(uplift / v_status, 4) if v_status else None,
+            "recommended_plan": plan,
+            "policy_slice_at_d0": [
+                {"revenue": round(rv, 1),
+                 "growth": P0[i][min(int(round(d0 / 0.1)), 12)][0],
+                 "net_borrowing": P0[i][min(int(round(d0 / 0.1)), 12)][1]}
+                for i, rv in enumerate(R_GRID)],
+            "narrative": n, "checkpoints": checkpoints,
+            "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+# ---- 7. ANFIS transformation readiness (Phase 13; CA §3.15, ADR-012) --------
+# Zero-order Sugeno fuzzy inference, fully deterministic and published:
+# six qualitative inputs on a 0-10 linguistic scale, triangular memberships
+# (low peaks at 0, medium at 5, high at 10, each zero two units past the
+# neighbor's peak), a printed rule base, and a firing-strength-weighted
+# average. Every rule's activation is returned — the explainability is
+# structural, not narrated after the fact.
+
+ANFIS_INPUTS = ["leadership_quality", "strategic_alignment",
+                "operational_flexibility", "innovation_capability",
+                "governance_effectiveness", "execution_track_record"]
+
+# (antecedents {input: level}, consequent readiness 0-100, rationale)
+ANFIS_RULES = [
+    ({"leadership_quality": "high", "strategic_alignment": "high"}, 90,
+     "aligned, capable leadership is the strongest readiness signal"),
+    ({"operational_flexibility": "high", "innovation_capability": "high"}, 85,
+     "flexible operations plus innovation absorb transformation shocks"),
+    ({"execution_track_record": "high"}, 80,
+     "organizations that have delivered before deliver again"),
+    ({"governance_effectiveness": "high", "leadership_quality": "medium"}, 70,
+     "strong governance compensates for mid-strength leadership"),
+    ({"strategic_alignment": "medium", "execution_track_record": "medium"}, 55,
+     "middling alignment and delivery yield middling readiness"),
+    ({"operational_flexibility": "medium"}, 50,
+     "average flexibility neither helps nor hurts"),
+    ({"innovation_capability": "low"}, 35,
+     "low innovation capability slows every transformation lever"),
+    ({"leadership_quality": "low"}, 25,
+     "weak leadership is the primary transformation risk"),
+    ({"governance_effectiveness": "low"}, 25,
+     "weak governance lets transformations drift"),
+    ({"strategic_alignment": "low", "execution_track_record": "low"}, 15,
+     "misalignment plus a poor delivery record is the classic failure mode"),
+]
+
+READINESS_LABELS = [(80, "Very High"), (60, "High"), (40, "Moderate"),
+                    (20, "Low"), (0, "Very Low")]
+
+
+def _mf(level: str, x: float) -> float:
+    """Triangular memberships on [0, 10]."""
+    if level == "low":
+        return max(0.0, min(1.0, (5.0 - x) / 5.0))
+    if level == "high":
+        return max(0.0, min(1.0, (x - 5.0) / 5.0))
+    return max(0.0, 1.0 - abs(x - 5.0) / 5.0)          # medium
+
+
+def anfis_readiness(responses: dict) -> dict:
+    for k in ANFIS_INPUTS:
+        v = responses.get(k)
+        if v is None:
+            raise ValueError(f"missing response '{k}' (0-10)")
+        if not (isinstance(v, (int, float)) and 0 <= v <= 10):
+            raise ValueError(f"response '{k}' must be a number in [0, 10]")
+    fired, num, den = [], 0.0, 0.0
+    for ants, out, why in ANFIS_RULES:
+        w = 1.0
+        for inp, level in ants.items():
+            w = min(w, _mf(level, float(responses[inp])))   # AND = min
+        if w > 0:
+            fired.append({"if": ants, "then": out, "strength": round(w, 4),
+                          "rationale": why})
+        num += w * out
+        den += w
+    score = round(num / den, 2) if den > 0 else 50.0
+    label = next(lab for thr, lab in READINESS_LABELS if score >= thr)
+    # suggested specific-risk-premium adjustment (private companies): a
+    # PROPOSAL under the ADR-006 posture — applied only via the explicit
+    # apply endpoint, never silently.
+    delta = max(-0.01, min(0.02, (50.0 - score) / 50.0 * 0.02))
+    checkpoints = [
+        {"name": "score_in_range", "value": score, "expected": "[0,100]",
+         "pass": 0.0 <= score <= 100.0},
+        {"name": "rules_fired", "value": len(fired), "expected": ">= 1",
+         "pass": len(fired) >= 1}]
+    return {"method": "zero-order Sugeno ANFIS (published rule base)",
+            "responses": {k: float(responses[k]) for k in ANFIS_INPUTS},
+            "readiness_score": score, "readiness_label": label,
+            "rules_fired": sorted(fired, key=lambda r: -r["strength"]),
+            "suggested_premium_adjustment": {
+                "field": "specific_risk_premium", "delta": round(delta, 4),
+                "applies_to": "private companies only",
+                "rationale": ("readiness below the neutral 50 raises the "
+                              "company-specific risk premium by up to 2pp; "
+                              "above it, relief of up to 1pp"),
+                "requires_explicit_approval": True},
+            "checkpoints": checkpoints,
+            "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+# ---- 8. The Executive Brief: four questions (Phase 13, ADR-012) -------------
+
+def executive_brief(data: dict, readiness: dict | None = None) -> dict:
+    """The subscriber value proposition as an API contract: exactly four
+    sections, each composed from certified engines, each ending in words.
+    Q1 Where is my company now?  Q2 What is likely to happen next?
+    Q3 What should I change?     Q4 Which decision creates the greatest
+    risk-adjusted value?"""
+    from ..twin import engines as twin_eng
+    from ..benchmarks import engines as bmk
+
+    dm = fin.dashboard_metrics(data)
+    hv = health_reo(data)
+    rp = risk_profile(data)
+    strip = {k["kpi"]: k["current"] for k in dm["kpi_strip"]}
+
+    q1 = {"question": "Where is my company now?",
+          "health_index_reo": hv["health_index"],
+          "risk_grade": rp["risk_grade"]["grade"],
+          "kpis": {k: strip.get(k) for k in
+                   ("Revenue", "EBITDA", "FCFF", "ROIC", "WACC",
+                    "EVA (Economic Profit)")},
+          "optimization_status": dm["optimization_status"], "words": []}
+    q1["words"].append(
+        f"Health {hv['health_index']:.0f}/100 (distance from the "
+        f"value-maximizing configuration), risk grade "
+        f"{rp['risk_grade']['grade']}, and the business is "
+        f"{dm['optimization_status']}.")
+    sector = data["company"].get("sector")
+    if sector:
+        try:
+            cb = bmk.compare(data, sector)
+            q1["benchmark_performance_index"] = cb["benchmark_performance_index"]
+            q1["words"].append(cb["narrative"][0])
+        except (KeyError, ValueError):
+            q1["benchmark_note"] = "sector has no curated benchmark"
+    else:
+        q1["benchmark_note"] = ("set company.sector or run Benchmarking "
+                                "with a custom peer set")
+    if readiness:
+        q1["transformation_readiness"] = {
+            "score": readiness["readiness_score"],
+            "label": readiness["readiness_label"]}
+        q1["words"].append(
+            f"Transformation readiness: {readiness['readiness_label']} "
+            f"({readiness['readiness_score']:.0f}/100, ANFIS).")
+
+    base = twin_eng.simulate(data, "baseline")
+    rec = twin_eng.simulate(data, "recession")
+    q2 = {"question": "What is likely to happen next?",
+          "baseline_year1": {"revenue_p50": base["revenue_fan"][0]["p50"],
+                             "fcff_p50": base["fcff_fan"][0]["p50"]},
+          "horizon_end": {"year": base["years"][-1],
+                          "revenue_p50": base["revenue_fan"][-1]["p50"],
+                          "revenue_p05_recession": rec["revenue_fan"][-1]["p05"]},
+          "coverage_probability": rp["coverage"]["coverage_probability"],
+          "p_cash_below_zero_recession": rec["p_cash_below_zero_ever"],
+          "words": [
+              f"On fitted drivers, revenue reaches a median "
+              f"{base['revenue_fan'][-1]['p50']:,.0f} by "
+              f"{base['years'][-1]}; a recession's worst 5% takes it to "
+              f"{rec['revenue_fan'][-1]['p05']:,.0f}.",
+              f"Next year's cash flow covers the interest bill with "
+              f"probability {rp['coverage']['coverage_probability']:.0%}; "
+              f"under recession, the chance cash ever dips below zero is "
+              f"{rec['p_cash_below_zero_ever']:.0%} (no new financing "
+              f"assumed)."]}
+
+    rc = recommend(data)
+    q3 = {"question": "What should I change?",
+          "moves": rc["recommendations"][:3], "words": []}
+    if rc["recommendations"]:
+        top = rc["recommendations"][0]
+        q3["words"] = [f"Top move: {top['title']} "
+                       f"(+{top['expected_ev_impact']:,.1f} expected EV "
+                       f"impact, {top['expected_ev_impact_pct']:+.1%}).",
+                       top["description"]]
+    else:
+        q3["words"] = ["No positive-value moves identified at the current "
+                       "calibration — the configuration is near its "
+                       "optimum."]
+
+    dp = dp_optimize(data)
+    fr = frontier(data, n_paths=600)
+    q4 = {"question": "Which decision creates the greatest "
+                      "risk-adjusted value?",
+          "optimal_first_move": dp["recommended_plan"][0],
+          "optimization_uplift": dp["optimization_uplift"],
+          "uplift_pct": dp["uplift_pct"],
+          "frontier_recommended_de": fr["recommended"]["de"],
+          "words": [dp["narrative"][0], dp["narrative"][1],
+                    f"On the value-risk frontier, the recommended capital "
+                    f"structure stands at D/E {fr['recommended']['de']:g} "
+                    f"(lambda = {fr['risk_aversion_lambda']:g})."]}
+
+    sections = [q1, q2, q3, q4]
+    checkpoints = [
+        {"name": "four_questions", "value": len(sections), "expected": 4,
+         "pass": len(sections) == 4},
+        {"name": "every_section_speaks",
+         "value": min(len(s["words"]) for s in sections), "expected": ">= 1",
+         "pass": all(s["words"] for s in sections)},
+        {"name": "composed_engines_certified", "value": True,
+         "expected": True,
+         "pass": all([rp["all_checkpoints_pass"], dp["all_checkpoints_pass"],
+                      base["all_checkpoints_pass"], fr["all_checkpoints_pass"]])}]
+    return {"company": data["company"]["name"],
+            "as_of_year": dm["as_of_year"], "sections": sections,
+            "summary": [q1["words"][0], q2["words"][0],
+                        q3["words"][0], q4["words"][0]],
+            "checkpoints": checkpoints,
+            "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}

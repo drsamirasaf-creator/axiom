@@ -633,3 +633,14 @@ GLOSSARY.update({
     "Enterprise Profile": "The one-glance summary of a company in AXIOM: profile, data coverage, version lineage, attached documents, and the latest valuation headline.",
     "AXIOM Business Plan": "The paid tier: create and analyze your own companies privately — data input, saved valuations, twin monitoring, AI document analysis, the risk profile, and enterprise simulation. The sandbox and all of AXIOM Education stay free.",
 })
+
+
+# ---- Phase 13 glossary -------------------------------------------------------
+GLOSSARY.update({
+    "Dynamic Optimizer": "The book's central control problem solved on YOUR balance sheet: each year choose growth and net borrowing; growth consumes capital, working capital, and a quadratic adjustment cost (rushing is disproportionately expensive); debt adds a tax shield until the published distress curve bites. Solved by stochastic dynamic programming on your fitted drivers, discounted at your certified cost of equity.",
+    "Optimization Uplift": "The equity value of following the optimal policy versus continuing the fitted trend with no financing changes — the priced value of transforming, in currency and as a percentage.",
+    "Transformation Readiness": "A 0-100 score from six qualitative dimensions (leadership, alignment, flexibility, innovation, governance, execution record) through a published fuzzy rule base (ANFIS). Every rule that fired is shown with its strength — the explanation is the output.",
+    "ANFIS": "Adaptive-network fuzzy inference: linguistic ratings pass through triangular memberships and a printed rule table; the result is a weighted average of rule conclusions. Deterministic and reproducible.",
+    "Readiness Premium Adjustment": "Low readiness suggests raising a private company's specific-risk premium by up to 2pp; high readiness, relief of up to 1pp. Always a proposal — applied only through the explicit approval step, creating a new dataset version.",
+    "Executive Brief": "Four questions, answered from certified engines and ended in words: Where is my company now? What is likely to happen next? What should I change? Which decision creates the greatest risk-adjusted value?",
+})

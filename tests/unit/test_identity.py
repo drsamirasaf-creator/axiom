@@ -380,3 +380,63 @@ def test_phase12_glossary(client):
                  "Risk Grade", "Enterprise Simulation", "Scenario Shifts",
                  "AXIOM Business Plan"):
         assert term in g and len(g[term]) > 20, term
+
+
+# ------------------------- Phase 13: brain endpoints -------------------------
+
+STRONG_R = {"leadership_quality": 8, "strategic_alignment": 7,
+            "operational_flexibility": 5, "innovation_capability": 6,
+            "governance_effectiveness": 9, "execution_track_record": 8}
+
+
+def test_phase13_endpoints_open_compute(client):
+    ds = client.get("/api/v1/financials/datasets").json()
+    plan = [d for d in ds
+            if d["name"] == "Meridian Industries (showcase)"][0]
+    r = client.post("/api/v1/intelligence/readiness",
+                    json={"responses": STRONG_R})
+    assert r.status_code == 200 and r.json()["readiness_label"] == "High"
+    r = client.get(f"/api/v1/intelligence/optimize/{plan['id']}")
+    assert r.status_code == 200
+    assert r.json()["recommended_plan"][0]["growth"] == 0.10
+    r = client.get(f"/api/v1/intelligence/executive-brief/{plan['id']}")
+    assert r.status_code == 200
+    assert len(r.json()["sections"]) == 4
+
+
+def test_readiness_apply_gated_and_private_only(client, monkeypatch):
+    monkeypatch.setenv("AXIOM_REQUIRE_AUTH", "true")
+    ds = client.get("/api/v1/financials/datasets").json()
+    mer = [d for d in ds if d["name"] == "Meridian Industries (showcase)"][0]
+    hal = [d for d in ds if d["name"] == "Halcyon Components (showcase)"][0]
+    # anonymous apply -> the register invitation
+    r = client.post("/api/v1/intelligence/readiness/apply",
+                    json={"dataset_id": hal["id"], "responses": STRONG_R})
+    assert r.status_code == 401 and "sandbox" in r.json()["detail"]
+    # authed: private-only rule, then a real apply with lineage
+    s = _register(client, "readiness@example.com")
+    h = {"Authorization": f"Bearer {s['token']}"}
+    from tests.fixtures.refcases import meridian as _m, halcyon as _h
+    mid = client.post("/api/v1/financials/datasets", headers=h,
+                      json={"name": "m", "data": _m()}).json()["id"]
+    r = client.post("/api/v1/intelligence/readiness/apply", headers=h,
+                    json={"dataset_id": mid, "responses": STRONG_R})
+    assert r.status_code == 422           # public company
+    hid = client.post("/api/v1/financials/datasets", headers=h,
+                      json={"name": "h", "data": _h()}).json()["id"]
+    r = client.post("/api/v1/intelligence/readiness/apply", headers=h,
+                    json={"dataset_id": hid, "responses": STRONG_R})
+    assert r.status_code == 201
+    body = r.json()
+    assert body["specific_risk_premium"]["after"] < \
+           body["specific_risk_premium"]["before"]     # High readiness: relief
+    lin = client.get(f"/api/v1/twin/lineage/{body['dataset_id']}",
+                     headers=h).json()
+    assert lin["root_dataset_id"] == hid
+
+
+def test_phase13_glossary(client):
+    g = client.get("/api/v1/metrics/glossary").json()
+    for term in ("Dynamic Optimizer", "Optimization Uplift",
+                 "Transformation Readiness", "ANFIS", "Executive Brief"):
+        assert term in g and len(g[term]) > 20, term
