@@ -18,7 +18,9 @@ XLSX_MIME = ("application/vnd.openxmlformats-officedocument"
 
 # ADR-007: tenancy via session when authenticated; the legacy header
 # path stays until AXIOM_REQUIRE_AUTH is flipped (then 401).
-from ..identity.deps import request_tenant as _tenant  # noqa: E402
+from ..identity.deps import read_tenant as _tenant  # noqa: E402
+from ..identity.deps import write_tenant as _writer  # noqa: E402
+from ..identity.deps import is_authenticated as _authed  # noqa: E402
 
 
 def _get_dataset(db: Session, tenant: str, dataset_id: int) -> models.FinancialDataset:
@@ -64,7 +66,7 @@ def download_template(standard: str):
 
 @router.post("/datasets", response_model=schemas.DatasetOut, status_code=201)
 def create_dataset(body: schemas.DatasetIn, db: Session = Depends(get_db),
-                   tenant: str = Depends(_tenant)):
+                   tenant: str = Depends(_writer)):
     v = engines.validate_dataset(body.data)
     if v["errors"]:
         raise HTTPException(status_code=422, detail=v["errors"])
@@ -77,7 +79,7 @@ def create_dataset(body: schemas.DatasetIn, db: Session = Depends(get_db),
 async def upload_dataset(file: UploadFile = File(...),
                          name: str | None = Form(default=None),
                          db: Session = Depends(get_db),
-                         tenant: str = Depends(_tenant)):
+                         tenant: str = Depends(_writer)):
     content = await file.read()
     if len(content) > MAX_UPLOAD:
         raise HTTPException(status_code=413, detail="file exceeds 5 MB")
@@ -113,8 +115,14 @@ def derived_series(dataset_id: int, db: Session = Depends(get_db),
 @router.post("/datasets/{dataset_id}/forecast")
 def forecast_dataset(dataset_id: int, body: schemas.ForecastRequest,
                      db: Session = Depends(get_db),
-                     tenant: str = Depends(_tenant)):
+                     tenant: str = Depends(_tenant),
+               authed: bool = Depends(_authed)):
     row = _get_dataset(db, tenant, dataset_id)
+    if body.persist and not authed:
+        from ...core.config import require_auth
+        from ..identity.deps import WRITE_401
+        if require_auth():
+            raise HTTPException(status_code=401, detail=WRITE_401)
     try:
         fc = engines.auto_forecast(row.data, body.assumptions)
     except ValueError as e:
@@ -134,7 +142,7 @@ async def upload_document(file: UploadFile = File(...),
                           note: str = Form(default=""),
                           dataset_id: int | None = Form(default=None),
                           db: Session = Depends(get_db),
-                          tenant: str = Depends(_tenant)):
+                          tenant: str = Depends(_writer)):
     """Unstructured-document plumbing (CA §3.4). Stored only in Phase 6;
     AI analysis lands in Phase 7 behind the §6.15 approval gate, so
     ai_analysis stays null rather than fabricated (SPEC-008 §4.10)."""

@@ -12,7 +12,9 @@ router = APIRouter(prefix="/api/v1/benchmarks", tags=["benchmarking"])
 
 # ADR-007: tenancy via session when authenticated; the legacy header
 # path stays until AXIOM_REQUIRE_AUTH is flipped (then 401).
-from ..identity.deps import request_tenant as _tenant  # noqa: E402
+from ..identity.deps import read_tenant as _tenant  # noqa: E402
+from ..identity.deps import write_tenant as _writer  # noqa: E402
+from ..identity.deps import is_authenticated as _authed  # noqa: E402
 
 
 class CompareRequest(BaseModel):

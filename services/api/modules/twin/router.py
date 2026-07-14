@@ -4,7 +4,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from ...core.db import get_db
 from ..financials import models as fin_models
-from ..identity.deps import request_tenant as _tenant
+from ..identity.deps import read_tenant as _tenant  # noqa: E402
+from ..identity.deps import write_tenant as _writer  # noqa: E402
+from ..identity.deps import is_authenticated as _authed  # noqa: E402
 from . import engines
 
 router = APIRouter(prefix="/api/v1/twin", tags=["digital-twin"])
@@ -21,7 +23,7 @@ class ActualsIn(BaseModel):
 
 @router.post("/actuals", status_code=201)
 def submit_actuals(body: ActualsIn, db: Session = Depends(get_db),
-                   tenant: str = Depends(_tenant)):
+                   tenant: str = Depends(_writer)):
     parent = db.get(fin_models.FinancialDataset, body.dataset_id)
     if not parent or parent.tenant != tenant:
         raise HTTPException(status_code=404, detail="dataset not found")
@@ -78,13 +80,19 @@ class ReforecastIn(BaseModel):
 
 @router.post("/reforecast")
 def reforecast(body: ReforecastIn, db: Session = Depends(get_db),
-               tenant: str = Depends(_tenant)):
+               tenant: str = Depends(_tenant),
+               authed: bool = Depends(_authed)):
     """Propose replacing the remaining committed forecast with a trend
     re-forecast fitted on post-sync evidence (ADR-009). A proposal until
     persisted — the user approval gate, same posture as ADR-006."""
     ds = db.get(fin_models.FinancialDataset, body.dataset_id)
     if not ds or ds.tenant != tenant:
         raise HTTPException(status_code=404, detail="dataset not found")
+    if body.persist and not authed:
+        from ...core.config import require_auth
+        from ..identity.deps import WRITE_401
+        if require_auth():
+            raise HTTPException(status_code=401, detail=WRITE_401)
     try:
         prop = engines.reforecast_proposal(ds.data)
     except ValueError as e:

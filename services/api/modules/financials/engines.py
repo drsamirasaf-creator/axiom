@@ -615,3 +615,9 @@ GLOSSARY.update({
     "Re-Forecast Proposal": "After a twin sync, AXIOM can propose replacing the remaining committed forecast years with a trend forecast refitted on the post-sync evidence — shown as a side-by-side comparison and applied only if you persist it.",
     "About This Page": "Every workspace carries a plain-language explanation of what it does, the benefit it offers, and how to start — served from the platform itself so words and features never drift apart.",
 })
+
+
+# ---- Phase 11: sandbox glossary --------------------------------------------
+GLOSSARY.update({
+    "Sandbox": "The fully populated showcase every visitor sees without an account: real engines running on fictional reference companies (Meridian Industries, Halcyon Components), including a complete plan-to-actuals-to-re-forecast story. Read and explore everything; creating or changing data is where a free account begins — and everything you enter stays private to it.",
+})

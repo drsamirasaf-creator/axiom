@@ -10,9 +10,20 @@ from . import engines, models, schemas
 router = APIRouter(prefix="/api/v1/valuation", tags=["valuation"])
 
 
+def _transient(dataset_id: int, mode: str, params: dict, result: dict):
+    """Anonymous sandbox computations return in full but are never written
+    to the shared showcase (ADR-010)."""
+    from datetime import datetime, timezone
+    return {"id": 0, "dataset_id": dataset_id, "mode": mode,
+            "params": params, "result": result,
+            "created_at": datetime.now(timezone.utc), "transient": True}
+
+
 # ADR-007: tenancy via session when authenticated; the legacy header
 # path stays until AXIOM_REQUIRE_AUTH is flipped (then 401).
-from ..identity.deps import request_tenant as _tenant  # noqa: E402
+from ..identity.deps import read_tenant as _tenant  # noqa: E402
+from ..identity.deps import write_tenant as _writer  # noqa: E402
+from ..identity.deps import is_authenticated as _authed  # noqa: E402
 
 
 @router.get("/modes")
@@ -30,7 +41,8 @@ def list_modes():
 
 @router.post("/run", response_model=schemas.ValuationRunOut, status_code=201)
 def run_valuation(body: schemas.ValuationRequest, db: Session = Depends(get_db),
-                  tenant: str = Depends(_tenant)):
+                  tenant: str = Depends(_tenant),
+               authed: bool = Depends(_authed)):
     ds = db.get(fin_models.FinancialDataset, body.dataset_id)
     if not ds or ds.tenant != tenant:
         raise HTTPException(status_code=404, detail="dataset not found")
@@ -39,11 +51,12 @@ def run_valuation(body: schemas.ValuationRequest, db: Session = Depends(get_db),
                              body.monte_carlo)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    params = {"assumptions": body.assumptions, "monte_carlo": body.monte_carlo}
+    from ...core.config import require_auth
+    if not authed and require_auth():
+        return _transient(body.dataset_id, body.mode, params, result)
     row = models.ValuationRun(tenant=tenant, dataset_id=body.dataset_id,
-                              mode=body.mode,
-                              params={"assumptions": body.assumptions,
-                                      "monte_carlo": body.monte_carlo},
-                              result=result)
+                              mode=body.mode, params=params, result=result)
     db.add(row); db.commit(); db.refresh(row)
     return row
 
@@ -55,7 +68,8 @@ class StressRequest(schemas.ValuationRequest):
 
 @router.post("/stress", response_model=schemas.ValuationRunOut, status_code=201)
 def run_stress(body: StressRequest, db: Session = Depends(get_db),
-               tenant: str = Depends(_tenant)):
+               tenant: str = Depends(_tenant),
+               authed: bool = Depends(_authed)):
     """DRO stress panel: TV-ambiguity worst-case EV curve + breakeven
     radius (ADR-006 §4)."""
     ds = db.get(fin_models.FinancialDataset, body.dataset_id)
@@ -67,13 +81,14 @@ def run_stress(body: StressRequest, db: Session = Depends(get_db),
                                 body.threshold_override)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    params = {"assumptions": body.assumptions, "monte_carlo": body.monte_carlo,
+              "radii": body.radii,
+              "threshold_override": body.threshold_override}
+    from ...core.config import require_auth
+    if not authed and require_auth():
+        return _transient(body.dataset_id, "dro_stress", params, result)
     row = models.ValuationRun(tenant=tenant, dataset_id=body.dataset_id,
-                              mode="dro_stress",
-                              params={"assumptions": body.assumptions,
-                                      "monte_carlo": body.monte_carlo,
-                                      "radii": body.radii,
-                                      "threshold_override": body.threshold_override},
-                              result=result)
+                              mode="dro_stress", params=params, result=result)
     db.add(row); db.commit(); db.refresh(row)
     return row
 

@@ -18,7 +18,9 @@ TEXT_TYPES = ("text/plain", "text/markdown", "text/csv", "application/json")
 
 # ADR-007: tenancy via session when authenticated; the legacy header
 # path stays until AXIOM_REQUIRE_AUTH is flipped (then 401).
-from ..identity.deps import request_tenant as _tenant  # noqa: E402
+from ..identity.deps import read_tenant as _tenant  # noqa: E402
+from ..identity.deps import write_tenant as _writer  # noqa: E402
+from ..identity.deps import is_authenticated as _authed  # noqa: E402
 
 
 # --- AI call rate limit (ADR-007 §4): in-memory per-tenant window. -----------
@@ -60,7 +62,7 @@ class DecisionIn(BaseModel):
 
 @router.post("/documents/{document_id}/analyze")
 def analyze_document(document_id: int, db: Session = Depends(get_db),
-                     tenant: str = Depends(_tenant)):
+                     tenant: str = Depends(_writer)):
     """AI document analysis behind deterministic gates (ADR-006 §1).
     Rate-limited per tenant (ADR-007 §4) since every call costs money.
     Suggestions are PROPOSALS: nothing reaches a valuation until the user
@@ -113,7 +115,7 @@ def analyze_document(document_id: int, db: Session = Depends(get_db),
 @router.post("/documents/{document_id}/decisions")
 def decide_suggestions(document_id: int, body: DecisionIn,
                        db: Session = Depends(get_db),
-                       tenant: str = Depends(_tenant)):
+                       tenant: str = Depends(_writer)):
     """The approval gate (Product §6.15/§8.8): record accept/reject per
     suggestion; return the valuation-ready assumptions assembled from
     ACCEPTED suggestions only."""

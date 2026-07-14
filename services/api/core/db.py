@@ -59,3 +59,5 @@ def init_db():
     from ..modules.valuation import models as _valuation   # noqa: F401
     from ..modules.identity import models as _identity      # noqa: F401
     ensure_schema()
+    from .seed import seed_showcase
+    seed_showcase()

@@ -17,3 +17,4 @@ class ValuationRunOut(BaseModel):
     params: dict
     result: dict
     created_at: datetime
+    transient: bool = False   # anonymous sandbox computations are not stored

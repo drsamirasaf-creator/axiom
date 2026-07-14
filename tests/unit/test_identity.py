@@ -99,18 +99,26 @@ def test_invalid_token_is_401_not_demo_fallback(client):
     assert r.status_code == 401
 
 
-def test_require_auth_flag_locks_financial_core(client, monkeypatch):
+def test_require_auth_flag_sandbox_contract(client, monkeypatch):
+    """ADR-010 supersedes the hard lock: with the flag ON, anonymous READS
+    serve the showcase; WRITES return the register invitation."""
     monkeypatch.setenv("AXIOM_REQUIRE_AUTH", "true")
-    r = client.get("/api/v1/financials/datasets")          # no token
+    r = client.get("/api/v1/financials/datasets")          # anonymous read
+    assert r.status_code == 200
+    names = [d["name"] for d in r.json()]
+    assert any("showcase" in n for n in names)
+    from tests.fixtures.refcases import meridian as _m
+    r = client.post("/api/v1/financials/datasets",
+                    json={"name": "mine", "data": _m()})   # anonymous write
     assert r.status_code == 401
-    assert "register or log in" in r.json()["detail"]
+    assert "sandbox" in r.json()["detail"] and "free" in r.json()["detail"]
     # educational edition stays open by design
     assert client.get("/api/v1/risk/analyses").status_code == 200
-    # authenticated access still works with the flag on
+    # authenticated write works with the flag on
     s = _register(client, "flagged@example.com")
-    assert client.get("/api/v1/financials/datasets",
-                      headers={"Authorization": f"Bearer {s['token']}"}
-                      ).status_code == 200
+    assert client.post("/api/v1/financials/datasets",
+                       headers={"Authorization": f"Bearer {s['token']}"},
+                       json={"name": "mine", "data": _m()}).status_code == 201
 
 
 def test_ai_rate_limit_429(client, monkeypatch):
@@ -199,3 +207,86 @@ def test_phase10_glossary_terms(client):
     for term in ("Value-Risk Frontier", "Tail Solvency Margin",
                  "Pareto Efficient", "Re-Forecast Proposal"):
         assert term in g and len(g[term]) > 20, term
+
+
+# ------------------------- Phase 11: sandbox battery ------------------------
+
+def _flag_on(monkeypatch):
+    monkeypatch.setenv("AXIOM_REQUIRE_AUTH", "true")
+
+
+def test_showcase_seeded_full_story(client):
+    """The seeded sandbox carries the whole twin arc for Meridian."""
+    r = client.get("/api/v1/financials/datasets")
+    rows = {d["name"]: d for d in r.json()
+            if "Meridian Industries (showcase)" in d["name"]}
+    assert len(rows) == 3          # plan, actuals child, re-forecast
+    plan = [d for d in rows.values() if d["source"] == "direct"][0]
+    lin = client.get(f"/api/v1/twin/lineage/{plan['id']}").json()
+    assert lin["syncs_completed"] == 2
+    # dashboard + benchmarking render on showcase data, anonymously
+    dash = client.get(f"/api/v1/metrics/dashboard/{plan['id']}").json()
+    assert dash["kpi_strip"] and dash["health"]["health_index"] > 0
+    cmp = client.post("/api/v1/benchmarks/compare",
+                      json={"dataset_id": plan["id"],
+                            "sector": "Industrials"}).json()
+    assert abs(cmp["benchmark_performance_index"] - 142.62) < 0.05
+
+
+def test_sandbox_valuation_is_transient_under_flag(client, monkeypatch):
+    _flag_on(monkeypatch)
+    ds = client.get("/api/v1/financials/datasets").json()
+    plan = [d for d in ds
+            if d["name"] == "Meridian Industries (showcase)"][0]
+    before = len(client.get("/api/v1/valuation/runs").json())
+    r = client.post("/api/v1/valuation/run",
+                    json={"dataset_id": plan["id"], "mode": "proforma"})
+    assert r.status_code == 201
+    body = r.json()
+    assert body["transient"] is True and body["id"] == 0
+    assert body["result"]["all_checkpoints_pass"] is True
+    assert len(client.get("/api/v1/valuation/runs").json()) == before
+
+
+def test_sandbox_write_gates_carry_the_invitation(client, monkeypatch):
+    _flag_on(monkeypatch)
+    ds = client.get("/api/v1/financials/datasets").json()
+    plan = [d for d in ds
+            if d["name"] == "Meridian Industries (showcase)"][0]
+    child = [d for d in ds
+             if "showcase) — 2026 actuals" in d["name"]][0]
+    from tests.numerical.test_twin_checkpoints import ACTUALS_2026
+    gated = [
+        client.post("/api/v1/twin/actuals",
+                    json={"dataset_id": plan["id"], "year": 2026,
+                          **ACTUALS_2026}),
+        client.post("/api/v1/twin/reforecast",
+                    json={"dataset_id": child["id"], "persist": True}),
+        client.post("/api/v1/financials/documents",
+                    files={"file": ("x.txt", b"data", "text/plain")}),
+    ]
+    for r in gated:
+        assert r.status_code == 401 and "sandbox" in r.json()["detail"]
+    # but the read-only proposal (persist=false) stays open to visitors
+    r = client.post("/api/v1/twin/reforecast",
+                    json={"dataset_id": child["id"], "persist": False})
+    assert r.status_code == 200 and "drivers" in r.json()
+
+
+def test_seed_idempotent():
+    from services.api.core.seed import seed_showcase, SHOWCASE_TENANT
+    from services.api.core.db import SessionLocal
+    from services.api.modules.financials.models import FinancialDataset
+    db = SessionLocal()
+    n0 = db.query(FinancialDataset).filter_by(tenant=SHOWCASE_TENANT).count()
+    seed_showcase()
+    n1 = db.query(FinancialDataset).filter_by(tenant=SHOWCASE_TENANT).count()
+    names = [x.name for x in db.query(FinancialDataset)
+             .filter_by(tenant=SHOWCASE_TENANT).all()]
+    db.close()
+    assert n0 == n1                  # idempotent: reseeding adds nothing
+    for expected in ("Meridian Industries (showcase)",
+                     "Meridian Industries (showcase) — 2026 actuals",
+                     "Meridian Industries (showcase) — re-forecast",
+                     "Halcyon Components (showcase)"):
+        assert expected in names

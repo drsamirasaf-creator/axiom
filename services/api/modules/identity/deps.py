@@ -72,3 +72,51 @@ def request_tenant(authorization: str | None = Header(default=None),
             detail="authentication required: register or log in at "
                    "/api/v1/auth, then send 'Authorization: Bearer <token>'")
     return tenant_from_header(x_axiom_tenant)
+
+
+# ---- Phase 11 (ADR-010): the sandbox access model ---------------------------
+from ...core.seed import SHOWCASE_TENANT  # noqa: E402
+
+WRITE_401 = ("You're exploring the AXIOM sandbox (read-only showcase data). "
+             "To work with your own company or client data, create a free "
+             "account at /api/v1/auth/register or sign in — everything you "
+             "enter stays private to your account.")
+
+
+def read_tenant(authorization: str | None = Header(default=None),
+                x_axiom_tenant: str | None = Header(default=None),
+                db: Session = Depends(get_db)) -> str:
+    """Reads are always open: signed-in users see their private tenant;
+    anonymous visitors see the fully populated showcase. An offered-but-
+    invalid token is still a 401 (never a silent downgrade)."""
+    user, _ = _session_user(db, authorization)
+    if user:
+        return user.tenant
+    if authorization:
+        raise HTTPException(status_code=401,
+                            detail="invalid or expired session token")
+    if require_auth():
+        return SHOWCASE_TENANT
+    return (x_axiom_tenant or "").strip()[:64] or SHOWCASE_TENANT
+
+
+def write_tenant(authorization: str | None = Header(default=None),
+                 x_axiom_tenant: str | None = Header(default=None),
+                 db: Session = Depends(get_db)) -> str:
+    """Writes are the conversion point: with AXIOM_REQUIRE_AUTH on,
+    anonymous write attempts get the register invitation."""
+    user, _ = _session_user(db, authorization)
+    if user:
+        return user.tenant
+    if authorization:
+        raise HTTPException(status_code=401,
+                            detail="invalid or expired session token")
+    if require_auth():
+        raise HTTPException(status_code=401, detail=WRITE_401)
+    return (x_axiom_tenant or "").strip()[:64] or SHOWCASE_TENANT
+
+
+def is_authenticated(authorization: str | None = Header(default=None),
+                     db: Session = Depends(get_db)) -> bool:
+    user, _ = _session_user(db, authorization)
+    return user is not None
