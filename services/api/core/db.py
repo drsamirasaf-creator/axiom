@@ -1,7 +1,19 @@
-"""AXIOM persistence bootstrap. REQ-CORE-002 (ADR-003: Alembic arrives Phase 1)."""
-from sqlalchemy import create_engine
+"""AXIOM persistence bootstrap — Alembic-managed from Phase 1 (ADR-003).
+REQ-CORE-002.
+
+ensure_schema() handles three fleets:
+  fresh database          -> upgrade to head
+  Phase 0 legacy (create_all'd tables, no alembic_version) -> stamp 0001, then upgrade
+  already migrated        -> upgrade is a no-op past current head
+"""
+import pathlib
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from .config import database_url
+
+ROOT = pathlib.Path(__file__).resolve().parents[3]
 
 class Base(DeclarativeBase):
     pass
@@ -16,7 +28,29 @@ def get_db():
     finally:
         db.close()
 
+def _alembic_config(url: str) -> Config:
+    cfg = Config()
+    cfg.set_main_option("script_location", str(ROOT / "migrations"))
+    cfg.set_main_option("sqlalchemy.url", url)
+    return cfg
+
+def ensure_schema(url: str | None = None):
+    url = url or database_url()
+    import os
+    prev = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = url
+    try:
+        cfg = _alembic_config(url)
+        insp = inspect(create_engine(url))
+        tables = set(insp.get_table_names())
+        if "alembic_version" not in tables and "enterprises" in tables:
+            command.stamp(cfg, "0001")
+        command.upgrade(cfg, "head")
+    finally:
+        if prev is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = prev
+
 def init_db():
-    from ..modules.enterprise_state import models as _es   # noqa: F401
-    from ..modules.optimization import models as _opt      # noqa: F401
-    Base.metadata.create_all(bind=engine)
+    ensure_schema()

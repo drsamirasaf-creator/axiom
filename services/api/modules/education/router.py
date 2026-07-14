@@ -19,7 +19,7 @@ V2 = ["Introduction to Enterprise Optimization","The General Enterprise Optimiza
  "Artificial Intelligence for Enterprise Optimization",
  "Enterprise Digital Twins and Autonomous Transformation",
  "Enterprise Applications and Integrated Case Studies"]
-LIVE = {"II-3", "II-5"}   # engines already exposed through REO in Phase 0
+LIVE = {"II-3", "II-5", "II-15", "I-6"}   # REO problems (Phase 0) + dynamics/twin scenarios (Phase 1)
 
 def _mods():
     out = []

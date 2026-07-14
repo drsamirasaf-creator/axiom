@@ -52,5 +52,27 @@ def test_reo_bad_params_422(client):
 def test_education_registry(client):
     mods = client.get("/api/v1/education/modules").json()
     assert len(mods) == 32
-    assert sum(1 for m in mods if m["status"] == "live") == 2
+    assert sum(1 for m in mods if m["status"] == "live") == 4
     assert mods[16]["seed"] == 26201 and mods[16]["volume"] == "II"
+
+def test_simulation_run_and_provenance(client):
+    r = client.get("/api/v1/simulation/scenarios")
+    assert {s["scenario"] for s in r.json()} == {"trajectory", "twin_sync",
+                                                 "stability_dial", "twin_decision"}
+    r = client.post("/api/v1/simulation/run",
+                    json={"scenario": "twin_decision", "params": {}})
+    assert r.status_code == 201
+    body = r.json()["result"]
+    assert body["all_checkpoints_pass"] is True
+    assert abs(body["solution"]["regret_open_twin"] - 1.3605) < 5e-4
+    assert body["solution"]["chart_data"][1]["sync_pick"] is True
+    runs = client.get("/api/v1/simulation/runs").json()
+    assert runs and runs[0]["scenario"] == "twin_decision"
+
+def test_simulation_unknown_scenario_404(client):
+    assert client.post("/api/v1/simulation/run", json={"scenario": "nope"}).status_code == 404
+
+def test_simulation_bad_params_422(client):
+    r = client.post("/api/v1/simulation/run",
+                    json={"scenario": "twin_sync", "params": {"gains": [2.0]}})
+    assert r.status_code == 422
