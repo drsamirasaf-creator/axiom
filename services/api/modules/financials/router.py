@@ -239,3 +239,16 @@ def _plan_of(db, tenant: str) -> str:
     from ..identity.models import User
     u = db.query(User).filter_by(tenant=tenant).first()
     return (u.plan or "free") if u else "free"
+
+
+@router.get("/datasets/{dataset_id}/pro-forma")
+def pro_forma_statements(dataset_id: int, db: Session = Depends(get_db),
+                         tenant: str = Depends(_tenant)):
+    """Stochastic three-statement pro forma with per-line attainment
+    probabilities and cumulative multi-year odds (ADR-018)."""
+    from . import proforma
+    row = _get_dataset(db, tenant, dataset_id)
+    try:
+        return proforma.stochastic_statements(row.data)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))

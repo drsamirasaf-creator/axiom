@@ -703,3 +703,11 @@ GLOSSARY.update({
     "Board Report": "A comprehensive, board-ready document assembling every AXIOM analysis for a company into the four-question narrative - where it stands, what is coming, what to change, the best risk-adjusted decision - plus the full valuation and an advanced-analytics appendix. Downloadable as a PDF from the Executive Brief.",
     "Confidential Report Mode": "An externally shareable version of the board report with absolute currency figures redacted - percentages, grades, ratios, and multiples remain - so the story and shape can be shared without the sensitive levels.",
 })
+
+
+# ---- Phase 17 glossary -------------------------------------------------------
+GLOSSARY.update({
+    "Stochastic Pro Forma": "The projected income statement, balance sheet, and cash-flow statement modeled as one linked Monte Carlo system: two seeded shocks a year (revenue growth, margin) drive every line, and the balance sheet balances on every path. Unlike a static forecast, it shows the DISTRIBUTION of each future statement line.",
+    "Plan Attainment Probability (per line)": "For each projected statement line, the probability the actual result meets or beats the plan figure, from the simulation. Shown line-by-line and shaded green (>=55%), amber (40-55%), or red (<40%) - a view no accounting package offers.",
+    "Cumulative Attainment": "The probability a line meets its plan target in EVERY forecast year at once - far harder than any single year, and the honest measure of how ambitious a multi-year plan really is.",
+})

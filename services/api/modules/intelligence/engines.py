@@ -1730,6 +1730,8 @@ def board_report(data: dict, readiness: dict | None = None,
         except (KeyError, ValueError):
             bmk = None
     brief = executive_brief(data, readiness=readiness)
+    from ..financials import proforma as _pf
+    proforma_stmts = _pf.stochastic_statements(data)
 
     ownership = company["ownership"]
     headline_value = (val_full["deterministic"]["enterprise_value"]
@@ -1806,6 +1808,24 @@ def board_report(data: dict, readiness: dict | None = None,
                          "What-If Studio in AXIOM"),
         "narrative": brief["sections"][3]["words"]})
 
+    sections.append({"id": "proforma",
+        "title": "Pro Forma Financial Statements",
+        "takeaway": ("The projected income statement, balance sheet, and cash "
+                     "flow — with the probability each line meets or beats plan."),
+        "forecast_years": proforma_stmts["forecast_years"],
+        "statements": proforma_stmts["statements"],
+        "cumulative_attainment": proforma_stmts["cumulative_attainment"],
+        "plan_cagr": proforma_stmts["plan_cagr"],
+        "narrative": [
+            f"Over the plan horizon, revenue compounds at "
+            f"{proforma_stmts['plan_cagr']['revenue']*100:.1f}% and net income at "
+            f"{proforma_stmts['plan_cagr']['net_income']*100:.1f}% per year.",
+            f"Because the plan sits near the centre of the simulated "
+            f"distribution, each single-year target is roughly a coin toss; "
+            f"the probability of meeting the revenue target in EVERY forecast "
+            f"year is "
+            f"{proforma_stmts['cumulative_attainment']['revenue']['p_meets_plan_every_year']*100:.0f}%."]})
+
     valuation_section = {"id": "valuation",
         "title": "Valuation — Three Independent Lenses",
         "takeaway": (f"Intrinsic DCF places {headline_label.lower()} at "
@@ -1852,8 +1872,8 @@ def board_report(data: dict, readiness: dict | None = None,
 
     generated = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d")
     checkpoints = [
-        {"name": "seven_sections", "value": len(sections), "expected": 7,
-         "pass": len(sections) == 7},
+        {"name": "eight_sections", "value": len(sections), "expected": 8,
+         "pass": len(sections) == 8},
         {"name": "every_section_has_takeaway",
          "value": sum(1 for s in sections if s.get("takeaway")),
          "expected": len(sections),

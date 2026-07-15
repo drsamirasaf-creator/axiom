@@ -553,7 +553,7 @@ def test_board_report_endpoint_open_and_redactable(client):
                    "?sector=Industrials")
     assert r.status_code == 200
     body = r.json()
-    assert len(body["sections"]) == 7
+    assert len(body["sections"]) == 8
     assert body["brand"]["prepared_by"] == "Regent Financial"
     assert body["all_checkpoints_pass"] is True
     red = client.get(f"/api/v1/intelligence/board-report/{plan['id']}"
@@ -577,3 +577,16 @@ def test_eula_recorded_at_registration(client):
     r2 = client.post("/api/v1/auth/register",
                      json={"email": "noeula@example.com", "password": "longenough1"})
     assert r2.json()["user"]["accepted_eula"] is False
+
+
+def test_pro_forma_endpoint(client):
+    ds = client.get("/api/v1/financials/datasets").json()
+    plan = [d for d in ds
+            if d["name"] == "Meridian Industries (showcase)"][0]
+    r = client.get(f"/api/v1/financials/datasets/{plan['id']}/pro-forma")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["statements"]) == 5
+    assert all(s["balance_ok"] for s in body["statements"])
+    assert "p_meets_plan" in body["statements"][0]["stochastic"]["revenue"]
+    assert body["all_checkpoints_pass"] is True

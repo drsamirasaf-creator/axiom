@@ -91,6 +91,20 @@ state (the call runs the full engine suite, ~3s).
    This is the "no other software does this" section: stochastic dynamic
    optimization, real options, DRO, EVT, Shapley, ANFIS, Sobol, digital
    twin. Prospects should read this and understand the moat.
+PRO FORMA (new — insert after What's Likely Next, before Best Decision):
+
+- **Year-by-Year Forecast** page: from the `proforma` section's
+  `statements`, a deterministic grid — revenue, COGS, opex, D&A, EBIT,
+  EBITDA, interest, net income, FCFF, FCFE down the side, forecast years
+  across; CAGRs from `plan_cagr` below.
+- **Income Statement (stochastic)** page: each line shows the plan figure
+  AND a "P>=plan" cell shaded green (>=55%), amber (40-55%), red (<40%)
+  from `stochastic[line].p_meets_plan`. Deterministic lines (COGS, tax)
+  show "—" for probability.
+- **Balance Sheet & Cash Flow** page: same treatment; note the balance
+  sheet balances on every path; close with the `cumulative_attainment`
+  callout (probability of meeting plan in EVERY year, per line).
+
 15-16. **Appendix — Advanced Analytics** (2 pp): the risk heat map
    (8 rows, RAG, basis; keep the null-score rows greyed with their
    roadmap basis — the honesty sells); then EVT, Sobol, and

@@ -7,7 +7,7 @@ def test_board_report_seven_sections_and_spine():
     r = intel.board_report(meridian(), sector="Industrials")
     ids = [s["id"] for s in r["sections"]]
     assert ids == ["summary", "diagnostic", "outlook", "actions",
-                   "best_decision", "valuation", "appendix"]
+                   "best_decision", "proforma", "valuation", "appendix"]
     assert all(s.get("takeaway") for s in r["sections"])
     assert r["headline"]["label"] == "Enterprise Value"
     assert r["headline"]["value"] > 0
