@@ -30,6 +30,43 @@ MEMO = (b"Meridian Industries - board strategy memo (showcase example).\n"
         b"growth of 2.5% (0.025).\n")
 
 
+def _backfill_showcase_oci(db):
+    """One-time, idempotent: existing showcase datasets seeded before the OCI
+    module have no `oci` block, so the Comprehensive Income statement renders
+    all 'not on file'. Patch them in place with the canonical demo drivers so
+    the sandbox is fully populated. Runs at startup; safe to run repeatedly."""
+    from .refcompanies import meridian, halcyon
+    from ..modules.financials import models as fin_models
+    from sqlalchemy.orm.attributes import flag_modified
+    mer_oci = meridian().get("oci")
+    hal_oci = halcyon().get("oci")
+    try:
+        rows = db.query(fin_models.FinancialDataset)\
+                 .filter_by(tenant=SHOWCASE_TENANT).all()
+        changed = 0
+        for row in rows:
+            data = row.data or {}
+            if data.get("oci"):
+                continue                             # already has OCI
+            name = (row.name or "").lower()
+            if "halcyon" in name:
+                data["oci"] = hal_oci
+            else:
+                data["oci"] = mer_oci                # Meridian + its children
+            row.data = data
+            flag_modified(row, "data")               # JSON column dirty flag
+            changed += 1
+        if changed:
+            db.commit()
+            import logging
+            logging.getLogger("axiom.seed").info(
+                "backfilled OCI onto %d showcase dataset(s)", changed)
+    except Exception:
+        db.rollback()
+        import logging
+        logging.getLogger("axiom.seed").exception("OCI backfill failed")
+
+
 def seed_showcase():
     if os.environ.get("AXIOM_SEED_SHOWCASE", "true").strip().lower() in (
             "0", "false", "no", "off"):
@@ -46,6 +83,7 @@ def seed_showcase():
     try:
         if db.query(fin_models.FinancialDataset)\
              .filter_by(tenant=SHOWCASE_TENANT).first():
+            _backfill_showcase_oci(db)              # keep existing rows current
             return                                  # already seeded
 
         def store(name, data, source, parent_id=None):
