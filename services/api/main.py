@@ -89,6 +89,8 @@ app.include_router(risk_router)
 app.include_router(learning_router)
 app.include_router(education_router)
 app.include_router(financials_router)
+from .modules.billing.router import router as billing_router
+app.include_router(billing_router)
 app.include_router(metrics_router)
 app.include_router(valuation_router)
 app.include_router(benchmarks_router)

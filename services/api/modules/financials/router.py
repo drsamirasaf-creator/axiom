@@ -30,6 +30,14 @@ def _get_dataset(db: Session, tenant: str, dataset_id: int) -> models.FinancialD
     return row
 
 
+def _enforce_company_limit(db, authorization):
+    """Gate creation of a NEW company analysis against the subscription seat
+    count (companies_allowed). No-op when the plan flag is off."""
+    from ..identity.deps import _session_user, enforce_company_limit
+    user, _ = _session_user(db, authorization)
+    enforce_company_limit(db, user, creating_new=True)
+
+
 def _store(db, tenant, name, data, source, warnings, enterprise_id=None):
     row = models.FinancialDataset(
         tenant=tenant, enterprise_id=enterprise_id, name=name,
@@ -66,7 +74,9 @@ def download_template(standard: str):
 
 @router.post("/datasets", response_model=schemas.DatasetOut, status_code=201)
 def create_dataset(body: schemas.DatasetIn, db: Session = Depends(get_db),
-                   tenant: str = Depends(_writer)):
+                   tenant: str = Depends(_writer),
+                   authorization: str | None = Header(default=None)):
+    _enforce_company_limit(db, authorization)
     v = engines.validate_dataset(body.data)
     if v["errors"]:
         raise HTTPException(status_code=422, detail=v["errors"])
@@ -79,7 +89,9 @@ def create_dataset(body: schemas.DatasetIn, db: Session = Depends(get_db),
 async def upload_dataset(file: UploadFile = File(...),
                          name: str | None = Form(default=None),
                          db: Session = Depends(get_db),
-                         tenant: str = Depends(_writer)):
+                         tenant: str = Depends(_writer),
+                         authorization: str | None = Header(default=None)):
+    _enforce_company_limit(db, authorization)
     content = await file.read()
     if len(content) > MAX_UPLOAD:
         raise HTTPException(status_code=413, detail="file exceeds 5 MB")

@@ -56,3 +56,30 @@ def require_plan() -> bool:
 def admin_token() -> str | None:
     """Shared secret for entitlement grants; unset = admin ops disabled."""
     return os.environ.get("AXIOM_ADMIN_TOKEN") or None
+
+
+# ---- Stripe billing (Phase 20, ADR-029) -------------------------------------
+def stripe_secret_key() -> str | None:
+    """Stripe secret API key. Unset -> billing endpoints report not-configured
+    honestly rather than pretending to work."""
+    return os.environ.get("STRIPE_SECRET_KEY") or None
+
+
+def stripe_webhook_secret() -> str | None:
+    """Signing secret for verifying Stripe webhook payloads."""
+    return os.environ.get("STRIPE_WEBHOOK_SECRET") or None
+
+
+def stripe_price_id() -> str | None:
+    """The Stripe Price ID for the per-company Business subscription."""
+    return os.environ.get("STRIPE_PRICE_ID") or None
+
+
+def billing_success_url() -> str:
+    return os.environ.get("AXIOM_BILLING_SUCCESS_URL",
+                          "https://axiomdynamics.app/billing/success")
+
+
+def billing_cancel_url() -> str:
+    return os.environ.get("AXIOM_BILLING_CANCEL_URL",
+                          "https://axiomdynamics.app/billing/cancel")

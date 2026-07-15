@@ -17,6 +17,16 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(300))
     tenant: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     plan: Mapped[str] = mapped_column(String(24), default="free")   # free | business
+    # ---- Billing (Phase 20, ADR-029): Stripe subscription state ----
+    # companies_allowed = the number of company analyses this account may
+    # create/analyze, driven by the Stripe subscription quantity. 0 on free.
+    companies_allowed: Mapped[int] = mapped_column(Integer, default=0)
+    stripe_customer_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True)
+    subscription_status: Mapped[str | None] = mapped_column(
+        String(32), nullable=True)      # active | past_due | canceled | None
     accepted_eula: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(

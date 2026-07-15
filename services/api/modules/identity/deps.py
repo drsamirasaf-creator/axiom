@@ -153,3 +153,34 @@ def enforce_write(allow: dict):
         return
     if require_auth():
         raise HTTPException(status_code=401, detail=WRITE_401)
+
+
+COMPANY_LIMIT_402 = (
+    "Company limit reached: your AXIOM Business subscription covers "
+    "{allowed} company analysis(es), and you have {used}. To analyze another "
+    "company, add a seat to your subscription (increase quantity) in billing, "
+    "or contact Regent Financial at samir@theregentfinancial.com.")
+
+
+def enforce_company_limit(db, user, *, creating_new: bool = True):
+    """Gate the creation of a NEW company analysis against the number the
+    subscription covers (companies_allowed = Stripe quantity). Editing an
+    existing company is always allowed; only the (N+1)th NEW company is gated.
+    No-op when the plan flag is off (dev/sandbox)."""
+    from ...core.config import require_plan
+    if not require_plan():
+        return
+    if not user or (user.plan != "business"):
+        raise HTTPException(status_code=402, detail=WRITE_402)
+    if not creating_new:
+        return
+    from ..financials import models as fin_models
+    used = db.query(fin_models.FinancialDataset)\
+             .filter_by(tenant=user.tenant, source="direct")\
+             .filter(fin_models.FinancialDataset.parent_dataset_id.is_(None))\
+             .count()
+    allowed = user.companies_allowed or 0
+    if used >= allowed:
+        raise HTTPException(status_code=402,
+                            detail=COMPANY_LIMIT_402.format(
+                                allowed=allowed, used=used))

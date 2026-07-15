@@ -339,6 +339,12 @@ def test_plan_flag_402_for_free_writes(client, monkeypatch):
     # (Against someone else's dataset the tenant 404 fires first, by
     # design — the gate never leaks what you cannot see.)
     from tests.fixtures.refcases import halcyon as _h
+    # this scenario creates a second company; give the account a 2nd seat
+    from services.api.core.db import SessionLocal as _SL
+    from services.api.modules.identity import models as _m
+    _db = _SL()
+    _u = _db.query(_m.User).filter_by(email="freeuser@example.com").first()
+    _u.companies_allowed = 2; _db.commit(); _db.close()
     r = client.post("/api/v1/financials/datasets", headers=hf,
                     json={"name": "mine-h", "data": _h()})
     hid = r.json()["id"]

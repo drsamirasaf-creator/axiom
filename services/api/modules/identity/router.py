@@ -119,5 +119,12 @@ def grant_plan(body: GrantIn,
     if not user:
         raise HTTPException(status_code=404, detail="user not found")
     user.plan = body.plan
+    # keep entitlements coherent: granting business gives at least one company
+    # seat (the manual bridge mirrors what a paid subscription would set);
+    # revoking to free clears seats.
+    if body.plan == "business" and (user.companies_allowed or 0) < 1:
+        user.companies_allowed = 1
+    elif body.plan == "free":
+        user.companies_allowed = 0
     db.commit(); db.refresh(user)
     return user
