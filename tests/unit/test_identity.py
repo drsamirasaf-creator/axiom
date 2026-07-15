@@ -717,3 +717,14 @@ def test_optimal_levers_endpoint(client):
     bad = client.get(f"/api/v1/intelligence/scenario/optimal"
                      f"?dataset_id={m['id']}&objective=xyz")
     assert bad.status_code == 422
+
+
+def test_unified_optimization_endpoint(client):
+    ds = client.get("/api/v1/financials/datasets").json()
+    m = [d for d in ds if d["name"] == "Meridian Industries (showcase)"][0]
+    r = client.get(f"/api/v1/intelligence/optimization/unified?dataset_id={m['id']}")
+    assert r.status_code == 200
+    b = r.json()
+    assert len(b["ladder"]) == 4
+    assert set(b["lenses"]) == {"static_ev", "static_raev", "dynamic"}
+    assert b["reconciliation_note"] and b["all_checkpoints_pass"] is True

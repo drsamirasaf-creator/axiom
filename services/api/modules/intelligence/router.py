@@ -493,3 +493,16 @@ def optimal_levers_route(dataset_id: int, objective: str = "ev",
     except ValueError as e:
         from fastapi import HTTPException as _H
         raise _H(status_code=422, detail=str(e))
+
+
+@router.get("/optimization/unified")
+def unified_optimization_route(dataset_id: int, db: Session = Depends(get_db),
+                               tenant: str = Depends(_tenant)):
+    """Unified Enterprise Optimization (ADR-028): all optimization lenses in
+    one coherent view — static scenario optimum (EV & RAEV), dynamic
+    growth-and-financing policy, each against its own baseline, unified by
+    percentage uplift and arranged as a ladder. Both EV and equity value
+    shown. This is the single reconciled home for the Enterprise Optimization
+    tab; the Scenario tab references the dynamic policy as its upper marker."""
+    ds = _get_dataset(db, tenant, dataset_id)
+    return engines.unified_optimization(ds.data)

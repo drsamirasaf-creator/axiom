@@ -2483,8 +2483,19 @@ def scenario_pro(data: dict, levers: dict, n_paths: int = 1200) -> dict:
         {"name": "probabilities_valid", "value": p_beat,
          "expected": "[0,1]", "pass": 0 <= p_beat <= 1}]
 
+    # dynamic-policy reference marker (so the Scenario tab can show the
+    # growth-and-financing optimum as an upper reference line)
+    try:
+        _dp = dp_optimize(data)
+        dynamic_reference = {"uplift_pct": _dp["uplift_pct"],
+                             "basis": "dynamic growth+financing policy (equity)",
+                             "note": "the multi-year policy optimum, for reference"}
+    except Exception:
+        dynamic_reference = None
+
     return {"levers_applied": clean, "active_levers": active,
             "steps": {k: SCENARIO_LEVERS[k]["step"] for k in SCENARIO_LEVERS},
+            "dynamic_reference": dynamic_reference,
             "base_enterprise_value": round(base_ev, 2),
             "scenario_enterprise_value": round(scen_ev, 2),
             "ev_change": round(ev_delta, 2),
@@ -2662,3 +2673,141 @@ def optimal_levers(data: dict, objective: str = "ev") -> dict:
                         f"versus the current plan."),
             "checkpoints": checkpoints,
             "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+# ---- Unified Enterprise Optimization view (Phase 19.3, ADR-028) -------------
+# Reconciles every optimization lens into ONE coherent story so the user never
+# sees two conflicting "optimal" numbers. The key honesty: different engines
+# use different valuation machinery (the DCF-based scenario levers vs the Vol II
+# parametric dynamic program), so their ABSOLUTE bases differ. We therefore
+# present each lens against ITS OWN baseline and make the % uplift the common
+# currency, arranged as a ladder:
+#     current plan  ->  best static levers (actionable today)
+#                   ->  dynamic-policy ceiling (theoretical, full horizon)
+# Both EV and equity value are shown for every lens that has them.
+
+def unified_optimization(data: dict) -> dict:
+    """One consolidated optimization view: static (scenario levers, EV & RAEV),
+    dynamic (stochastic DP policy), and the deterministic plan baseline — each
+    against its own consistent baseline, unified by percentage uplift and
+    arranged as an actionable->theoretical ladder."""
+    from ..valuation import engines as val_e
+
+    mode = "proforma" if data["periods"].get("forecast") else "auto_forecast"
+
+    # -- baseline: the certified current plan (DCF basis) ------------------
+    base_run = val_e.run(data, mode)
+    base_ev = base_run["deterministic"]["enterprise_value"]
+    base_eq = base_run["deterministic"]["equity_value"]
+
+    # -- STATIC optimum: scenario levers, both objectives -----------------
+    static_ev = optimal_levers(data, "ev")
+    static_raev = optimal_levers(data, "raev")
+    # equity at the EV-optimal lever set (EV - net debt bridge holds)
+    ev_opt_run = val_e.run(_apply_levers(data, static_ev["optimal_levers"]), mode)
+    static_ev_equity = ev_opt_run["deterministic"]["equity_value"]
+    raev_opt_run = val_e.run(_apply_levers(data, static_raev["optimal_levers"]), mode)
+    static_raev_equity = raev_opt_run["deterministic"]["equity_value"]
+
+    # -- DYNAMIC ceiling: the stochastic DP policy (own parametric basis) --
+    dp = dp_optimize(data)
+    dp_base_eq = dp["equity_value_status_quo"]
+    dp_opt_eq = dp["equity_value_optimal"]
+    dp_uplift_pct = dp["uplift_pct"]
+
+    # -- the LADDER (percentage uplift is the common currency) ------------
+    def rung(label, kind, ev=None, eq=None, ev_base=None, eq_base=None,
+             uplift_pct=None, note=""):
+        r = {"label": label, "kind": kind, "note": note}
+        if ev is not None:
+            r["enterprise_value"] = round(ev, 2)
+            if ev_base:
+                r["ev_uplift"] = round(ev - ev_base, 2)
+                r["ev_uplift_pct"] = round((ev - ev_base) / ev_base, 4)
+        if eq is not None:
+            r["equity_value"] = round(eq, 2)
+            if eq_base:
+                r["equity_uplift"] = round(eq - eq_base, 2)
+                r["equity_uplift_pct"] = round((eq - eq_base) / eq_base, 4)
+        if uplift_pct is not None:
+            r["uplift_pct"] = round(uplift_pct, 4)
+        return r
+
+    ladder = [
+        rung("Current plan", "baseline", ev=base_ev, eq=base_eq,
+             note="The plan as it stands today — the common starting point."),
+        rung("Best static levers (RAEV)", "static_prudent",
+             ev=static_raev["optimal_enterprise_value"], eq=static_raev_equity,
+             ev_base=base_ev, eq_base=base_eq,
+             note="The prudent lever combination you can act on today, "
+                  "net of execution risk and distress — risk-adjusted."),
+        rung("Best static levers (max EV)", "static_aggressive",
+             ev=static_ev["optimal_enterprise_value"], eq=static_ev_equity,
+             ev_base=base_ev, eq_base=base_eq,
+             note="The value-maximizing static levers (more aggressive)."),
+        rung("Dynamic growth-and-financing policy", "dynamic_policy",
+             eq=dp_opt_eq, eq_base=dp_base_eq, uplift_pct=dp_uplift_pct,
+             note="The optimal MULTI-YEAR policy for growth and financing, "
+                  "re-decided each year under uncertainty (Vol II stochastic "
+                  "dynamic program). Optimizes fewer levers than the static "
+                  "view (growth + financing only) but across time and states. "
+                  "A different valuation lens, shown as % uplift over its own "
+                  "baseline."),
+    ]
+
+    checkpoints = [
+        {"name": "lenses_computed",
+         "value": [static_ev["value_gap_pct"], dp_uplift_pct],
+         "expected": "both optimization lenses return a valid uplift",
+         "pass": (static_ev["value_gap_pct"] is not None
+                  and dp_uplift_pct is not None
+                  and static_ev["value_gap_pct"] >= -1e-6)},
+        {"name": "raev_not_above_ev",
+         "value": [static_raev["value_gap_pct"], static_ev["value_gap_pct"]],
+         "expected": "prudent <= aggressive",
+         "pass": static_raev["value_gap_pct"] <= static_ev["value_gap_pct"] + 1e-6},
+        {"name": "both_values_present",
+         "value": True, "expected": True,
+         "pass": all("enterprise_value" in r or "equity_value" in r
+                     for r in ladder)}]
+
+    return {
+        "baseline": {"enterprise_value": round(base_ev, 2),
+                     "equity_value": round(base_eq, 2),
+                     "note": "the certified current plan (DCF basis)"},
+        "ladder": ladder,
+        "lenses": {
+            "static_ev": {"basis": "DCF / enterprise value",
+                          "objective": "maximize enterprise value",
+                          "levers": static_ev["optimal_levers"],
+                          "ev_uplift": static_ev["value_gap"],
+                          "ev_uplift_pct": static_ev["value_gap_pct"],
+                          "reading": static_ev["reading"]},
+            "static_raev": {"basis": "DCF / risk-adjusted",
+                            "objective": "maximize risk-adjusted EV",
+                            "levers": static_raev["optimal_levers"],
+                            "ev_uplift": static_raev["value_gap"],
+                            "ev_uplift_pct": static_raev["value_gap_pct"],
+                            "reading": static_raev["reading"]},
+            "dynamic": {"basis": "Vol II parametric / equity value",
+                        "objective": "optimal dynamic growth-and-financing policy",
+                        "equity_status_quo": round(dp_base_eq, 2),
+                        "equity_optimal": round(dp_opt_eq, 2),
+                        "uplift": dp["optimization_uplift"],
+                        "uplift_pct": dp_uplift_pct,
+                        "recommended_plan": dp["recommended_plan"],
+                        "reading": dp["narrative"][0] if dp.get("narrative") else ""},
+        },
+        "reconciliation_note": (
+            "These are complementary lenses, not competing answers. The STATIC "
+            "optimum sets five operating and financing levers ONCE (growth, "
+            "margin, leverage, capex, cost) — the moves you can act on today. "
+            "The DYNAMIC policy optimizes fewer levers (growth + financing) but "
+            "across the full horizon, re-deciding each year as uncertainty "
+            "resolves. They use different valuation machinery (DCF vs the Vol "
+            "II parametric model), so each is measured as percentage uplift "
+            "over its OWN baseline. The static view can show a larger uplift "
+            "because it moves more levers; the dynamic view captures the value "
+            "of adapting over time that a one-shot static plan cannot."),
+        "checkpoints": checkpoints,
+        "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
