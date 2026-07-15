@@ -10,18 +10,29 @@ conflicts with anything built earlier, THIS prompt wins.
 ═══════════════════════════════════════════════════════════════════════
 CRITICAL RULE 1 — THE LOGO
 ═══════════════════════════════════════════════════════════════════════
-Two logo files exist in the repo:
-  • services/api/assets/axiom_white.png  (white version, for dark backgrounds)
-  • services/api/assets/axiom_color.png  (color version, for light backgrounds)
+The logos are served by the backend API as PUBLIC URLs (do NOT try to read
+them from the filesystem — the frontend cannot see backend files). Fetch
+them from these URLs (replace {API} with the deployed API base, e.g.
+https://web-production-0e3de.up.railway.app):
+
+  • WHITE logo (for dark/navy backgrounds):  {API}/assets/axiom_white.png
+  • COLOR logo (for white/light backgrounds): {API}/assets/axiom_color.png
+
+  You can confirm both exist by GET {API}/assets (returns the list + usage).
 
 Rules, no exceptions:
-  • On ANY navy/dark background (cover, closing contact block): use
-    axiom_white.png, placed DIRECTLY on the navy. It must NOT sit inside a
+  • On ANY navy/dark background (cover, closing contact block): embed the
+    WHITE logo URL, placed DIRECTLY on the navy. It must NOT sit inside a
     white box, card, or rectangle. If you see a white rectangle behind the
-    logo on the navy cover, that is the bug you are fixing.
-  • On ANY white/light background (inner-page running header): use
-    axiom_color.png.
+    logo on the navy cover, that is the bug you are fixing (you used the
+    color logo, or wrapped it in a white container — use the white logo,
+    no container).
+  • On ANY white/light background (inner-page running header): embed the
+    COLOR logo URL.
   • Never place the color logo on navy. Never box either logo.
+  • Load the image from the URL (fetch/inline as needed for the PDF
+    renderer). Because these are real PNG URLs, the logo WILL embed — the
+    earlier failures were because the frontend had no file to point at.
 
 ═══════════════════════════════════════════════════════════════════════
 CRITICAL RULE 2 — FOUR STATEMENTS, FOUR PAGES, NO SPLITS

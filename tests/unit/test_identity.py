@@ -605,3 +605,20 @@ def test_comprehensive_income_endpoint(client):
     assert body["all_checkpoints_pass"] is True
     sch = client.get("/api/v1/financials/oci/schema")
     assert sch.status_code == 200 and "fx_translation" in sch.json()
+
+
+def test_brand_assets_served_by_url(client):
+    # the logos must be reachable by URL so the frontend can embed them
+    idx = client.get("/api/v1/../assets") if False else client.get("/assets")
+    assert idx.status_code == 200
+    body = idx.json()
+    assert "axiom_white.png" in body["assets"]
+    assert "axiom_color.png" in body["assets"]
+    w = client.get("/assets/axiom_white.png")
+    assert w.status_code == 200 and w.headers["content-type"] == "image/png"
+    assert len(w.content) > 10000                     # real image bytes
+    c = client.get("/assets/axiom_color.png")
+    assert c.status_code == 200 and c.headers["content-type"] == "image/png"
+    # whitelist: arbitrary files are not served
+    assert client.get("/assets/../main.py").status_code in (404, 400)
+    assert client.get("/assets/nope.png").status_code == 404
