@@ -416,3 +416,20 @@ def target_state_route(body: TargetStateIn, db: Session = Depends(get_db),
     except ValueError as e:
         from fastapi import HTTPException as _H
         raise _H(status_code=422, detail=str(e))
+
+
+@router.get("/board-report/{dataset_id}")
+def board_report_route(dataset_id: int, confidential: bool = False,
+                       sector: str | None = None,
+                       db: Session = Depends(get_db),
+                       tenant: str = Depends(_tenant)):
+    """The consolidated board report (ADR-017): one payload assembling every
+    AXIOM engine into the four-question narrative spine, sized for an
+    18-25 page PDF. `confidential=true` returns the absolute-figures-
+    redacted variant for externally shared copies. Read-open so the
+    showcase report is the freely downloadable marketing brochure."""
+    ds = _get_dataset(db, tenant, dataset_id)
+    report = engines.board_report(ds.data, sector=sector)
+    if confidential:
+        return engines._redact_report(report)
+    return report

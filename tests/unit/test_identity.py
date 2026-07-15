@@ -542,3 +542,21 @@ def test_phase15_glossary(client):
     for term in ("Real Options", "Option to Expand", "Option to Abandon",
                  "Option to Defer", "Binomial Lattice", "Flexibility Value"):
         assert term in g and len(g[term]) > 20, term
+
+
+def test_board_report_endpoint_open_and_redactable(client):
+    ds = client.get("/api/v1/financials/datasets").json()
+    plan = [d for d in ds
+            if d["name"] == "Meridian Industries (showcase)"][0]
+    # showcase report is freely downloadable (the marketing brochure)
+    r = client.get(f"/api/v1/intelligence/board-report/{plan['id']}"
+                   "?sector=Industrials")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["sections"]) == 7
+    assert body["brand"]["prepared_by"] == "Regent Financial"
+    assert body["all_checkpoints_pass"] is True
+    red = client.get(f"/api/v1/intelligence/board-report/{plan['id']}"
+                     "?confidential=true")
+    assert red.status_code == 200 and red.json()["redacted"] is True
+    assert red.json()["headline"]["value"] is None

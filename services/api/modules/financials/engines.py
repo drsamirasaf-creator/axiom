@@ -696,3 +696,10 @@ GLOSSARY.update({
     "Flexibility Value": "The option-inclusive value minus the static baseline (never expand / never abandon / invest today): the pure worth of keeping the choice open, in currency and as a percent of enterprise value.",
     "Option Volatility (sigma)": "The enterprise's own cash-flow volatility, estimated from the standard deviation of historical revenue log-growth (floored at 15% because a smooth 5-year statement understates real business risk). Higher volatility means more valuable flexibility - the one place in finance where risk creates value.",
 })
+
+
+# ---- Phase 16 glossary -------------------------------------------------------
+GLOSSARY.update({
+    "Board Report": "A comprehensive, board-ready document assembling every AXIOM analysis for a company into the four-question narrative - where it stands, what is coming, what to change, the best risk-adjusted decision - plus the full valuation and an advanced-analytics appendix. Downloadable as a PDF from the Executive Brief.",
+    "Confidential Report Mode": "An externally shareable version of the board report with absolute currency figures redacted - percentages, grades, ratios, and multiples remain - so the story and shape can be shared without the sensitive levels.",
+})

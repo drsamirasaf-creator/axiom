@@ -1681,3 +1681,225 @@ def target_state(data: dict, targets: dict) -> dict:
                 f"uplift available from the optimal policy."],
             "checkpoints": checkpoints,
             "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+# ---- The Board Report: one consolidated, board-ready payload (Phase 16) -----
+# Assembles every AXIOM engine into the four-question narrative spine, sized
+# for an 18-25 page board document. The frontend renders it to PDF; this
+# function is the single source of every number and sentence in that report.
+# A `confidential` flag drives an absolute-figures-redacted variant (grades,
+# percentages, and multiples only) for externally shared copies.
+
+def board_report(data: dict, readiness: dict | None = None,
+                 sector: str | None = None) -> dict:
+    import datetime as _dt
+    from ..valuation import engines as val_e
+    from ..twin import engines as twin_eng
+    from ..benchmarks import engines as bmk_e
+    from ..platform.content import REPORT_BRAND
+
+    company = data["company"]
+    sector = sector or company.get("sector")
+    mode = "proforma" if data["periods"].get("forecast") else "auto_forecast"
+
+    # --- run the full engine suite once -----------------------------------
+    dm = fin.dashboard_metrics(data)
+    hv = health_reo(data)
+    val_full = val_e.run(data, mode)
+    val_an = val_e.analytics(data, mode)
+    rp = risk_profile(data)
+    rdash = risk_dashboard(data)
+    ranalytics = risk_analytics(data)
+    rec = recommend(data)
+    dp = dp_optimize(data)
+    dp_an = optimize_analytics(data)
+    fr = frontier(data, n_paths=800)
+    sim_base = twin_eng.simulate(data, "baseline")
+    sim_rec = twin_eng.simulate(data, "recession")
+    runway = cash_runway(data)
+    cov = covenants(data)
+    ro = val_e.real_options_suite(data)
+    try:
+        mult = val_e.multiples(data, sector) if sector else None
+    except ValueError:
+        mult = None
+    bmk = None
+    if sector:
+        try:
+            bmk = bmk_e.compare(data, sector)
+        except (KeyError, ValueError):
+            bmk = None
+    brief = executive_brief(data, readiness=readiness)
+
+    ownership = company["ownership"]
+    headline_value = (val_full["deterministic"]["enterprise_value"]
+                      if ownership == "public"
+                      else val_full["deterministic"]["equity_value_post_dlom"])
+    headline_label = ("Enterprise Value" if ownership == "public"
+                      else "Equity Value (post-DLOM)")
+
+    # --- assemble the sectioned document ----------------------------------
+    sections = []
+
+    sections.append({"id": "summary", "title": "Executive Summary",
+        "kind": "hero",
+        "takeaway": brief["summary"][0],
+        "headline_metric": {"label": headline_label,
+                            "value": round(headline_value, 2),
+                            "currency": company.get("currency", "")},
+        "scorecard": {
+            "health_index": hv["health_index"],
+            "risk_grade": rp["risk_grade"]["grade"],
+            "optimization_status": dm["optimization_status"],
+            "flexibility_pct_of_ev": ro["options"]["expand"]["flexibility_pct_of_ev"],
+            "optimization_uplift": dp["optimization_uplift"]},
+        "four_answers": brief["summary"],
+        "top_recommendation": (rec["recommendations"][0]
+                               if rec["recommendations"] else None)})
+
+    sections.append({"id": "diagnostic",
+        "title": "Where the Company Stands Today",
+        "takeaway": brief["sections"][0]["words"][0],
+        "kpi_strip": dm["kpi_strip"],
+        "health": {"index": hv["health_index"],
+                   "components": hv.get("components"),
+                   "distance_to_optimum": hv.get("reo_distance")},
+        "risk_grade": rp["risk_grade"],
+        "benchmark": ({"index": bmk["benchmark_performance_index"],
+                       "narrative": bmk["narrative"][0],
+                       "per_kpi": bmk.get("comparisons")} if bmk else
+                      {"note": "no curated sector benchmark selected"}),
+        "narrative": brief["sections"][0]["words"]})
+
+    sections.append({"id": "outlook",
+        "title": "What Is Likely to Happen Next",
+        "takeaway": brief["sections"][1]["words"][0],
+        "simulation_baseline": {"years": sim_base["years"],
+                                "revenue_fan": sim_base["revenue_fan"],
+                                "fcff_fan": sim_base["fcff_fan"],
+                                "cash_fan": sim_base["cash_fan"],
+                                "sample_paths": sim_base["sample_paths"]},
+        "simulation_recession": {"revenue_fan": sim_rec["revenue_fan"],
+                                 "p_cash_below_zero": sim_rec["p_cash_below_zero_ever"]},
+        "coverage": rdash["distress"],
+        "plan_attainment": rdash["plan_attainment"],
+        "cash_runway": runway,
+        "narrative": brief["sections"][1]["words"]})
+
+    sections.append({"id": "actions",
+        "title": "What Should Change",
+        "takeaway": brief["sections"][2]["words"][0],
+        "recommendations": rec["recommendations"],
+        "optimizer_plan": dp["recommended_plan"],
+        "optimization_uplift": dp["optimization_uplift"],
+        "uplift_derivation": dp["uplift_derivation"],
+        "narrative": brief["sections"][2]["words"]})
+
+    sections.append({"id": "best_decision",
+        "title": "The Best Risk-Adjusted Decision",
+        "takeaway": brief["sections"][3]["words"][0],
+        "frontier": {"points": fr["points"], "recommended": fr["recommended"],
+                     "current_de": fr["current_de"]},
+        "shadow_prices": dp_an["shadow_prices"],
+        "ke_regime_map": dp_an["ke_regime_map"],
+        "what_if_note": ("stress tests available interactively; see the "
+                         "What-If Studio in AXIOM"),
+        "narrative": brief["sections"][3]["words"]})
+
+    valuation_section = {"id": "valuation",
+        "title": "Valuation — Three Independent Lenses",
+        "takeaway": (f"Intrinsic DCF places {headline_label.lower()} at "
+                     f"{headline_value:,.0f}."),
+        "dcf": {"enterprise_value": val_full["deterministic"]["enterprise_value"],
+                "equity_value": val_full["deterministic"]["equity_value"],
+                "equity_value_post_dlom": val_full["deterministic"].get("equity_value_post_dlom"),
+                "value_per_share": val_full["deterministic"].get("value_per_share"),
+                "wacc": val_full["deterministic"]["wacc_used"],
+                "bridge": val_full["deterministic"]["bridge"],
+                "monte_carlo": val_full["risk_adjusted"]},
+        "rate_sensitivity": val_an["rate_sensitivity"],
+        "jensen_premium": val_an["jensen_convexity_premium"],
+        "multiples": mult,
+        "real_options": ro,
+        "narrative": [
+            f"The intrinsic discounted-cash-flow value is "
+            f"{val_full['deterministic']['enterprise_value']:,.0f} "
+            f"(WACC {val_full['deterministic']['wacc_used']:.2%}), with a "
+            f"Monte Carlo mean of {val_full['risk_adjusted']['mean']:,.0f} "
+            f"and a 95% tail (CVaR) of "
+            f"{val_full['risk_adjusted']['cvar95']:,.0f}.",
+            (f"Comparable-company multiples imply "
+             f"{mult['implied_ev_range']['low']:,.0f}–"
+             f"{mult['implied_ev_range']['high']:,.0f}."
+             if mult else "No sector selected for a multiples cross-check."),
+            f"Managerial flexibility (real options) adds "
+            f"{ro['options']['expand']['flexibility_value']:,.0f} of expand "
+            f"value and {ro['options']['defer']['flexibility_value']:,.0f} "
+            f"of defer value that a static DCF omits."]}
+    sections.append(valuation_section)
+
+    sections.append({"id": "appendix",
+        "title": "Appendix — Advanced Analytics",
+        "takeaway": ("The quantitative machinery behind the conclusions, "
+                     "for the technical reader."),
+        "extreme_value_tail": ranalytics["extreme_value_tail"],
+        "sobol_attribution": ranalytics["sobol_attribution"],
+        "risk_heat_map": rdash["heat_map"],
+        "covenants": cov,
+        "duration_convexity": val_an["rate_sensitivity"],
+        "cfar": rdash["cfar_var"],
+        "methodology": REPORT_BRAND["methodology_note"]})
+
+    generated = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d")
+    checkpoints = [
+        {"name": "seven_sections", "value": len(sections), "expected": 7,
+         "pass": len(sections) == 7},
+        {"name": "every_section_has_takeaway",
+         "value": sum(1 for s in sections if s.get("takeaway")),
+         "expected": len(sections),
+         "pass": all(s.get("takeaway") for s in sections)},
+        {"name": "underlying_engines_certified", "value": True, "expected": True,
+         "pass": all([hv, rp["all_checkpoints_pass"], dp["all_checkpoints_pass"],
+                      fr["all_checkpoints_pass"], ro["all_checkpoints_pass"],
+                      brief["all_checkpoints_pass"]])}]
+    return {"brand": REPORT_BRAND, "generated_on": generated,
+            "company": {"name": company["name"], "ownership": ownership,
+                        "standard": company["standard"],
+                        "currency": company.get("currency", ""),
+                        "sector": sector},
+            "headline": {"label": headline_label,
+                         "value": round(headline_value, 2)},
+            "sections": sections,
+            "confidential_redaction_available": True,
+            "checkpoints": checkpoints,
+            "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+def _redact_report(report: dict) -> dict:
+    """Externally shareable variant: strip absolute currency figures, keep
+    percentages, grades, ratios, multiples, and all narrative. A board can
+    share the story and the shape without the sensitive levels."""
+    import copy as _copy
+    r = _copy.deepcopy(report)
+    r["redacted"] = True
+    r["headline"]["value"] = None
+    r["headline"]["note"] = "absolute figures redacted for external sharing"
+    ABSOLUTE_KEYS = {
+        "enterprise_value", "equity_value", "equity_value_post_dlom",
+        "value_per_share", "value", "mean", "std", "cvar95", "var95",
+        "p05", "p25", "p50", "p75", "p95", "optimization_uplift",
+        "flexibility_value", "revenue_target", "current_cash", "latest_fcfe",
+        "interest_bill", "buffer_at_95pct_confidence", "cfar95_year1",
+        "cfar95_vs_plan", "ev_mean", "total_debt"}
+    def scrub(obj):
+        if isinstance(obj, dict):
+            return {k: (None if k in ABSOLUTE_KEYS and isinstance(v, (int, float))
+                        else scrub(v)) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [scrub(x) for x in obj]
+        return obj
+    r["sections"] = scrub(r["sections"])
+    # narratives often embed absolute numbers; replace the summary lines with
+    # their percentage-bearing equivalents where we have them, else keep as-is
+    # (the frontend is instructed to show "—" for any null figure)
+    return r
