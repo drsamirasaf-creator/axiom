@@ -163,3 +163,42 @@ def test_company_seat_limit_gates_new_company(_app, monkeypatch):
     assert "company" in r2.json()["detail"].lower()
     db = SessionLocal()
     db.query(models.User).filter_by(email=email).delete(); db.commit(); db.close()
+
+
+def test_process_event_accepts_stripe_object_like(_app):
+    """REGRESSION (Phase 20.1): construct_event returns a StripeObject, not a
+    plain dict. process_event must coerce it. Simulate an object whose .get
+    raises AttributeError like the real StripeObject did in production."""
+    class FakeStripeObject(dict):
+        # mimic StripeObject: attribute access, and .get present but the
+        # nested objects are also FakeStripeObjects
+        def __getattr__(self, k):
+            try:
+                return self[k]
+            except KeyError as e:
+                raise AttributeError(k) from e
+
+    db = SessionLocal()
+    try:
+        u = _fresh_user(db, email="stripeobj@example.com",
+                        tenant="stripeobj_tenant")
+        ev = FakeStripeObject({
+            "type": "checkout.session.completed",
+            "data": FakeStripeObject({"object": FakeStripeObject({
+                "customer": "cus_SO", "client_reference_id": str(u.id),
+                "subscription": "sub_SO"})})})
+        res = engine.process_event(ev, db, models)
+        db.refresh(u)
+        assert res["handled"] is True
+        assert u.plan == "business" and u.companies_allowed == 1
+    finally:
+        db.query(models.User).filter_by(email="stripeobj@example.com").delete()
+        db.commit(); db.close()
+
+
+def test_to_plain_dict_helper():
+    from services.api.modules.billing.engine import _to_plain_dict
+    assert _to_plain_dict({"a": 1}) == {"a": 1}          # dict passthrough
+    class HasRecursive:
+        def to_dict_recursive(self): return {"x": 2}
+    assert _to_plain_dict(HasRecursive()) == {"x": 2}    # SDK serializer path

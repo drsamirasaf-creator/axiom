@@ -91,8 +91,17 @@ def process_event(event: dict, db, models) -> dict:
       customer.subscription.updated   -> sync status + quantity
       customer.subscription.deleted   -> revoke
     """
+    # defensive: accept either a plain dict or a Stripe object; coerce both
+    # (and any nested objects accessed below) to plain-dict semantics.
+    if not isinstance(event, dict):
+        event = _to_plain_dict(event)
     etype = event.get("type", "")
-    obj = (event.get("data") or {}).get("object") or {}
+    data = event.get("data") or {}
+    if not isinstance(data, dict):
+        data = _to_plain_dict(data)
+    obj = data.get("object") or {}
+    if not isinstance(obj, dict):
+        obj = _to_plain_dict(obj)
 
     def _find_user(customer_id=None, email=None, client_ref=None):
         q = db.query(models.User)
@@ -175,7 +184,29 @@ def verify_and_parse(payload: bytes, sig_header: str | None) -> dict:
         event = stripe.Webhook.construct_event(payload, sig_header, secret)
     except Exception as e:                       # signature or parse failure
         raise ValueError(f"signature verification failed: {e}")
-    return event
+    # construct_event returns a StripeObject, not a plain dict — convert to a
+    # plain dict so downstream processing (which uses .get()) works. Prefer the
+    # SDK's serializer; fall back to a JSON round-trip.
+    return _to_plain_dict(event)
+
+
+def _to_plain_dict(obj):
+    """Convert a Stripe StripeObject (or nested structure) to plain Python
+    dicts/lists, so dict access (.get) works uniformly."""
+    try:
+        # StripeObject supports to_dict_recursive() in modern SDKs
+        if hasattr(obj, "to_dict_recursive"):
+            return obj.to_dict_recursive()
+    except Exception:
+        pass
+    import json
+    try:
+        # StripeObject is JSON-serializable via its str()/json
+        return json.loads(str(obj)) if not isinstance(obj, (dict, list)) \
+            else obj
+    except Exception:
+        # last resort: shallow dict()
+        return dict(obj)
 
 
 def create_checkout_session(user, quantity: int = 1) -> dict:
