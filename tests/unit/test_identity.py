@@ -469,3 +469,15 @@ def test_observatory_and_analytics_endpoints(client):
     h = {"Authorization": f"Bearer {s['token']}"}
     assert client.get(f"/api/v1/twin/compare/{plan['id']}/{child['id']}",
                       headers=h).status_code == 404
+
+
+def test_risk_dashboard_endpoint(client):
+    ds = client.get("/api/v1/financials/datasets").json()
+    plan = [d for d in ds
+            if d["name"] == "Meridian Industries (showcase)"][0]
+    r = client.get(f"/api/v1/intelligence/risk-dashboard/{plan['id']}")
+    assert r.status_code == 200
+    body = r.json()
+    assert {"distributions", "cfar_var", "distress", "plan_attainment",
+            "heat_map"} <= set(body)
+    assert body["all_checkpoints_pass"] is True

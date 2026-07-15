@@ -669,6 +669,17 @@ def dp_optimize(data: dict, horizon: int = 5, terminal_growth: float = 0.025,
     v_opt = interp(V, rev0, d0)
     v_status, _, _ = value_at(rev0, d0, lambda r, dd: (g_fit, 0.0))
     uplift = v_opt - v_status
+    # decompose the gap by counterfactual policies rolled through the SAME
+    # calibrated model: optimal growth with no financing change, and fitted
+    # growth with the optimal financing rule
+    v_growth_only, _, _ = value_at(
+        rev0, d0, lambda r, dd: (optimal_rule(r, dd)[0], 0.0))
+    v_lever_only, _, _ = value_at(
+        rev0, d0, lambda r, dd: (g_fit, optimal_rule(r, dd)[1]))
+    dec_g = v_growth_only - v_status
+    dec_b = v_lever_only - v_status
+    v_opt_rolled, _, _ = value_at(rev0, d0, optimal_rule)
+    dec_int = v_opt_rolled - v_status - dec_g - dec_b
 
     # the recommended plan: first three moves under zero shocks
     plan, r, dd = [], rev0, d0
@@ -713,6 +724,26 @@ def dp_optimize(data: dict, horizon: int = 5, terminal_growth: float = 0.025,
             "equity_value_optimal": round(v_opt, 2),
             "equity_value_status_quo": round(v_status, 2),
             "optimization_uplift": round(uplift, 2),
+            "uplift_derivation": {
+                "how": ("both values come from the SAME calibrated model of "
+                        "the firm: the status quo rolls the fitted trend "
+                        "growth with no financing changes through the cash-"
+                        "flow equations and discounts at the certified cost "
+                        "of equity; the optimal value follows the DP policy "
+                        "instead. The gap is therefore policy, not "
+                        "assumptions."),
+                "status_quo_policy": f"growth {g_fit:.1%} every year, "
+                                     f"net borrowing 0",
+                "decomposition": {
+                    "growth_policy": round(dec_g, 2),
+                    "financing_policy": round(dec_b, 2),
+                    "interaction": round(dec_int, 2),
+                    "total_deterministic_path": round(v_opt_rolled - v_status, 2),
+                    "note": ("counterfactuals rolled under zero shocks; the "
+                             "headline uplift additionally includes the "
+                             "value of adapting to shocks (the option value "
+                             "of the policy), which is why it can exceed "
+                             "the deterministic-path total")}},
             "uplift_pct": round(uplift / v_status, 4) if v_status else None,
             "recommended_plan": plan,
             "policy_slice_at_d0": [
@@ -1118,4 +1149,200 @@ def optimize_analytics(data: dict, horizon: int = 5) -> dict:
                 "transformation_friction_per_unit_phi": round(sp_phi, 2)},
             "ke_regime_map": regimes, "narrative": n,
             "checkpoints": checkpoints,
+            "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+# ---- 11. The Risk Dashboard (Phase 13.6, ADR-014) ---------------------------
+# The Business Risk Analysis page, made worthy of the mathematics behind
+# it: full probability distributions, CFaR and VaR, the probability of
+# distress and of achieving the plan, and a published risk heat map.
+# Everything computable from the data is computed; what is not (currency
+# exposure) is said plainly rather than faked.
+
+def risk_dashboard(data: dict, n_paths: int = 4000,
+                   terminal_growth: float = 0.025) -> dict:
+    import math as _math
+    import random as _random
+    from ..twin import engines as twin_eng
+
+    rp = risk_profile(data, n_paths=n_paths, terminal_growth=terminal_growth)
+    ra = risk_analytics(data, n_paths=n_paths)
+    hv = health_reo(data)
+    va = val.analytics(data, "proforma" if data["periods"].get("forecast")
+                       else "auto_forecast")
+    base_sim = twin_eng.simulate(data, "baseline", n_paths=2000)
+    rec_sim = twin_eng.simulate(data, "recession", n_paths=2000)
+
+    # ---- year-1 outcome distribution (the certified coverage sampler) -----
+    company = data["company"]
+    T = float(company["tax_rate"])
+    mode = "proforma" if data["periods"].get("forecast") else "auto_forecast"
+    working = data if mode == "proforma" else fin.auto_forecast(data, {})
+    derived = fin.derive_series(working)
+    n_h = derived["n_historical"]
+    ys = str(derived["years"][n_h - 1])
+    rev0 = derived["revenue"][n_h - 1]
+    rev1_plan = derived["revenue"][n_h]
+    g1 = rev1_plan / rev0 - 1.0
+    m1 = derived["ebit"][n_h] / rev1_plan
+    y1 = str(derived["years"][n_h])
+    da_pct = working["income_statement"]["depreciation_amortization"][y1] / rev1_plan
+    capex_pct = working["cash_flow"]["capex"][y1] / rev1_plan
+    nwc_pct = derived["nwc"][n_h] / rev1_plan
+    nwc0 = derived["nwc"][n_h - 1]
+    fcff1_plan = derived["fcff"][n_h]
+    rng = _random.Random(COVERAGE_SEED)
+    revs, margins, fcffs = [], [], []
+    for _ in range(n_paths):
+        g = g1 + rng.gauss(0.0, 0.02)
+        m = m1 + rng.gauss(0.0, 0.01)
+        r = rev0 * (1 + g)
+        revs.append(r); margins.append(m)
+        fcffs.append((m * (1 - T) + da_pct - capex_pct) * r
+                     - (nwc_pct * r - nwc0))
+    fcffs_s = sorted(fcffs)
+
+    def _hist(xs, bins=24):
+        lo, hi = min(xs), max(xs)
+        w = (hi - lo) / bins or 1.0
+        counts = [0] * bins
+        for x in xs:
+            counts[min(int((x - lo) / w), bins - 1)] += 1
+        return {"bin_start": round(lo, 2), "bin_width": round(w, 3),
+                "counts": counts}
+
+    mean_f = sum(fcffs) / n_paths
+    p05_f = fcffs_s[int(0.05 * n_paths)]
+    distributions = {
+        "fcff_year1": {"histogram": _hist(fcffs), "mean": round(mean_f, 2),
+                       "p05": round(p05_f, 2),
+                       "p95": round(fcffs_s[int(0.95 * n_paths)], 2),
+                       "seed": COVERAGE_SEED},
+        "enterprise_value": {"percentiles": rp["tail"]["percentiles"],
+                             "mean": rp["tail"]["ev_mean"],
+                             "std": rp["tail"]["ev_std"],
+                             "note": "full histogram on the Valuation page "
+                                     "(risk_adjusted.histogram)"}}
+
+    # ---- CFaR and VaR -------------------------------------------------------
+    cfar = {"cfar95_year1": round(mean_f - p05_f, 2),
+            "cfar95_vs_plan": round(fcff1_plan - p05_f, 2),
+            "definition": ("Cash Flow at Risk: how far below the expected "
+                           "(and the planned) year-1 FCFF the 5th-percentile "
+                           "outcome falls"),
+            "ev_var95": rp["tail"]["var95"], "ev_cvar95": rp["tail"]["cvar95"]}
+
+    # ---- probability of distress -------------------------------------------
+    debt = (data["balance_sheet"]["short_term_debt"][ys]
+            + data["balance_sheet"]["long_term_debt"][ys])
+    mu_ev, sd_ev = rp["tail"]["ev_mean"], rp["tail"]["ev_std"]
+    dd = (mu_ev - debt) / sd_ev if sd_ev else None
+    p_default = 0.5 * (1 - _math.erf(dd / _math.sqrt(2))) if dd else None
+    distress = {"total_debt": round(debt, 2),
+                "distance_to_default_sigmas": round(dd, 2),
+                "p_ev_below_debt": round(p_default, 6),
+                "p_cash_below_zero_baseline": base_sim["p_cash_below_zero_ever"],
+                "p_cash_below_zero_recession": rec_sim["p_cash_below_zero_ever"],
+                "method": ("structural (Merton-style): the simulated EV "
+                           "distribution against total debt, normal "
+                           "approximation; plus the simulated liquidity "
+                           "first-passage probabilities")}
+
+    # ---- probability of achieving the plan ---------------------------------
+    m1_plan = m1
+    plan_attain = {
+        "plan_source": ("client pro forma" if mode == "proforma"
+                        else "AXIOM trend forecast (no client plan on file)"),
+        "targets_year1": {"revenue": round(rev1_plan, 2),
+                          "ebit_margin": round(m1_plan, 4),
+                          "fcff": round(fcff1_plan, 2)},
+        "p_revenue_target": round(sum(1 for r in revs if r >= rev1_plan)
+                                  / n_paths, 4),
+        "p_margin_target": round(sum(1 for m in margins if m >= m1_plan)
+                                 / n_paths, 4),
+        "p_fcff_target": round(sum(1 for f in fcffs if f >= fcff1_plan)
+                               / n_paths, 4),
+        "p_all_three": round(sum(1 for r, m, f in zip(revs, margins, fcffs)
+                                 if r >= rev1_plan and m >= m1_plan
+                                 and f >= fcff1_plan) / n_paths, 4)}
+
+    # ---- the heat map (published scores; honesty where data is absent) ----
+    def _band(x, green, amber, invert=False):
+        if invert:
+            return "green" if x <= green else "amber" if x <= amber else "red"
+        return "green" if x >= green else "amber" if x >= amber else "red"
+    sob = ra["sobol_attribution"]
+    heat = [
+        {"category": "Operational", "score": round(100 * sob["margin_uncertainty"], 1),
+         "rag": _band(sob["margin_uncertainty"], 0.4, 0.7, invert=True),
+         "basis": "share of cash-flow variance caused by margin (operating) "
+                  "uncertainty (Sobol)"},
+        {"category": "Financial", "score": round(100 * (8 - rp["risk_grade"]["score"]) / 8, 1),
+         "rag": {"A": "green", "B": "green", "C": "amber",
+                 "D": "red", "E": "red"}[rp["risk_grade"]["grade"]],
+         "basis": f"risk grade {rp['risk_grade']['grade']} across the four "
+                  f"published indicator bands"},
+        {"category": "Market / rates", "score": round(min(100.0, va["rate_sensitivity"]["effective_duration"] * 4), 1),
+         "rag": _band(va["rate_sensitivity"]["effective_duration"], 12, 18,
+                      invert=True),
+         "basis": f"enterprise duration {va['rate_sensitivity']['effective_duration']:.1f}: "
+                  f"sensitivity of value to the discount rate"},
+        {"category": "Liquidity", "score": round(100 * rec_sim["p_cash_below_zero_ever"], 1),
+         "rag": _band(rec_sim["p_cash_below_zero_ever"], 0.02, 0.10,
+                      invert=True),
+         "basis": "probability cash ever goes below zero in the recession "
+                  "scenario (no new financing)"},
+        {"category": "Tail / extreme events",
+         "score": round(max(0.0, min(100.0, 50 + 250 * ra["extreme_value_tail"]["tail_index_xi"])), 1),
+         "rag": _band(ra["extreme_value_tail"]["tail_index_xi"], 0.0, 0.15,
+                      invert=True),
+         "basis": f"EVT tail index xi = {ra['extreme_value_tail']['tail_index_xi']:.2f} "
+                  f"(positive = heavier than exponential)"},
+        {"category": "Strategic / configuration",
+         "score": round(100 - hv["health_index"], 1),
+         "rag": _band(hv["health_index"], 85, 70),
+         "basis": f"distance from the value-maximizing configuration "
+                  f"(Health {hv['health_index']:.0f}/100)"},
+        {"category": "Currency (transaction & translation)", "score": None,
+         "rag": None,
+         "basis": "not assessable: the canonical dataset does not yet carry "
+                  "currency exposure by flow and by subsidiary; on the "
+                  "roadmap — never scored blind"},
+        {"category": "Concentration (customers/suppliers)", "score": None,
+         "rag": None,
+         "basis": "not assessable from financial statements alone; "
+                  "requires the revenue-by-counterparty extension "
+                  "(roadmap)"},
+    ]
+    checkpoints = [
+        {"name": "probabilities_in_unit_interval",
+         "value": [plan_attain["p_revenue_target"], distress["p_ev_below_debt"]],
+         "expected": "[0,1]",
+         "pass": all(0 <= p <= 1 for p in
+                     [plan_attain["p_revenue_target"],
+                      plan_attain["p_fcff_target"],
+                      distress["p_ev_below_debt"]])},
+        {"name": "joint_no_more_likely_than_marginals",
+         "value": plan_attain["p_all_three"],
+         "expected": "<= each marginal",
+         "pass": plan_attain["p_all_three"] <= min(
+             plan_attain["p_revenue_target"], plan_attain["p_margin_target"],
+             plan_attain["p_fcff_target"]) + 1e-9},
+        {"name": "cfar_nonnegative", "value": cfar["cfar95_year1"],
+         "expected": ">= 0", "pass": cfar["cfar95_year1"] >= 0}]
+    n = [f"Distance to default: {distress['distance_to_default_sigmas']:.1f} "
+         f"standard deviations of enterprise value above the debt "
+         f"(P(EV < debt) = {distress['p_ev_below_debt']:.2%}).",
+         f"Cash Flow at Risk (95%): year-1 FCFF can fall "
+         f"{cfar['cfar95_year1']:,.1f} below expectation "
+         f"({cfar['cfar95_vs_plan']:,.1f} below plan).",
+         f"Probability of achieving next year's plan: revenue "
+         f"{plan_attain['p_revenue_target']:.0%}, margin "
+         f"{plan_attain['p_margin_target']:.0%}, FCFF "
+         f"{plan_attain['p_fcff_target']:.0%} — all three together "
+         f"{plan_attain['p_all_three']:.0%}."]
+    return {"distributions": distributions, "cfar_var": cfar,
+            "distress": distress, "plan_attainment": plan_attain,
+            "heat_map": heat, "risk_grade": rp["risk_grade"],
+            "narrative": n, "checkpoints": checkpoints,
             "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}

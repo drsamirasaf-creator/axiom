@@ -332,7 +332,9 @@ def simulate(data: dict, scenario: str = "baseline", horizon: int = 5,
     fcff_paths = [[] for _ in years]
     cash_paths = [[] for _ in years]
     p_cash_neg_ever = 0
-    for _ in range(n_paths):
+    N_SPAGHETTI = 12                    # real trajectories, for the eye
+    spaghetti = {"revenue": [], "fcff": [], "cash": []}
+    for _path_i in range(n_paths):
         rev, nwc_prev, cash = rev0, nwc0, cash0
         went_negative = False
         for k in range(horizon):
@@ -348,6 +350,13 @@ def simulate(data: dict, scenario: str = "baseline", horizon: int = 5,
             rev_paths[k].append(rev)
             fcff_paths[k].append(fcff)
             cash_paths[k].append(cash)
+        if _path_i < N_SPAGHETTI:
+            spaghetti["revenue"].append(
+                [round(rev_paths[k][-1], 2) for k in range(horizon)])
+            spaghetti["fcff"].append(
+                [round(fcff_paths[k][-1], 2) for k in range(horizon)])
+            spaghetti["cash"].append(
+                [round(cash_paths[k][-1], 2) for k in range(horizon)])
         p_cash_neg_ever += went_negative
     def bands(per_year):
         out = []
@@ -372,7 +381,11 @@ def simulate(data: dict, scenario: str = "baseline", horizon: int = 5,
         "fcff_fan": bands(fcff_paths),
         "cash_fan": bands(cash_paths),
         "p_negative_fcff_by_year": p_fcff_neg,
-        "p_cash_below_zero_ever": round(p_cash_neg_ever / n_paths, 4)}
+        "p_cash_below_zero_ever": round(p_cash_neg_ever / n_paths, 4),
+        "sample_paths": spaghetti,
+        "sample_paths_note": ("twelve genuine simulated trajectories from "
+                              "the same seeded run — the volatility the "
+                              "smooth percentile bands summarize")}
     # ---- ergodicity block (Phase 13.5): time-average vs ensemble growth ----
     # The ensemble (arithmetic) growth is what a portfolio of many such
     # firms earns; the time-average (geometric) is what THIS firm lives.

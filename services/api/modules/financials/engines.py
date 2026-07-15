@@ -661,3 +661,15 @@ GLOSSARY.update({
     "Volatility Drag": "The gap between ensemble-average growth (what a portfolio of identical firms earns) and time-average growth (what your one firm lives): roughly half the variance of growth. Reducing volatility reclaims it.",
     "Ke Regime Map": "The optimal strategy re-solved at the cost of equity minus and plus 100bp — showing how the hurdle rate steers the recommended growth and financing, not just the valuation.",
 })
+
+
+# ---- Phase 13.6 glossary -----------------------------------------------------
+GLOSSARY.update({
+    "Cash Flow at Risk (CFaR)": "How far below the expected (and the planned) cash flow the 5th-percentile outcome falls — Value at Risk's cash-flow sibling, measured on next year's simulated FCFF distribution.",
+    "Distance to Default": "How many standard deviations of simulated enterprise value stand between the firm and its total debt (Merton-style structural view); the corresponding probability that value falls below debt.",
+    "Plan Attainment Probability": "From thousands of simulations of next year: the probability of meeting the plan's revenue, margin, and FCFF targets individually — and all three at once. If the plan sits at the median of reality, each is close to a coin flip; ambition shows up here as a number.",
+    "Risk Heat Map": "Eight risk categories scored on published bases (operational = Sobol margin share; financial = the risk-grade bands; market = enterprise duration; liquidity = recession cash-negative probability; tail = the EVT index; strategic = distance from the optimal configuration). Categories the data cannot support (currency, concentration) are shown as not assessable — never scored blind.",
+    "FCFF Fan vs Cash Fan": "The FCFF fan shows each YEAR'S free cash flow (a flow); the cash fan shows the accumulating BALANCE (a stock): cash this year = cash last year + FCFF - after-tax interest, under the stated no-new-financing assumption. A firm can have healthy FCFF and still see the cash fan sag if debt service eats it.",
+    "Sample Paths": "Twelve genuine trajectories from the same seeded simulation, drawn over the smooth percentile fan — the volatility the bands summarize. Any one future is jagged; only the ensemble is smooth.",
+    "Uplift Decomposition": "The optimizer's value gap split by counterfactual policies rolled through the same calibrated model: the growth policy alone, the financing policy alone, their interaction — plus the option value of adapting to shocks, which only the full dynamic policy captures.",
+})

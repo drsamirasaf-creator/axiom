@@ -211,7 +211,18 @@ def run(data: dict, mode: str, assumptions: dict | None = None,
                      "fcfe": derived["fcfe"][n_h:]},
         "deterministic": deterministic,
         "sensitivity": {"wacc_values": wacc_grid, "terminal_growth_values": g_grid,
-                        "ev_grid": ev_grid},
+                        "ev_grid": ev_grid,
+                        # equity = EV - net debt - preferred - minority: the
+                        # bridge terms are balance-sheet constants, so the
+                        # equity grid is the EV grid shifted by them
+                        # (pre-DLOM for private companies, stated)
+                        "equity_grid": [
+                            [_r(cell - deterministic["net_debt"]
+                                 - deterministic["preferred_equity"]
+                                 - deterministic["minority_interest"], 2)
+                             for cell in row_] for row_ in ev_grid],
+                        "equity_grid_note": "pre-DLOM equity value; the "
+                                            "bridge terms are constants"},
         "risk_adjusted": {
             "n_paths": n_paths, "seed": seed, "sigma_growth": _r(sigma_g),
             "sigma_margin": _r(sigma_m), "risk_aversion_lambda": _r(lam),

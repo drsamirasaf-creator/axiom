@@ -329,3 +329,17 @@ def optimize_analytics_route(dataset_id: int, horizon: int = 5,
     except ValueError as e:
         from fastapi import HTTPException as _H
         raise _H(status_code=422, detail=str(e))
+
+
+@router.get("/risk-dashboard/{dataset_id}")
+def risk_dashboard_route(dataset_id: int, db: Session = Depends(get_db),
+                         tenant: str = Depends(_tenant)):
+    """The complete Business Risk Analysis page (ADR-014): distributions,
+    CFaR/VaR, distress probability, plan-attainment odds, and the
+    published risk heat map — honest N/A where data does not exist."""
+    ds = _get_dataset(db, tenant, dataset_id)
+    try:
+        return engines.risk_dashboard(ds.data)
+    except ValueError as e:
+        from fastapi import HTTPException as _H
+        raise _H(status_code=422, detail=str(e))
