@@ -622,3 +622,17 @@ def test_brand_assets_served_by_url(client):
     # whitelist: arbitrary files are not served
     assert client.get("/assets/../main.py").status_code in (404, 400)
     assert client.get("/assets/nope.png").status_code == 404
+
+
+def test_twin_compare_default_never_empty(client):
+    # the Trajectory Geometry chart calls this; it must auto-resolve a pair
+    # and return populated geometry without the frontend supplying IDs
+    r = client.get("/api/v1/twin/compare/default")
+    assert r.status_code == 200
+    body = r.json()
+    assert "dataset_a" in body and "dataset_b" in body
+    geo = body["trajectory_geometry"]["median_gap_by_year"]
+    assert len(geo) >= 1                        # never empty
+    assert all("year" in g and "gap" in g for g in geo)
+    # the natural showcase pair is the Meridian plan vs its actuals child
+    assert "Meridian" in body["dataset_a"]["name"]

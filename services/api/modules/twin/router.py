@@ -145,6 +145,41 @@ def simulate_enterprise(body: SimulateIn, db: Session = Depends(get_db),
         raise HTTPException(status_code=422, detail=str(e))
 
 
+@router.get("/compare/default")
+def compare_default(db: Session = Depends(get_db),
+                    tenant: str = Depends(_tenant)):
+    """Auto-resolve the natural plan-vs-actuals pair for this tenant and
+    return the full comparison, so the Trajectory Geometry chart is never
+    empty in the sandbox. Prefers a root plan that has a child (actuals or
+    re-forecast) via lineage; falls back to the two most recent datasets.
+    Returns {dataset_a, dataset_b, ...comparison} or a clear empty signal."""
+    rows = db.query(fin_models.FinancialDataset)\
+             .filter_by(tenant=tenant)\
+             .order_by(fin_models.FinancialDataset.id).all()
+    if len(rows) < 2:
+        raise HTTPException(status_code=404,
+                            detail="need at least two datasets to compare")
+    by_id = {r.id: r for r in rows}
+    # find a child (has a parent that also belongs to this tenant): parent is
+    # the plan (A), child is the actuals/re-forecast (B)
+    pair = None
+    for r in rows:
+        pid = getattr(r, "parent_dataset_id", None)
+        if pid and pid in by_id:
+            pair = (by_id[pid], r)
+            break
+    if pair is None:
+        pair = (rows[-2], rows[-1])              # fallback: two most recent
+    a, b = pair
+    try:
+        result = engines.compare(a.data, b.data)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return {"dataset_a": {"id": a.id, "name": a.name},
+            "dataset_b": {"id": b.id, "name": b.name},
+            **result}
+
+
 @router.get("/compare/{dataset_a}/{dataset_b}")
 def compare_twins(dataset_a: int, dataset_b: int,
                   db: Session = Depends(get_db),
