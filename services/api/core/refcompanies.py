@@ -127,3 +127,83 @@ def halcyon():
                 "pension": {"expected_remeasurement": -2.0, "remeasurement_volatility": 8.0},
             }
 }
+
+
+def helios():
+    """Helios Freight Systems — a deliberately STRESSED public company for the
+    sandbox: thin margins, heavy leverage, weak liquidity. Its purpose is to
+    make the Distress & Liquidity panel genuinely light up (non-zero default
+    and cash-negative probabilities), contrasting Meridian's fortress balance
+    sheet. Public, US GAAP, $ millions."""
+    hist = [2021, 2022, 2023, 2024, 2025]
+    fcst = [2026, 2027, 2028, 2029, 2030]
+    rev_h = {2021:820.0, 2022:840.0, 2023:900.0, 2024:910.0, 2025:950.0}
+    rev = dict(rev_h)
+    r = 950.0
+    for y in fcst:
+        r *= 1.03                                # weak 3% growth
+        rev[y] = round(r, 6)
+    IS = {"revenue": {}, "cogs": {}, "opex": {},
+          "depreciation_amortization": {}, "interest_expense": {}}
+    BS = {k: {} for k in ["cash","other_current_assets","noncurrent_assets",
+         "current_liabilities_ex_debt","short_term_debt","long_term_debt",
+         "preferred_equity","minority_interest","total_equity"]}
+    CF = {"capex": {}, "net_borrowing": {}, "dividends": {}}
+    # heavy debt, high interest, low cash
+    st = 70.0
+    lt = {2021:300.0,2022:315.0,2023:335.0,2024:345.0,2025:360.0}
+    interest = {2021:28.0,2022:30.0,2023:32.0,2024:33.0,2025:35.0}
+    cash = {2021:70.0,2022:66.0,2023:62.0,2024:58.0,2025:55.0}   # thin, falling
+    nca = {2021:900.0,2022:915.0,2023:940.0,2024:955.0,2025:975.0}
+    capex_h = {2021:66.0,2022:68.0,2023:72.0,2024:73.0,2025:76.0}
+    nb_h = {2021:20.0,2022:20.0,2023:40.0,2024:20.0,2025:20.0}
+    div = 6.0
+    def fill(y, v, vp=None):
+        IS["revenue"][str(y)] = v
+        IS["cogs"][str(y)] = round(0.685*v, 6)        # thin gross margin
+        IS["opex"][str(y)] = round(0.19*v, 6)         # EBIT margin ~7.5%
+        IS["depreciation_amortization"][str(y)] = round(0.05*v, 6)
+        BS["other_current_assets"][str(y)] = round(0.20*v, 6)
+        BS["current_liabilities_ex_debt"][str(y)] = round(0.16*v, 6)
+        BS["short_term_debt"][str(y)] = st
+        BS["preferred_equity"][str(y)] = 0.0
+        BS["minority_interest"][str(y)] = 0.0
+    for y in hist:
+        v = rev[y]; fill(y, v)
+        IS["interest_expense"][str(y)] = interest[y]
+        BS["cash"][str(y)] = cash[y]
+        BS["noncurrent_assets"][str(y)] = nca[y]
+        BS["long_term_debt"][str(y)] = lt[y]
+        assets = cash[y] + 0.20*v + nca[y]
+        BS["total_equity"][str(y)] = round(
+            assets - 0.16*v - st - lt[y], 6)
+        CF["capex"][str(y)] = capex_h[y]
+        CF["net_borrowing"][str(y)] = nb_h[y]
+        CF["dividends"][str(y)] = div
+    prev = 2025
+    cash_prev = cash[2025]; eq_prev = BS["total_equity"]["2025"]
+    lt_last = lt[2025]
+    for y in fcst:
+        v = rev[y]; vp = rev[prev]; fill(y, v)
+        IS["interest_expense"][str(y)] = 35.0
+        BS["noncurrent_assets"][str(y)] = round(nca[2025]*(v/rev[2025]), 6)
+        BS["long_term_debt"][str(y)] = lt_last
+        CF["capex"][str(y)] = round(0.08*v, 6)
+        CF["net_borrowing"][str(y)] = 0.0
+        CF["dividends"][str(y)] = div
+        ebit = v - 0.72*v - 0.205*v - 0.055*v
+        ni = (ebit - 35.0) * (1 - 0.25)
+        eq = eq_prev + ni - div
+        BS["total_equity"][str(y)] = round(eq, 6)
+        assets_ex_cash = 0.20*v + BS["noncurrent_assets"][str(y)]
+        cash_y = (eq + 0.16*v + st + lt_last) - assets_ex_cash
+        BS["cash"][str(y)] = round(max(cash_y, 1.0), 6)
+        eq_prev = eq; prev = y
+    company = {"name": "Helios Freight Systems Inc.", "ownership": "public",
+               "sector": "Industrials", "standard": "us_gaap",
+               "currency": "USD", "tax_rate": 0.25, "risk_free_rate": 0.04,
+               "market_risk_premium": 0.055, "cost_of_debt": 0.085,
+               "shares_outstanding": 60.0, "share_price": 6.0, "beta": 1.6}
+    return {"company": company,
+            "periods": {"historical": hist, "forecast": fcst},
+            "income_statement": IS, "balance_sheet": BS, "cash_flow": CF}

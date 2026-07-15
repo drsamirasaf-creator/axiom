@@ -77,7 +77,7 @@ def seed_showcase():
     from ..modules.valuation import engines as val
     from ..modules.twin import engines as twin
     from ..modules.financials import engines as fin
-    from .refcompanies import meridian, halcyon
+    from .refcompanies import meridian, halcyon, helios
 
     db = SessionLocal()
     try:
@@ -124,6 +124,14 @@ def seed_showcase():
         fc.pop("_forecast_provenance", None)
         store("Halcyon Components (showcase) — AXIOM trend forecast",
               fc, "forecast", h_row.id)
+
+        # -- Helios: a deliberately stressed public company, so the Distress
+        #    & Liquidity panel genuinely lights up (contrast to Meridian) --
+        hel = helios()
+        hel_row = store("Helios Freight Systems (showcase — stressed)",
+                        hel, "direct")
+        store_run(hel_row, "proforma", val.run(hel, "proforma"),
+                  {"assumptions": {}, "monte_carlo": {}})
 
         # -- a showcase document (analysis honestly absent: needs a key
         #    and a signed-in user — that button IS the conversion point) --

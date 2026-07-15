@@ -636,3 +636,22 @@ def test_twin_compare_default_never_empty(client):
     assert all("year" in g and "gap" in g for g in geo)
     # the natural showcase pair is the Meridian plan vs its actuals child
     assert "Meridian" in body["dataset_a"]["name"]
+
+
+def test_helios_stressed_showcase_seeded(client):
+    ds = client.get("/api/v1/financials/datasets").json()
+    hel = [d for d in ds if "Helios" in d["name"]]
+    assert hel, "stressed Helios showcase must be seeded"
+    # its distress panel lights up
+    r = client.get(f"/api/v1/intelligence/risk-dashboard/{hel[0]['id']}")
+    assert r.status_code == 200
+    assert r.json()["distress"]["p_ev_below_debt"] > 0.1
+
+
+def test_bond_price_yield_curve_endpoint(client):
+    ds = client.get("/api/v1/financials/datasets").json()
+    m = [d for d in ds if d["name"] == "Meridian Industries (showcase)"][0]
+    r = client.get(f"/api/v1/valuation/analytics/{m['id']}")
+    assert r.status_code == 200
+    curve = r.json()["rate_sensitivity"]["price_yield_curve"]
+    assert len(curve) >= 8 and any(p["is_current"] for p in curve)

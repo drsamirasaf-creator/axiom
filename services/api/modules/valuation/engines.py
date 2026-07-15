@@ -357,6 +357,33 @@ def analytics(data: dict, mode: str, sigma_wacc: float = 0.01) -> dict:
     e_ev = sum(wt * ev_at(w=max(w0 + eps, gT0 + 0.005)) for eps, wt in nodes)
     jensen = e_ev - ev0
 
+    # price-yield curve: enterprise value across a band of discount rates,
+    # the way a bond's price is plotted against yield. Gives the "enterprise
+    # as a bond" chart its markers, with the current WACC point flagged.
+    # Per-point failures (e.g. degenerate valuations at extreme rates) are
+    # skipped so the curve is always drawable.
+    price_yield = []
+    lo = max(gT0 + 0.01, w0 - 0.03)
+    hi = w0 + 0.04
+    steps = 15
+    for i in range(steps):
+        w = lo + (hi - lo) * i / (steps - 1)
+        try:
+            ev_w = ev_at(w=w)
+        except (ValueError, TypeError):
+            continue
+        if ev_w is None:
+            continue
+        price_yield.append({"wacc": round(w, 4),
+                            "enterprise_value": round(ev_w, 2),
+                            "is_current": abs(w - w0) < (hi - lo) / (2 * steps)})
+    # ensure exactly one marked current point sits on the curve
+    if not any(p["is_current"] for p in price_yield):
+        price_yield.append({"wacc": round(w0, 4),
+                            "enterprise_value": round(ev0, 2),
+                            "is_current": True})
+        price_yield.sort(key=lambda p: p["wacc"])
+
     checkpoints = [
         {"name": "duration_positive", "value": round(duration, 2),
          "expected": "> 0 (value falls as the rate rises)",
@@ -380,7 +407,8 @@ def analytics(data: dict, mode: str, sigma_wacc: float = 0.01) -> dict:
     return {"enterprise_value": ev0, "wacc": w0, "terminal_growth": gT0,
             "rate_sensitivity": {"effective_duration": round(duration, 3),
                                  "convexity": round(convexity, 2),
-                                 "dv01_like": round(ev0 * duration / 10000, 3)},
+                                 "dv01_like": round(ev0 * duration / 10000, 3),
+                                 "price_yield_curve": price_yield},
             "terminal_growth_sensitivity": {"delta": round(g_delta, 2),
                                             "gamma": round(g_gamma, 2)},
             "jensen_convexity_premium": {"sigma_wacc": sigma_wacc,
