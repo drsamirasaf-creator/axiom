@@ -481,3 +481,37 @@ def test_risk_dashboard_endpoint(client):
     assert {"distributions", "cfar_var", "distress", "plan_attainment",
             "heat_map"} <= set(body)
     assert body["all_checkpoints_pass"] is True
+
+
+# --------------------------- Phase 14: cockpit endpoints ---------------------
+
+def test_phase14_endpoints(client):
+    ds = client.get("/api/v1/financials/datasets").json()
+    plan = [d for d in ds
+            if d["name"] == "Meridian Industries (showcase)"][0]
+    lib = client.get("/api/v1/intelligence/what-if/shocks").json()
+    assert "revenue_decline" in lib and "raise_equity" in lib
+    r = client.post("/api/v1/intelligence/what-if",
+                    json={"dataset_id": plan["id"],
+                          "shock": "revenue_decline", "magnitude": 0.20})
+    assert r.status_code == 200 and r.json()["ev_change_pct"] < 0
+    r = client.post("/api/v1/intelligence/covenants",
+                    json={"dataset_id": plan["id"]})
+    assert r.status_code == 200 and len(r.json()["tests"]) == 4
+    r = client.get(f"/api/v1/intelligence/cash-runway/{plan['id']}")
+    assert r.status_code == 200 and "p_cash_below_zero_ever" in r.json()
+    r = client.post("/api/v1/intelligence/target-state",
+                    json={"dataset_id": plan["id"],
+                          "targets": {"revenue": 2000, "ebit_margin": 0.19}})
+    assert r.status_code == 200 and len(r.json()["gaps"]) == 2
+    r = client.post("/api/v1/valuation/multiples",
+                    json={"dataset_id": plan["id"], "sector": "Industrials"})
+    assert r.status_code == 200
+    assert r.json()["subject"] == "Meridian Industries Inc."
+
+
+def test_phase14_glossary(client):
+    g = client.get("/api/v1/metrics/glossary").json()
+    for term in ("What-If Shock", "Covenant Headroom", "Cash Runway",
+                 "Target-State Planning", "Multiples Valuation"):
+        assert term in g and len(g[term]) > 20, term

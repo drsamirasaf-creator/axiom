@@ -343,3 +343,76 @@ def risk_dashboard_route(dataset_id: int, db: Session = Depends(get_db),
     except ValueError as e:
         from fastapi import HTTPException as _H
         raise _H(status_code=422, detail=str(e))
+
+
+@router.get("/what-if/shocks")
+def what_if_library():
+    """The published shock vocabulary (ADR-015)."""
+    return engines.SHOCK_LIBRARY
+
+
+class WhatIfIn(BaseModel):
+    dataset_id: int
+    shock: str
+    magnitude: float
+
+
+@router.post("/what-if")
+def what_if_route(body: WhatIfIn, db: Session = Depends(get_db),
+                  tenant: str = Depends(_tenant)):
+    """Recompute valuation, coverage, liquidity, and survival under a named
+    shock (ADR-015). Pure compute — open to sandbox visitors."""
+    ds = _get_dataset(db, tenant, body.dataset_id)
+    try:
+        return engines.what_if(ds.data, body.shock, body.magnitude)
+    except ValueError as e:
+        from fastapi import HTTPException as _H
+        raise _H(status_code=422, detail=str(e))
+
+
+class CovenantsIn(BaseModel):
+    dataset_id: int
+    limits: dict | None = None
+
+
+@router.post("/covenants")
+def covenants_route(body: CovenantsIn, db: Session = Depends(get_db),
+                    tenant: str = Depends(_tenant)):
+    """User-defined covenant tests with headroom and alerts (ADR-015)."""
+    ds = _get_dataset(db, tenant, body.dataset_id)
+    try:
+        return engines.covenants(ds.data, body.limits)
+    except ValueError as e:
+        from fastapi import HTTPException as _H
+        raise _H(status_code=422, detail=str(e))
+
+
+@router.get("/cash-runway/{dataset_id}")
+def cash_runway_route(dataset_id: int, scenario: str = "recession",
+                      db: Session = Depends(get_db),
+                      tenant: str = Depends(_tenant)):
+    """Cash runway and liquidity survival under stress (ADR-015)."""
+    ds = _get_dataset(db, tenant, dataset_id)
+    try:
+        return engines.cash_runway(ds.data, scenario)
+    except ValueError as e:
+        from fastapi import HTTPException as _H
+        raise _H(status_code=422, detail=str(e))
+
+
+class TargetStateIn(BaseModel):
+    dataset_id: int
+    targets: dict
+
+
+@router.post("/target-state")
+def target_state_route(body: TargetStateIn, db: Session = Depends(get_db),
+                       tenant: str = Depends(_tenant)):
+    """Current-vs-desired-state gap with mapped value-creating initiatives
+    (ADR-015)."""
+    ds = _get_dataset(db, tenant, body.dataset_id)
+    try:
+        return engines.target_state(ds.data, body.targets)
+    except ValueError as e:
+        from fastapi import HTTPException as _H
+        raise _H(status_code=422, detail=str(e))

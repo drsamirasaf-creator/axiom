@@ -389,3 +389,72 @@ def analytics(data: dict, mode: str, sigma_wacc: float = 0.01) -> dict:
                                          "premium": round(jensen, 2)},
             "narrative": n, "checkpoints": checkpoints,
             "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+# ---- Multiples valuation (Phase 14, ADR-015) --------------------------------
+
+def multiples(data: dict, sector: str | None = None,
+              ev_ebitda: float | None = None,
+              ev_ebit: float | None = None) -> dict:
+    """Comparable-company valuation as a triangulation against the DCF.
+    Applies sector EV/EBITDA and EV/EBIT multiples (curated set, or
+    caller-supplied) to the subject's latest EBITDA and EBIT, bridges to
+    equity, and reports the implied value range beside the intrinsic DCF."""
+    from ..benchmarks import data as bmk
+    company = data["company"]
+    derived = fin.derive_series(data)
+    n_h = derived["n_historical"]
+    ys = str(derived["years"][n_h - 1])
+    ebit = derived["ebit"][n_h - 1]
+    da = data["income_statement"]["depreciation_amortization"][ys]
+    ebitda = ebit + da
+    if ev_ebitda is None or ev_ebit is None:
+        if not sector:
+            sector = company.get("sector")
+        row = bmk.BENCHMARKS.get(sector) if sector else None
+        if not row:
+            raise ValueError("supply a curated sector or explicit multiples "
+                             "(ev_ebitda, ev_ebit)")
+        ev_ebitda = ev_ebitda or row["ev_ebitda"]
+        ev_ebit = ev_ebit or row["ev_ebit"]
+
+    bs = data["balance_sheet"]
+    net_debt = (bs["short_term_debt"][ys] + bs["long_term_debt"][ys]
+                - bs["cash"][ys])
+    bridge = net_debt + bs["preferred_equity"][ys] + bs["minority_interest"][ys]
+    methods = []
+    for name, mult, base in (("EV/EBITDA", ev_ebitda, ebitda),
+                             ("EV/EBIT", ev_ebit, ebit)):
+        ev = mult * base
+        methods.append({"method": name, "multiple": mult,
+                        "metric_value": round(base, 2),
+                        "enterprise_value": round(ev, 2),
+                        "equity_value": round(ev - bridge, 2)})
+    evs = [m["enterprise_value"] for m in methods]
+    dcf = run(data, "proforma" if data["periods"].get("forecast")
+              else "auto_forecast")
+    dcf_ev = dcf["deterministic"]["enterprise_value"]
+    lo, hi = min(evs), max(evs)
+    checkpoints = [
+        {"name": "multiples_positive", "value": evs,
+         "expected": "> 0", "pass": all(e > 0 for e in evs)},
+        {"name": "range_brackets_midpoint", "value": round((lo + hi) / 2, 2),
+         "expected": "between the two methods",
+         "pass": lo <= (lo + hi) / 2 <= hi}]
+    n = [f"Comparable multiples imply an enterprise value between "
+         f"{lo:,.0f} (EV/EBIT) and {hi:,.0f} (EV/EBITDA); the intrinsic "
+         f"DCF sits at {dcf_ev:,.0f}.",
+         (f"The DCF is {'above' if dcf_ev > hi else 'below' if dcf_ev < lo else 'within'} "
+          f"the comparables range" +
+          (" — the market pays less than the cash flows justify, on these "
+           "multiples" if dcf_ev > hi else
+           " — the cash flows do not yet justify the sector rating" if dcf_ev < lo
+           else ", a reassuring triangulation") + ".")]
+    return {"subject": company["name"], "ebitda": round(ebitda, 2),
+            "ebit": round(ebit, 2), "bridge_to_equity": round(bridge, 2),
+            "sector": sector, "methods": methods,
+            "implied_ev_range": {"low": round(lo, 2), "high": round(hi, 2),
+                                 "midpoint": round((lo + hi) / 2, 2)},
+            "intrinsic_dcf_ev": round(dcf_ev, 2),
+            "narrative": n, "checkpoints": checkpoints,
+            "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}

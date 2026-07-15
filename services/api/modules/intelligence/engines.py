@@ -1346,3 +1346,338 @@ def risk_dashboard(data: dict, n_paths: int = 4000,
             "heat_map": heat, "risk_grade": rp["risk_grade"],
             "narrative": n, "checkpoints": checkpoints,
             "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+# ---- 12. What-if shocks + covenants + cash runway (Phase 14, ADR-015) -------
+# The published shock vocabulary: named, parameterized business questions
+# recomputed on the certified engines. Each shock is a transform on the
+# dataset; the response reports the effect on valuation, liquidity,
+# coverage, plan attainment, and survival — the exact battery a CFO asks.
+
+def _apply_shock(data: dict, shock: str, magnitude: float) -> dict:
+    """Return a shocked copy of the dataset. Shocks act on the forecast
+    (or, for level shocks, on the latest actuals that seed the trend)."""
+    d = {"company": dict(data["company"]),
+         "periods": {"historical": list(data["periods"]["historical"]),
+                     "forecast": list(data["periods"].get("forecast", []))},
+         "income_statement": {k: dict(v) for k, v in data["income_statement"].items()},
+         "balance_sheet": {k: dict(v) for k, v in data["balance_sheet"].items()},
+         "cash_flow": {k: dict(v) for k, v in data["cash_flow"].items()}}
+    fyears = d["periods"]["forecast"] or d["periods"]["historical"][-1:]
+    hist = d["periods"]["historical"]
+    IS, BS, CF = d["income_statement"], d["balance_sheet"], d["cash_flow"]
+    # Contribution-margin shock model: COGS is largely variable, opex
+    # partly so. A pure fixed-cost assumption (holding both constant) would
+    # collapse EBIT unrealistically on a revenue cut; these shares keep the
+    # operating-leverage effect real but sane.
+    COGS_VARIABLE, OPEX_VARIABLE = 0.85, 0.50
+    if shock == "revenue_decline":            # magnitude = fractional drop
+        for y in fyears:
+            IS["revenue"][str(y)] *= (1 - magnitude)
+            IS["cogs"][str(y)] *= (1 - magnitude * COGS_VARIABLE)
+            IS["opex"][str(y)] *= (1 - magnitude * OPEX_VARIABLE)
+    elif shock == "margin_change":            # magnitude = pp change to COGS
+        for y in fyears:
+            IS["cogs"][str(y)] -= magnitude * IS["revenue"][str(y)]
+    elif shock == "rate_rise":                # magnitude = pp on cost of debt
+        d["company"]["cost_of_debt"] = float(d["company"]["cost_of_debt"]) + magnitude
+        for y in fyears + [hist[-1]]:
+            debt = BS["short_term_debt"][str(y)] + BS["long_term_debt"][str(y)]
+            IS["interest_expense"][str(y)] += magnitude * debt
+    elif shock == "customer_loss":            # magnitude = fractional revenue
+        # a lost customer takes its volume-variable costs but leaves more
+        # fixed overhead behind than a general decline (less opex relief)
+        for y in fyears:
+            IS["revenue"][str(y)] *= (1 - magnitude)
+            IS["cogs"][str(y)] *= (1 - magnitude * COGS_VARIABLE)
+            IS["opex"][str(y)] *= (1 - magnitude * 0.25)
+    elif shock == "raise_debt":               # magnitude = amount added to LT debt
+        y0 = str(hist[-1])
+        BS["long_term_debt"][y0] += magnitude
+        BS["cash"][y0] += magnitude
+        for y in fyears:
+            BS["long_term_debt"][str(y)] = BS["long_term_debt"].get(str(y), 0) + magnitude
+    elif shock == "raise_equity":             # magnitude = amount of new equity
+        y0 = str(hist[-1])
+        BS["total_equity"][y0] += magnitude
+        BS["cash"][y0] += magnitude
+        if d["company"]["ownership"] == "public":
+            new_sh = magnitude / float(d["company"]["share_price"])
+            d["company"]["shares_outstanding"] = float(d["company"]["shares_outstanding"]) + new_sh
+    else:
+        raise ValueError(f"unknown shock '{shock}'")
+    return d
+
+
+SHOCK_LIBRARY = {
+    "revenue_decline": {"label": "Revenue falls", "unit": "fraction",
+                        "example": 0.20},
+    "margin_change": {"label": "Margin improves/erodes", "unit": "pp of revenue",
+                      "example": 0.03},
+    "rate_rise": {"label": "Interest rates rise", "unit": "pp on cost of debt",
+                  "example": 0.02},
+    "customer_loss": {"label": "Major customer lost", "unit": "fraction of revenue",
+                      "example": 0.15},
+    "raise_debt": {"label": "Raise debt", "unit": "currency amount",
+                   "example": 100.0},
+    "raise_equity": {"label": "Raise equity", "unit": "currency amount",
+                     "example": 100.0},
+}
+
+
+def what_if(data: dict, shock: str, magnitude: float) -> dict:
+    from ..valuation import engines as val_e
+    from ..twin import engines as twin_eng
+    if shock not in SHOCK_LIBRARY:
+        raise ValueError(f"shock must be one of {sorted(SHOCK_LIBRARY)}")
+    mode = "proforma" if data["periods"].get("forecast") else "auto_forecast"
+
+    def snapshot(dd):
+        v = val_e.run(dd, mode, {}, {"n_paths": 100})
+        rp = risk_profile(dd, n_paths=1500)
+        rec = twin_eng.simulate(dd, "recession", n_paths=1000)
+        return {"enterprise_value": v["deterministic"]["enterprise_value"],
+                "equity_value": v["deterministic"]["equity_value"],
+                "coverage_probability": rp["coverage"]["coverage_probability"],
+                "fcff_floor95": rp["coverage"]["fcff_year1_p05"],
+                "risk_grade": rp["risk_grade"]["grade"],
+                "p_cash_below_zero_recession": rec["p_cash_below_zero_ever"]}
+
+    base = snapshot(data)
+    shocked = snapshot(_apply_shock(data, shock, magnitude))
+    delta = {k: round(shocked[k] - base[k], 4)
+             if isinstance(base[k], (int, float)) else shocked[k]
+             for k in base if k != "risk_grade"}
+    ev_drop_pct = ((shocked["enterprise_value"] - base["enterprise_value"])
+                   / base["enterprise_value"]) if base["enterprise_value"] else None
+    survives = (shocked["coverage_probability"] >= 0.90
+                and shocked["p_cash_below_zero_recession"] <= 0.10)
+    checkpoints = [
+        {"name": "coverage_in_unit", "value": shocked["coverage_probability"],
+         "expected": "[0,1]", "pass": 0 <= shocked["coverage_probability"] <= 1}]
+    lbl = SHOCK_LIBRARY[shock]["label"]
+    n = [f"{lbl} ({magnitude:g} {SHOCK_LIBRARY[shock]['unit']}): enterprise "
+         f"value moves {ev_drop_pct:+.1%} to "
+         f"{shocked['enterprise_value']:,.0f}; debt-service coverage "
+         f"{base['coverage_probability']:.0%} to "
+         f"{shocked['coverage_probability']:.0%}; risk grade "
+         f"{base['risk_grade']} to {shocked['risk_grade']}.",
+         ("The company withstands this shock on both coverage and liquidity "
+          "tests." if survives else "This shock breaches a coverage or "
+          "liquidity threshold — a survival concern requiring mitigation.")]
+    return {"shock": shock, "label": lbl, "magnitude": magnitude,
+            "unit": SHOCK_LIBRARY[shock]["unit"], "base": base,
+            "shocked": shocked, "change": delta,
+            "ev_change_pct": round(ev_drop_pct, 4) if ev_drop_pct is not None else None,
+            "survives": survives, "narrative": n, "checkpoints": checkpoints,
+            "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+# ---- 13. Covenants, cash runway, target-state (Phase 14, ADR-015) -----------
+
+COVENANT_DEFS = {
+    "net_debt_to_ebitda_max": {"label": "Net Debt / EBITDA \u2264", "kind": "max",
+                               "typical": 3.5},
+    "interest_coverage_min": {"label": "EBIT / Interest \u2265", "kind": "min",
+                              "typical": 3.0},
+    "debt_to_equity_max": {"label": "Debt / Equity \u2264", "kind": "max",
+                           "typical": 2.0},
+    "current_ratio_min": {"label": "Current Ratio \u2265", "kind": "min",
+                          "typical": 1.2},
+}
+
+
+def covenants(data: dict, limits: dict | None = None) -> dict:
+    """User-defined covenant tests with headroom and early-warning alerts,
+    evaluated across the forecast horizon (or latest actuals). Amber when
+    within 15% of a limit; red on breach."""
+    limits = limits or {k: v["typical"] for k, v in COVENANT_DEFS.items()}
+    derived = fin.derive_series(data)
+    years = derived["years"]
+    IS, BS = data["income_statement"], data["balance_sheet"]
+    rows = []
+    for i, y in enumerate(years):
+        ys = str(y)
+        ebit = derived["ebit"][i]
+        ebitda = ebit + IS["depreciation_amortization"][ys]
+        net_debt = (BS["short_term_debt"][ys] + BS["long_term_debt"][ys]
+                    - BS["cash"][ys])
+        debt = BS["short_term_debt"][ys] + BS["long_term_debt"][ys]
+        interest = IS["interest_expense"][ys]
+        vals = {"net_debt_to_ebitda_max": net_debt / ebitda if ebitda else None,
+                "interest_coverage_min": ebit / interest if interest else None,
+                "debt_to_equity_max": debt / BS["total_equity"][ys]
+                if BS["total_equity"][ys] else None,
+                "current_ratio_min": derived["ratios"][i]["current_ratio"]}
+        rows.append({"year": y, "is_forecast": i >= derived["n_historical"],
+                     "metrics": {k: round(v, 4) if v is not None else None
+                                 for k, v in vals.items()}})
+    tests = []
+    for k, limit in limits.items():
+        if k not in COVENANT_DEFS:
+            continue
+        kind = COVENANT_DEFS[k]["kind"]
+        worst, worst_year, status = None, None, "green"
+        for r in rows:
+            v = r["metrics"].get(k)
+            if v is None:
+                continue
+            headroom = (limit - v) if kind == "max" else (v - limit)
+            near = abs(headroom) <= 0.15 * abs(limit)
+            breach = headroom < 0
+            s = "red" if breach else "amber" if near else "green"
+            if worst is None or {"green": 0, "amber": 1, "red": 2}[s] > \
+                    {"green": 0, "amber": 1, "red": 2}[status]:
+                status, worst, worst_year = s, v, r["year"]
+        tests.append({"covenant": k, "label": COVENANT_DEFS[k]["label"],
+                      "limit": limit, "kind": kind,
+                      "tightest_value": round(worst, 4) if worst is not None else None,
+                      "tightest_year": worst_year, "status": status,
+                      "headroom": round((limit - worst) if kind == "max"
+                                        else (worst - limit), 4)
+                      if worst is not None else None})
+    overall = max((t["status"] for t in tests),
+                  key=lambda s: {"green": 0, "amber": 1, "red": 2}[s],
+                  default="green")
+    breaches = [t for t in tests if t["status"] == "red"]
+    alerts = [f"{t['label']} {t['limit']}: breached in {t['tightest_year']} "
+              f"(value {t['tightest_value']})" for t in breaches]
+    alerts += [f"{t['label']} {t['limit']}: within 15% in {t['tightest_year']} "
+               f"(value {t['tightest_value']})"
+               for t in tests if t["status"] == "amber"]
+    checkpoints = [{"name": "all_covenants_evaluated", "value": len(tests),
+                    "expected": len(limits), "pass": len(tests) == len(limits)}]
+    return {"limits": limits, "by_year": rows, "tests": tests,
+            "overall_status": overall, "alerts": alerts,
+            "narrative": [
+                f"Covenant compliance across the plan: {overall}." +
+                (f" {len(breaches)} breach(es) and "
+                 f"{sum(1 for t in tests if t['status']=='amber')} near-miss(es)."
+                 if overall != "green" else " All tests hold with headroom.")],
+            "checkpoints": checkpoints,
+            "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+def cash_runway(data: dict, scenario: str = "recession",
+                n_paths: int = 2000) -> dict:
+    """How long the cash lasts under stress. Reports the deterministic
+    months-to-zero at the current burn (if burning) and, from the seeded
+    simulation, the distribution of the first year cash goes negative."""
+    from ..twin import engines as twin_eng
+    derived = fin.derive_series(data)
+    n_h = derived["n_historical"]
+    ys = str(derived["years"][n_h - 1])
+    cash0 = data["balance_sheet"]["cash"][ys]
+    fcff_latest = derived["fcff"][n_h - 1]
+    interest = data["income_statement"]["interest_expense"][ys]
+    T = float(data["company"]["tax_rate"])
+    fcfe_latest = fcff_latest - interest * (1 - T)
+    det_months = (round(cash0 / (-fcfe_latest) * 12, 1)
+                  if fcfe_latest < 0 else None)
+    sim = twin_eng.simulate(data, scenario, n_paths=n_paths)
+    first_neg = []
+    for _yr, band in enumerate(sim["cash_fan"], start=1):
+        pass
+    # probability cash < 0 by each horizon year from the fan's p05/p50
+    years_neg = [{"year": b["year"], "p50_cash": b["p50"], "p05_cash": b["p05"],
+                  "p50_negative": b["p50"] < 0, "p05_negative": b["p05"] < 0}
+                 for b in sim["cash_fan"]]
+    first_p05 = next((r["year"] for r in years_neg if r["p05_negative"]), None)
+    first_p50 = next((r["year"] for r in years_neg if r["p50_negative"]), None)
+    checkpoints = [{"name": "runway_consistent",
+                    "value": det_months,
+                    "expected": "positive months or None if cash-generative",
+                    "pass": det_months is None or det_months > 0}]
+    return {"current_cash": round(cash0, 2),
+            "latest_fcfe": round(fcfe_latest, 2),
+            "deterministic_months_to_zero": det_months,
+            "burning_cash": fcfe_latest < 0, "scenario": scenario,
+            "cash_by_year": years_neg,
+            "first_year_p50_negative": first_p50,
+            "first_year_p05_negative": first_p05,
+            "p_cash_below_zero_ever": sim["p_cash_below_zero_ever"],
+            "narrative": [
+                (f"At the current after-tax cash flow the company is "
+                 f"generating cash, so there is no finite runway to zero."
+                 if fcfe_latest >= 0 else
+                 f"At the current burn the cash lasts about {det_months} "
+                 f"months.") +
+                f" Under the {scenario} scenario, the probability cash ever "
+                f"goes negative is {sim['p_cash_below_zero_ever']:.0%}" +
+                (f", first reaching negative territory (worst 5%) in "
+                 f"{first_p05}." if first_p05 else ".")],
+            "checkpoints": checkpoints,
+            "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+def target_state(data: dict, targets: dict) -> dict:
+    """Define a desired future state; AXIOM quantifies the gap and maps it
+    to the value-creating moves that close it. Targets may include:
+    revenue (level, final forecast year), ebit_margin, debt_to_equity.
+    The bridge to value reuses the certified recommender and optimizer."""
+    derived = fin.derive_series(data)
+    n_h = derived["n_historical"]
+    last = derived["years"][-1]
+    ys_last = str(last)
+    ys0 = str(derived["years"][n_h - 1])
+    rev_now = derived["revenue"][-1]
+    ebit_margin_now = derived["ebit"][-1] / rev_now if rev_now else None
+    bs = data["balance_sheet"]
+    de_now = ((bs["short_term_debt"][ys0] + bs["long_term_debt"][ys0])
+              / bs["total_equity"][ys0]) if bs["total_equity"][ys0] else None
+    gaps = []
+    if "revenue" in targets:
+        gaps.append({"dimension": "revenue", "current": round(rev_now, 2),
+                     "target": targets["revenue"],
+                     "gap": round(targets["revenue"] - rev_now, 2),
+                     "gap_pct": round(targets["revenue"] / rev_now - 1, 4),
+                     "implied_cagr": round(
+                         (targets["revenue"] / rev_now) ** (1 / max(last - derived["years"][n_h - 1], 1)) - 1, 4)})
+    if "ebit_margin" in targets and ebit_margin_now is not None:
+        gaps.append({"dimension": "ebit_margin",
+                     "current": round(ebit_margin_now, 4),
+                     "target": targets["ebit_margin"],
+                     "gap_pp": round(targets["ebit_margin"] - ebit_margin_now, 4)})
+    if "debt_to_equity" in targets and de_now is not None:
+        gaps.append({"dimension": "debt_to_equity", "current": round(de_now, 4),
+                     "target": targets["debt_to_equity"],
+                     "gap": round(targets["debt_to_equity"] - de_now, 4)})
+    rec = recommend(data)
+    dp = dp_optimize(data)
+    initiatives = []
+    for g in gaps:
+        if g["dimension"] == "revenue":
+            initiatives.append({"closes": "revenue",
+                "action": f"Sustain ~{g['implied_cagr']:.1%} revenue CAGR to "
+                          f"the target year",
+                "axiom_lever": "growth policy in the Dynamic Optimizer "
+                               f"(optimal first-year growth "
+                               f"{dp['recommended_plan'][0]['growth']:+.1%})"})
+        elif g["dimension"] == "ebit_margin":
+            mv = next((r for r in rec["recommendations"]
+                       if "margin" in r["move"]), None)
+            initiatives.append({"closes": "ebit_margin",
+                "action": f"Close a {g['gap_pp']:+.1%}-point margin gap",
+                "axiom_lever": (mv["title"] if mv else "operating-margin "
+                                "program") +
+                               (f" (+{mv['expected_ev_impact']:,.0f} EV)"
+                                if mv else "")})
+        elif g["dimension"] == "debt_to_equity":
+            initiatives.append({"closes": "debt_to_equity",
+                "action": f"Reset capital structure toward D/E "
+                          f"{g['target']:g}",
+                "axiom_lever": f"financing policy (optimizer moves D/E toward "
+                               f"{dp['recommended_plan'][0]['debt_intensity_after']:.2f} "
+                               f"of revenue)"})
+    checkpoints = [{"name": "gaps_quantified", "value": len(gaps),
+                    "expected": ">= 1", "pass": len(gaps) >= 1}]
+    return {"current_year": derived["years"][n_h - 1], "target_year": last,
+            "gaps": gaps, "initiatives": initiatives,
+            "optimizer_uplift_available": dp["optimization_uplift"],
+            "narrative": [
+                f"{len(gaps)} dimension(s) separate the current state from the "
+                f"desired state; AXIOM maps each to a value-creating lever, "
+                f"with up to {dp['optimization_uplift']:,.0f} of equity-value "
+                f"uplift available from the optimal policy."],
+            "checkpoints": checkpoints,
+            "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}

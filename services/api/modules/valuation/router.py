@@ -1,5 +1,6 @@
 """Enterprise Valuation routes (SPEC-004 Product §8; ADR-005 §4).
 REQ-VAL-007..008."""
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 from ...core.db import get_db
@@ -112,5 +113,28 @@ def valuation_analytics(dataset_id: int, db: Session = Depends(get_db),
     mode = "proforma" if ds.data["periods"].get("forecast") else "auto_forecast"
     try:
         return engines.analytics(ds.data, mode)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+class MultiplesIn(BaseModel):
+    dataset_id: int
+    sector: str | None = None
+    ev_ebitda: float | None = None
+    ev_ebit: float | None = None
+
+
+@router.post("/multiples")
+def multiples_valuation(body: MultiplesIn, db: Session = Depends(get_db),
+                        tenant: str = Depends(_tenant)):
+    """Comparable-company multiples valuation, triangulated against the DCF
+    (ADR-015)."""
+    from ..financials import models as fin_models
+    ds = db.get(fin_models.FinancialDataset, body.dataset_id)
+    if not ds or ds.tenant != tenant:
+        raise HTTPException(status_code=404, detail="dataset not found")
+    try:
+        return engines.multiples(ds.data, body.sector, body.ev_ebitda,
+                                 body.ev_ebit)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))

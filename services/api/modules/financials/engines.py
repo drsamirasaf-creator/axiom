@@ -673,3 +673,14 @@ GLOSSARY.update({
     "Sample Paths": "Twelve genuine trajectories from the same seeded simulation, drawn over the smooth percentile fan — the volatility the bands summarize. Any one future is jagged; only the ensemble is smooth.",
     "Uplift Decomposition": "The optimizer's value gap split by counterfactual policies rolled through the same calibrated model: the growth policy alone, the financing policy alone, their interaction — plus the option value of adapting to shocks, which only the full dynamic policy captures.",
 })
+
+
+# ---- Phase 14 glossary -------------------------------------------------------
+GLOSSARY.update({
+    "What-If Shock": "A named business question - revenue falls 20%, rates rise, a major customer is lost, raise debt or equity - recomputed on the certified engines, reporting the effect on enterprise and equity value, debt-service coverage, liquidity, risk grade, and whether the company survives.",
+    "Contribution Margin (shocks)": "What-if revenue shocks flex costs realistically: about 85% of COGS and half of operating expense scale with volume, so a revenue cut compresses margins through operating leverage without the false collapse a pure fixed-cost assumption would produce.",
+    "Covenant Headroom": "For each user-defined covenant (leverage, coverage, gearing, liquidity), the distance between the tightest projected value and the limit, tested across the whole plan. Amber within 15% of a limit, red on breach - the early-warning the plan needs.",
+    "Cash Runway": "How long cash lasts under stress: the deterministic months-to-zero if the firm is burning, and from the seeded simulation the first year cash turns negative in the median and the worst 5%.",
+    "Target-State Planning": "Define the desired future state (revenue, margin, capital structure); AXIOM quantifies each gap and maps it to the value-creating lever that closes it - growth policy, margin program, or financing - with the optimizer's available uplift attached.",
+    "Multiples Valuation": "Comparable-company valuation: sector EV/EBITDA and EV/EBIT multiples applied to the subject's own EBITDA and EBIT, bridged to equity, shown as a range beside the intrinsic DCF - a market cross-check on the cash-flow value.",
+})
