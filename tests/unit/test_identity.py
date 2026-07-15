@@ -515,3 +515,30 @@ def test_phase14_glossary(client):
     for term in ("What-If Shock", "Covenant Headroom", "Cash Runway",
                  "Target-State Planning", "Multiples Valuation"):
         assert term in g and len(g[term]) > 20, term
+
+
+def test_real_options_endpoints(client):
+    ds = client.get("/api/v1/financials/datasets").json()
+    plan = [d for d in ds
+            if d["name"] == "Meridian Industries (showcase)"][0]
+    r = client.post("/api/v1/valuation/real-option",
+                    json={"dataset_id": plan["id"], "option": "expand"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["subject"] == "Meridian Industries Inc."
+    assert body["flexibility_value"] > 0
+    assert abs(body["lattice_certificate"]["up_factor"]
+               * body["lattice_certificate"]["down_factor"] - 1.0) < 1e-5
+    s = client.get(f"/api/v1/valuation/real-options/{plan['id']}")
+    assert s.status_code == 200
+    assert set(s.json()["options"]) == {"expand", "abandon", "defer"}
+    bad = client.post("/api/v1/valuation/real-option",
+                      json={"dataset_id": plan["id"], "option": "fly"})
+    assert bad.status_code == 422
+
+
+def test_phase15_glossary(client):
+    g = client.get("/api/v1/metrics/glossary").json()
+    for term in ("Real Options", "Option to Expand", "Option to Abandon",
+                 "Option to Defer", "Binomial Lattice", "Flexibility Value"):
+        assert term in g and len(g[term]) > 20, term

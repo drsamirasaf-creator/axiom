@@ -138,3 +138,50 @@ def multiples_valuation(body: MultiplesIn, db: Session = Depends(get_db),
                                  body.ev_ebit)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+
+class RealOptionIn(BaseModel):
+    dataset_id: int
+    option: str                          # expand | abandon | defer
+    expiry_years: float = 3.0
+    steps: int = 6
+    expansion_factor: float = 1.5
+    expansion_cost: float | None = None
+    salvage_value: float | None = None
+    investment_cost: float | None = None
+    sigma_override: float | None = None
+
+
+@router.post("/real-option")
+def real_option_route(body: RealOptionIn, db: Session = Depends(get_db),
+                      tenant: str = Depends(_tenant)):
+    """A single real option priced by binomial lattice on the firm's own
+    volatility (ADR-016)."""
+    from ..financials import models as fin_models
+    ds = db.get(fin_models.FinancialDataset, body.dataset_id)
+    if not ds or ds.tenant != tenant:
+        raise HTTPException(status_code=404, detail="dataset not found")
+    try:
+        return engines.real_option(
+            ds.data, body.option, expiry_years=body.expiry_years,
+            steps=body.steps, expansion_factor=body.expansion_factor,
+            expansion_cost=body.expansion_cost,
+            salvage_value=body.salvage_value,
+            investment_cost=body.investment_cost,
+            sigma_override=body.sigma_override)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.get("/real-options/{dataset_id}")
+def real_options_suite_route(dataset_id: int, db: Session = Depends(get_db),
+                             tenant: str = Depends(_tenant)):
+    """All three canonical real options at firm-scaled defaults (ADR-016)."""
+    from ..financials import models as fin_models
+    ds = db.get(fin_models.FinancialDataset, dataset_id)
+    if not ds or ds.tenant != tenant:
+        raise HTTPException(status_code=404, detail="dataset not found")
+    try:
+        return engines.real_options_suite(ds.data)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))

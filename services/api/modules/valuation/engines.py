@@ -458,3 +458,191 @@ def multiples(data: dict, sector: str | None = None,
             "intrinsic_dcf_ev": round(dcf_ev, 2),
             "narrative": n, "checkpoints": checkpoints,
             "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+# ---- Real options valuation (Phase 15, ADR-016) -----------------------------
+# The flexibility value naive DCF cannot see, priced by a Cox-Ross-
+# Rubinstein binomial lattice on the enterprise's OWN calibrated cash-flow
+# volatility. Three canonical managerial options from the DCT program:
+#
+#   EXPAND   — a call on scaling the business: pay an expansion outlay to
+#              multiply the underlying enterprise value by a factor (>1).
+#   ABANDON  — a put: at any node, walk away for a salvage value, capping
+#              the downside. This is the option that makes distressed
+#              firms worth more than their expected cash flows.
+#   DEFER    — a call on waiting: hold the investment decision open,
+#              exercising only when the underlying has risen enough to
+#              justify the outlay.
+#
+# The lattice is risk-neutral (no assumption about the "right" risk
+# premium beyond the risk-free rate the dataset already carries):
+#   u = e^{sigma sqrt(dt)}, d = 1/u, p* = (e^{r dt} - d)/(u - d).
+# The underlying S0 is the certified DCF enterprise value; sigma is
+# estimated from the firm's own historical revenue-growth volatility
+# (floored for young/smooth series) — the option value is thus grounded
+# in the company's real cash-flow risk, not an assumed number.
+# American exercise (check early exercise at every node) by backward
+# induction. Every step is published; the certificate lists u, d, p*.
+
+def _calibrate_sigma(data: dict) -> tuple[float, str]:
+    """Annualized volatility of the enterprise from its own history:
+    the standard deviation of historical revenue log-growth. Floored at
+    12% (a smooth 5-year statement understates true business volatility)
+    and capped at 60%."""
+    import math as _math
+    rev = [data["income_statement"]["revenue"][str(y)]
+           for y in data["periods"]["historical"]]
+    if len(rev) >= 3:
+        gs = [_math.log(rev[i] / rev[i - 1]) for i in range(1, len(rev))
+              if rev[i - 1] > 0 and rev[i] > 0]
+        if len(gs) >= 2:
+            mu = sum(gs) / len(gs)
+            sd = (sum((g - mu) ** 2 for g in gs) / (len(gs) - 1)) ** 0.5
+            return max(0.15, min(0.60, sd)), "historical revenue log-growth"
+    return 0.22, "default (insufficient history for estimation)"
+
+
+def real_option(data: dict, option: str, *, expiry_years: float = 3.0,
+                steps: int = 6, expansion_factor: float = 1.5,
+                expansion_cost: float | None = None,
+                salvage_value: float | None = None,
+                investment_cost: float | None = None,
+                sigma_override: float | None = None) -> dict:
+    import math as _math
+    if option not in ("expand", "abandon", "defer"):
+        raise ValueError("option must be one of expand | abandon | defer")
+    if not (1 <= steps <= 60):
+        raise ValueError("steps must be 1-60")
+    if expiry_years <= 0:
+        raise ValueError("expiry_years must be positive")
+
+    mode = "proforma" if data["periods"].get("forecast") else "auto_forecast"
+    base = run(data, mode)
+    s0 = base["deterministic"]["enterprise_value"]
+    r = float(data["company"]["risk_free_rate"])
+    sigma, sigma_basis = ((sigma_override, "caller override")
+                          if sigma_override else _calibrate_sigma(data))
+
+    dt = expiry_years / steps
+    u = _math.exp(sigma * _math.sqrt(dt))
+    d = 1.0 / u
+    disc = _math.exp(-r * dt)
+    p = (_math.exp(r * dt) - d) / (u - d)
+    if not (0.0 < p < 1.0):
+        raise ValueError("risk-neutral probability outside (0,1): lower "
+                         "volatility or shorten the step")
+
+    # sensible defaults keyed to the firm's own scale
+    if option == "expand":
+        cost = expansion_cost if expansion_cost is not None else 0.25 * s0
+    elif option == "abandon":
+        salvage = (salvage_value if salvage_value is not None
+                   else 0.70 * s0)
+    else:   # defer
+        cost = investment_cost if investment_cost is not None else s0
+
+    # terminal underlying values
+    ST = [s0 * (u ** j) * (d ** (steps - j)) for j in range(steps + 1)]
+
+    def payoff_with(sv):
+        if option == "expand":
+            return max(sv, sv * expansion_factor - cost)
+        if option == "abandon":
+            return max(sv, salvage)
+        return max(0.0, sv - cost)          # defer: a call, worthless OTM
+
+    V = [payoff_with(sv) for sv in ST]
+    # backward induction with American early exercise
+    for step in range(steps - 1, -1, -1):
+        Vn = []
+        for j in range(step + 1):
+            sv = s0 * (u ** j) * (d ** (step - j))
+            cont = disc * (p * V[j + 1] + (1 - p) * V[j])
+            Vn.append(max(cont, payoff_with(sv)))
+        V = Vn
+    option_inclusive = V[0]
+
+    # the "no-option" baseline the flexibility is measured against
+    if option == "expand":
+        static = s0                              # never expand
+        flexibility = option_inclusive - static
+    elif option == "abandon":
+        static = s0                              # never abandon
+        flexibility = option_inclusive - static
+    else:   # defer
+        static_now = max(0.0, s0 - cost)         # invest today (NPV)
+        static = static_now
+        flexibility = option_inclusive - static_now
+
+    checkpoints = [
+        {"name": "risk_neutral_prob_valid", "value": round(p, 4),
+         "expected": "in (0,1)", "pass": 0 < p < 1},
+        {"name": "flexibility_nonnegative", "value": round(flexibility, 2),
+         "expected": ">= 0 (an option cannot reduce value)",
+         "pass": flexibility >= -1e-6},
+        {"name": "ud_reciprocal", "value": round(u * d, 6),
+         "expected": 1.0, "pass": abs(u * d - 1.0) < 1e-9}]
+
+    if option == "expand":
+        params = {"expansion_factor": expansion_factor,
+                  "expansion_cost": round(cost, 2)}
+    elif option == "abandon":
+        params = {"salvage_value": round(salvage, 2)}
+    else:
+        params = {"investment_cost": round(cost, 2)}
+
+    labels = {"expand": "Option to Expand",
+              "abandon": "Option to Abandon",
+              "defer": "Option to Defer (wait-and-see)"}
+    n = [f"{labels[option]}: the enterprise carries {flexibility:,.1f} of "
+         f"flexibility value that a static DCF omits — "
+         f"{flexibility / s0:.1%} of enterprise value.",
+         f"Priced on the firm's own cash-flow volatility "
+         f"(sigma {sigma:.0%}, from {sigma_basis}) over {expiry_years:g} "
+         f"years, {steps} lattice steps, risk-neutral probability "
+         f"{p:.3f}.",
+         ("The abandonment floor is what makes a risky business worth more "
+          "than its expected cash flows: management is not obliged to ride "
+          "every downside to the bottom." if option == "abandon" else
+          "Waiting has value: committing only when the upside "
+          "materializes avoids paying today for a downside you could "
+          "sidestep." if option == "defer" else
+          "The right to scale up if things go well is a call option on the "
+          "firm's own success, and it is worth paying to keep open.")]
+    return {"subject": data["company"]["name"], "option": option,
+            "label": labels[option],
+            "underlying_enterprise_value": round(s0, 2),
+            "static_baseline": round(static, 2),
+            "option_inclusive_value": round(option_inclusive, 2),
+            "flexibility_value": round(flexibility, 2),
+            "flexibility_pct_of_ev": round(flexibility / s0, 4) if s0 else None,
+            "parameters": {**params, "expiry_years": expiry_years,
+                           "steps": steps},
+            "lattice_certificate": {"sigma": round(sigma, 4),
+                                    "sigma_basis": sigma_basis,
+                                    "risk_free_rate": r, "dt": round(dt, 4),
+                                    "up_factor": round(u, 6),
+                                    "down_factor": round(d, 6),
+                                    "risk_neutral_prob": round(p, 6),
+                                    "discount_per_step": round(disc, 6)},
+            "narrative": n, "checkpoints": checkpoints,
+            "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+def real_options_suite(data: dict) -> dict:
+    """All three canonical options at their firm-scaled defaults, plus the
+    total flexibility value — the complete real-options view for the
+    Valuation page."""
+    outs = {o: real_option(data, o) for o in ("expand", "abandon", "defer")}
+    total_flex = sum(v["flexibility_value"] for v in outs.values())
+    s0 = outs["expand"]["underlying_enterprise_value"]
+    return {"subject": data["company"]["name"],
+            "underlying_enterprise_value": s0,
+            "options": outs,
+            "total_flexibility_value": round(total_flex, 2),
+            "note": ("each option is valued independently against the same "
+                     "underlying; they are not additive in general (a firm "
+                     "exercising one may not exercise another), so the "
+                     "total is an upper reference, not a portfolio value"),
+            "all_checkpoints_pass": all(v["all_checkpoints_pass"]
+                                        for v in outs.values())}

@@ -684,3 +684,15 @@ GLOSSARY.update({
     "Target-State Planning": "Define the desired future state (revenue, margin, capital structure); AXIOM quantifies each gap and maps it to the value-creating lever that closes it - growth policy, margin program, or financing - with the optimizer's available uplift attached.",
     "Multiples Valuation": "Comparable-company valuation: sector EV/EBITDA and EV/EBIT multiples applied to the subject's own EBITDA and EBIT, bridged to equity, shown as a range beside the intrinsic DCF - a market cross-check on the cash-flow value.",
 })
+
+
+# ---- Phase 15 glossary -------------------------------------------------------
+GLOSSARY.update({
+    "Real Options": "The value of managerial flexibility that a static DCF omits: the right - not the obligation - to expand, abandon, or defer, priced as options on the enterprise's own value. A DCF assumes management commits today and rides every outcome; real firms adapt, and that adaptability is worth money.",
+    "Option to Expand": "A call option on the firm's own success: the right to pay an outlay to scale the business if things go well. Worth paying to keep open.",
+    "Option to Abandon": "A put option: the right to walk away for a salvage value, capping the downside. This is what can make a risky business worth more than its expected cash flows - management need not ride every downside to the bottom.",
+    "Option to Defer": "A call on waiting: holding an investment decision open and committing only when the upside materializes, sidestepping a downside a today-or-never DCF would force you to accept.",
+    "Binomial Lattice": "The Cox-Ross-Rubinstein tree used to price the options: each step the enterprise value moves up by e^(sigma sqrt(dt)) or down by its reciprocal, valued risk-neutrally at probability p* = (e^(r dt) - d)/(u - d). American exercise is checked at every node. The certificate publishes u, d, and p*.",
+    "Flexibility Value": "The option-inclusive value minus the static baseline (never expand / never abandon / invest today): the pure worth of keeping the choice open, in currency and as a percent of enterprise value.",
+    "Option Volatility (sigma)": "The enterprise's own cash-flow volatility, estimated from the standard deviation of historical revenue log-growth (floored at 15% because a smooth 5-year statement understates real business risk). Higher volatility means more valuable flexibility - the one place in finance where risk creates value.",
+})
