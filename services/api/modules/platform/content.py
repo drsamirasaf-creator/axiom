@@ -171,3 +171,34 @@ REPORT_BRAND = {
                          "optimization, and real-options results follow the "
                          "Dynamic Corporate Transformation methodology."),
 }
+
+
+# ---- Safe harbor + EULA (Phase 16.2) ----------------------------------------
+SAFE_HARBOR = (
+    "IMPORTANT — PLEASE READ. This report is generated automatically by the "
+    "AXIOM platform from figures supplied by or on behalf of the subject "
+    "company. It is provided for informational and illustrative purposes "
+    "only and does NOT constitute strategic, operational, financial, "
+    "investment, accounting, tax, or legal advice from Regent Financial or "
+    "any of its members, partners, employees, officers, or shareholders, and "
+    "no advisory, fiduciary, or professional relationship is created by its "
+    "delivery or use. The figures herein are the outputs of mathematical "
+    "models applied to client-supplied data; Regent Financial does not audit, "
+    "verify, warrant, or confirm the accuracy, completeness, or suitability "
+    "of any input or result. No person should rely on this report for any "
+    "decision. All valuations, forecasts, probabilities, and recommendations "
+    "are inherently uncertain and may differ materially from actual outcomes. "
+    "To the maximum extent permitted by law, Regent Financial and its "
+    "affiliates disclaim all warranties and shall have no liability for any "
+    "loss or damage arising from use of or reliance on this report. Use of "
+    "AXIOM is governed by the End User License Agreement accepted at "
+    "registration.")
+
+EULA_SUMMARY = (
+    "By subscribing to AXIOM you agree to the End User License Agreement: the "
+    "software and its outputs are provided 'as is' without warranty; they are "
+    "informational only and not professional advice; you are responsible for "
+    "the data you input and for your own decisions; Regent Financial's "
+    "liability is limited to the maximum extent permitted by law; and you may "
+    "not resell, reverse-engineer, or misrepresent the platform. Full terms "
+    "are presented for acceptance at sign-up.")

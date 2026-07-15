@@ -560,3 +560,20 @@ def test_board_report_endpoint_open_and_redactable(client):
                      "?confidential=true")
     assert red.status_code == 200 and red.json()["redacted"] is True
     assert red.json()["headline"]["value"] is None
+
+
+def test_eula_recorded_at_registration(client):
+    # a registration accepting the EULA records it; /me reflects it
+    r = client.post("/api/v1/auth/register",
+                    json={"email": "eula@example.com", "password": "longenough1",
+                          "accept_eula": True})
+    assert r.status_code == 201
+    assert r.json()["user"]["accepted_eula"] is True
+    tok = r.json()["token"]
+    me = client.get("/api/v1/auth/me",
+                    headers={"Authorization": f"Bearer {tok}"}).json()
+    assert me["accepted_eula"] is True
+    # default (no accept) records False
+    r2 = client.post("/api/v1/auth/register",
+                     json={"email": "noeula@example.com", "password": "longenough1"})
+    assert r2.json()["user"]["accepted_eula"] is False

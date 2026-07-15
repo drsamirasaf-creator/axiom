@@ -12,6 +12,7 @@ router = APIRouter(prefix="/api/v1/auth", tags=["identity"])
 class Credentials(BaseModel):
     email: str
     password: str
+    accept_eula: bool = False   # required True at registration (frontend gate)
 
 
 class UserOut(BaseModel):
@@ -20,6 +21,7 @@ class UserOut(BaseModel):
     email: str
     tenant: str
     plan: str = "free"
+    accepted_eula: bool = False
     created_at: datetime
 
 
@@ -53,7 +55,8 @@ def register(body: Credentials, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409, detail="email already registered")
     user = models.User(email=email,
                        password_hash=security.hash_password(body.password),
-                       tenant=security.new_tenant())
+                       tenant=security.new_tenant(),
+                       accepted_eula=bool(body.accept_eula))
     db.add(user); db.commit(); db.refresh(user)
     return _issue_session(db, user)
 

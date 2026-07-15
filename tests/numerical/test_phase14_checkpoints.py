@@ -69,6 +69,8 @@ def test_multiples_valuation_triangulates_dcf():
     # explicit multiples override the sector table
     m2 = val.multiples(meridian(), ev_ebitda=8.0, ev_ebit=10.0)
     assert m2["methods"][0]["multiple"] == 8.0
+    no_sector = meridian()
+    no_sector["company"].pop("sector", None)
     with pytest.raises(ValueError):
-        val.multiples(meridian())          # no sector, no multiples, no company.sector
+        val.multiples(no_sector)           # no sector, no multiples at all
     assert m["all_checkpoints_pass"] is True

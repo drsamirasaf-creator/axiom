@@ -495,11 +495,15 @@ def test_benchmark_compare_endpoint(client):
     body = r.json()
     assert abs(body["benchmark_performance_index"] - 142.62) < 0.05
     assert body["narrative"] and body["all_checkpoints_pass"] is True
-    # unknown sector -> 404 with pointer; no sector anywhere -> 422
+    # unknown sector -> 404 with pointer
     assert client.post("/api/v1/benchmarks/compare",
                        json={"dataset_id": mid, "sector": "Nope"}).status_code == 404
+    # a dataset with no sector on file and none passed -> 422
+    ns = _meridian(); ns["company"].pop("sector", None)
+    nsid = client.post("/api/v1/financials/datasets",
+                       json={"name": "no sector", "data": ns}).json()["id"]
     assert client.post("/api/v1/benchmarks/compare",
-                       json={"dataset_id": mid}).status_code == 422
+                       json={"dataset_id": nsid}).status_code == 422
 
 
 def test_benchmark_glossary_terms(client):

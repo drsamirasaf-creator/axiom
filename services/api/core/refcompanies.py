@@ -70,7 +70,7 @@ def meridian():
         assets = BS["cash"][str(y)] + 0.22*v + BS["noncurrent_assets"][str(y)]
         BS["total_equity"][str(y)] = round(assets - 0.12*v - st - 400.0, 6)
         prev = y
-    company = {"name": "Meridian Industries Inc.", "ownership": "public",
+    company = {"name": "Meridian Industries Inc.", "ownership": "public", "sector": "Industrials",
                "standard": "us_gaap", "currency": "USD", "tax_rate": 0.25,
                "risk_free_rate": 0.04, "market_risk_premium": 0.055,
                "cost_of_debt": 0.06, "shares_outstanding": 100.0,

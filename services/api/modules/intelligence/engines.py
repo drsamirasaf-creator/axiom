@@ -1696,7 +1696,7 @@ def board_report(data: dict, readiness: dict | None = None,
     from ..valuation import engines as val_e
     from ..twin import engines as twin_eng
     from ..benchmarks import engines as bmk_e
-    from ..platform.content import REPORT_BRAND
+    from ..platform.content import REPORT_BRAND, SAFE_HARBOR, EULA_SUMMARY
 
     company = data["company"]
     sector = sector or company.get("sector")
@@ -1862,7 +1862,13 @@ def board_report(data: dict, readiness: dict | None = None,
          "pass": all([hv, rp["all_checkpoints_pass"], dp["all_checkpoints_pass"],
                       fr["all_checkpoints_pass"], ro["all_checkpoints_pass"],
                       brief["all_checkpoints_pass"]])}]
+    result_key_findings = None    # computed post-hoc by report_key_findings
     return {"brand": REPORT_BRAND, "generated_on": generated,
+            "generated_at_utc": _dt.datetime.now(_dt.timezone.utc).strftime(
+                "%Y-%m-%d %H:%M UTC"),
+            "units_note": "Figures in $ millions unless otherwise noted.",
+            "acronyms": ACRONYMS, "axiom_difference": AXIOM_DIFFERENCE,
+            "safe_harbor": SAFE_HARBOR, "eula_summary": EULA_SUMMARY,
             "company": {"name": company["name"], "ownership": ownership,
                         "standard": company["standard"],
                         "currency": company.get("currency", ""),
@@ -1871,6 +1877,7 @@ def board_report(data: dict, readiness: dict | None = None,
                          "value": round(headline_value, 2)},
             "sections": sections,
             "confidential_redaction_available": True,
+            "key_findings": _key_findings_inline(sections),
             "checkpoints": checkpoints,
             "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
 
@@ -1903,3 +1910,146 @@ def _redact_report(report: dict) -> dict:
     # their percentage-bearing equivalents where we have them, else keep as-is
     # (the frontend is instructed to show "—" for any null figure)
     return r
+
+
+# ---- Board report enrichments (Phase 16.1, ADR-017 extended) ----------------
+
+ACRONYMS = [
+    ("EV", "Enterprise Value — the value of the whole firm to all capital providers"),
+    ("Equity Value", "Value attributable to shareholders (EV minus net debt and claims)"),
+    ("DCF", "Discounted Cash Flow — intrinsic valuation by discounting projected cash flows"),
+    ("WACC", "Weighted Average Cost of Capital — the blended required return; the DCF discount rate"),
+    ("FCFF", "Free Cash Flow to the Firm — cash to all capital providers"),
+    ("FCFE", "Free Cash Flow to Equity — cash to shareholders after debt service"),
+    ("NOPAT", "Net Operating Profit After Tax — EBIT x (1 - tax rate)"),
+    ("ROIC", "Return on Invested Capital — NOPAT / invested capital"),
+    ("ROE", "Return on Equity — net income / shareholders' equity"),
+    ("ROA", "Return on Assets — net income / total assets"),
+    ("EVA", "Economic Value Added — NOPAT minus the capital charge; economic profit"),
+    ("EBITDA", "Earnings Before Interest, Taxes, Depreciation and Amortization"),
+    ("EBIT", "Earnings Before Interest and Taxes — operating profit"),
+    ("NWC", "Net Working Capital — operating current assets minus operating current liabilities"),
+    ("CAGR", "Compound Annual Growth Rate"),
+    ("D/E", "Debt-to-Equity ratio — a measure of financial leverage"),
+    ("DLOM", "Discount for Lack of Marketability — applied to private-company equity"),
+    ("VaR", "Value at Risk — a loss threshold at a given confidence level"),
+    ("CVaR", "Conditional Value at Risk — the expected loss in the worst-case tail"),
+    ("RAEV", "Risk-Adjusted Enterprise Value — (1 - lambda) x mean + lambda x CVaR"),
+    ("CFaR", "Cash Flow at Risk — the shortfall of cash flow at a confidence level"),
+    ("EVT", "Extreme Value Theory — statistical modeling of rare tail events"),
+    ("GPD", "Generalized Pareto Distribution — the EVT tail law"),
+    ("DRO", "Distributionally Robust Optimization — decisions robust to distribution ambiguity"),
+    ("DP", "Dynamic Programming — the method behind the stochastic optimizer"),
+    ("ANFIS", "Adaptive Neuro-Fuzzy Inference System — fuzzy-logic readiness scoring"),
+    ("Sobol", "Sobol indices — variance-based attribution of uncertainty to its sources"),
+    ("Monte Carlo", "Simulation of many random scenarios to build outcome distributions"),
+    ("REO", "Risk-adjusted Enterprise Optimization — the DCT health/optimization engine"),
+    ("DCT", "Dynamic Corporate Transformation — the methodology AXIOM implements"),
+]
+
+AXIOM_DIFFERENCE = [
+    {"technique": "Stochastic Dynamic Optimization",
+     "what": "The firm's growth-and-financing decisions solved as a multi-year "
+             "dynamic program under uncertainty, not a single-period rule.",
+     "why_unique": "Conventional tools optimize one lever at a time on point "
+                   "forecasts. AXIOM finds the value-maximizing POLICY across "
+                   "years and states, and prices the uplift over the status quo."},
+    {"technique": "Real Options Valuation",
+     "what": "Managerial flexibility — to expand, abandon, or defer — priced by "
+             "binomial lattice on the firm's own volatility.",
+     "why_unique": "Standard DCF assumes management commits today and rides every "
+                   "outcome. AXIOM values the right to adapt, often 15-30% of EV "
+                   "that static models omit entirely."},
+    {"technique": "Distributionally Robust Stress Testing",
+     "what": "Valuation stressed not against fixed scenarios but against an "
+             "ambiguity radius over the entire distribution.",
+     "why_unique": "Answers 'how wrong can my probabilities be before the decision "
+                   "flips?' — a question scenario tables cannot pose."},
+    {"technique": "Extreme Value Theory Tail Modeling",
+     "what": "A Generalized Pareto law fitted to the worst simulated outcomes for "
+             "1-in-100 and 1-in-1000 cash-flow estimates.",
+     "why_unique": "Extrapolates BEYOND the simulated range by the fitted tail law, "
+                   "quantifying rare events Monte Carlo alone cannot reach reliably."},
+    {"technique": "Shapley-Value Attribution",
+     "what": "Plan-vs-actual and twin-vs-twin value gaps attributed to each driver "
+             "by the game-theoretic Shapley formula.",
+     "why_unique": "The only attribution that is exactly additive and "
+                   "order-independent — a fair, auditable value bridge."},
+    {"technique": "ANFIS Transformation Readiness",
+     "what": "Qualitative organizational factors (leadership, governance, execution) "
+             "scored through a published adaptive neuro-fuzzy rule base.",
+     "why_unique": "Bridges soft judgment and hard valuation: the readiness score "
+                   "can adjust the discount rate transparently, with every rule shown."},
+    {"technique": "Sobol Variance Attribution",
+     "what": "Decomposes cash-flow uncertainty into the share caused by each driver "
+             "(growth vs margin) via variance-based sensitivity.",
+     "why_unique": "Tells management WHICH uncertainty is worth managing, rather "
+                   "than treating all risk as one undifferentiated blur."},
+    {"technique": "Digital Twin with Bayesian Learning",
+     "what": "A living model that re-estimates drivers as actuals arrive and measures "
+             "valuation drift via the roll-forward identity.",
+     "why_unique": "The valuation stops being a point-in-time document and becomes a "
+                   "model that learns — with the original plan preserved as audit trail."},
+]
+
+
+def _key_findings_inline(sections: list) -> list:
+    return report_key_findings(None, {"sections": sections})
+
+
+def report_key_findings(data, report: dict) -> list:
+    """Auto-extract the 3-6 most decision-relevant insights from a computed
+    report, each as {headline, detail, severity}. Deterministic rules over
+    the certified figures — no LLM, fully reproducible."""
+    sec = {s["id"]: s for s in report["sections"]}
+    findings = []
+    val = sec["valuation"]
+    ro = val["real_options"]["options"]
+    flex_pct = ro["expand"]["flexibility_pct_of_ev"]
+    if flex_pct and flex_pct > 0.10:
+        findings.append({"severity": "opportunity",
+            "headline": f"Managerial flexibility is worth "
+                        f"{flex_pct*100:.0f}% of enterprise value",
+            "detail": "Real-options analysis shows the right to expand, abandon, "
+                      "or defer carries substantial value a static DCF omits — "
+                      "flexibility that should inform how commitments are staged."})
+    dec = sec["actions"]["uplift_derivation"]["decomposition"]
+    if abs(dec["financing_policy"]) > abs(dec["growth_policy"]) * 2:
+        findings.append({"severity": "insight",
+            "headline": "Financing, not growth, is the dominant value lever",
+            "detail": f"The optimizer attributes {dec['financing_policy']:,.0f} of "
+                      f"uplift to capital-structure policy versus "
+                      f"{dec['growth_policy']:,.0f} to growth — capital structure "
+                      f"is where value is won or lost here."})
+    heat = {h["category"]: h for h in sec["appendix"]["risk_heat_map"]}
+    for cat, h in heat.items():
+        if h.get("rag") == "red":
+            findings.append({"severity": "risk",
+                "headline": f"{cat} risk is the top exposure",
+                "detail": h["basis"].capitalize() + "."})
+            break
+    pa = sec["outlook"]["plan_attainment"]
+    if pa["p_all_three"] < 0.35:
+        findings.append({"severity": "risk",
+            "headline": f"Only a {pa['p_all_three']*100:.0f}% chance of hitting "
+                        f"all plan targets next year",
+            "detail": "The plan sits near the median of the simulated outcome "
+                      "distribution, so meeting revenue, margin, AND cash-flow "
+                      "targets simultaneously is roughly a coin toss — the plan is "
+                      "ambitious, not conservative."})
+    dd = sec["outlook"]["coverage"].get("distance_to_default_sigmas")
+    if dd and dd > 5:
+        findings.append({"severity": "strength",
+            "headline": f"Balance sheet is fortress-strong "
+                        f"({dd:.0f} sigma to default)",
+            "detail": "Enterprise value sits many standard deviations above total "
+                      "debt; solvency risk is negligible under the modeled "
+                      "distribution."})
+    top = sec["summary"].get("top_recommendation")
+    if top:
+        findings.append({"severity": "action",
+            "headline": f"Priority action: {top['title'].lower()}",
+            "detail": top["description"] + f" Expected impact "
+                      f"{top['expected_ev_impact']:,.0f} "
+                      f"({top['expected_ev_impact_pct']*100:+.1f}%)."})
+    return findings[:6]
