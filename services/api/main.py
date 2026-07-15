@@ -46,7 +46,7 @@ app.add_middleware(CORSMiddleware, allow_origins=allowed_origins(),
 
 @app.get("/health", tags=["platform"])
 def health():
-    return {"status": "ok", "service": "axiom-api", "phase": 10}
+    return {"status": "ok", "service": "axiom-api", "phase": 16}
 
 app.include_router(enterprise_router)
 app.include_router(reo_router)
