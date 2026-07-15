@@ -701,3 +701,19 @@ def test_scenario_pro_endpoint(client):
     assert b["distribution_overlay"]["base_counts"]
     assert b["stochastic_magic"]["p_scenario_beats_base_median"] is not None
     assert set(b["statements"]) == {"base", "scenario"}
+
+
+def test_optimal_levers_endpoint(client):
+    ds = client.get("/api/v1/financials/datasets").json()
+    m = [d for d in ds if d["name"] == "Meridian Industries (showcase)"][0]
+    for obj in ("ev", "raev"):
+        r = client.get(f"/api/v1/intelligence/scenario/optimal"
+                       f"?dataset_id={m['id']}&objective={obj}")
+        assert r.status_code == 200
+        b = r.json()
+        assert b["objective"] == obj
+        assert "optimal_levers" in b and b["value_gap"] is not None
+        assert b["all_checkpoints_pass"] is True
+    bad = client.get(f"/api/v1/intelligence/scenario/optimal"
+                     f"?dataset_id={m['id']}&objective=xyz")
+    assert bad.status_code == 422

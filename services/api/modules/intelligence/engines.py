@@ -2091,6 +2091,14 @@ def report_key_findings(data, report: dict) -> list:
 # reshaping. Compute-on-release (Option A): always the real engines, never an
 # approximation. Five executive levers, each a shift from plan:
 
+# The distress-adjusted leverage curve (Phase 19.2): as debt/revenue rises
+# past LEV_KD_KINK, the cost of debt rises quadratically at rate LEV_KD_COEF.
+# Calibrated so the tax shield dominates at moderate leverage (WACC falls)
+# but distress dominates past the kink (WACC rises) — a real optimum.
+LEV_KD_KINK = 0.25          # debt/revenue beyond which distress bites
+LEV_KD_COEF = 0.35          # curvature of the distress spread
+
+
 SCENARIO_LEVERS = {
     "revenue_growth": {"label": "Revenue growth", "unit": "pp per year",
                        "min": -0.10, "max": 0.10, "default": 0.0, "step": 0.005,
@@ -2169,15 +2177,37 @@ def _apply_levers(data: dict, levers: dict) -> dict:
             ys = str(y)
             CF["capex"][ys] += capex_shift * IS["revenue"][ys]
 
-    # leverage: scale long-term debt and the interest it carries
+    # leverage: scale long-term debt AND price it on a distress-adjusted
+    # curve. As debt/revenue rises past a kink, the cost of debt climbs
+    # quadratically (same shape as the optimizer's published curve), so more
+    # leverage first LOWERS WACC via the tax shield, then RAISES it as
+    # distress dominates — giving the lever a real optimum instead of a
+    # monotonic "more debt is always better".
     if abs(lev_shift) > 1e-12:
-        kd = float(d["company"]["cost_of_debt"])
+        kd0 = float(d["company"]["cost_of_debt"])
+        y0s = y0
+        base_rev = IS["revenue"][y0s]
         for y in [hist[-1]] + list(fyears):
             ys = str(y)
             base_lt = BS["long_term_debt"][ys]
             add = base_lt * lev_shift
-            BS["long_term_debt"][ys] = base_lt + add
-            IS["interest_expense"][ys] = IS["interest_expense"].get(ys, 0.0) + add * kd
+            new_lt = base_lt + add
+            BS["long_term_debt"][ys] = new_lt
+            # distress-adjusted cost of debt at this year's leverage level
+            total_debt = BS["short_term_debt"][ys] + new_lt
+            rev_y = IS["revenue"][ys] or base_rev
+            d_ratio = total_debt / rev_y if rev_y else 0.0
+            kd_distress = kd0 + LEV_KD_COEF * max(0.0, d_ratio - LEV_KD_KINK) ** 2
+            IS["interest_expense"][ys] = (IS["interest_expense"].get(ys, 0.0)
+                                          + add * kd_distress)
+        # raise the company-level cost_of_debt to the distress-adjusted level
+        # at the terminal-year leverage, so WACC reflects the distress premium
+        term_debt = (BS["short_term_debt"][str(fyears[-1])]
+                     + BS["long_term_debt"][str(fyears[-1])])
+        term_rev = IS["revenue"][str(fyears[-1])]
+        term_ratio = term_debt / term_rev if term_rev else 0.0
+        d["company"]["cost_of_debt"] = kd0 + LEV_KD_COEF * max(
+            0.0, term_ratio - LEV_KD_KINK) ** 2
         # the cash from (or used by) the debt change lands at y0
         BS["cash"][y0] += BS["long_term_debt"][y0] - data["balance_sheet"]["long_term_debt"][y0]
     return d
@@ -2467,5 +2497,168 @@ def scenario_pro(data: dict, levers: dict, n_paths: int = 1200) -> dict:
                 "scenario": {"pro_forma": scen_stmts, "comprehensive_income": scen_ci}},
             "stochastic_magic": magic,
             "headline": headline,
+            "checkpoints": checkpoints,
+            "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
+
+
+# ---- Optimal Levers solve (Phase 19.2) --------------------------------------
+# Search the five-lever space for the value-maximizing combination, in two
+# modes: maximize enterprise value (aggressive), or maximize risk-adjusted
+# enterprise value (RAEV = mean EV - lambda * downside risk; prudent). Uses
+# coordinate ascent from zero over each lever's grid — fast (a deliberate
+# button-press), deterministic, and it respects the distress-adjusted leverage
+# curve so the leverage optimum is real (interior, not "max it out").
+
+RAEV_LAMBDA = 0.5           # risk aversion: penalty per unit of downside risk
+
+# Execution-risk penalties (Phase 19.2, Option B): aggressive operating
+# assumptions are the hardest to achieve and the least certain, so the
+# optimizer must not treat free upside as free. Each operating lever carries
+# an execution-risk cost that grows QUADRATICALLY with how far it is pushed
+# beyond plan — a convex penalty that turns "max everything" into a genuine
+# interior optimum. Calibrated as a fraction of base EV per (lever/scale)^2.
+# Leverage is NOT penalized here — its cost is already modeled honestly via
+# the distress-adjusted WACC curve.
+EXECUTION_PENALTY = {
+    # per-lever: (normalizing scale, penalty weight as fraction of base EV)
+    "revenue_growth": (0.05, 0.55),   # pushing growth +5pp is very hard
+    "ebit_margin": (0.03, 0.45),      # margin expansion is hard to sustain
+    "capex_intensity": (0.02, 0.15),  # under-investing has execution risk too
+    "cost_shock": (0.03, 0.20),       # aggressive cost-out is hard to hold
+}
+
+
+def _execution_penalty(levers, base_ev):
+    """Convex execution-risk cost of an aggressive lever set, in EV units.
+    Grows with the square of how far each operating lever is pushed."""
+    pen = 0.0
+    for k, (scale, weight) in EXECUTION_PENALTY.items():
+        x = float(levers.get(k, 0.0) or 0.0)
+        # only positive-effort moves carry execution risk; for cost_shock and
+        # capex, the "effortful" direction is a cut (negative), so penalize |x|
+        pen += weight * base_ev * (abs(x) / scale) ** 2
+    return pen
+
+
+def _distress_proxy(data, det, base_ev):
+    """A fast, deterministic distress cost for RAEV: rises as interest
+    coverage thins and as debt grows relative to enterprise value. Cheap
+    enough to call inside the optimizer loop, and it makes leverage risk
+    bite where it should without the Monte Carlo cost."""
+    fy = str(data["periods"]["forecast"][-1]) if data["periods"].get("forecast") \
+        else str(data["periods"]["historical"][-1])
+    IS, BS = data["income_statement"], data["balance_sheet"]
+    ebit = (IS["revenue"][fy] - IS["cogs"][fy] - IS["opex"][fy]
+            - IS["depreciation_amortization"][fy])
+    interest = IS["interest_expense"][fy] or 1e-6
+    coverage = ebit / interest
+    debt = BS["short_term_debt"][fy] + BS["long_term_debt"][fy]
+    ev = det["enterprise_value"] or 1e-6
+    debt_to_ev = debt / ev
+    cov_pen = max(0.0, 4.0 - coverage) ** 2 * 0.06
+    lev_pen = max(0.0, debt_to_ev - 0.28) ** 2 * 1.5
+    return base_ev * (cov_pen + lev_pen)
+
+
+def _objective(data, mode, levers, objective, base_ev=None):
+    """Return the scalar to maximize for a lever set, NET of execution risk."""
+    from ..valuation import engines as val_e
+    shifted = _apply_levers(data, levers)
+    if base_ev is None:
+        base_ev = val_e.run(data, mode)["deterministic"]["enterprise_value"]
+    penalty = _execution_penalty(levers, base_ev)
+    if objective == "ev":
+        gross = val_e.run(shifted, mode, {}, {"n_paths": 100}
+                          )["deterministic"]["enterprise_value"]
+        return gross - penalty
+    # risk-adjusted: mean EV minus lambda * downside, minus execution risk,
+    # minus a DISTRESS penalty. Leverage risk lives in equity/distress, not in
+    # the (pre-financing) EV distribution, so RAEV penalizes distress directly
+    # for the risk of leverage to bite. A fast DETERMINISTIC distress proxy
+    # (interest coverage + debt/EV) is used instead of the Monte Carlo
+    # dashboard so the optimizer stays fast and stable.
+    v = val_e.run(shifted, mode, {}, {"n_paths": 400})
+    ra = v["risk_adjusted"]
+    det = v["deterministic"]
+    downside = ra["mean"] - ra["percentiles"]["p05"]
+    distress_pen = _distress_proxy(shifted, det, base_ev)
+    return (ra["mean"] - RAEV_LAMBDA * downside - penalty - distress_pen)
+
+
+def optimal_levers(data: dict, objective: str = "ev") -> dict:
+    """Coordinate-ascent search for the value-maximizing lever set.
+    objective: 'ev' (maximize enterprise value) or 'raev' (maximize
+    risk-adjusted enterprise value)."""
+    if objective not in ("ev", "raev"):
+        raise ValueError("objective must be 'ev' or 'raev'")
+    from ..valuation import engines as val_e
+    mode = "proforma" if data["periods"].get("forecast") else "auto_forecast"
+    base_ev = val_e.run(data, mode)["deterministic"]["enterprise_value"]
+
+    # each lever's search grid (coarser than the slider step, for speed)
+    grids = {}
+    for k, spec in SCENARIO_LEVERS.items():
+        lo, hi, step = spec["min"], spec["max"], spec["step"]
+        g = []
+        x = lo
+        # ~9-13 points per lever
+        coarse = step * (4 if k in ("ebit_margin", "capex_intensity",
+                                    "cost_shock") else 2)
+        while x <= hi + 1e-9:
+            g.append(round(x, 4)); x += coarse
+        grids[k] = g
+
+    current = {k: 0.0 for k in SCENARIO_LEVERS}
+    best_obj = _objective(data, mode, current, objective, base_ev)
+    # coordinate ascent: sweep each lever, keep the best, repeat until stable
+    ORDER = ["ebit_margin", "revenue_growth", "leverage", "capex_intensity",
+             "cost_shock"]
+    for _sweep in range(2):                       # two passes converge well
+        improved = False
+        for k in ORDER:
+            best_v = current[k]
+            for v in grids[k]:
+                trial = dict(current); trial[k] = v
+                o = _objective(data, mode, trial, objective, base_ev)
+                if o > best_obj + 1e-6:
+                    best_obj = o; best_v = v; improved = True
+            current[k] = best_v
+        if not improved:
+            break
+
+    # full picture at the optimum
+    opt_full = val_e.run(_apply_levers(data, current), mode, {}, {"n_paths": 800})
+    opt_ev = opt_full["deterministic"]["enterprise_value"]
+    opt_ra = opt_full["risk_adjusted"]
+    exec_penalty = _execution_penalty(current, base_ev)
+    active = {k: v for k, v in current.items() if abs(v) > 1e-12}
+
+    obj_label = ("enterprise value" if objective == "ev"
+                 else "risk-adjusted enterprise value (RAEV)")
+    checkpoints = [
+        {"name": "optimum_beats_base",
+         "value": round(opt_ev - base_ev, 2), "expected": ">= 0",
+         "pass": opt_ev >= base_ev - 1.0},
+        {"name": "levers_within_bounds", "value": True, "expected": True,
+         "pass": all(SCENARIO_LEVERS[k]["min"] <= v <= SCENARIO_LEVERS[k]["max"]
+                     for k, v in current.items())}]
+    return {"objective": objective, "objective_label": obj_label,
+            "optimal_levers": current, "active_levers": active,
+            "base_enterprise_value": round(base_ev, 2),
+            "optimal_enterprise_value": round(opt_ev, 2),
+            "value_gap": round(opt_ev - base_ev, 2),
+            "value_gap_pct": round((opt_ev - base_ev) / base_ev, 4) if base_ev else None,
+            "optimal_mean_ev": round(opt_ra["mean"], 2),
+            "gross_enterprise_value": round(opt_ev, 2),
+            "execution_risk_penalty": round(exec_penalty, 2),
+            "net_of_execution_risk": round(opt_ev - exec_penalty, 2),
+            "optimal_downside_risk": round(opt_ra["mean"] - opt_ra["percentiles"]["p05"], 2),
+            "reading": (f"Maximizing {obj_label}, the optimal move is "
+                        + (", ".join(f"{SCENARIO_LEVERS[k]['label']} "
+                                     f"{v:+g}" for k, v in active.items())
+                           if active else "no change from plan")
+                        + f" — worth {opt_ev - base_ev:+,.0f} "
+                        f"({(opt_ev - base_ev) / base_ev * 100:+.1f}%) "
+                        f"versus the current plan."),
             "checkpoints": checkpoints,
             "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}

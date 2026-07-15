@@ -475,3 +475,21 @@ def scenario_pro_route(body: ScenarioIn, db: Session = Depends(get_db),
     except ValueError as e:
         from fastapi import HTTPException as _H
         raise _H(status_code=422, detail=str(e))
+
+
+@router.get("/scenario/optimal")
+def optimal_levers_route(dataset_id: int, objective: str = "ev",
+                         db: Session = Depends(get_db),
+                         tenant: str = Depends(_tenant)):
+    """Optimal Levers (ADR-027): solve for the value-maximizing lever set.
+    objective='ev' maximizes enterprise value; objective='raev' maximizes
+    risk-adjusted enterprise value (penalizing downside and distress). Returns
+    the optimal lever positions the frontend can snap to, plus the value gap
+    versus the current plan. Respects the distress-adjusted leverage curve, so
+    the leverage optimum is real (interior, company-specific)."""
+    ds = _get_dataset(db, tenant, dataset_id)
+    try:
+        return engines.optimal_levers(ds.data, objective)
+    except ValueError as e:
+        from fastapi import HTTPException as _H
+        raise _H(status_code=422, detail=str(e))
