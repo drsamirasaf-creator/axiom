@@ -460,3 +460,18 @@ def scenario_route(body: ScenarioIn, db: Session = Depends(get_db),
     except ValueError as e:
         from fastapi import HTTPException as _H
         raise _H(status_code=422, detail=str(e))
+
+
+@router.post("/scenario-pro")
+def scenario_pro_route(body: ScenarioIn, db: Session = Depends(get_db),
+                       tenant: str = Depends(_tenant)):
+    """Scenario Analysis PRO (ADR-026): the outstanding play-area response —
+    common-bin distribution overlay, value-bridge waterfall, tornado
+    sensitivity, full shifted pro-forma statements for the five bottom tabs,
+    and stochastic-magic insights (P(beat plan), VaR shift, risk-return dot)."""
+    ds = _get_dataset(db, tenant, body.dataset_id)
+    try:
+        return engines.scenario_pro(ds.data, body.levers)
+    except ValueError as e:
+        from fastapi import HTTPException as _H
+        raise _H(status_code=422, detail=str(e))

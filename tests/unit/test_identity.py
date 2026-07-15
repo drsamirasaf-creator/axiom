@@ -687,3 +687,17 @@ def test_scenario_endpoint(client):
     bad = client.post("/api/v1/intelligence/scenario",
                       json={"dataset_id": m["id"], "levers": {"xyz": 1}})
     assert bad.status_code == 422
+
+
+def test_scenario_pro_endpoint(client):
+    ds = client.get("/api/v1/financials/datasets").json()
+    m = [d for d in ds if d["name"] == "Meridian Industries (showcase)"][0]
+    r = client.post("/api/v1/intelligence/scenario-pro",
+                    json={"dataset_id": m["id"],
+                          "levers": {"revenue_growth": 0.03, "leverage": 0.5}})
+    assert r.status_code == 200
+    b = r.json()
+    assert b["value_bridge_waterfall"] and b["tornado"]
+    assert b["distribution_overlay"]["base_counts"]
+    assert b["stochastic_magic"]["p_scenario_beats_base_median"] is not None
+    assert set(b["statements"]) == {"base", "scenario"}
