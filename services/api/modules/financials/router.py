@@ -252,3 +252,24 @@ def pro_forma_statements(dataset_id: int, db: Session = Depends(get_db),
         return proforma.stochastic_statements(row.data)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.get("/datasets/{dataset_id}/comprehensive-income")
+def comprehensive_income(dataset_id: int, db: Session = Depends(get_db),
+                         tenant: str = Depends(_tenant)):
+    """Stochastic Statement of Comprehensive Income (net income + OCI),
+    standard-aware (US GAAP vs IFRS), with FX/securities/pension/hedge OCI
+    drivers modeled where on file (ADR-019)."""
+    from . import oci as oci_mod
+    row = _get_dataset(db, tenant, dataset_id)
+    try:
+        return oci_mod.statement_of_comprehensive_income(row.data)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.get("/oci/schema")
+def oci_schema():
+    """The OCI driver input schema (for the data-entry surface)."""
+    from . import oci as oci_mod
+    return oci_mod.OCI_DRIVER_SCHEMA

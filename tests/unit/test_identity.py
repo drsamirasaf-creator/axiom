@@ -590,3 +590,18 @@ def test_pro_forma_endpoint(client):
     assert all(s["balance_ok"] for s in body["statements"])
     assert "p_meets_plan" in body["statements"][0]["stochastic"]["revenue"]
     assert body["all_checkpoints_pass"] is True
+
+
+def test_comprehensive_income_endpoint(client):
+    ds = client.get("/api/v1/financials/datasets").json()
+    plan = [d for d in ds
+            if d["name"] == "Meridian Industries (showcase)"][0]
+    r = client.get(f"/api/v1/financials/datasets/{plan['id']}/comprehensive-income")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["framework"] == "US GAAP (ASC 220)"
+    assert len(body["statements"]) == 5
+    assert "comprehensive_income_expected" in body["statements"][0]
+    assert body["all_checkpoints_pass"] is True
+    sch = client.get("/api/v1/financials/oci/schema")
+    assert sch.status_code == 200 and "fx_translation" in sch.json()

@@ -77,7 +77,11 @@ def meridian():
                "share_price": 22.0, "beta": 1.1}
     return {"company": company,
             "periods": {"historical": hist, "forecast": fcst},
-            "income_statement": IS, "balance_sheet": BS, "cash_flow": CF}
+            "income_statement": IS, "balance_sheet": BS, "cash_flow": CF,
+            "oci": {
+                "fx_translation": {"net_investment": 300.0, "fx_volatility": 0.10},
+                "securities": {"holdings": 120.0, "price_volatility": 0.12},
+            }}
 
 def halcyon():
     hist = [2021, 2022, 2023, 2024, 2025]
@@ -117,4 +121,9 @@ def halcyon():
                "target_debt_to_equity": 0.5, "size_premium": 0.03,
                "specific_risk_premium": 0.02, "dlom": 0.20}
     return {"company": company, "periods": {"historical": hist, "forecast": []},
-            "income_statement": IS, "balance_sheet": BS, "cash_flow": CF}
+            "income_statement": IS, "balance_sheet": BS, "cash_flow": CF,
+            "oci": {
+                "fx_translation": {"net_investment": 60.0, "fx_volatility": 0.12},
+                "pension": {"expected_remeasurement": -2.0, "remeasurement_volatility": 8.0},
+            }
+}

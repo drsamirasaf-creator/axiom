@@ -711,3 +711,12 @@ GLOSSARY.update({
     "Plan Attainment Probability (per line)": "For each projected statement line, the probability the actual result meets or beats the plan figure, from the simulation. Shown line-by-line and shaded green (>=55%), amber (40-55%), or red (<40%) - a view no accounting package offers.",
     "Cumulative Attainment": "The probability a line meets its plan target in EVERY forecast year at once - far harder than any single year, and the honest measure of how ambitious a multi-year plan really is.",
 })
+
+
+# ---- Phase 18 glossary -------------------------------------------------------
+GLOSSARY.update({
+    "Other Comprehensive Income (OCI)": "Gains and losses that bypass the income statement and go straight to equity: foreign-currency translation, unrealized marks on FVOCI securities, defined-benefit pension remeasurements, and the effective portion of cash-flow hedges. AXIOM models these stochastically where the drivers are on file, and never fabricates them where they are not.",
+    "Statement of Comprehensive Income": "Net income plus OCI = total comprehensive income. AXIOM projects it stochastically and is standard-aware: under IFRS (IAS 1) it splits OCI into items that will and will not be reclassified to profit or loss; under US GAAP (ASC 220) it presents a single OCI section. The accounting framework is labeled on every statement.",
+    "OCI Reclassification (IFRS)": "Under IFRS, some OCI items (FX translation, cash-flow hedges, debt-FVOCI) are later recycled into profit or loss, while others (pension remeasurements, equity-FVOCI) never are. AXIOM presents this split for IFRS reporters.",
+    "Accounting Framework": "Whether the figures follow US GAAP (ASC) or IFRS (IAS/IFRS). It affects OCI classification, reclassification, and certain measurement choices; AXIOM labels the framework on the pro forma and comprehensive-income statements.",
+})

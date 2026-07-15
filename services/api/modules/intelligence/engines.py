@@ -1731,7 +1731,9 @@ def board_report(data: dict, readiness: dict | None = None,
             bmk = None
     brief = executive_brief(data, readiness=readiness)
     from ..financials import proforma as _pf
+    from ..financials import oci as _oci
     proforma_stmts = _pf.stochastic_statements(data)
+    comprehensive = _oci.statement_of_comprehensive_income(data)
 
     ownership = company["ownership"]
     headline_value = (val_full["deterministic"]["enterprise_value"]
@@ -1816,6 +1818,8 @@ def board_report(data: dict, readiness: dict | None = None,
         "statements": proforma_stmts["statements"],
         "cumulative_attainment": proforma_stmts["cumulative_attainment"],
         "plan_cagr": proforma_stmts["plan_cagr"],
+        "comprehensive_income": comprehensive,
+        "accounting_framework": comprehensive["framework"],
         "narrative": [
             f"Over the plan horizon, revenue compounds at "
             f"{proforma_stmts['plan_cagr']['revenue']*100:.1f}% and net income at "
@@ -1891,6 +1895,9 @@ def board_report(data: dict, readiness: dict | None = None,
             "safe_harbor": SAFE_HARBOR, "eula_summary": EULA_SUMMARY,
             "company": {"name": company["name"], "ownership": ownership,
                         "standard": company["standard"],
+                        "accounting_framework": ("IFRS (IAS 1)"
+                            if company["standard"] == "ifrs"
+                            else "US GAAP (ASC 220)"),
                         "currency": company.get("currency", ""),
                         "sector": sector},
             "headline": {"label": headline_label,
