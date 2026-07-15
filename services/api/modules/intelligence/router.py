@@ -433,3 +433,30 @@ def board_report_route(dataset_id: int, confidential: bool = False,
     if confidential:
         return engines._redact_report(report)
     return report
+
+
+@router.get("/scenario/levers")
+def scenario_levers():
+    """The five executive scenario levers with bounds and help text."""
+    return engines.SCENARIO_LEVERS
+
+
+class ScenarioIn(BaseModel):
+    dataset_id: int
+    levers: dict = {}
+
+
+@router.post("/scenario")
+def scenario_route(body: ScenarioIn, db: Session = Depends(get_db),
+                   tenant: str = Depends(_tenant)):
+    """Scenario Analysis (ADR-025): apply multiple simultaneous executive
+    levers and return the full picture — valuation distribution, statement
+    fans, plan-attainment, distress — for both the base plan and the levered
+    scenario, so the play area can animate the transition. Compute-on-release;
+    pure compute, open to the sandbox."""
+    ds = _get_dataset(db, tenant, body.dataset_id)
+    try:
+        return engines.scenario(ds.data, body.levers)
+    except ValueError as e:
+        from fastapi import HTTPException as _H
+        raise _H(status_code=422, detail=str(e))

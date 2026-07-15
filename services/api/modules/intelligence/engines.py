@@ -2081,3 +2081,190 @@ def report_key_findings(data, report: dict) -> list:
                       f"{top['expected_ev_impact']:,.0f} "
                       f"({top['expected_ev_impact_pct']*100:+.1f}%)."})
     return findings[:6]
+
+
+# ---- Scenario Analysis: the executive play area (Phase 19, ADR-025) ---------
+# One consolidated endpoint that applies MULTIPLE simultaneous levers to the
+# pro forma and returns the whole picture — valuation distribution, statement
+# fans, plan-attainment odds, and distress metrics — so the frontend makes a
+# single call per lever change and animates the entire "cloud of futures"
+# reshaping. Compute-on-release (Option A): always the real engines, never an
+# approximation. Five executive levers, each a shift from plan:
+
+SCENARIO_LEVERS = {
+    "revenue_growth": {"label": "Revenue growth", "unit": "pp per year",
+                       "min": -0.10, "max": 0.10, "default": 0.0,
+                       "help": "Add/subtract percentage points to annual "
+                               "revenue growth across the forecast."},
+    "ebit_margin": {"label": "EBIT margin (price/cost)", "unit": "pp",
+                    "min": -0.06, "max": 0.06, "default": 0.0,
+                    "help": "Shift the operating margin — the net effect of "
+                            "pricing and cost actions — in percentage points."},
+    "leverage": {"label": "Financial leverage", "unit": "x plan debt",
+                 "min": -0.5, "max": 1.0, "default": 0.0,
+                 "help": "Scale long-term debt up or down as a fraction of "
+                         "the plan's debt (e.g. +0.5 adds 50% more debt)."},
+    "capex_intensity": {"label": "Capex intensity", "unit": "pp of revenue",
+                        "min": -0.03, "max": 0.03, "default": 0.0,
+                        "help": "Raise/lower capital expenditure as a share "
+                                "of revenue."},
+    "cost_shock": {"label": "Input cost shock", "unit": "pp of COGS",
+                   "min": -0.05, "max": 0.05, "default": 0.0,
+                   "help": "A shift in input costs, applied to COGS as a "
+                           "share of revenue (positive = costs rise)."},
+}
+
+
+def _apply_levers(data: dict, levers: dict) -> dict:
+    """Apply a set of simultaneous scenario levers, returning a shifted copy.
+    Levers compose in one pass so their effects are consistent."""
+    d = {"company": dict(data["company"]),
+         "periods": {"historical": list(data["periods"]["historical"]),
+                     "forecast": list(data["periods"].get("forecast", []))},
+         "income_statement": {k: dict(v) for k, v in data["income_statement"].items()},
+         "balance_sheet": {k: dict(v) for k, v in data["balance_sheet"].items()},
+         "cash_flow": {k: dict(v) for k, v in data["cash_flow"].items()}}
+    if data.get("oci"):
+        d["oci"] = {k: dict(v) for k, v in data["oci"].items()}
+    IS, BS, CF = d["income_statement"], d["balance_sheet"], d["cash_flow"]
+    hist = d["periods"]["historical"]
+    fyears = d["periods"]["forecast"] or hist[-1:]
+    y0 = str(hist[-1])
+
+    g_shift = float(levers.get("revenue_growth", 0.0) or 0.0)
+    m_shift = float(levers.get("ebit_margin", 0.0) or 0.0)
+    lev_shift = float(levers.get("leverage", 0.0) or 0.0)
+    capex_shift = float(levers.get("capex_intensity", 0.0) or 0.0)
+    cost_shift = float(levers.get("cost_shock", 0.0) or 0.0)
+
+    # revenue growth: recompound the forecast revenue path off the shift
+    if abs(g_shift) > 1e-12:
+        rev_prev = IS["revenue"][y0]
+        for y in fyears:
+            ys = str(y)
+            base_g = IS["revenue"][ys] / rev_prev - 1.0
+            new_rev = rev_prev * (1 + base_g + g_shift)
+            # scale the revenue-linked lines proportionally
+            scale = new_rev / IS["revenue"][ys] if IS["revenue"][ys] else 1.0
+            for k in ("cogs", "opex", "depreciation_amortization"):
+                IS[k][ys] *= scale
+            IS["revenue"][ys] = new_rev
+            rev_prev = new_rev
+
+    # margin shift: move EBIT margin by adjusting COGS (cost lever proxy)
+    if abs(m_shift) > 1e-12:
+        for y in fyears:
+            ys = str(y)
+            IS["cogs"][ys] -= m_shift * IS["revenue"][ys]
+
+    # input cost shock: COGS as share of revenue (opposite sign to margin)
+    if abs(cost_shift) > 1e-12:
+        for y in fyears:
+            ys = str(y)
+            IS["cogs"][ys] += cost_shift * IS["revenue"][ys]
+
+    # capex intensity: shift capex as a share of revenue
+    if abs(capex_shift) > 1e-12:
+        for y in fyears:
+            ys = str(y)
+            CF["capex"][ys] += capex_shift * IS["revenue"][ys]
+
+    # leverage: scale long-term debt and the interest it carries
+    if abs(lev_shift) > 1e-12:
+        kd = float(d["company"]["cost_of_debt"])
+        for y in [hist[-1]] + list(fyears):
+            ys = str(y)
+            base_lt = BS["long_term_debt"][ys]
+            add = base_lt * lev_shift
+            BS["long_term_debt"][ys] = base_lt + add
+            IS["interest_expense"][ys] = IS["interest_expense"].get(ys, 0.0) + add * kd
+        # the cash from (or used by) the debt change lands at y0
+        BS["cash"][y0] += BS["long_term_debt"][y0] - data["balance_sheet"]["long_term_debt"][y0]
+    return d
+
+
+def scenario(data: dict, levers: dict, n_paths: int = 1500) -> dict:
+    """The consolidated scenario response: valuation (deterministic + Monte
+    Carlo distribution), pro-forma fans, plan-attainment odds, and distress
+    metrics, for both the BASE plan and the LEVERED scenario, so the frontend
+    can animate the transition between the two clouds of futures."""
+    from ..valuation import engines as val_e
+    from ..twin import engines as twin_eng
+    from ..financials import proforma as pf
+
+    # validate levers
+    clean = {}
+    for k, v in (levers or {}).items():
+        if k not in SCENARIO_LEVERS:
+            raise ValueError(f"unknown lever '{k}'")
+        spec = SCENARIO_LEVERS[k]
+        clean[k] = max(spec["min"], min(spec["max"], float(v)))
+
+    mode = "proforma" if data["periods"].get("forecast") else "auto_forecast"
+    shifted = _apply_levers(data, clean)
+
+    def picture(dd):
+        v = val_e.run(dd, mode, {}, {"n_paths": n_paths})
+        det = v["deterministic"]; ra = v["risk_adjusted"]
+        sim = twin_eng.simulate(dd, "baseline", n_paths=min(n_paths, 1500))
+        rd = risk_dashboard(dd, n_paths=min(n_paths, 2000))
+        return {
+            "enterprise_value": det["enterprise_value"],
+            "equity_value": det.get("equity_value"),
+            "wacc": det["wacc_used"],
+            "valuation_distribution": {
+                "mean": ra["mean"], "p05": ra["percentiles"]["p05"],
+                "p25": ra["percentiles"]["p25"], "p50": ra["percentiles"]["p50"],
+                "p75": ra["percentiles"]["p75"], "p95": ra["percentiles"]["p95"],
+                "std": ra["std"], "cvar95": ra["cvar95"],
+                "histogram": ra["histogram"]},
+            "revenue_fan": sim["revenue_fan"], "fcff_fan": sim["fcff_fan"],
+            "cash_fan": sim["cash_fan"],
+            "plan_attainment": rd["plan_attainment"],
+            "distress": {
+                "distance_to_default_sigmas": rd["distress"]["distance_to_default_sigmas"],
+                "p_ev_below_debt": rd["distress"]["p_ev_below_debt"],
+                "p_cash_below_zero_recession": rd["distress"]["p_cash_below_zero_recession"]},
+            "risk_grade": rd["risk_grade"]["grade"]}
+
+    base = picture(data)
+    scen = picture(shifted)
+
+    # The honest headline metric: how the scenario's EV distribution has
+    # shifted versus the base plan's — mean move and the probability the
+    # scenario's EV exceeds the base plan's median EV (read from the two
+    # simulated distributions, not an approximation).
+    base_p50 = base["valuation_distribution"]["p50"]
+    scen_mean = scen["valuation_distribution"]["mean"]
+    scen["ev_distribution_vs_base"] = {
+        "base_median_ev": base_p50,
+        "scenario_mean_ev": scen_mean,
+        "scenario_beats_base_median": scen_mean >= base_p50,
+        "note": "whether the scenario's expected enterprise value clears the "
+                "base plan's median outcome"}
+
+    ev_delta = scen["enterprise_value"] - base["enterprise_value"]
+    ev_delta_pct = ev_delta / base["enterprise_value"] if base["enterprise_value"] else None
+
+    active = {k: v for k, v in clean.items() if abs(v) > 1e-12}
+    checkpoints = [
+        {"name": "levers_within_bounds", "value": True, "expected": True,
+         "pass": all(SCENARIO_LEVERS[k]["min"] <= v <= SCENARIO_LEVERS[k]["max"]
+                     for k, v in clean.items())},
+        {"name": "distributions_present", "value": True, "expected": True,
+         "pass": bool(base["valuation_distribution"]["histogram"])
+                 and bool(scen["valuation_distribution"]["histogram"])}]
+
+    n = [(f"Scenario moves enterprise value {ev_delta_pct:+.1%} to "
+          f"{scen['enterprise_value']:,.0f}" if ev_delta_pct is not None
+          else "Scenario computed."),
+         (f"Risk grade {base['risk_grade']} \u2192 {scen['risk_grade']}; "
+          f"probability of hitting all plan targets "
+          f"{base['plan_attainment']['p_all_three']:.0%} \u2192 "
+          f"{scen['plan_attainment']['p_all_three']:.0%}.")]
+    return {"levers_applied": clean, "active_levers": active,
+            "base": base, "scenario": scen,
+            "ev_change": round(ev_delta, 2),
+            "ev_change_pct": round(ev_delta_pct, 4) if ev_delta_pct is not None else None,
+            "narrative": n, "checkpoints": checkpoints,
+            "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}

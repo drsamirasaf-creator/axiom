@@ -720,3 +720,60 @@ GLOSSARY.update({
     "OCI Reclassification (IFRS)": "Under IFRS, some OCI items (FX translation, cash-flow hedges, debt-FVOCI) are later recycled into profit or loss, while others (pension remeasurements, equity-FVOCI) never are. AXIOM presents this split for IFRS reporters.",
     "Accounting Framework": "Whether the figures follow US GAAP (ASC) or IFRS (IAS/IFRS). It affects OCI classification, reclassification, and certain measurement choices; AXIOM labels the framework on the pro forma and comprehensive-income statements.",
 })
+
+
+def data_coverage(data: dict) -> dict:
+    """A quantitative Data Coverage summary for the Enterprise page box:
+    how many years of history and forecast, the calendar span, per-statement
+    field completeness, whether OCI drivers are on file, and an overall
+    completeness percentage. Everything the box needs as displayable stats
+    rather than raw year arrays."""
+    hist = data["periods"]["historical"]
+    fcst = data["periods"].get("forecast", [])
+    all_years = sorted(set(hist) | set(fcst))
+    IS, BS, CF = (data.get("income_statement", {}),
+                  data.get("balance_sheet", {}), data.get("cash_flow", {}))
+
+    def completeness(block, keys):
+        if not all_years:
+            return {"present": 0, "expected": 0, "pct": 0.0}
+        expected = len(keys) * len(all_years)
+        present = 0
+        for k in keys:
+            series = block.get(k, {}) or {}
+            for y in all_years:
+                v = series.get(str(y))
+                if v is not None:
+                    present += 1
+        return {"present": present, "expected": expected,
+                "pct": round(present / expected, 4) if expected else 0.0}
+
+    is_c = completeness(IS, IS_KEYS)
+    bs_c = completeness(BS, BS_KEYS)
+    cf_c = completeness(CF, CF_KEYS)
+    tot_present = is_c["present"] + bs_c["present"] + cf_c["present"]
+    tot_expected = is_c["expected"] + bs_c["expected"] + cf_c["expected"]
+    overall = round(tot_present / tot_expected, 4) if tot_expected else 0.0
+    oci = data.get("oci") or {}
+    return {
+        "historical_years": hist, "forecast_years": fcst,
+        "historical_count": len(hist), "forecast_count": len(fcst),
+        "total_years": len(all_years),
+        "span": (f"{all_years[0]}\u2013{all_years[-1]}" if all_years else None),
+        "statements": {
+            "income_statement": is_c, "balance_sheet": bs_c, "cash_flow": cf_c},
+        "overall_completeness": overall,
+        "overall_completeness_pct": round(overall * 100, 1),
+        "oci_drivers_on_file": sorted(oci.keys()) if oci else [],
+        "has_forecast": bool(fcst),
+        "reading": (f"{len(hist)} year(s) of history and {len(fcst)} forecast "
+                    f"year(s); financial statements {round(overall*100)}% "
+                    f"complete." + (" OCI drivers on file."
+                                    if oci else " No OCI drivers on file."))}
+
+
+# ---- Phase 19 glossary -------------------------------------------------------
+GLOSSARY.update({
+    "P>=plan (attainment chip)": "The probability that this statement line's actual result meets or beats the plan figure, computed from thousands of seeded simulations of the linked statements. Shaded green (>=55% likely), amber (40-55%), or red (<40%). Because the plan sits near the centre of the simulated distribution, most single-year lines sit near 50% - a coin toss - which is itself the honest read on an ambitious plan.",
+    "Scenario Analysis": "The executive play area: move levers (revenue growth, margin, leverage, capex, cost) and watch the entire distribution of futures reshape - the valuation cloud shift, the fans breathe, plan-attainment and distress recompute - always on the real simulation engines, never an approximation.",
+})

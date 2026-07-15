@@ -371,7 +371,7 @@ def test_business_engines_endpoints(client):
     p = prof.json()
     assert p["company"]["name"] == "Meridian Industries Inc."
     assert p["latest_valuation"]["enterprise_value"] is not None
-    assert p["coverage"]["forecast"] == [2026, 2027, 2028, 2029, 2030]
+    assert p["coverage"]["forecast_years"] == [2026, 2027, 2028, 2029, 2030]
 
 
 def test_phase12_glossary(client):
@@ -655,3 +655,35 @@ def test_bond_price_yield_curve_endpoint(client):
     assert r.status_code == 200
     curve = r.json()["rate_sensitivity"]["price_yield_curve"]
     assert len(curve) >= 8 and any(p["is_current"] for p in curve)
+
+
+def test_data_coverage_populates(client):
+    ds = client.get("/api/v1/financials/datasets").json()
+    m = [d for d in ds if d["name"] == "Meridian Industries (showcase)"][0]
+    cov = client.get(f"/api/v1/financials/datasets/{m['id']}/profile").json()["coverage"]
+    assert cov["historical_count"] == 5 and cov["forecast_count"] == 5
+    assert cov["span"] == "2021\u20132030"
+    assert 0.0 < cov["overall_completeness"] <= 1.0
+    assert cov["overall_completeness_pct"] == 100.0        # showcase is complete
+    assert set(cov["statements"]) == {"income_statement", "balance_sheet", "cash_flow"}
+    assert cov["reading"]
+
+
+def test_scenario_endpoint(client):
+    lev = client.get("/api/v1/intelligence/scenario/levers")
+    assert lev.status_code == 200
+    assert "revenue_growth" in lev.json() and "leverage" in lev.json()
+    ds = client.get("/api/v1/financials/datasets").json()
+    m = [d for d in ds if d["name"] == "Meridian Industries (showcase)"][0]
+    r = client.post("/api/v1/intelligence/scenario",
+                    json={"dataset_id": m["id"],
+                          "levers": {"revenue_growth": 0.03, "leverage": 0.5}})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["base"]["valuation_distribution"]["histogram"]["counts"]
+    assert body["scenario"]["valuation_distribution"]["histogram"]["counts"]
+    assert body["ev_change_pct"] is not None
+    # bad lever -> 422
+    bad = client.post("/api/v1/intelligence/scenario",
+                      json={"dataset_id": m["id"], "levers": {"xyz": 1}})
+    assert bad.status_code == 422

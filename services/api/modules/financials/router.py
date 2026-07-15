@@ -136,8 +136,7 @@ def enterprise_profile(dataset_id: int, db: Session = Depends(get_db),
             "company": {k: c.get(k) for k in
                         ("name", "ownership", "standard", "currency",
                          "sector", "tax_rate")},
-            "coverage": {"historical": data["periods"]["historical"],
-                         "forecast": data["periods"].get("forecast", [])},
+            "coverage": engines.data_coverage(data),
             "lineage_depth": depth, "root_is_self": depth == 0,
             "documents_attached": docs, "latest_valuation": latest,
             "created_at": row.created_at}
