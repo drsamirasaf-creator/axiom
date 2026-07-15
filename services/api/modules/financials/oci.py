@@ -161,7 +161,9 @@ def statement_of_comprehensive_income(data: dict, n_paths: int = 3000,
          "expected": "labeled not-on-file where absent",
          "pass": all(s["oci_lines"][k]["status"] == "not on file"
                      for s in statements for k in LINES if not present[k])}]
+    from ..platform.content import STATEMENTS_DISCLAIMER
     return {"framework": framework, "standard": standard,
+            "disclaimer": STATEMENTS_DISCLAIMER,
             "any_oci_on_file": any_present,
             "forecast_years": fyears, "statements": statements,
             "ifrs_reclassification": {

@@ -4,6 +4,19 @@ Paste everything below the line into Lovable against the `axiom-web` project.
 
 ---
 
+## LOGO RENDERING (must-fix)
+
+Two logo files exist in the repo: `services/api/assets/axiom_white.png`
+(white knockout) and `axiom_color.png` (full color). Rendering rule, no
+exceptions:
+- On any NAVY background (cover, closing contact block, dark headers) use
+  the WHITE logo, placed DIRECTLY on the navy — never inside a white box
+  or card. A white rectangle around the logo on navy is a bug.
+- On any WHITE/light background (inner-page running header) use the COLOR
+  logo.
+Do not swap these. The earlier render incorrectly put the color (boxed)
+logo on the navy cover — fix that.
+
 Backend Phase 18 adds the stochastic Statement of Comprehensive Income
 and the OCI module. Build a new top-level **Financial Forecasts** tab in
 AXIOM Business with four horizontal statement sub-tabs. Standing rules
@@ -17,6 +30,16 @@ page, prominently display the **accounting framework badge** — "US GAAP
 (ASC 220)" or "IFRS (IAS 1)" — from the endpoints' `framework` field.
 This label matters: it tells the reader which standard governs the
 statements. Beneath it, four horizontal sub-tabs:
+
+## Layout rule — ONE STATEMENT PER VIEW, years as columns
+
+Each statement sub-tab renders as a SINGLE self-contained grid: line
+items down the left, forecast YEARS as columns across the top. For each
+stochastic line, show the plan figure with the P≥plan% beneath it per
+year, shaded green (≥55%) / amber (40–55%) / red (<40%). Deterministic
+lines show the figure only. When the PDF is generated, each statement
+must occupy exactly ONE page and never split across pages — size the
+type so a full statement (all lines × all forecast years) fits.
 
 ### Sub-tab 1 — Balance Sheet
 ### Sub-tab 2 — Income Statement

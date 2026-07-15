@@ -1696,7 +1696,7 @@ def board_report(data: dict, readiness: dict | None = None,
     from ..valuation import engines as val_e
     from ..twin import engines as twin_eng
     from ..benchmarks import engines as bmk_e
-    from ..platform.content import REPORT_BRAND, SAFE_HARBOR, EULA_SUMMARY
+    from ..platform.content import REPORT_BRAND, SAFE_HARBOR, EULA_SUMMARY, STATEMENTS_DISCLAIMER
 
     company = data["company"]
     sector = sector or company.get("sector")
@@ -1820,6 +1820,7 @@ def board_report(data: dict, readiness: dict | None = None,
         "plan_cagr": proforma_stmts["plan_cagr"],
         "comprehensive_income": comprehensive,
         "accounting_framework": comprehensive["framework"],
+        "statements_disclaimer": STATEMENTS_DISCLAIMER,
         "narrative": [
             f"Over the plan horizon, revenue compounds at "
             f"{proforma_stmts['plan_cagr']['revenue']*100:.1f}% and net income at "

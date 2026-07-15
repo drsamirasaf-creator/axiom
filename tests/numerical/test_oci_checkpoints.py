@@ -54,3 +54,15 @@ def test_oci_does_not_disturb_valuation():
     without = val.run(d, "proforma")["deterministic"]["enterprise_value"]
     assert abs(with_oci - without) < 1e-6         # frozen EV intact
     assert abs(with_oci - 2481.35) < 0.01
+
+
+def test_statements_carry_unaudited_disclaimer():
+    from services.api.modules.financials import proforma as pf, oci
+    from services.api.modules.intelligence import engines as intel
+    d = meridian()
+    assert "UNAUDITED" in pf.stochastic_statements(d)["disclaimer"]
+    assert "NOT" in oci.statement_of_comprehensive_income(d)["disclaimer"]
+    assert "certified" in oci.statement_of_comprehensive_income(d)["disclaimer"].lower()
+    r = intel.board_report(d, sector="Industrials")
+    pf_sec = [s for s in r["sections"] if s["id"] == "proforma"][0]
+    assert "UNAUDITED" in pf_sec["statements_disclaimer"]

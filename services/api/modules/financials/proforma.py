@@ -182,7 +182,9 @@ def stochastic_statements(data, n_paths: int = 3000, seed: int = SEED,
          "expected": "<= year-1 p",
          "pass": cumulative["revenue"]["p_meets_plan_every_year"]
                  <= statements[0]["stochastic"]["revenue"]["p_meets_plan"] + 1e-9}]
+    from ..platform.content import STATEMENTS_DISCLAIMER
     return {"mode": mode, "seed": seed, "n_paths": n_paths,
+            "disclaimer": STATEMENTS_DISCLAIMER,
             "forecast_years": fyears, "statements": statements,
             "cumulative_attainment": cumulative,
             "plan_cagr": {"revenue": cagr("revenue"), "ebit": cagr("ebit"),

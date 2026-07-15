@@ -4,6 +4,19 @@ Paste everything below the line into Lovable against the `axiom-web` project.
 
 ---
 
+## LOGO RENDERING (must-fix)
+
+Two logo files exist in the repo: `services/api/assets/axiom_white.png`
+(white knockout) and `axiom_color.png` (full color). Rendering rule, no
+exceptions:
+- On any NAVY background (cover, closing contact block, dark headers) use
+  the WHITE logo, placed DIRECTLY on the navy — never inside a white box
+  or card. A white rectangle around the logo on navy is a bug.
+- On any WHITE/light background (inner-page running header) use the COLOR
+  logo.
+Do not swap these. The earlier render incorrectly put the color (boxed)
+logo on the navy cover — fix that.
+
 Backend ships a consolidated board-report endpoint enriched for a full
 ~25-page, board-grade, marketing-quality PDF. Build the "Download Report"
 experience on the Executive Brief page. This artifact doubles as the
