@@ -145,9 +145,10 @@ def enterprise_profile(dataset_id: int, db: Session = Depends(get_db),
                   "enterprise_value": det.get("enterprise_value"),
                   "raev": ra.get("raev"), "created_at": vr.created_at}
     return {"dataset_id": row.id, "name": row.name, "source": row.source,
-            "company": {k: c.get(k) for k in
+           "company": {k: c.get(k) for k in
                         ("name", "ownership", "standard", "currency",
-                         "sector", "tax_rate")},
+                         "sector", "tax_rate", "shares_outstanding",
+                         "share_price")},
             "coverage": engines.data_coverage(data),
             "lineage_depth": depth, "root_is_self": depth == 0,
             "documents_attached": docs, "latest_valuation": latest,
