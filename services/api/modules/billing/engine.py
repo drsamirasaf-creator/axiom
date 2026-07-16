@@ -216,7 +216,7 @@ def create_checkout_session(user, quantity: int = 1) -> dict:
     price = config.stripe_price_id()
     if stripe is None or not price:
         raise ValueError("billing not configured")
-    kwargs = dict(
+    session = stripe.checkout.Session.create(
         mode="subscription",
         line_items=[{"price": price, "quantity": max(int(quantity), 1)}],
         client_reference_id=str(user.id),
@@ -224,11 +224,6 @@ def create_checkout_session(user, quantity: int = 1) -> dict:
         success_url=config.billing_success_url(),
         cancel_url=config.billing_cancel_url(),
         allow_promotion_codes=True)
-    # Optional free trial for end-to-end testing without a charge.
-    # Default 0 = off; real customers are unaffected. A trialing sub still
-    # activates the account (webhook treats 'trialing' as business).
-    trial = config.trial_days()
-    if trial > 0:
-        kwargs["subscription_data"] = {"trial_period_days": trial}
+    return {"url": session.url, "session_id": session.id}
     session = stripe.checkout.Session.create(**kwargs)
     return {"url": session.url, "session_id": session.id}
