@@ -36,16 +36,6 @@ def require_plan() -> bool:
     Railway once payments are live."""
     return os.environ.get("AXIOM_REQUIRE_PLAN", "").strip().lower() in (
         "1", "true", "yes", "on")
-def trial_days() -> int:
-    """Optional free-trial period (days) applied to new checkout
-    subscriptions. Default 0 = no trial (real customers pay immediately).
-    Set AXIOM_TRIAL_DAYS>0 only for end-to-end testing without a charge;
-    a trialing subscription still activates the account (the webhook treats
-    'trialing' as business). Remove the variable after testing."""
-    try:
-        return max(0, int(os.environ.get("AXIOM_TRIAL_DAYS", "0")))
-    except ValueError:
-        return 0
 def admin_token() -> str | None:
     """Shared secret for entitlement grants; unset = admin ops disabled."""
     return os.environ.get("AXIOM_ADMIN_TOKEN") or None
