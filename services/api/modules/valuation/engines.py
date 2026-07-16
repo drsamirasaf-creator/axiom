@@ -89,9 +89,15 @@ def run(data: dict, mode: str, assumptions: dict | None = None,
     equity = ev - net_debt - pref - mino
     dlom = float(company.get("dlom") or 0.0) if company["ownership"] == "private" else 0.0
     equity_post = equity * (1.0 - dlom)
-    per_share = (equity_post / float(company["shares_outstanding"])
-                 if company["ownership"] == "public"
-                 and company.get("shares_outstanding") else None)
+    # Per-share equity value. Computed whenever shares are provided, for both
+    # public and private companies. For private companies it is based on the
+    # DLOM-adjusted equity and is INDICATIVE only — private shares are illiquid
+    # and this is not a market price; the frontend labels it accordingly.
+    _shares = company.get("shares_outstanding")
+    per_share = (equity_post / float(_shares)
+                 if _shares and float(_shares) > 0 else None)
+    per_share_indicative = bool(per_share is not None
+                                and company["ownership"] != "public")
     deterministic = {
         "wacc_used": _r(wacc_value), "terminal_growth": _r(g_term),
         "pv_explicit": _r(pv_e), "terminal_value": _r(tv),
@@ -100,6 +106,7 @@ def run(data: dict, mode: str, assumptions: dict | None = None,
         "minority_interest": _r(mino), "equity_value": _r(equity),
         "dlom": _r(dlom), "equity_value_post_dlom": _r(equity_post),
         "value_per_share": _r(per_share),
+        "value_per_share_indicative": per_share_indicative,
         "bridge": [
             {"step": "PV of explicit FCFF", "value": _r(pv_e)},
             {"step": "PV of terminal value", "value": _r(pv_t)},
