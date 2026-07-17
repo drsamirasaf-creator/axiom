@@ -1895,6 +1895,7 @@ def board_report(data: dict, readiness: dict | None = None,
             "units_note": "Figures in $ millions unless otherwise noted.",
             "acronyms": ACRONYMS, "axiom_difference": AXIOM_DIFFERENCE,
             "safe_harbor": SAFE_HARBOR, "eula_summary": EULA_SUMMARY,
+            "confidentiality_notice": CONFIDENTIALITY_NOTICE,
             "company": {"name": company["name"], "ownership": ownership,
                         "standard": company["standard"],
                         "accounting_framework": ("IFRS (IAS 1)"
