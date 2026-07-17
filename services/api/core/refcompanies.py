@@ -119,7 +119,8 @@ def halcyon():
                "risk_free_rate": 0.035, "market_risk_premium": 0.055,
                "cost_of_debt": 0.07, "unlevered_industry_beta": 0.9,
                "target_debt_to_equity": 0.5, "size_premium": 0.03,
-               "specific_risk_premium": 0.02, "dlom": 0.20}
+               "specific_risk_premium": 0.02, "dlom": 0.20,
+               "shares_outstanding": 10.0}
     return {"company": company, "periods": {"historical": hist, "forecast": []},
             "income_statement": IS, "balance_sheet": BS, "cash_flow": CF,
             "oci": {
