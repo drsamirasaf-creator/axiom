@@ -84,6 +84,7 @@ def seed_showcase():
         if db.query(fin_models.FinancialDataset)\
              .filter_by(tenant=SHOWCASE_TENANT).first():
             _backfill_showcase_oci(db)              # keep existing rows current
+            _backfill_showcase_shares(db)           # add shares to pre-shares showcase rows
             return                                  # already seeded
 
         def store(name, data, source, parent_id=None):
