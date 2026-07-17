@@ -285,25 +285,3 @@ def oci_schema():
     """The OCI driver input schema (for the data-entry surface)."""
     from . import oci as oci_mod
     return oci_mod.OCI_DRIVER_SCHEMA
-
-@router.post("/admin/fix-halcyon-shares")
-def _fix_halcyon_shares(db: Session = Depends(get_db)):
-    """TEMPORARY one-off: patch any showcase Halcyon dataset missing
-    shares_outstanding (statements are in millions, so 10.0 -> ~EUR16.89/share
-    indicative). Remove after running once."""
-    from sqlalchemy.orm.attributes import flag_modified
-    rows = db.query(models.FinancialDataset).all()
-    fixed = []
-    for row in rows:
-        data = row.data or {}
-        company = data.get("company") or {}
-        name = (row.name or "").lower()
-        if "halcyon" in name and company.get("shares_outstanding") is None:
-            company["shares_outstanding"] = 10.0
-            data["company"] = company
-            row.data = data
-            flag_modified(row, "data")
-            fixed.append(row.id)
-    if fixed:
-        db.commit()
-    return {"fixed_dataset_ids": fixed}
