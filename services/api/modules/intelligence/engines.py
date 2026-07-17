@@ -1696,7 +1696,8 @@ def board_report(data: dict, readiness: dict | None = None,
     from ..valuation import engines as val_e
     from ..twin import engines as twin_eng
     from ..benchmarks import engines as bmk_e
-    from ..platform.content import REPORT_BRAND, SAFE_HARBOR, EULA_SUMMARY, STATEMENTS_DISCLAIMER
+    from ..platform.content import (REPORT_BRAND, SAFE_HARBOR, EULA_SUMMARY,
+                                 STATEMENTS_DISCLAIMER, CONFIDENTIALITY_NOTICE)
 
     company = data["company"]
     sector = sector or company.get("sector")
