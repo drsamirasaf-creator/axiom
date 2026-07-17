@@ -123,6 +123,9 @@ def seed_showcase():
                   {"assumptions": {}, "monte_carlo": {}})
         fc = fin.auto_forecast(h, {})
         fc.pop("_forecast_provenance", None)
+        # carry company identity (incl. shares_outstanding) from the parent,
+        # so the forecast child values per-share like its parent
+        fc["company"] = dict(h["company"])
         store("Halcyon Components (showcase) — AXIOM trend forecast",
               fc, "forecast", h_row.id)
 
