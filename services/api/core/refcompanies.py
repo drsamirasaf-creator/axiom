@@ -114,12 +114,13 @@ def halcyon():
         CF["capex"][str(y)] = round(0.07*v, 6)
         CF["net_borrowing"][str(y)] = 0.0
         CF["dividends"][str(y)] = 2.0
-    company = {"name": "Halcyon Components Ltd", "ownership": "private",
+   company = {"name": "Halcyon Components Ltd", "ownership": "private",
                "standard": "ifrs", "currency": "EUR", "tax_rate": 0.21,
                "risk_free_rate": 0.035, "market_risk_premium": 0.055,
                "cost_of_debt": 0.07, "unlevered_industry_beta": 0.9,
                "target_debt_to_equity": 0.5, "size_premium": 0.03,
-               "specific_risk_premium": 0.02, "dlom": 0.20}
+               "specific_risk_premium": 0.02, "dlom": 0.20,
+               "shares_outstanding": 1000000.0}
     return {"company": company, "periods": {"historical": hist, "forecast": []},
             "income_statement": IS, "balance_sheet": BS, "cash_flow": CF,
             "oci": {
