@@ -24,6 +24,14 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./axiom_accounts.db")
 # Railway supplies postgres:// ; SQLAlchemy 2.x requires postgresql://
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+# This repo ships psycopg v3, not psycopg2 (see requirements.txt and
+# core/config.database_url()). Bare postgresql:// selects the psycopg2
+# dialect, which isn't installed — route to the psycopg3 driver instead.
+if DATABASE_URL.startswith("postgresql://"):
+    try:
+        import psycopg2  # noqa
+    except ImportError:
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 
 _connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=_connect_args)
