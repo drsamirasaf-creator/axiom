@@ -218,3 +218,12 @@ STATEMENTS_DISCLAIMER = (
     "and error, and may differ materially from actual reported results. They "
     "must not be relied upon for financial reporting, tax, audit, lending, or "
     "investment purposes.")
+
+CONFIDENTIALITY_NOTICE = (
+    "CONFIDENTIAL. This report is confidential and prepared solely for the "
+    "subject company and the recipient(s) to whom it is addressed. It contains "
+    "proprietary analysis and company information and may not be copied, "
+    "reproduced, distributed, published, or disclosed, in whole or in part, to "
+    "any other person without the prior written consent of the subject company. "
+    "If you are not an intended recipient, any review, use, or distribution is "
+    "prohibited; please notify the sender and destroy all copies.")
