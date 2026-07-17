@@ -22,7 +22,7 @@ from .modules.identity.router import router as auth_router
 from .modules.twin.router import router as twin_router
 from .modules.platform.router import router as platform_router
 from .modules.intelligence.router import router as intelligence_router
-from .accounts import include_accounts
+from accounts import include_accounts
 
 app = FastAPI(
     title="AXIOM",
