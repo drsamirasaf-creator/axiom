@@ -185,3 +185,24 @@ def real_options_suite_route(dataset_id: int, db: Session = Depends(get_db),
         return engines.real_options_suite(ds.data)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+@router.post("/admin/rerun-halcyon")
+def _rerun_halcyon(db: Session = Depends(get_db)):
+    """TEMPORARY one-off: recompute + save a fresh valuation run for every
+    Halcyon showcase dataset, so the saved run picks up shares_outstanding.
+    Remove after running once."""
+    rows = db.query(fin_models.FinancialDataset).all()
+    done = []
+    for ds in rows:
+        name = (ds.name or "").lower()
+        if "halcyon" not in name:
+            continue
+        mode = "proforma" if ds.data["periods"].get("forecast") else "auto_forecast"
+        result = engines.run(ds.data, mode, {}, {})
+        db.add(models.ValuationRun(
+            tenant=ds.tenant, dataset_id=ds.id, mode=mode,
+            params={"assumptions": {}, "monte_carlo": {}}, result=result))
+        done.append({"dataset_id": ds.id,
+                     "value_per_share": result["deterministic"]["value_per_share"]})
+    db.commit()
+    return {"reran": done}
