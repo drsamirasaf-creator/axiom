@@ -71,7 +71,7 @@ COMPANY_ROWS = [  # (field, label, applies)
     ("risk_free_rate", "Risk-Free Rate (decimal)", "all"),
     ("market_risk_premium", "Market Risk Premium (decimal)", "all"),
     ("cost_of_debt", "Pre-Tax Cost of Debt (decimal)", "all"),
-    ("shares_outstanding", "Shares Outstanding (public only)", "public"),
+    ("shares_outstanding", "Shares Outstanding", "all"),
     ("share_price", "Share Price (public only)", "public"),
     ("beta", "Equity Beta (public only)", "public"),
     ("unlevered_industry_beta", "Unlevered Industry Beta (private only)", "private"),
