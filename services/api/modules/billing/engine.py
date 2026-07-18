@@ -209,18 +209,28 @@ def _to_plain_dict(obj):
         return dict(obj)
 
 
-def create_checkout_session(user, quantity: int = 1) -> dict:
+def create_checkout_session(user, quantity: int = 1,
+                            client_reference_id: str | None = None) -> dict:
     """Create a Stripe Checkout Session for the per-company subscription.
-    quantity = number of companies. Returns {url} to redirect the user to."""
+    quantity = number of companies.
+
+    client_reference_id MUST be the Phase 6 accounts user id: the accounts
+    Stripe webhook (checkout.session.completed) keys the purchased license —
+    Account.owner_user_id and company_slots — off client_reference_id and
+    metadata['company_slots']. Falls back to user.id only if a caller omits it.
+    Returns {url} to redirect the user to."""
     stripe = _load_stripe()
     price = config.stripe_price_id()
     if stripe is None or not price:
         raise ValueError("billing not configured")
+    qty = max(int(quantity), 1)
+    ref = str(client_reference_id if client_reference_id is not None else user.id)
     session = stripe.checkout.Session.create(
         mode="subscription",
-        line_items=[{"price": price, "quantity": max(int(quantity), 1)}],
-        client_reference_id=str(user.id),
+        line_items=[{"price": price, "quantity": qty}],
+        client_reference_id=ref,
         customer_email=user.email,
+        metadata={"company_slots": str(qty)},
         success_url=config.billing_success_url(),
         cancel_url=config.billing_cancel_url(),
         allow_promotion_codes=True)

@@ -21,6 +21,19 @@ def _current_user(authorization: str | None, db: Session):
     return user
 
 
+def _accounts_user_id(db: Session, user) -> str:
+    """The Phase 6 accounts user id for `user`, resolved by (unique) email.
+    This is what the accounts Stripe webhook expects as client_reference_id to
+    provision the license. Falls back to the legacy id if no accounts user
+    exists (pure-legacy session)."""
+    try:
+        from ...accounts import User as AxUser
+    except Exception:
+        return str(user.id)
+    ax = db.query(AxUser).filter_by(email=user.email).first()
+    return str(ax.id) if ax else str(user.id)
+
+
 class CheckoutIn(BaseModel):
     companies: int = 1                       # subscription quantity
 
@@ -59,13 +72,24 @@ def create_checkout(body: CheckoutIn,
                     authorization: str | None = Header(default=None),
                     db: Session = Depends(get_db)):
     """Create a Stripe Checkout Session and return its URL for redirect.
-    The user pays on Stripe's hosted page; entitlements activate via webhook."""
-    user = _current_user(authorization, db)
+
+    Requires an authenticated user (unified dependency): anonymous callers get
+    a 401 with a clear message so the frontend can send them to /login first.
+    The user pays on Stripe's hosted page; the Phase 6 licensing entitlement
+    activates via the accounts webhook, keyed by client_reference_id = the
+    accounts user id."""
+    user, _ = _session_user(db, authorization)
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Sign in required to start checkout — please log in and try again.")
     if not engine.stripe_configured():
         raise HTTPException(status_code=503,
                             detail="billing is not configured on this server")
     try:
-        return engine.create_checkout_session(user, quantity=body.companies)
+        return engine.create_checkout_session(
+            user, quantity=body.companies,
+            client_reference_id=_accounts_user_id(db, user))
     except ValueError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
