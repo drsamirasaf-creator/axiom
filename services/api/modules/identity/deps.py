@@ -25,7 +25,13 @@ def _utc(dt: datetime) -> datetime:
 
 
 def _session_user(db: Session, authorization: str | None):
-    """Returns (user, session) for a valid bearer token, else (None, None)."""
+    """Returns (user, session) for a valid bearer token, else (None, None).
+
+    Accepts BOTH auth systems (one login, ADR-007): a legacy DB-backed
+    session token, or — failing that — a Phase 6 accounts.py JWT. Legacy
+    tokens keep working exactly as before; the accounts fallback is purely
+    additive.
+    """
     if not authorization or not authorization.lower().startswith("bearer "):
         return None, None
     token = authorization.split(" ", 1)[1].strip()
@@ -33,12 +39,55 @@ def _session_user(db: Session, authorization: str | None):
         return None, None
     sess = db.query(models.AuthSession).filter_by(
         token_hash=security.token_hash(token)).first()
-    if not sess or _utc(sess.expires_at) < datetime.now(timezone.utc):
-        return None, None
-    user = db.get(models.User, sess.user_id)
-    if not user or not user.is_active:
-        return None, None
-    return user, sess
+    if sess and _utc(sess.expires_at) >= datetime.now(timezone.utc):
+        user = db.get(models.User, sess.user_id)
+        if user and user.is_active:
+            return user, sess
+    # Legacy session absent/expired/invalid — try the accounts.py JWT.
+    user = _accounts_jwt_user(db, token)
+    if user:
+        return user, None
+    return None, None
+
+
+def _accounts_jwt_user(db: Session, token: str):
+    """Validate `token` as a Phase 6 accounts.py access JWT and resolve it to
+    the legacy identity User the /api/v1 routes expect. Returns None on any
+    failure so the caller falls through to the normal 401 path.
+
+    The accounts system is the canonical login; the /api/v1 Financial Core
+    still scopes data by User.tenant, so we map the accounts user to a legacy
+    User by (unique) email, lazily creating the minimal linkage on first use.
+    """
+    try:
+        from ...accounts import read_token, User as AxUser  # noqa: PLC0415
+    except Exception:
+        return None
+    try:
+        payload = read_token(token, "access")
+        ax = db.get(AxUser, int(payload["sub"]))
+    except Exception:
+        return None
+    if not ax or getattr(ax, "status", None) != "active":
+        return None
+
+    user = db.query(models.User).filter_by(email=ax.email).first()
+    if user is None:
+        user = models.User(
+            email=ax.email,
+            password_hash="external:accounts",  # unusable: this user logs in via accounts.py
+            tenant=security.new_tenant(),
+            plan="free",
+            is_active=True,
+        )
+        try:
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        except Exception:
+            db.rollback()  # unique-email race: another request created it first
+            user = db.query(models.User).filter_by(email=ax.email).first()
+    return user if (user and user.is_active) else None
 
 
 def current_user(authorization: str | None = Header(default=None),
