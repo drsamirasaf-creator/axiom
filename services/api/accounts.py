@@ -126,6 +126,8 @@ class User(Base):
     org_name = Column(String(255), default="", nullable=False)
     platform_role = Column(String(16), default="user", nullable=False)
     status = Column(String(16), default="active", nullable=False)  # active | disabled
+    link_only = Column(Boolean, default=False, server_default="false",
+                       nullable=False)   # magic-link shadow user (7a-4)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     last_login_at = Column(DateTime, nullable=True)
 
@@ -341,6 +343,7 @@ def get_current_user(authorization: str = Header(None), db=Depends(get_db)) -> U
     user = db.get(User, int(payload["sub"]))
     if not user or user.status != "active":
         raise HTTPException(401, "Account unavailable")
+    user._token_scope = payload.get("scope")   # transient: e.g. company:{id}:view
     return user
 
 
@@ -375,8 +378,12 @@ def _membership(db, user_id: int, company_id: int):
 def require_company_member(company_id: int,
                            user: User = Depends(get_current_user),
                            db=Depends(get_db)) -> Membership:
-    """Any active member (admin or viewer). Bumps last_seen_at."""
-    if user.platform_role in ("staff", "super"):
+    """Any active member (admin or viewer). Bumps last_seen_at. A scoped
+    magic-link token is confined to its own company (7a-4)."""
+    scope = getattr(user, "_token_scope", None)
+    if scope and scope != f"company:{company_id}:view":
+        raise HTTPException(403, "This link grants access to a different company")
+    if not scope and user.platform_role in ("staff", "super"):
         return Membership(user_id=user.id, company_id=company_id,
                           role="admin", status="active")  # transient bypass object
     _gate_account(db, company_id)
@@ -392,6 +399,8 @@ def require_company_admin(company_id: int,
                           user: User = Depends(get_current_user),
                           db=Depends(get_db)) -> Membership:
     """The single company admin (or platform staff). Viewers get 403."""
+    if getattr(user, "_token_scope", None):
+        raise HTTPException(403, "View-only link cannot administer a company")
     if user.platform_role in ("staff", "super"):
         return Membership(user_id=user.id, company_id=company_id,
                           role="admin", status="active")
@@ -451,8 +460,21 @@ def register(body: RegisterIn, db=Depends(get_db)):
         raise HTTPException(422, "Password must be at least 8 characters")
     email = _norm(body.email)
     existing = db.query(User).filter_by(email=email).first()
-    if existing and existing.email_verified:
+    if existing and existing.email_verified and not existing.link_only:
         raise HTTPException(409, "An account with this email already exists")
+    if existing and existing.link_only:
+        # Merge: a magic-link shadow user is claiming their account. Set a
+        # password and clear link_only IN PLACE — keep the user id and all
+        # existing viewer memberships; the invited email already proved
+        # ownership, so no re-verification needed.
+        existing.password_hash = hash_password(body.password)
+        existing.name = body.name or existing.name
+        existing.org_name = body.org_name or existing.org_name
+        existing.link_only = False
+        existing.email_verified = True
+        db.commit()
+        return {"ok": True, "merged": True,
+                "message": "Your account is ready — you can now log in."}
     if existing:  # unverified re-registration -> refresh + resend
         existing.password_hash = hash_password(body.password)
         existing.name = body.name or existing.name
@@ -913,6 +935,56 @@ def accept_invite(body: AcceptInviteIn, user: User = Depends(get_current_user),
     return {"company_id": company_id, "company_name": company_name}
 
 
+@router.post("/access/redeem-invite-anonymous", status_code=201)
+def redeem_invite_anonymous(body: AcceptInviteIn, db=Depends(get_db)):
+    """Magic-link viewer access — NO auth. Validate the invite JWT, then
+    single-VIEWER (not single-use): first redemption creates a shadow user
+    (link_only, no password) + an ACTIVE viewer membership; repeat redemptions
+    of the same token return a fresh scoped session for that same shadow user
+    without creating duplicates. Returns a 30-day access token scoped to
+    company:{id}:view."""
+    try:
+        payload = read_token(body.token, "invite")
+    except pyjwt.PyJWTError:
+        raise HTTPException(400, "This invitation link is invalid or has expired.")
+    jti = payload.get("jti")
+    company_id = payload.get("company_id")
+    if not jti or company_id is None:
+        raise HTTPException(400, "Malformed invitation.")
+    inv = db.query(Invite).filter_by(jti=jti).first()
+    if not inv:
+        raise HTTPException(400, "This invitation is no longer valid.")
+    email = (payload.get("invited_email") or inv.email or "").strip().lower()
+    company_name = _company_name(db, company_id)
+
+    # get-or-create the shadow user (single viewer per invited email)
+    shadow = db.query(User).filter_by(email=email).first()
+    if shadow is None:
+        shadow = User(email=email, email_verified=True, password_hash=None,
+                      name=inv.name or "", link_only=True, status="active")
+        db.add(shadow)
+        db.flush()
+    # get-or-create ACTIVE viewer membership (never resurrect a revoked one)
+    m = _membership(db, shadow.id, company_id)
+    if m is None:
+        db.add(Membership(user_id=shadow.id, company_id=company_id, role="viewer",
+                          status="active", approved_at=datetime.utcnow()))
+    if inv.redeemed_at is None:
+        inv.redeemed_at = datetime.utcnow()
+        inv.redeemed_by = shadow.id
+        audit(db, shadow.id, "viewer_joined_via_invite", "company", company_id,
+              detail=email)
+    db.commit()
+
+    token = make_token(str(shadow.id), purpose="access", ttl=30 * 86_400,
+                       scope=f"company:{company_id}:view")
+    return {"access_token": token, "token_type": "bearer",
+            "scope": f"company:{company_id}:view", "expires_in_days": 30,
+            "company_id": company_id, "company_name": company_name,
+            "user": {"id": shadow.id, "email": shadow.email,
+                     "link_only": shadow.link_only}}
+
+
 @router.get("/companies/{company_id}/invites")
 def list_invites(company_id: int, member=Depends(require_company_admin),
                  db=Depends(get_db)):
@@ -1000,7 +1072,7 @@ def roster(company_id: int, member=Depends(require_company_admin),
              .filter(Membership.company_id == company_id).all()
     return {"roster": [{
         "membership_id": m.id, "user_id": u.id, "email": u.email, "name": u.name,
-        "role": m.role, "status": m.status,
+        "role": m.role, "status": m.status, "link_only": u.link_only,
         "joined_at": m.created_at, "approved_at": m.approved_at,
         "last_seen_at": m.last_seen_at} for m, u in rows]}
 
@@ -1381,9 +1453,27 @@ def _maybe_promote_super(user, db):
         db.commit()
 
 
+def _ensure_ax_columns(engine):
+    """Additive column migrations for existing ax_* tables. create_all() only
+    creates missing TABLES, never missing columns — so new columns on tables
+    that already exist (e.g. ax_users.link_only, 7a-4) are added here,
+    idempotently, at boot. This is the ax_* schema-change pattern."""
+    from sqlalchemy import inspect as _inspect, text as _text
+    try:
+        cols = {c["name"] for c in _inspect(engine).get_columns("ax_users")}
+    except Exception:
+        return
+    if "link_only" not in cols:
+        with engine.begin() as conn:
+            conn.execute(_text(
+                "ALTER TABLE ax_users ADD COLUMN link_only BOOLEAN NOT NULL "
+                "DEFAULT false"))
+
+
 def include_accounts(app, create_tables: bool = True):
     if create_tables:
         Base.metadata.create_all(engine)
+        _ensure_ax_columns(engine)
     for r in (auth_router, oauth_router, company_router, profile_router,
               superadmin_router, stripe_router):
         app.include_router(r)

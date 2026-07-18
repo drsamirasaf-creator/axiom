@@ -71,6 +71,12 @@ def _accounts_jwt_user(db: Session, token: str):
     if not ax or getattr(ax, "status", None) != "active":
         return None
 
+    scope = payload.get("scope")
+    if scope:
+        # Magic-link viewer (7a-4): confined, view-only, bound to the scoped
+        # company's tenant. Not mapped to a private legacy user.
+        return _scoped_view_user(db, ax, scope)
+
     user = db.query(models.User).filter_by(email=ax.email).first()
     if user is None:
         user = models.User(
@@ -88,6 +94,46 @@ def _accounts_jwt_user(db: Session, token: str):
             db.rollback()  # unique-email race: another request created it first
             user = db.query(models.User).filter_by(email=ax.email).first()
     return user if (user and user.is_active) else None
+
+
+def _scoped_view_user(db: Session, ax, scope: str):
+    """Resolve a magic-link viewer token (scope='company:{id}:view') to a
+    transient, VIEW-ONLY legacy user bound to the scoped company's tenant, so
+    /api/v1 READS of that company succeed while writes are refused. Returns
+    None (→ 401/403) if the scope is malformed, the membership is not active
+    (revoke/pause kills the live session), or the account is not in good
+    standing. Company-level confinement for anything with a company_id lives in
+    the accounts deps; here the token can only ever see the scoped company's
+    tenant."""
+    parts = scope.split(":")
+    if len(parts) != 3 or parts[0] != "company" or parts[2] != "view":
+        return None
+    try:
+        company_id = int(parts[1])
+    except (TypeError, ValueError):
+        return None
+    from ...accounts import (Membership as AxMembership, CompanyAccess as AxAccess,
+                             Account as AxAccount)
+    m = db.query(AxMembership).filter_by(
+        user_id=ax.id, company_id=company_id, status="active").first()
+    if not m:
+        return None                              # revoked / paused / never a member
+    access = db.query(AxAccess).filter_by(company_id=company_id).first()
+    if not access:
+        return None
+    account = db.get(AxAccount, access.account_id)
+    if not account or account.status in ("paused", "canceled"):
+        return None                              # account pause kills scoped access
+    from ..enterprise_state.models import Enterprise
+    ent = db.get(Enterprise, company_id)
+    if not ent or not ent.tenant:
+        return None
+    m.last_seen_at = datetime.utcnow()           # roster reflects link-viewer activity
+    db.commit()
+    u = models.User(email=ax.email, tenant=ent.tenant, plan="free", is_active=True)
+    u._view_only = True
+    u._view_company = company_id
+    return u
 
 
 def current_user(authorization: str | None = Header(default=None),
@@ -184,6 +230,10 @@ def write_allowance(authorization: str | None = Header(default=None),
     callers decide via enforce_write."""
     user, _ = _session_user(db, authorization)
     if user:
+        if getattr(user, "_view_only", False):   # magic-link viewer (7a-4)
+            raise HTTPException(status_code=403,
+                                detail="This is a view-only link; it can't "
+                                       "create or modify data.")
         return {"authenticated": True, "plan": user.plan or "free",
                 "tenant": user.tenant}
     if authorization:
