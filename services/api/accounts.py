@@ -104,8 +104,8 @@ def new_cid() -> str:
 # ======================================================================
 from datetime import datetime
 
-from sqlalchemy import (Boolean, Column, DateTime, Integer, String, Text,
-                        UniqueConstraint)
+from sqlalchemy import (Boolean, Column, DateTime, Float, Integer, JSON, String,
+                        Text, UniqueConstraint)
 
 
 # platform_role: user | staff | super          (staff/super = AXIOM operators)
@@ -198,6 +198,48 @@ class Document(Base):
     uploaded_by = Column(Integer, nullable=False)              # ax_users.id
     uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     status = Column(String(16), default="stored", nullable=False)
+
+
+class Initiative(Base):
+    """A Key Initiative — the execution registry closing the analysis→decision→
+    execution loop. ref_code always reflects the CURRENT priority band
+    (A=high, B=medium, C=low, D=not-accepted/rejected); previous_refs is the
+    retired-ref lineage."""
+    __tablename__ = "ax_initiatives"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)     # == enterprise_id
+    ref_code = Column(String(8), nullable=False)                 # current, e.g. "A1"
+    previous_refs = Column(JSON, default=list, nullable=False)   # ordered retired refs
+    title = Column(String(300), nullable=False)
+    description = Column(Text, default="", nullable=False)
+    source = Column(String(24), default="manual", nullable=False)   # manual | axiom_recommendation
+    source_report_issued_at = Column(String(40), nullable=True)     # ISO ts
+    source_dataset_version = Column(Integer, nullable=True)
+    importance = Column(String(8), nullable=False)              # high | medium | low
+    urgency = Column(String(8), nullable=False)                 # high | medium | low
+    current_priority = Column(String(8), nullable=False)        # high | medium | low (free-edit)
+    status = Column(String(16), default="proposed", nullable=False)
+    expected_impact_amount = Column(Float, nullable=True)
+    impact_currency = Column(String(8), nullable=True)
+    actual_impact_amount = Column(Float, nullable=True)         # set at completion
+    owner_name = Column(String(200), nullable=True)
+    target_date = Column(String(40), nullable=True)             # ISO date
+    created_by = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    completed_at = Column(DateTime, nullable=True)
+
+
+class InitiativeEvent(Base):
+    """One immutable event per initiative mutation (audit + ref lineage)."""
+    __tablename__ = "ax_initiative_events"
+    id = Column(Integer, primary_key=True)
+    initiative_id = Column(Integer, index=True, nullable=False)
+    actor_user_id = Column(Integer, nullable=True)
+    event_type = Column(String(24), nullable=False)   # created|status_changed|priority_changed|impact_updated|note
+    from_value = Column(String(120), nullable=True)
+    to_value = Column(String(120), nullable=True)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 class AuditLog(Base):
@@ -1255,6 +1297,243 @@ def delete_doc(company_id: int, doc_id: int,
     db.delete(doc)
     db.commit()
     return {"ok": True, "document_id": doc_id}
+
+
+# ---------------------------------------------------- Key Initiatives (7c)
+_PRIORITY = ("high", "medium", "low")
+_STATUSES = ("proposed", "accepted", "in_progress", "completed", "deferred", "rejected")
+_ACTIVE_STATUSES = ("proposed", "accepted", "in_progress")
+_BAND = {"high": "A", "medium": "B", "low": "C"}
+
+
+class InitiativeCreate(BaseModel):
+    title: str
+    description: str = ""
+    importance: str
+    urgency: str
+    current_priority: str
+    status: str = "proposed"
+    expected_impact_amount: float | None = None
+    impact_currency: str | None = None
+    owner_name: str | None = None
+    target_date: str | None = None
+    source: str = "manual"
+    source_report_issued_at: str | None = None
+    source_dataset_version: int | None = None
+
+
+class InitiativePatch(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    importance: str | None = None
+    urgency: str | None = None
+    current_priority: str | None = None
+    expected_impact_amount: float | None = None
+    impact_currency: str | None = None
+    owner_name: str | None = None
+    target_date: str | None = None
+    source: str | None = None
+    source_report_issued_at: str | None = None
+    source_dataset_version: int | None = None
+    note: str | None = None
+
+
+class InitiativeStatusIn(BaseModel):
+    status: str
+    note: str | None = None
+    actual_impact_amount: float | None = None
+
+
+def _band_of(status: str, current_priority: str) -> str:
+    """The current ref band: D for rejected/not-accepted, else the priority band."""
+    if status == "rejected":
+        return "D"
+    return _BAND[current_priority]
+
+
+def _next_ref(db, company_id: int, band: str) -> str:
+    """Next monotonic sequence in this band for this company. Scans every
+    current AND retired ref so a retired number is never reused."""
+    mx = 0
+    for r in db.query(Initiative).filter_by(company_id=company_id).all():
+        for rc in [r.ref_code] + list(r.previous_refs or []):
+            if rc and rc[0] == band and rc[1:].isdigit():
+                mx = max(mx, int(rc[1:]))
+    return f"{band}{mx + 1}"
+
+
+def _reletter(db, ini):
+    """If the initiative's current band differs from its ref, mint the next ref
+    in the destination band and retire the old one. Returns (old_ref, new_ref)
+    or None if unchanged."""
+    band = _band_of(ini.status, ini.current_priority)
+    if ini.ref_code and ini.ref_code[0] == band:
+        return None
+    old = ini.ref_code
+    new = _next_ref(db, ini.company_id, band)
+    ini.previous_refs = list(ini.previous_refs or []) + ([old] if old else [])
+    ini.ref_code = new
+    return (old, new)
+
+
+def _ini_event(db, ini, actor, etype, frm, to, note):
+    db.add(InitiativeEvent(
+        initiative_id=ini.id, actor_user_id=actor, event_type=etype,
+        from_value=(str(frm) if frm is not None else None),
+        to_value=(str(to) if to is not None else None), note=note))
+
+
+def _ini_out(i):
+    return {"id": i.id, "company_id": i.company_id, "ref_code": i.ref_code,
+            "previous_refs": list(i.previous_refs or []), "title": i.title,
+            "description": i.description, "source": i.source,
+            "source_report_issued_at": i.source_report_issued_at,
+            "source_dataset_version": i.source_dataset_version,
+            "importance": i.importance, "urgency": i.urgency,
+            "current_priority": i.current_priority, "status": i.status,
+            "expected_impact_amount": i.expected_impact_amount,
+            "impact_currency": i.impact_currency,
+            "actual_impact_amount": i.actual_impact_amount,
+            "owner_name": i.owner_name, "target_date": i.target_date,
+            "created_by": i.created_by, "created_at": i.created_at,
+            "completed_at": i.completed_at}
+
+
+@router.post("/companies/{company_id}/initiatives", status_code=201)
+def create_initiative(company_id: int, body: InitiativeCreate,
+                      member=Depends(require_company_admin),
+                      user: User = Depends(get_current_user), db=Depends(get_db)):
+    for f in ("importance", "urgency", "current_priority"):
+        if getattr(body, f) not in _PRIORITY:
+            raise HTTPException(422, f"{f} must be one of high|medium|low")
+    if body.status not in _STATUSES:
+        raise HTTPException(422, "invalid status")
+    ref = _next_ref(db, company_id, _band_of(body.status, body.current_priority))
+    ini = Initiative(
+        company_id=company_id, ref_code=ref, previous_refs=[], title=body.title,
+        description=body.description or "", source=body.source or "manual",
+        source_report_issued_at=body.source_report_issued_at,
+        source_dataset_version=body.source_dataset_version,
+        importance=body.importance, urgency=body.urgency,
+        current_priority=body.current_priority, status=body.status,
+        expected_impact_amount=body.expected_impact_amount,
+        impact_currency=body.impact_currency, owner_name=body.owner_name,
+        target_date=body.target_date, created_by=user.id)
+    db.add(ini)
+    db.flush()
+    _ini_event(db, ini, user.id, "created", None, ref, f"created as {body.status}")
+    audit(db, user.id, "initiative_created", "company", company_id,
+          detail=f"{ref} {body.title}")
+    db.commit()
+    return _ini_out(ini)
+
+
+@router.get("/companies/{company_id}/initiatives")
+def list_initiatives(company_id: int, member=Depends(require_company_member),
+                     db=Depends(get_db)):
+    rows = db.query(Initiative).filter_by(company_id=company_id).all()
+    prank = {"high": 0, "medium": 1, "low": 2}
+
+    def seq(rc):
+        return int(rc[1:]) if rc and rc[1:].isdigit() else 0
+
+    def key(i):
+        return (1 if i.status == "rejected" else 0,          # D-band last
+                prank.get(i.current_priority, 3),            # high → low
+                0 if i.status in _ACTIVE_STATUSES else 1,    # active before terminal
+                seq(i.ref_code))
+    rows.sort(key=key)
+    return {"company_id": company_id, "initiatives": [_ini_out(i) for i in rows]}
+
+
+@router.patch("/companies/{company_id}/initiatives/{iid}")
+def patch_initiative(company_id: int, iid: int, body: InitiativePatch,
+                     member=Depends(require_company_admin),
+                     user: User = Depends(get_current_user), db=Depends(get_db)):
+    ini = db.get(Initiative, iid)
+    if not ini or ini.company_id != company_id:
+        raise HTTPException(404, "initiative not found")
+    for f in ("importance", "urgency", "current_priority"):
+        v = getattr(body, f)
+        if v is not None and v not in _PRIORITY:
+            raise HTTPException(422, f"{f} must be one of high|medium|low")
+    old_priority, old_impact = ini.current_priority, ini.expected_impact_amount
+    changed = []
+    for f in ("title", "description", "importance", "urgency", "current_priority",
+              "expected_impact_amount", "impact_currency", "owner_name", "target_date",
+              "source", "source_report_issued_at", "source_dataset_version"):
+        v = getattr(body, f)
+        if v is not None and getattr(ini, f) != v:
+            setattr(ini, f, v)
+            changed.append(f)
+    rel = _reletter(db, ini) if "current_priority" in changed else None
+    if "current_priority" in changed:
+        if rel:
+            _ini_event(db, ini, user.id, "priority_changed", rel[0], rel[1], body.note)
+        else:                                    # priority moved but band stayed (e.g. rejected)
+            _ini_event(db, ini, user.id, "priority_changed", old_priority,
+                       ini.current_priority, body.note)
+    elif "expected_impact_amount" in changed:
+        _ini_event(db, ini, user.id, "impact_updated", old_impact,
+                   ini.expected_impact_amount, body.note)
+    elif changed:
+        _ini_event(db, ini, user.id, "note", None, ",".join(changed), body.note)
+    if changed:
+        audit(db, user.id, "initiative_updated", "company", company_id,
+              detail=f"{ini.ref_code} {','.join(changed)}")
+        db.commit()
+    return _ini_out(ini)
+
+
+@router.post("/companies/{company_id}/initiatives/{iid}/status")
+def set_initiative_status(company_id: int, iid: int, body: InitiativeStatusIn,
+                          member=Depends(require_company_admin),
+                          user: User = Depends(get_current_user), db=Depends(get_db)):
+    ini = db.get(Initiative, iid)
+    if not ini or ini.company_id != company_id:
+        raise HTTPException(404, "initiative not found")
+    if body.status not in _STATUSES:
+        raise HTTPException(422, "invalid status")
+    if body.status == ini.status:
+        return _ini_out(ini)
+    old_status = ini.status
+    note = body.note
+    if body.status == "completed":
+        if body.actual_impact_amount is None and ini.actual_impact_amount is None:
+            raise HTTPException(422, "completing an initiative requires "
+                                     "actual_impact_amount (impact settlement)")
+        if body.actual_impact_amount is not None:
+            ini.actual_impact_amount = body.actual_impact_amount
+        ini.completed_at = datetime.utcnow()
+        note = (f"actual impact {ini.actual_impact_amount}"
+                + (f" · {body.note}" if body.note else ""))
+    ini.status = body.status
+    rel = _reletter(db, ini)                      # rejection → D, revival → priority band
+    if rel:
+        _ini_event(db, ini, user.id, "status_changed", rel[0], rel[1],
+                   f"{old_status}→{body.status}" + (f" · {note}" if note else ""))
+    else:
+        _ini_event(db, ini, user.id, "status_changed", old_status, body.status, note)
+    audit(db, user.id, "initiative_status", "company", company_id,
+          detail=f"{ini.ref_code} {old_status}->{body.status}")
+    db.commit()
+    return _ini_out(ini)
+
+
+@router.get("/companies/{company_id}/initiatives/{iid}/history")
+def initiative_history(company_id: int, iid: int,
+                       member=Depends(require_company_member), db=Depends(get_db)):
+    ini = db.get(Initiative, iid)
+    if not ini or ini.company_id != company_id:
+        raise HTTPException(404, "initiative not found")
+    events = (db.query(InitiativeEvent).filter_by(initiative_id=iid)
+                .order_by(InitiativeEvent.id).all())
+    return {"initiative_id": iid, "current_ref": ini.ref_code,
+            "ref_chain": list(ini.previous_refs or []) + [ini.ref_code],
+            "events": [{"id": e.id, "event_type": e.event_type, "from": e.from_value,
+                        "to": e.to_value, "note": e.note,
+                        "actor_user_id": e.actor_user_id, "created_at": e.created_at}
+                       for e in events]}
 
 
 # ---------------------------------------------------------------------- join
