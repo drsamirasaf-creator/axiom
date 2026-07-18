@@ -185,6 +185,21 @@ class Invite(Base):
     redeemed_by = Column(Integer, nullable=True)          # ax_users.id
 
 
+class Document(Base):
+    """A company document stored on Cloudflare R2 (7b-1). The blob lives in R2;
+    this row is the metadata + access record. Object key: {company_id}/{uuid}/{filename}."""
+    __tablename__ = "ax_documents"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)   # == enterprise_id
+    filename = Column(String(255), nullable=False)
+    size = Column(Integer, nullable=False)
+    content_type = Column(String(120), nullable=False)
+    r2_key = Column(String(512), unique=True, nullable=False)
+    uploaded_by = Column(Integer, nullable=False)              # ax_users.id
+    uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    status = Column(String(16), default="stored", nullable=False)
+
+
 class AuditLog(Base):
     __tablename__ = "ax_audit"
     id = Column(Integer, primary_key=True)
@@ -1124,6 +1139,122 @@ def restore_dataset(company_id: int, dataset_id: int,
           "dataset_restored", "company", company_id, detail=f"dataset={dataset_id}")
     db.commit()
     return {"ok": True, "active_dataset_id": dataset_id, "version": target.version}
+
+
+# ------------------------------------------------- documents on R2 (7b-1)
+_DOC_EXTS = {".pdf": "application/pdf",
+             ".doc": "application/msword",
+             ".docx": ("application/vnd.openxmlformats-officedocument"
+                       ".wordprocessingml.document")}
+MAX_DOC_BYTES = 25 * 1024 * 1024
+
+
+def _r2_client():
+    """Return (s3_client, bucket) for Cloudflare R2, or (None, None) if the
+    R2_* env vars are not all set (endpoints then honestly report 503)."""
+    endpoint = os.environ.get("R2_ENDPOINT_URL")
+    key = os.environ.get("R2_ACCESS_KEY_ID")
+    secret = os.environ.get("R2_SECRET_ACCESS_KEY")
+    bucket = os.environ.get("R2_BUCKET")
+    if not (endpoint and key and secret and bucket):
+        return None, None
+    import boto3
+    from botocore.config import Config as _BotoConfig
+    client = boto3.client(
+        "s3", endpoint_url=endpoint, aws_access_key_id=key,
+        aws_secret_access_key=secret, region_name="auto",
+        config=_BotoConfig(signature_version="s3v4"))
+    return client, bucket
+
+
+def _doc_out(d):
+    return {"document_id": d.id, "filename": d.filename, "size": d.size,
+            "content_type": d.content_type, "status": d.status,
+            "uploaded_by": d.uploaded_by, "uploaded_at": d.uploaded_at}
+
+
+@router.post("/companies/{company_id}/documents", status_code=201)
+async def upload_doc(company_id: int, file: UploadFile = File(...),
+                     member=Depends(require_company_admin),
+                     user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Upload a PDF/DOC/DOCX (≤25 MB) to R2 under {company_id}/{uuid}/{name}."""
+    import uuid as _uuid
+    fname = (file.filename or "document").strip().replace("/", "_")
+    ext = ("." + fname.rsplit(".", 1)[-1].lower()) if "." in fname else ""
+    if ext not in _DOC_EXTS:
+        raise HTTPException(422, "Only PDF, DOC, or DOCX files are allowed")
+    content = await file.read()
+    if len(content) > MAX_DOC_BYTES:
+        raise HTTPException(413, "file exceeds 25 MB")
+    client, bucket = _r2_client()
+    if client is None:
+        raise HTTPException(503, "Document storage is not configured on this server")
+    content_type = file.content_type or _DOC_EXTS[ext]
+    key = f"{company_id}/{_uuid.uuid4().hex}/{fname}"
+    try:
+        client.put_object(Bucket=bucket, Key=key, Body=content,
+                          ContentType=content_type)
+    except Exception as e:
+        raise HTTPException(502, f"upload to storage failed: {e}")
+    doc = Document(company_id=company_id, filename=fname, size=len(content),
+                   content_type=content_type, r2_key=key, uploaded_by=user.id,
+                   status="stored")
+    db.add(doc)
+    db.flush()
+    audit(db, user.id, "document_uploaded", "company", company_id,
+          detail=f"doc={doc.id} {fname}")
+    db.commit()
+    return _doc_out(doc)
+
+
+@router.get("/companies/{company_id}/documents")
+def list_docs(company_id: int, member=Depends(require_company_member),
+              db=Depends(get_db)):
+    """List this company's documents (enterprise-scoped by the path + member
+    auth — a company:{id}:view token can only reach its own company)."""
+    rows = (db.query(Document).filter_by(company_id=company_id)
+              .order_by(Document.id.desc()).all())
+    return {"company_id": company_id, "documents": [_doc_out(d) for d in rows]}
+
+
+@router.get("/companies/{company_id}/documents/{doc_id}/download-url")
+def doc_download_url(company_id: int, doc_id: int,
+                     member=Depends(require_company_member), db=Depends(get_db)):
+    """A short-lived (5 min) presigned GET URL for the document blob."""
+    doc = db.get(Document, doc_id)
+    if not doc or doc.company_id != company_id:
+        raise HTTPException(404, "document not found")
+    client, bucket = _r2_client()
+    if client is None:
+        raise HTTPException(503, "Document storage is not configured on this server")
+    url = client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": bucket, "Key": doc.r2_key,
+                "ResponseContentDisposition": f'attachment; filename="{doc.filename}"'},
+        ExpiresIn=300)
+    return {"url": url, "expires_in": 300, "filename": doc.filename}
+
+
+@router.delete("/companies/{company_id}/documents/{doc_id}")
+def delete_doc(company_id: int, doc_id: int,
+               member=Depends(require_company_admin),
+               user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Delete the R2 object and its row (best-effort object delete; the row is
+    always removed so the DB never keeps a phantom)."""
+    doc = db.get(Document, doc_id)
+    if not doc or doc.company_id != company_id:
+        raise HTTPException(404, "document not found")
+    client, bucket = _r2_client()
+    if client is not None:
+        try:
+            client.delete_object(Bucket=bucket, Key=doc.r2_key)
+        except Exception:
+            pass
+    audit(db, user.id, "document_deleted", "company", company_id,
+          detail=f"doc={doc.id} {doc.filename}")
+    db.delete(doc)
+    db.commit()
+    return {"ok": True, "document_id": doc_id}
 
 
 # ---------------------------------------------------------------------- join
