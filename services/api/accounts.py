@@ -654,6 +654,14 @@ class TransferIn(BaseModel):
     user_id: int
 
 
+class CreateCompanyIn(BaseModel):
+    name: str
+    reporting_currency: str
+    is_public: bool
+    fiscal_year_end: int          # month 1-12
+    statement_units: str          # actual | thousands | millions
+
+
 def _active_admin(db, company_id: int):
     return db.query(Membership).filter_by(company_id=company_id, role="admin",
                                           status="active").first()
@@ -685,6 +693,106 @@ def activate_company(body: ActivateIn, user: User = Depends(get_current_user),
           detail=body.company_label)
     db.commit()
     return {"ok": True, "company_id": body.company_id, "cid": access.cid}
+
+
+# --------------------------------------------------------- create + list (7a-1)
+def _linked_tenant(db, ax_user) -> str:
+    """The caller's private Financial-Core tenant, resolved (or lazily created)
+    via the legacy identity User by email — the same email mapping the unified
+    /api/v1 auth uses, so companies scope consistently. Stays inside the
+    caller's transaction (flush, never commit)."""
+    from .modules.identity import models as idm, security as idsec
+    lu = db.query(idm.User).filter_by(email=ax_user.email).first()
+    if lu is None:
+        lu = idm.User(email=ax_user.email, password_hash="external:accounts",
+                      tenant=idsec.new_tenant(), plan="free", is_active=True)
+        db.add(lu)
+        db.flush()
+    return lu.tenant
+
+
+@router.post("/access/create-company", status_code=201)
+def create_company(body: CreateCompanyIn, user: User = Depends(get_current_user),
+                   db=Depends(get_db)):
+    """Phase 7a-1: create a Financial Core company (Enterprise) AND license it
+    to the caller — mint CID + admin membership — in ONE transaction. Gated by
+    the accounts seat system only. All-or-nothing: any failure rolls back the
+    whole thing, so there is never a consumed slot without a company, nor a
+    company without a license."""
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(422, "name is required")
+    units = body.statement_units.strip().lower()
+    if units not in ("actual", "thousands", "millions"):
+        raise HTTPException(422, "statement_units must be 'actual', 'thousands', or 'millions'")
+    if not (1 <= body.fiscal_year_end <= 12):
+        raise HTTPException(422, "fiscal_year_end must be a month number 1-12")
+    currency = body.reporting_currency.strip().upper()
+    if not (2 <= len(currency) <= 8):
+        raise HTTPException(422, "reporting_currency must be a valid currency code")
+    ownership = "public" if body.is_public else "private"
+
+    # (1) seat gate — accounts system only (ax_accounts.company_slots)
+    account = db.query(Account).filter_by(owner_user_id=user.id).first()
+    if not account or account.status != "active":
+        raise HTTPException(402, "No active company license. Purchase a company "
+                                 "license before creating a company.")
+    used = db.query(CompanyAccess).filter_by(account_id=account.id).count()
+    if used >= account.company_slots:
+        raise HTTPException(402, f"All {account.company_slots} company license(s) "
+                                 f"are in use ({used}/{account.company_slots}). "
+                                 "Purchase an additional license to add a company.")
+
+    # (2) Financial Core company (Enterprise), owned by the caller's linked
+    #     legacy tenant. flush() assigns the id WITHOUT committing, so the whole
+    #     block below shares one transaction.
+    from .modules.enterprise_state.models import Enterprise
+    tenant = _linked_tenant(db, user)
+    ent = Enterprise(tenant=tenant, name=name, sector="",
+                     reporting_currency=currency, fiscal_year_end=body.fiscal_year_end,
+                     statement_units=units, ownership=ownership)
+    db.add(ent)
+    db.flush()
+
+    # (3) license binding + admin membership (same internals as activate)
+    access = CompanyAccess(company_id=ent.id, account_id=account.id, cid=new_cid())
+    db.add(access)
+    db.add(Membership(user_id=user.id, company_id=ent.id, role="admin",
+                      status="active", approved_at=datetime.utcnow()))
+    # (4) audit
+    audit(db, user.id, "company_created", "company", ent.id, detail=name)
+
+    db.commit()
+    return {"company_id": ent.id, "cid": access.cid, "name": name,
+            "slots_used": used + 1, "slots_total": account.company_slots}
+
+
+@router.get("/access/my-companies")
+def my_companies(user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Company roster for the caller's account (the Phase 7a-1 page)."""
+    from .modules.enterprise_state.models import Enterprise
+    account = db.query(Account).filter_by(owner_user_id=user.id).first()
+    slots_total = account.company_slots if account else 0
+    accesses = ((db.query(CompanyAccess).filter_by(account_id=account.id)
+                   .order_by(CompanyAccess.id).all()) if account else [])
+    companies = []
+    for a in accesses:
+        ent = db.get(Enterprise, a.company_id)
+        viewer_count = db.query(Membership).filter(
+            Membership.company_id == a.company_id,
+            Membership.role == "viewer",
+            Membership.status == "active").count()
+        companies.append({
+            "company_id": a.company_id,
+            "name": ent.name if ent else None,
+            "cid": a.cid,
+            "created_at": a.created_at,
+            "viewer_count": viewer_count,
+            "status": account.status if account else "none"})
+    slots_used = len(accesses)
+    can_create = bool(account and account.status == "active" and slots_used < slots_total)
+    return {"slots_total": slots_total, "slots_used": slots_used,
+            "companies": companies, "can_create": can_create}
 
 
 # ---------------------------------------------------------------------- join

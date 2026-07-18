@@ -13,6 +13,15 @@ class Enterprise(Base):
     tenant: Mapped[str] = mapped_column(String(64), index=True)
     name: Mapped[str] = mapped_column(String(200))
     sector: Mapped[str] = mapped_column(String(120), default="")
+    # Phase 7a-1 company profile (POST /access/create-company)
+    reporting_currency: Mapped[str] = mapped_column(
+        String(8), default="", server_default="")
+    fiscal_year_end: Mapped[int | None] = mapped_column(
+        Integer, nullable=True)                       # month 1-12
+    statement_units: Mapped[str] = mapped_column(
+        String(16), default="actual", server_default="actual")
+    ownership: Mapped[str] = mapped_column(
+        String(16), default="private", server_default="private")  # public | private
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     snapshots: Mapped[list["StateSnapshot"]] = relationship(
         back_populates="enterprise", cascade="all, delete-orphan",
