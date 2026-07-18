@@ -4,7 +4,7 @@ The webhook is the only entitlement-changing path and is signature-verified.
 All endpoints degrade honestly when Stripe is unconfigured.
 """
 from fastapi import APIRouter, Depends, HTTPException, Request, Header
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, AliasChoices
 from sqlalchemy.orm import Session
 from ...core.db import get_db
 from ..identity import models
@@ -35,7 +35,10 @@ def _accounts_user_id(db: Session, user) -> str:
 
 
 class CheckoutIn(BaseModel):
-    companies: int = 1                       # subscription quantity
+    # number of company seats (Stripe quantity), 1-10. Accepts either
+    # "companies" or "quantity" from the frontend.
+    companies: int = Field(1, ge=1, le=10,
+                           validation_alias=AliasChoices("companies", "quantity"))
 
 
 @router.get("/config")

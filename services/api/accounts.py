@@ -168,6 +168,21 @@ class Membership(Base):
     last_seen_at = Column(DateTime, nullable=True)
 
 
+class Invite(Base):
+    """A single-use viewer invitation. The JWT carries the capability; this
+    row is the server-side single-use ledger (jti) + roster visibility."""
+    __tablename__ = "ax_invites"
+    id = Column(Integer, primary_key=True)
+    jti = Column(String(64), unique=True, index=True, nullable=False)
+    company_id = Column(Integer, index=True, nullable=False)
+    email = Column(String(255), nullable=False, index=True)
+    name = Column(String(255), default="", nullable=False)
+    invited_by = Column(Integer, nullable=False)          # ax_users.id (admin)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    redeemed_at = Column(DateTime, nullable=True)
+    redeemed_by = Column(Integer, nullable=True)          # ax_users.id
+
+
 class AuditLog(Base):
     __tablename__ = "ax_audit"
     id = Column(Integer, primary_key=True)
@@ -266,6 +281,26 @@ def send_reset(to: str, token: str):
                border-radius:8px;text-decoration:none;font-weight:600">Reset password</a></p>
             <p style="font-size:12px;color:#8fb59e">Link valid for 1 hour.
                If you did not request this, ignore this email.</p>"""))
+
+
+def send_invite(to: str, name: str, company_name: str, token: str):
+    link = f"{_app_url()}/join?invite={token}"
+    greet = f"Hi {name}," if name else "Hi,"
+    send(to, f"You're invited to view {company_name} on AXIOM", _wrap(
+        f"You've been invited to {company_name}",
+        f"""<p>{greet}</p>
+            <p>You've been given <b>view-only access</b> to
+               <b>{company_name}</b>'s report on AXIOM. Welcome aboard.</p>
+            <p><a href="{link}" style="background:#4ade80;color:#0d1b12;padding:12px 24px;
+               border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
+               Access {company_name} Report</a></p>
+            <p style="font-size:13px;color:#8fb59e;margin-bottom:4px">To view it:</p>
+            <ol style="font-size:13px;color:#8fb59e;margin-top:0">
+              <li>Click the button above.</li>
+              <li>Create a login with any email or Google — it only takes a moment.</li>
+              <li>You'll land right on {company_name}.</li>
+            </ol>
+            <p style="font-size:12px;color:#8fb59e">This invitation is valid for 7 days.</p>"""))
 
 
 def send_email_change(to: str, token: str):
@@ -793,6 +828,117 @@ def my_companies(user: User = Depends(get_current_user), db=Depends(get_db)):
     can_create = bool(account and account.status == "active" and slots_used < slots_total)
     return {"slots_total": slots_total, "slots_used": slots_used,
             "companies": companies, "can_create": can_create}
+
+
+# ----------------------------------------------------- viewer invites (7a-3)
+class InviteIn(BaseModel):
+    name: str = ""
+    email: EmailStr
+
+
+class AcceptInviteIn(BaseModel):
+    token: str
+
+
+def _company_name(db, company_id: int) -> str:
+    from .modules.enterprise_state.models import Enterprise
+    ent = db.get(Enterprise, company_id)
+    return ent.name if ent else f"Company #{company_id}"
+
+
+@router.post("/companies/{company_id}/invite", status_code=201)
+def invite_viewer(company_id: int, body: InviteIn,
+                  member=Depends(require_company_admin),
+                  user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Admin invites a viewer by email. Mints a single-use 7-day invite JWT
+    (jti recorded), emails a warm view-only invitation, and audits."""
+    email = str(body.email).strip().lower()
+    name = (body.name or "").strip()
+    company_name = _company_name(db, company_id)
+    jti = secrets.token_urlsafe(16)
+    token = make_token(str(company_id), purpose="invite", ttl=7 * 86_400,
+                       jti=jti, company_id=company_id,
+                       invited_email=email, invited_name=name)
+    inv = Invite(jti=jti, company_id=company_id, email=email, name=name,
+                 invited_by=user.id)
+    db.add(inv)
+    audit(db, user.id, "viewer_invited", "company", company_id, detail=email)
+    db.commit()
+    db.refresh(inv)
+    send_invite(email, name, company_name, token)
+    return {"ok": True, "company_id": company_id, "invite_id": inv.id,
+            "email": email, "expires_in_days": 7}
+
+
+@router.post("/access/accept-invite", status_code=201)
+def accept_invite(body: AcceptInviteIn, user: User = Depends(get_current_user),
+                  db=Depends(get_db)):
+    """Redeem an invite token: create an ACTIVE viewer membership for the
+    caller (admin explicitly invited, so no pending step), mark the invite
+    single-use redeemed, audit. Idempotent for the same user."""
+    try:
+        payload = read_token(body.token, "invite")
+    except pyjwt.PyJWTError:
+        raise HTTPException(400, "This invitation link is invalid or has expired.")
+    jti = payload.get("jti")
+    company_id = payload.get("company_id")
+    if not jti or company_id is None:
+        raise HTTPException(400, "Malformed invitation.")
+    inv = db.query(Invite).filter_by(jti=jti).first()
+    if not inv:
+        raise HTTPException(400, "This invitation is no longer valid.")
+    company_name = _company_name(db, company_id)
+    existing = _membership(db, user.id, company_id)
+
+    if inv.redeemed_at is not None:
+        # single-use: idempotent only for the same user who already redeemed it
+        if inv.redeemed_by == user.id and existing and existing.status == "active":
+            return {"company_id": company_id, "company_name": company_name}
+        raise HTTPException(409, "This invitation has already been used.")
+
+    if existing:
+        existing.status = "active"
+        if not existing.approved_at:
+            existing.approved_at = datetime.utcnow()
+        if existing.role not in ("admin",):
+            existing.role = "viewer"
+    else:
+        db.add(Membership(user_id=user.id, company_id=company_id, role="viewer",
+                          status="active", approved_at=datetime.utcnow()))
+    inv.redeemed_at = datetime.utcnow()
+    inv.redeemed_by = user.id
+    audit(db, user.id, "viewer_joined_via_invite", "company", company_id,
+          detail=inv.email)
+    db.commit()
+    return {"company_id": company_id, "company_name": company_name}
+
+
+@router.get("/companies/{company_id}/invites")
+def list_invites(company_id: int, member=Depends(require_company_admin),
+                 db=Depends(get_db)):
+    """Pending + redeemed invites for the roster page."""
+    rows = (db.query(Invite).filter_by(company_id=company_id)
+              .order_by(Invite.id.desc()).all())
+    return {"invites": [{
+        "id": i.id, "email": i.email, "name": i.name,
+        "invited_by": i.invited_by, "created_at": i.created_at,
+        "status": "redeemed" if i.redeemed_at else "pending",
+        "redeemed_at": i.redeemed_at, "redeemed_by": i.redeemed_by}
+        for i in rows]}
+
+
+@router.get("/access/resolve-cid/{cid}")
+def resolve_cid(cid: str, user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Resolve a CID to its company for member-only deep links (/c/{cid})."""
+    access = db.query(CompanyAccess).filter_by(cid=cid.strip().upper()).first()
+    if not access:
+        raise HTTPException(404, "Company ID not recognized")
+    if user.platform_role not in ("staff", "super"):
+        m = _membership(db, user.id, access.company_id)
+        if not m or m.status != "active":
+            raise HTTPException(403, "No active access to this company")
+    return {"company_id": access.company_id,
+            "name": _company_name(db, access.company_id)}
 
 
 # ---------------------------------------------------------------------- join
