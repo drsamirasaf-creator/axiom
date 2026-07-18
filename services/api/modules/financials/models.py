@@ -2,7 +2,7 @@
 (SPEC-004 Product §6/§7, Data §5; ADR-005.) REQ-FIN-001, REQ-FIN-008.
 """
 from datetime import datetime, timezone
-from sqlalchemy import String, Integer, DateTime, ForeignKey, JSON, LargeBinary
+from sqlalchemy import String, Integer, DateTime, ForeignKey, JSON, LargeBinary, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 from ...core.db import Base
 
@@ -26,6 +26,14 @@ class FinancialDataset(Base):
         ForeignKey("financial_datasets.id"), nullable=True, index=True)
     data: Mapped[dict] = mapped_column(JSON)                 # canonical dataset
     validation: Mapped[dict] = mapped_column(JSON)           # warnings at ingest
+    # Phase 7a-2 company-scoped upload versioning
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false")     # one active per enterprise
+    frequency: Mapped[str | None] = mapped_column(
+        String(16), nullable=True)                          # annual | quarterly
+    uploaded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

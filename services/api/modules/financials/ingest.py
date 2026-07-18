@@ -213,3 +213,159 @@ def read_upload_metadata(content: bytes) -> dict | None:
                 "standard": str(ws["B5"].value or "us_gaap")}
     except (TypeError, ValueError):
         return None
+
+
+def _sheet_for(engine_error: str, lab: dict) -> str | None:
+    for block in ("income_statement", "balance_sheet", "cash_flow"):
+        if engine_error.startswith(block):
+            return lab["sheets"][block]
+    if engine_error.startswith("company."):
+        return "Company"
+    if engine_error.startswith("periods"):
+        return lab["sheets"]["income_statement"]
+    return None
+
+
+def parse_and_validate(content: bytes, expected_company_id: int):
+    """Parse + validate an uploaded company workbook into the canonical dataset.
+
+    Returns (data|None, errors, meta, warnings). `errors` is a structured list
+    of {sheet, cell, message}; when non-empty NOTHING should be written. On
+    success `data` is the engine-ready canonical dataset (values coerced)."""
+    errors = []
+    meta = read_upload_metadata(content)
+    if meta is None:
+        return None, [{"sheet": "_AXIOM", "cell": None,
+                       "message": "Not an AXIOM company template (metadata sheet "
+                                  "missing or altered). Download a fresh template."}], None, []
+    if meta["company_id"] != expected_company_id:
+        return None, [{"sheet": "_AXIOM", "cell": "B2",
+                       "message": f"This template was generated for company "
+                                  f"{meta['company_id']}, not {expected_company_id}."}], meta, []
+    try:
+        wb = load_workbook(io.BytesIO(content), data_only=True)
+    except Exception as e:
+        return None, [{"sheet": None, "cell": None,
+                       "message": f"not a readable .xlsx file: {e}"}], meta, []
+
+    standard = meta.get("standard", "us_gaap")
+    if standard not in LABELS:
+        standard = "us_gaap"
+    lab = LABELS[standard]
+
+    # ---- Company profile ----
+    if "Company" not in wb.sheetnames:
+        return None, [{"sheet": "Company", "cell": None,
+                       "message": "missing Company sheet"}], meta, []
+    ws = wb["Company"]
+    company = {"standard": standard}
+    for r, (field, label, applies) in enumerate(COMPANY_ROWS, start=2):
+        v = ws[f"B{r}"].value
+        if isinstance(v, str):
+            v = v.strip()
+        company[field] = v if v not in ("", None) else None
+    if isinstance(company.get("ownership"), str):
+        company["ownership"] = company["ownership"].lower()
+    for r, (field, label, applies) in enumerate(COMPANY_ROWS, start=2):
+        if field in ("name", "ownership", "currency"):
+            continue
+        val = company.get(field)
+        if val is None:
+            continue
+        try:
+            company[field] = float(val)
+        except (TypeError, ValueError):
+            errors.append({"sheet": "Company", "cell": f"B{r}",
+                           "message": f"'{label}' must be numeric"})
+
+    # ---- Statement sheets ----
+    def read_cols(ws):
+        cols = []
+        for i in range(30):
+            letter = get_column_letter(FIRST_COL + i)
+            y, k = ws[f"{letter}4"].value, ws[f"{letter}3"].value
+            if y in (None, ""):
+                continue
+            try:
+                y = int(y)
+            except (TypeError, ValueError):
+                errors.append({"sheet": ws.title, "cell": f"{letter}4",
+                               "message": "period must be an integer"})
+                continue
+            kind = str(k or "").strip().lower()
+            if kind not in ("historical", "forecast"):
+                errors.append({"sheet": ws.title, "cell": f"{letter}3",
+                               "message": "mark this column Historical or Forecast"})
+                continue
+            cols.append((letter, y, kind))
+        return cols
+
+    blocks, ref_cols = {}, None
+    for block, keys in BLOCK_KEYS.items():
+        name = lab["sheets"][block]
+        if name not in wb.sheetnames:
+            errors.append({"sheet": name, "cell": None,
+                           "message": f"missing sheet '{name}'"})
+            continue
+        ws = wb[name]
+        cols = read_cols(ws)
+        if ref_cols is None:
+            ref_cols = cols
+        elif [(y, k) for _, y, k in cols] != [(y, k) for _, y, k in ref_cols]:
+            errors.append({"sheet": name, "cell": None,
+                           "message": "period columns must match the "
+                                      f"'{lab['sheets']['income_statement']}' sheet"})
+        bd = {}
+        for r, key in enumerate(keys, start=5):
+            row = {}
+            for letter, y, kind in cols:
+                v = ws[f"{letter}{r}"].value
+                if v in (None, ""):
+                    errors.append({"sheet": name, "cell": f"{letter}{r}",
+                                   "message": f"'{lab['lines'][key]}' — value required for period {y}"})
+                    continue
+                try:
+                    row[str(y)] = float(v)
+                except (TypeError, ValueError):
+                    errors.append({"sheet": name, "cell": f"{letter}{r}",
+                                   "message": f"'{lab['lines'][key]}' — must be numeric"})
+            bd[key] = row
+        blocks[block] = bd
+
+    ref_cols = ref_cols or []
+    hist = [y for _, y, k in ref_cols if k == "historical"]
+    fcst = [y for _, y, k in ref_cols if k == "forecast"]
+    data = {"company": company,
+            "periods": {"historical": hist, "forecast": fcst},
+            "income_statement": blocks.get("income_statement", {}),
+            "balance_sheet": blocks.get("balance_sheet", {}),
+            "cash_flow": blocks.get("cash_flow", {})}
+
+    # cross-field checks (required company fields, increasing periods)
+    v = engines.validate_dataset(data)
+    for e in v["errors"]:
+        errors.append({"sheet": _sheet_for(e, lab), "cell": None, "message": e})
+    # BS balance is a HARD error on upload (the engine treats it as a warning);
+    # drop the duplicate warning.
+    warnings = [w for w in v["warnings"] if "does not balance" not in w]
+    bs = data["balance_sheet"]
+    bs_sheet = lab["sheets"]["balance_sheet"]
+    for y in hist + fcst:
+        ys = str(y)
+        try:
+            assets = (bs["cash"][ys] + bs["other_current_assets"][ys]
+                      + bs["noncurrent_assets"][ys])
+            le = (bs["current_liabilities_ex_debt"][ys] + bs["short_term_debt"][ys]
+                  + bs["long_term_debt"][ys] + bs["preferred_equity"][ys]
+                  + bs["minority_interest"][ys] + bs["total_equity"][ys])
+        except KeyError:
+            continue                       # missing cells already flagged above
+        if assets and abs(assets - le) > 0.005 * abs(assets):
+            errors.append({"sheet": bs_sheet, "cell": None,
+                           "message": f"balance sheet does not balance in {y}: "
+                                      f"assets {assets:,.2f} vs liabilities+equity "
+                                      f"{le:,.2f} (must match within 0.5%)"})
+
+    if errors:
+        return None, errors, meta, warnings
+    return data, [], meta, warnings

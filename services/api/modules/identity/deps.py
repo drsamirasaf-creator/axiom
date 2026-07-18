@@ -214,6 +214,26 @@ def is_authenticated(authorization: str | None = Header(default=None),
     return user is not None
 
 
+def viewer_company(authorization: str | None = Header(default=None)) -> int | None:
+    """The company_id a magic-link (scope=company:{id}:view) token is confined
+    to, or None for a normal owner token. Financial Core reads use this to
+    isolate sibling companies under one tenant (7a-2/7a-4)."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    token = authorization.split(" ", 1)[1].strip()
+    try:
+        from ...accounts import read_token
+        scope = read_token(token, "access").get("scope") or ""
+    except Exception:
+        return None
+    if scope.startswith("company:") and scope.endswith(":view"):
+        try:
+            return int(scope.split(":")[1])
+        except (IndexError, ValueError):
+            return None
+    return None
+
+
 # ---- Phase 12 (ADR-011): server-side entitlement ----------------------------
 from ...core.config import require_plan  # noqa: E402
 

@@ -21,11 +21,16 @@ XLSX_MIME = ("application/vnd.openxmlformats-officedocument"
 from ..identity.deps import read_tenant as _tenant  # noqa: E402
 from ..identity.deps import write_tenant as _writer  # noqa: E402
 from ..identity.deps import is_authenticated as _authed  # noqa: E402
+from ..identity.deps import viewer_company as _scoped  # noqa: E402
 
 
-def _get_dataset(db: Session, tenant: str, dataset_id: int) -> models.FinancialDataset:
+def _get_dataset(db: Session, tenant: str, dataset_id: int,
+                 scoped_enterprise: int | None = None) -> models.FinancialDataset:
     row = db.get(models.FinancialDataset, dataset_id)
     if not row or row.tenant != tenant:
+        raise HTTPException(status_code=404, detail="dataset not found")
+    # 7a-2/7a-4: a company-scoped viewer only sees its own enterprise's data.
+    if scoped_enterprise is not None and row.enterprise_id != scoped_enterprise:
         raise HTTPException(status_code=404, detail="dataset not found")
     return row
 
@@ -105,25 +110,29 @@ async def upload_dataset(file: UploadFile = File(...),
 
 @router.get("/datasets", response_model=list[schemas.DatasetOut])
 def list_datasets(limit: int = 50, db: Session = Depends(get_db),
-                  tenant: str = Depends(_tenant)):
-    return db.query(models.FinancialDataset).filter_by(tenant=tenant)\
-             .order_by(models.FinancialDataset.id.desc())\
-             .limit(min(limit, 200)).all()
+                  tenant: str = Depends(_tenant),
+                  scoped: int | None = Depends(_scoped)):
+    q = db.query(models.FinancialDataset).filter_by(tenant=tenant)
+    if scoped is not None:                       # magic-link viewer: this company only
+        q = q.filter(models.FinancialDataset.enterprise_id == scoped)
+    return q.order_by(models.FinancialDataset.id.desc()).limit(min(limit, 200)).all()
 
 
 @router.get("/datasets/{dataset_id}", response_model=schemas.DatasetDetailOut)
 def get_dataset(dataset_id: int, db: Session = Depends(get_db),
-                tenant: str = Depends(_tenant)):
-    return _get_dataset(db, tenant, dataset_id)
+                tenant: str = Depends(_tenant),
+                scoped: int | None = Depends(_scoped)):
+    return _get_dataset(db, tenant, dataset_id, scoped)
 
 
 @router.get("/datasets/{dataset_id}/profile")
 def enterprise_profile(dataset_id: int, db: Session = Depends(get_db),
-                       tenant: str = Depends(_tenant)):
+                       tenant: str = Depends(_tenant),
+                       scoped: int | None = Depends(_scoped)):
     """One-call summary for the Business Enterprise page (ADR-011):
     company card, data coverage, lineage depth, documents, and the latest
     valuation headline."""
-    row = _get_dataset(db, tenant, dataset_id)
+    row = _get_dataset(db, tenant, dataset_id, scoped)
     data = row.data
     from ..valuation.models import ValuationRun
     vr = db.query(ValuationRun).filter_by(tenant=tenant, dataset_id=row.id)\
@@ -157,8 +166,9 @@ def enterprise_profile(dataset_id: int, db: Session = Depends(get_db),
 
 @router.get("/datasets/{dataset_id}/derived")
 def derived_series(dataset_id: int, db: Session = Depends(get_db),
-                   tenant: str = Depends(_tenant)):
-    row = _get_dataset(db, tenant, dataset_id)
+                   tenant: str = Depends(_tenant),
+                   scoped: int | None = Depends(_scoped)):
+    row = _get_dataset(db, tenant, dataset_id, scoped)
     return engines.derive_series(row.data)
 
 
@@ -166,8 +176,9 @@ def derived_series(dataset_id: int, db: Session = Depends(get_db),
 def forecast_dataset(dataset_id: int, body: schemas.ForecastRequest,
                      db: Session = Depends(get_db),
                      tenant: str = Depends(_tenant),
+                     scoped: int | None = Depends(_scoped),
                authed: bool = Depends(_authed)):
-    row = _get_dataset(db, tenant, dataset_id)
+    row = _get_dataset(db, tenant, dataset_id, scoped)
     if body.persist:
         from ..identity.deps import write_allowance, enforce_write
         # authed flag alone is not entitlement: route through the one gate
@@ -228,9 +239,10 @@ def glossary():
 
 @metrics_router.get("/dashboard/{dataset_id}")
 def dashboard(dataset_id: int, valuation_run_id: int | None = None,
-              db: Session = Depends(get_db), tenant: str = Depends(_tenant)):
+              db: Session = Depends(get_db), tenant: str = Depends(_tenant),
+              scoped: int | None = Depends(_scoped)):
     """The Executive KPI Strip + Enterprise Health Index (Product §5.6/§5.8)."""
-    row = _get_dataset(db, tenant, dataset_id)
+    row = _get_dataset(db, tenant, dataset_id, scoped)
     valuation_result = None
     if valuation_run_id is not None:
         from ..valuation.models import ValuationRun
@@ -255,11 +267,12 @@ def _plan_of(db, tenant: str) -> str:
 
 @router.get("/datasets/{dataset_id}/pro-forma")
 def pro_forma_statements(dataset_id: int, db: Session = Depends(get_db),
-                         tenant: str = Depends(_tenant)):
+                         tenant: str = Depends(_tenant),
+                         scoped: int | None = Depends(_scoped)):
     """Stochastic three-statement pro forma with per-line attainment
     probabilities and cumulative multi-year odds (ADR-018)."""
     from . import proforma
-    row = _get_dataset(db, tenant, dataset_id)
+    row = _get_dataset(db, tenant, dataset_id, scoped)
     try:
         return proforma.stochastic_statements(row.data)
     except ValueError as e:
@@ -268,12 +281,13 @@ def pro_forma_statements(dataset_id: int, db: Session = Depends(get_db),
 
 @router.get("/datasets/{dataset_id}/comprehensive-income")
 def comprehensive_income(dataset_id: int, db: Session = Depends(get_db),
-                         tenant: str = Depends(_tenant)):
+                         tenant: str = Depends(_tenant),
+                         scoped: int | None = Depends(_scoped)):
     """Stochastic Statement of Comprehensive Income (net income + OCI),
     standard-aware (US GAAP vs IFRS), with FX/securities/pension/hedge OCI
     drivers modeled where on file (ADR-019)."""
     from . import oci as oci_mod
-    row = _get_dataset(db, tenant, dataset_id)
+    row = _get_dataset(db, tenant, dataset_id, scoped)
     try:
         return oci_mod.statement_of_comprehensive_income(row.data)
     except ValueError as e:

@@ -691,7 +691,7 @@ oauth_router = router
 # ======================================================================
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
 
@@ -1040,6 +1040,90 @@ def data_template(company_id: int, frequency: str = "annual",
         media_type=("application/vnd.openxmlformats-officedocument"
                     ".spreadsheetml.sheet"),
         headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+def _dataset_summary(ds):
+    periods = (ds.data or {}).get("periods", {}) if isinstance(ds.data, dict) else {}
+    return {"dataset_id": ds.id, "version": ds.version, "is_active": ds.is_active,
+            "frequency": ds.frequency, "name": ds.name,
+            "uploaded_at": ds.uploaded_at, "created_at": ds.created_at,
+            "periods": periods}
+
+
+@router.post("/companies/{company_id}/data-upload", status_code=201)
+async def data_upload(company_id: int, file: UploadFile = File(...),
+                      member=Depends(require_company_admin),
+                      user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Validate an uploaded workbook and attach it as a new versioned dataset
+    to THIS company's enterprise. All-or-nothing: a validation failure writes
+    nothing and returns cell-level errors."""
+    from .modules.enterprise_state.models import Enterprise
+    from .modules.financials import ingest
+    from .modules.financials.models import FinancialDataset
+    ent = db.get(Enterprise, company_id)
+    if not ent:
+        raise HTTPException(404, "Company not found")
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(413, "file exceeds 5 MB")
+    data, errors, meta, warnings = ingest.parse_and_validate(content, company_id)
+    if errors:
+        raise HTTPException(422, detail={
+            "message": "Upload validation failed — no data was saved.",
+            "errors": errors})
+
+    frequency = (meta or {}).get("frequency", "annual")
+    prior = db.query(FinancialDataset).filter_by(
+        enterprise_id=company_id, source="upload").all()
+    version = max([(p.version or 1) for p in prior], default=0) + 1
+    for p in prior:
+        if p.is_active:
+            p.is_active = False
+    ds = FinancialDataset(
+        tenant=ent.tenant, enterprise_id=company_id,
+        name=data["company"].get("name") or ent.name,
+        standard=data["company"]["standard"], ownership=data["company"]["ownership"],
+        source="upload", data=data, validation={"warnings": warnings},
+        version=version, is_active=True, frequency=frequency,
+        uploaded_at=datetime.utcnow())
+    db.add(ds)
+    db.flush()
+    audit(db, user.id, "data_uploaded", "company", company_id,
+          detail=f"dataset={ds.id} v{version} {frequency}")
+    db.commit()
+    return {"dataset_id": ds.id, "version": version, "frequency": frequency,
+            "periods_detected": data["periods"], "warnings": warnings,
+            "active": True}
+
+
+@router.get("/companies/{company_id}/datasets")
+def company_datasets(company_id: int, member=Depends(require_company_member),
+                     db=Depends(get_db)):
+    """Version history for this company's uploaded datasets (active flagged)."""
+    from .modules.financials.models import FinancialDataset
+    rows = (db.query(FinancialDataset)
+              .filter_by(enterprise_id=company_id, source="upload")
+              .order_by(FinancialDataset.version.desc()).all())
+    return {"company_id": company_id,
+            "active_dataset_id": next((r.id for r in rows if r.is_active), None),
+            "datasets": [_dataset_summary(r) for r in rows]}
+
+
+@router.post("/companies/{company_id}/datasets/{dataset_id}/restore")
+def restore_dataset(company_id: int, dataset_id: int,
+                    member=Depends(require_company_admin), db=Depends(get_db)):
+    """Reactivate a prior version (make it the single active dataset)."""
+    from .modules.financials.models import FinancialDataset
+    target = db.get(FinancialDataset, dataset_id)
+    if not target or target.enterprise_id != company_id or target.source != "upload":
+        raise HTTPException(404, "dataset not found for this company")
+    for r in db.query(FinancialDataset).filter_by(
+            enterprise_id=company_id, source="upload").all():
+        r.is_active = (r.id == dataset_id)
+    audit(db, member.user_id if hasattr(member, "user_id") else None,
+          "dataset_restored", "company", company_id, detail=f"dataset={dataset_id}")
+    db.commit()
+    return {"ok": True, "active_dataset_id": dataset_id, "version": target.version}
 
 
 # ---------------------------------------------------------------------- join
