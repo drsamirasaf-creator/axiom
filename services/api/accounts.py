@@ -1037,7 +1037,11 @@ def verify_stripe_signature(payload: bytes, header: str, secret: str,
 @router.post("/webhooks/stripe")
 async def stripe_webhook(request: Request, db=Depends(get_db)):
     payload = await request.body()
-    secret = os.environ.get("STRIPE_WEBHOOK_SECRET")
+    # Prefer a dedicated accounts webhook secret (its own Stripe endpoint), so
+    # this handler can be verified independently of the legacy Financial-Core
+    # webhook; fall back to the shared STRIPE_WEBHOOK_SECRET when unset.
+    secret = (os.environ.get("STRIPE_ACCOUNTS_WEBHOOK_SECRET")
+              or os.environ.get("STRIPE_WEBHOOK_SECRET"))
     if secret:
         sig = request.headers.get("stripe-signature", "")
         if not verify_stripe_signature(payload, sig, secret):
