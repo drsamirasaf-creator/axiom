@@ -1013,6 +1013,35 @@ def resolve_cid(cid: str, user: User = Depends(get_current_user), db=Depends(get
             "name": _company_name(db, access.company_id)}
 
 
+# ------------------------------------------------- data ingestion (7a-2)
+@router.get("/companies/{company_id}/data-template")
+def data_template(company_id: int, frequency: str = "annual",
+                  member=Depends(require_company_member), db=Depends(get_db)):
+    """Generate the themed, pre-filled Excel input template for this company."""
+    from .modules.enterprise_state.models import Enterprise
+    from .modules.financials import ingest
+    ent = db.get(Enterprise, company_id)
+    if not ent:
+        raise HTTPException(404, "Company not found")
+    try:
+        content = ingest.build_company_template(
+            company_id=company_id, company_name=ent.name,
+            currency=ent.reporting_currency or "USD",
+            statement_units=ent.statement_units or "actual",
+            ownership=ent.ownership or "private",
+            frequency=(frequency or "annual").lower())
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    from fastapi import Response
+    safe = "".join(ch if ch.isalnum() else "_" for ch in (ent.name or "company"))
+    fname = f"AXIOM_{safe}_{(frequency or 'annual').lower()}_template.xlsx"
+    return Response(
+        content,
+        media_type=("application/vnd.openxmlformats-officedocument"
+                    ".spreadsheetml.sheet"),
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
 # ---------------------------------------------------------------------- join
 @router.post("/access/join", status_code=201)
 def join_with_cid(body: JoinIn, user: User = Depends(get_current_user),
