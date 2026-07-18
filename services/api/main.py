@@ -42,8 +42,12 @@ app = FastAPI(
 
 # ADR-007: origins from AXIOM_ALLOWED_ORIGINS (default "*" until set).
 from .core.config import allowed_origins
+# allow_headers must list Authorization explicitly: per the Fetch spec a
+# "*" wildcard does NOT authorize the Authorization header, so browser
+# requests to authenticated endpoints (e.g. GET /me) fail their preflight.
 app.add_middleware(CORSMiddleware, allow_origins=allowed_origins(),
-                   allow_methods=["*"], allow_headers=["*"])
+                   allow_methods=["*"],
+                   allow_headers=["Authorization", "Content-Type", "X-AXIOM-Tenant"])
 
 @app.get("/health", tags=["platform"])
 def health():
