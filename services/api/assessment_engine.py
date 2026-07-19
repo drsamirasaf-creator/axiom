@@ -10,20 +10,20 @@ import os
 import statistics
 
 
-def load_taxonomy(path: str | None = None) -> dict:
-    path = path or os.path.join(os.path.dirname(__file__), "assets",
-                                "assessment_taxonomy.json")
-    with open(path) as f:
-        return json.load(f)
+def load_taxonomy() -> dict:
+    """The canonical taxonomy (versioned platform content)."""
+    from .core.refassessment import taxonomy
+    return taxonomy()
 
 
 def taxonomy_to_items(tax: dict) -> list[dict]:
-    """Flatten to item dicts: {level, code, title, definition, parent_code}."""
+    """Flatten to item dicts: {level, code, title, definition, parent_code}.
+    L2 nests under 'items' (canonical) or 'subcategories'; L3 under 'children'."""
     items = []
     for cat in tax["categories"]:
         items.append({"level": 1, "code": cat["code"], "title": cat["title"],
                       "definition": cat.get("definition", ""), "parent_code": None})
-        for sub in cat.get("subcategories", []):
+        for sub in (cat.get("items") or cat.get("subcategories") or []):
             items.append({"level": 2, "code": sub["code"], "title": sub["title"],
                           "definition": sub.get("definition", ""),
                           "parent_code": cat["code"]})
