@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 from ...core.db import get_db
-from ...core.config import tenant_from_header, require_auth
+from ...core.config import tenant_from_header, require_auth, DEMO_TENANT
 from . import models, security
 
 
@@ -192,7 +192,11 @@ def read_tenant(authorization: str | None = Header(default=None),
                             detail="invalid or expired session token")
     if require_auth():
         return SHOWCASE_TENANT
-    return (x_axiom_tenant or "").strip()[:64] or SHOWCASE_TENANT
+    t = (x_axiom_tenant or "").strip()[:64] or SHOWCASE_TENANT
+    # The visitor-facing demo reads from the canonical showcase companies —
+    # 'demo' is an anonymous-read alias for the showcase tenant (single source
+    # of truth), so the demo roster is exactly the reference three (7b).
+    return SHOWCASE_TENANT if t == DEMO_TENANT else t
 
 
 def write_tenant(authorization: str | None = Header(default=None),
