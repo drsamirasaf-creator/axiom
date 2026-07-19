@@ -130,6 +130,40 @@ def _backfill_showcase_names(db):
         logging.getLogger("axiom.seed").exception("name backfill failed")
 
 
+def _backfill_showcase_helios(db):
+    """Idempotent: seed the Helios (stressed public) reference company if it's
+    absent. Production was first seeded before Helios was added, so its showcase
+    roster is missing it. Creates the dataset + its proforma valuation run."""
+    from ..modules.financials import models as fin_models
+    from ..modules.valuation import models as val_models
+    from ..modules.valuation import engines as val
+    from .refcompanies import helios
+    try:
+        if db.query(fin_models.FinancialDataset).filter(
+                fin_models.FinancialDataset.tenant == SHOWCASE_TENANT,
+                fin_models.FinancialDataset.name.like("Helios%")).first():
+            return
+        hel = helios()
+        row = fin_models.FinancialDataset(
+            tenant=SHOWCASE_TENANT, name="Helios, Inc. (showcase — stressed)",
+            standard=hel["company"]["standard"], ownership=hel["company"]["ownership"],
+            source="direct", data=hel, validation={"warnings": []},
+            parent_dataset_id=None)
+        db.add(row)
+        db.flush()
+        db.add(val_models.ValuationRun(
+            tenant=SHOWCASE_TENANT, dataset_id=row.id, mode="proforma",
+            params={"assumptions": {}, "monte_carlo": {}},
+            result=val.run(hel, "proforma")))
+        db.commit()
+        import logging
+        logging.getLogger("axiom.seed").info("seeded missing Helios showcase company")
+    except Exception:
+        db.rollback()
+        import logging
+        logging.getLogger("axiom.seed").exception("Helios backfill failed")
+
+
 def seed_showcase():
     if os.environ.get("AXIOM_SEED_SHOWCASE", "true").strip().lower() in (
             "0", "false", "no", "off"):
@@ -150,7 +184,8 @@ def seed_showcase():
             # independently so one failure can't abort the rest (a dangling
             # _backfill_showcase_shares call previously NameError'd here and
             # silently blocked every showcase backfill).
-            for _fn in (_backfill_showcase_oci, _backfill_showcase_names):
+            for _fn in (_backfill_showcase_oci, _backfill_showcase_helios,
+                        _backfill_showcase_names):
                 try:
                     _fn(db)
                 except Exception:
