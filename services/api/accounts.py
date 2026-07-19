@@ -242,6 +242,64 @@ class InitiativeEvent(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class AssessmentFramework(Base):
+    """A company's assessment framework at a point in time. Curation or weight
+    changes mint a new revision; cycles/snapshots pin the revision they used."""
+    __tablename__ = "ax_assessment_frameworks"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    revision = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AssessmentItem(Base):
+    __tablename__ = "ax_assessment_items"
+    id = Column(Integer, primary_key=True)
+    framework_id = Column(Integer, index=True, nullable=False)
+    level = Column(Integer, nullable=False)              # 1 | 2 | 3
+    code = Column(String(40), nullable=False)
+    title = Column(String(300), nullable=False)
+    definition = Column(Text, default="", nullable=False)
+    parent_code = Column(String(40), nullable=True)
+    selected = Column(Boolean, default=True, nullable=False)
+    custom = Column(Boolean, default=False, nullable=False)
+
+
+class AssessmentWeight(Base):
+    __tablename__ = "ax_assessment_weights"
+    id = Column(Integer, primary_key=True)
+    framework_id = Column(Integer, index=True, nullable=False)
+    l1_code = Column(String(40), nullable=False)
+    weight = Column(Float, nullable=False)               # 13 L1 weights sum to 100
+
+
+class AssessmentCycle(Base):
+    __tablename__ = "ax_assessment_cycles"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    framework_id = Column(Integer, nullable=False)
+    revision = Column(Integer, nullable=False)           # denormalized revision tag
+    opened_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    closed_at = Column(DateTime, nullable=True)
+    cadence = Column(String(24), nullable=True)          # company cadence setting
+    anonymity_mode = Column(String(16), default="anonymous", nullable=False)
+    snapshot = Column(JSON, nullable=True)               # CEI snapshot at close (revision-tagged)
+
+
+class AssessmentResponse(Base):
+    """One participant's score for one item in one cycle. A participant submits
+    once per cycle (all items), immutable after submit. Same shape the deferred
+    7d-3 participant invites will write."""
+    __tablename__ = "ax_assessment_responses"
+    id = Column(Integer, primary_key=True)
+    cycle_id = Column(Integer, index=True, nullable=False)
+    participant_ref = Column(String(64), index=True, nullable=False)
+    item_id = Column(Integer, nullable=False)
+    score = Column(Integer, nullable=False)              # 1-10
+    comment = Column(Text, nullable=True)
+    submitted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class AuditLog(Base):
     __tablename__ = "ax_audit"
     id = Column(Integer, primary_key=True)
@@ -1534,6 +1592,268 @@ def initiative_history(company_id: int, iid: int,
                         "to": e.to_value, "note": e.note,
                         "actor_user_id": e.actor_user_id, "created_at": e.created_at}
                        for e in events]}
+
+
+# ------------------------------------------- AXIOM Assessment Framework (7d-1)
+class FrameworkPut(BaseModel):
+    deselect: list[str] = []            # codes to deselect (keep, exclude from CEI)
+    select: list[str] = []              # codes to re-select
+    delete: list[str] = []              # codes to remove entirely (+ their children)
+    add: list[dict] = []                # custom items [{level, code, title, definition?, parent_code?}]
+    weights: dict | None = None         # {l1_code: weight} (must sum ~100 over L1)
+
+
+class CycleIn(BaseModel):
+    cadence: str | None = None
+    anonymity_mode: str = "anonymous"
+
+
+class ScoreItem(BaseModel):
+    item_id: int
+    score: int
+    comment: str | None = None
+
+
+class ScoreIn(BaseModel):
+    responses: list[ScoreItem]
+
+
+def _assess_current_framework(db, company_id):
+    return (db.query(AssessmentFramework).filter_by(company_id=company_id)
+              .order_by(AssessmentFramework.revision.desc()).first())
+
+
+def _assess_seed_framework(db, company_id):
+    from .assessment_engine import load_taxonomy, taxonomy_to_items, default_weights
+    tax = load_taxonomy()
+    fw = AssessmentFramework(company_id=company_id, revision=1)
+    db.add(fw); db.flush()
+    for it in taxonomy_to_items(tax):
+        db.add(AssessmentItem(framework_id=fw.id, level=it["level"], code=it["code"],
+                              title=it["title"], definition=it["definition"],
+                              parent_code=it["parent_code"], selected=True, custom=False))
+    l1 = [c["code"] for c in tax["categories"]]
+    provided = {c["code"]: c.get("default_weight") for c in tax["categories"]}
+    for code, w in default_weights(l1, provided).items():
+        db.add(AssessmentWeight(framework_id=fw.id, l1_code=code, weight=w))
+    return fw
+
+
+def _assess_ensure_framework(db, company_id):
+    fw = _assess_current_framework(db, company_id)
+    if fw is None:
+        fw = _assess_seed_framework(db, company_id)
+        db.commit()
+    return fw
+
+
+def _assess_items(db, fw):
+    return (db.query(AssessmentItem).filter_by(framework_id=fw.id)
+              .order_by(AssessmentItem.id).all())
+
+
+def _assess_weights(db, fw):
+    return {w.l1_code: w.weight
+            for w in db.query(AssessmentWeight).filter_by(framework_id=fw.id).all()}
+
+
+def _framework_out(db, fw):
+    return {"revision": fw.revision, "framework_id": fw.id, "created_at": fw.created_at,
+            "weights": _assess_weights(db, fw),
+            "items": [{"id": i.id, "level": i.level, "code": i.code, "title": i.title,
+                       "definition": i.definition, "parent_code": i.parent_code,
+                       "selected": i.selected, "custom": i.custom}
+                      for i in _assess_items(db, fw)]}
+
+
+def _cycle_out(cyc):
+    return {"cycle_id": cyc.id, "company_id": cyc.company_id, "revision": cyc.revision,
+            "opened_at": cyc.opened_at, "closed_at": cyc.closed_at,
+            "cadence": cyc.cadence, "anonymity_mode": cyc.anonymity_mode,
+            "closed": cyc.closed_at is not None}
+
+
+def _cycle_cei(db, cyc):
+    """Compute the CEI summary for a cycle from its OWN framework revision +
+    responses, so past cycles stay pinned to the revision they used."""
+    from .assessment_engine import compute_cei
+    fw_items = db.query(AssessmentItem).filter_by(framework_id=cyc.framework_id).all()
+    id2code = {i.id: i.code for i in fw_items}
+    items = [{"level": i.level, "code": i.code, "title": i.title,
+              "parent_code": i.parent_code, "selected": i.selected} for i in fw_items]
+    weights = {w.l1_code: w.weight
+               for w in db.query(AssessmentWeight).filter_by(framework_id=cyc.framework_id).all()}
+    resp = []
+    for r in db.query(AssessmentResponse).filter_by(cycle_id=cyc.id).all():
+        code = id2code.get(r.item_id)
+        if code:
+            resp.append({"participant_ref": r.participant_ref, "code": code, "score": r.score})
+    out = compute_cei(items, weights, resp)
+    out["revision"] = cyc.revision
+    return out
+
+
+def _submit_responses(db, cyc, participant_ref, responses, actor_id=None):
+    """Shared response-submission logic (admin scoring now; 7d-3 participants
+    bolt on): one submission per participant per cycle, immutable after."""
+    if db.query(AssessmentResponse).filter_by(
+            cycle_id=cyc.id, participant_ref=participant_ref).first():
+        raise HTTPException(409, "This participant has already submitted for this "
+                                 "cycle — submissions are immutable.")
+    valid = {i.id for i in db.query(AssessmentItem).filter_by(framework_id=cyc.framework_id).all()}
+    n = 0
+    for r in responses:
+        if r.item_id not in valid:
+            raise HTTPException(422, f"item {r.item_id} is not in this cycle's framework")
+        if not (1 <= r.score <= 10):
+            raise HTTPException(422, "score must be an integer 1-10")
+        db.add(AssessmentResponse(cycle_id=cyc.id, participant_ref=participant_ref,
+                                  item_id=r.item_id, score=r.score, comment=r.comment))
+        n += 1
+    audit(db, actor_id, "assessment_scored", "company", cyc.company_id,
+          detail=f"cycle {cyc.id} participant {participant_ref} ({n} items)")
+    db.commit()
+    return {"ok": True, "cycle_id": cyc.id, "participant_ref": participant_ref,
+            "n_responses": n}
+
+
+@router.get("/companies/{company_id}/assessment/framework")
+def get_assessment_framework(company_id: int, member=Depends(require_company_admin),
+                             db=Depends(get_db)):
+    """Current framework revision (seeds from the canonical taxonomy on first touch)."""
+    return _framework_out(db, _assess_ensure_framework(db, company_id))
+
+
+@router.put("/companies/{company_id}/assessment/framework")
+def put_assessment_framework(company_id: int, body: FrameworkPut,
+                             member=Depends(require_company_admin),
+                             user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Curate items (select/deselect/add/delete at any level) and/or set L1
+    weights — any change mints a NEW revision; the old revision stays pinned to
+    its cycles/snapshots."""
+    from .assessment_engine import renormalize, default_weights
+    cur = _assess_ensure_framework(db, company_id)
+    if not (body.deselect or body.select or body.delete or body.add or body.weights is not None):
+        return _framework_out(db, cur)      # no-op, no new revision
+
+    by_code = {i.code: {"level": i.level, "code": i.code, "title": i.title,
+                        "definition": i.definition, "parent_code": i.parent_code,
+                        "selected": i.selected, "custom": i.custom}
+               for i in _assess_items(db, cur)}
+    weights = _assess_weights(db, cur)
+    for c in body.deselect:
+        if c in by_code:
+            by_code[c]["selected"] = False
+    for c in body.select:
+        if c in by_code:
+            by_code[c]["selected"] = True
+    for c in body.delete:
+        by_code.pop(c, None)
+        for k in [k for k, v in by_code.items() if v["parent_code"] == c]:
+            by_code.pop(k, None)          # cascade to children
+            for k2 in [k2 for k2, v in by_code.items() if v["parent_code"] == k]:
+                by_code.pop(k2, None)
+    for a in body.add:
+        by_code[a["code"]] = {"level": a["level"], "code": a["code"],
+                              "title": a.get("title", a["code"]),
+                              "definition": a.get("definition", ""),
+                              "parent_code": a.get("parent_code"),
+                              "selected": True, "custom": True}
+
+    new_l1 = [v["code"] for v in by_code.values() if v["level"] == 1]
+    if body.weights is not None:
+        w = {c: float(body.weights.get(c, weights.get(c, 0.0))) for c in new_l1}
+        if new_l1 and abs(sum(w.values()) - 100.0) > 0.5:
+            raise HTTPException(422, f"L1 weights must sum to 100 (got {round(sum(w.values()),2)})")
+        new_weights = w
+    else:
+        kept = {c: weights.get(c) for c in new_l1}
+        new_weights = (renormalize(kept) if kept and all(v is not None for v in kept.values())
+                       else default_weights(new_l1))
+
+    fw = AssessmentFramework(company_id=company_id, revision=cur.revision + 1)
+    db.add(fw); db.flush()
+    for v in by_code.values():
+        db.add(AssessmentItem(framework_id=fw.id, level=v["level"], code=v["code"],
+                              title=v["title"], definition=v["definition"],
+                              parent_code=v["parent_code"], selected=v["selected"],
+                              custom=v["custom"]))
+    for code, w in new_weights.items():
+        db.add(AssessmentWeight(framework_id=fw.id, l1_code=code, weight=round(float(w), 6)))
+    audit(db, user.id, "assessment_framework_revised", "company", company_id,
+          detail=f"rev {fw.revision}")
+    db.commit()
+    return _framework_out(db, fw)
+
+
+@router.post("/companies/{company_id}/assessment/cycles", status_code=201)
+def open_assessment_cycle(company_id: int, body: CycleIn,
+                          member=Depends(require_company_admin),
+                          user: User = Depends(get_current_user), db=Depends(get_db)):
+    fw = _assess_ensure_framework(db, company_id)
+    cyc = AssessmentCycle(company_id=company_id, framework_id=fw.id, revision=fw.revision,
+                          cadence=body.cadence, anonymity_mode=body.anonymity_mode or "anonymous")
+    db.add(cyc); db.flush()
+    audit(db, user.id, "assessment_cycle_opened", "company", company_id,
+          detail=f"cycle {cyc.id} rev {fw.revision}")
+    db.commit()
+    return _cycle_out(cyc)
+
+
+@router.post("/companies/{company_id}/assessment/cycles/{cid}/close")
+def close_assessment_cycle(company_id: int, cid: int,
+                           member=Depends(require_company_admin),
+                           user: User = Depends(get_current_user), db=Depends(get_db)):
+    cyc = db.get(AssessmentCycle, cid)
+    if not cyc or cyc.company_id != company_id:
+        raise HTTPException(404, "cycle not found")
+    if cyc.closed_at:
+        raise HTTPException(409, "cycle already closed")
+    snap = _cycle_cei(db, cyc)
+    cyc.closed_at = datetime.utcnow()
+    cyc.snapshot = snap                    # revision-tagged snapshot for the trend
+    audit(db, user.id, "assessment_cycle_closed", "company", company_id,
+          detail=f"cycle {cid} cei {snap.get('cei')}")
+    db.commit()
+    return {**_cycle_out(cyc), "snapshot": snap}
+
+
+@router.post("/companies/{company_id}/assessment/cycles/{cid}/score", status_code=201)
+def score_assessment_cycle(company_id: int, cid: int, body: ScoreIn,
+                           member=Depends(require_company_admin),
+                           user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Admin direct scoring — a response set under the admin's own participant ref."""
+    cyc = db.get(AssessmentCycle, cid)
+    if not cyc or cyc.company_id != company_id:
+        raise HTTPException(404, "cycle not found")
+    if cyc.closed_at:
+        raise HTTPException(409, "cycle is closed")
+    return _submit_responses(db, cyc, f"admin:{user.id}", body.responses, user.id)
+
+
+@router.get("/companies/{company_id}/assessment/summary")
+def assessment_summary(company_id: int, member=Depends(require_company_member),
+                       db=Depends(get_db)):
+    """CEI, L1 subscores, dispersion, radar payload, and the revision-tagged
+    trend series."""
+    fw = _assess_current_framework(db, company_id)
+    if fw is None:
+        return {"revision": None, "cei": None, "n_participants": 0, "l1_subscores": [],
+                "radar": [], "item_dispersion": {}, "trend": []}
+    cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
+                .order_by(AssessmentCycle.opened_at).all())
+    latest = cycles[-1] if cycles else None
+    current = _cycle_cei(db, latest) if latest else {}
+    trend = [{"cycle_id": c.id, "revision": c.revision, "opened_at": c.opened_at,
+              "closed_at": c.closed_at, "cei": (c.snapshot or {}).get("cei")}
+             for c in cycles if c.snapshot]
+    return {"revision": fw.revision,
+            "current_cycle_id": latest.id if latest else None,
+            "cei": current.get("cei"), "n_participants": current.get("n_participants", 0),
+            "l1_subscores": current.get("l1_subscores", []),
+            "radar": current.get("radar", []),
+            "item_dispersion": current.get("item_dispersion", {}),
+            "trend": trend}
 
 
 # ---------------------------------------------------------------------- join
