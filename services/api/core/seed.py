@@ -146,9 +146,17 @@ def seed_showcase():
     try:
         if db.query(fin_models.FinancialDataset)\
              .filter_by(tenant=SHOWCASE_TENANT).first():
-            _backfill_showcase_oci(db)              # keep existing rows current
-            _backfill_showcase_shares(db)           # add shares to pre-shares showcase rows
-            _backfill_showcase_names(db)            # refresh reference-company display names
+            # Idempotent maintenance of existing showcase rows. Each guarded
+            # independently so one failure can't abort the rest (a dangling
+            # _backfill_showcase_shares call previously NameError'd here and
+            # silently blocked every showcase backfill).
+            for _fn in (_backfill_showcase_oci, _backfill_showcase_names):
+                try:
+                    _fn(db)
+                except Exception:
+                    import logging
+                    logging.getLogger("axiom.seed").exception(
+                        "%s failed", _fn.__name__)
             return                                  # already seeded
 
         def store(name, data, source, parent_id=None):
