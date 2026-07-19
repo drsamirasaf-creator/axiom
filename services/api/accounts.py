@@ -300,6 +300,39 @@ class AssessmentResponse(Base):
     submitted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class AssessmentConfig(Base):
+    """Company-level assessment cadence. `next_cycle_due` is computed when a
+    cycle CLOSES; it is surfaced as data in the summary (an on-access overdue
+    flag) — no background scheduler."""
+    __tablename__ = "ax_assessment_config"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, unique=True, index=True, nullable=False)
+    cadence = Column(String(24), default="none", nullable=False)  # none|monthly|quarterly|semiannual|annual
+    next_cycle_due = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AssessmentInvite(Base):
+    """A participant invitation to ONE cycle. The JWT carries the capability;
+    this row is the single-use ledger (jti) + roster. `participant_ref` (a
+    pseudonymous 'P3') is minted at redemption. In an ANONYMOUS cycle, responses
+    link to participant_ref only — no endpoint ever returns the ref<->email
+    mapping. `draft` is the save-as-you-go working set until submit."""
+    __tablename__ = "ax_assessment_invites"
+    id = Column(Integer, primary_key=True)
+    cycle_id = Column(Integer, index=True, nullable=False)
+    company_id = Column(Integer, index=True, nullable=False)
+    email = Column(String(255), nullable=False, index=True)
+    name = Column(String(255), default="", nullable=False)
+    jti = Column(String(64), unique=True, index=True, nullable=False)
+    invited_by = Column(Integer, nullable=False)             # ax_users.id (admin)
+    participant_ref = Column(String(64), nullable=True)      # minted at redemption
+    draft = Column(JSON, nullable=True)                      # {item_id: {score, comment}}
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    redeemed_at = Column(DateTime, nullable=True)
+    submitted_at = Column(DateTime, nullable=True)
+
+
 class AuditLog(Base):
     __tablename__ = "ax_audit"
     id = Column(Integer, primary_key=True)
@@ -418,6 +451,29 @@ def send_invite(to: str, name: str, company_name: str, token: str):
               <li>You'll land right on {company_name}.</li>
             </ol>
             <p style="font-size:12px;color:#8fb59e">This invitation is valid for 7 days.</p>"""))
+
+
+def send_assess_invite(to: str, name: str, company_name: str, token: str,
+                       anonymity_mode: str = "anonymous"):
+    link = f"{_app_url()}/assess?invite={token}"
+    greet = f"Hi {name}," if name else "Hi,"
+    privacy = ("Your individual answers are <b>anonymous</b> — leaders see only "
+               "the combined results, never who said what."
+               if anonymity_mode == "anonymous" else
+               "This is an <b>identified</b> assessment — your name is visible to "
+               "the company administrator alongside your responses.")
+    send(to, f"You're invited to assess {company_name}", _wrap(
+        f"You're invited to assess {company_name}",
+        f"""<p>{greet}</p>
+            <p>You've been asked to rate {company_name} across AXIOM's excellence
+               framework — it takes about 10–15 minutes and you can save and return
+               any time before you submit.</p>
+            <p><a href="{link}" style="background:#4ade80;color:#0d1b12;padding:12px 24px;
+               border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
+               Begin assessment</a></p>
+            <p style="font-size:13px;color:#8fb59e">{privacy}</p>
+            <p style="font-size:12px;color:#8fb59e">This link is unique to you and can
+               be used once. It is valid for 30 days.</p>"""))
 
 
 def send_email_change(to: str, token: str):
@@ -1794,6 +1850,8 @@ def open_assessment_cycle(company_id: int, body: CycleIn,
     cyc = AssessmentCycle(company_id=company_id, framework_id=fw.id, revision=fw.revision,
                           cadence=body.cadence, anonymity_mode=body.anonymity_mode or "anonymous")
     db.add(cyc); db.flush()
+    if body.cadence:                                   # persist the company cadence
+        _assess_config(db, company_id).cadence = body.cadence
     audit(db, user.id, "assessment_cycle_opened", "company", company_id,
           detail=f"cycle {cyc.id} rev {fw.revision}")
     db.commit()
@@ -1812,10 +1870,16 @@ def close_assessment_cycle(company_id: int, cid: int,
     snap = _cycle_cei(db, cyc)
     cyc.closed_at = datetime.utcnow()
     cyc.snapshot = snap                    # revision-tagged snapshot for the trend
+    cad = cyc.cadence or _assess_config(db, company_id).cadence or "none"
+    due = _cadence_next(cad, cyc.closed_at)     # None when cadence is none
+    if cad and cad != "none":
+        cfg = _assess_config(db, company_id)
+        cfg.cadence = cad
+        cfg.next_cycle_due = due
     audit(db, user.id, "assessment_cycle_closed", "company", company_id,
           detail=f"cycle {cid} cei {snap.get('cei')}")
     db.commit()
-    return {**_cycle_out(cyc), "snapshot": snap}
+    return {**_cycle_out(cyc), "snapshot": snap, "next_cycle_due": due}
 
 
 @router.post("/companies/{company_id}/assessment/cycles/{cid}/score", status_code=201)
@@ -1836,24 +1900,299 @@ def assessment_summary(company_id: int, member=Depends(require_company_member),
                        db=Depends(get_db)):
     """CEI, L1 subscores, dispersion, radar payload, and the revision-tagged
     trend series."""
+    cfg = db.query(AssessmentConfig).filter_by(company_id=company_id).first()
+    cadence = cfg.cadence if cfg else "none"
+    due = cfg.next_cycle_due if cfg else None
+    now = datetime.utcnow()
+    overdue = bool(due and now >= due)
+    if due is None:
+        cad_msg = None
+    elif overdue:
+        cad_msg = f"Assessment overdue since {due:%b %-d, %Y}"
+    else:
+        cad_msg = f"Next assessment due {due:%b %-d, %Y}"
+    cadence_block = {"cadence": cadence, "next_cycle_due": due, "overdue": overdue,
+                     "message": cad_msg}
+
     fw = _assess_current_framework(db, company_id)
     if fw is None:
         return {"revision": None, "cei": None, "n_participants": 0, "l1_subscores": [],
-                "radar": [], "item_dispersion": {}, "trend": []}
+                "radar": [], "item_dispersion": {}, "trend": [], "cadence": cadence_block}
     cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
                 .order_by(AssessmentCycle.opened_at).all())
     latest = cycles[-1] if cycles else None
     current = _cycle_cei(db, latest) if latest else {}
+    # respondent count on the live cycle = distinct participant_refs with responses
+    n_resp = 0
+    if latest:
+        n_resp = (db.query(AssessmentResponse.participant_ref)
+                    .filter_by(cycle_id=latest.id).distinct().count())
     trend = [{"cycle_id": c.id, "revision": c.revision, "opened_at": c.opened_at,
               "closed_at": c.closed_at, "cei": (c.snapshot or {}).get("cei")}
              for c in cycles if c.snapshot]
     return {"revision": fw.revision,
             "current_cycle_id": latest.id if latest else None,
+            "current_cycle_closed": bool(latest and latest.closed_at),
             "cei": current.get("cei"), "n_participants": current.get("n_participants", 0),
+            "n_respondents": n_resp,
             "l1_subscores": current.get("l1_subscores", []),
             "radar": current.get("radar", []),
             "item_dispersion": current.get("item_dispersion", {}),
-            "trend": trend}
+            "trend": trend, "cadence": cadence_block}
+
+
+# ====================================================================
+# 7d-3: assessment participant invitations, cadence
+# ====================================================================
+import calendar
+
+_CADENCE_MONTHS = {"monthly": 1, "quarterly": 3, "semiannual": 6, "annual": 12}
+
+
+def _add_months(dt, n):
+    m = dt.month - 1 + n
+    y = dt.year + m // 12
+    m = m % 12 + 1
+    d = min(dt.day, calendar.monthrange(y, m)[1])
+    return dt.replace(year=y, month=m, day=d)
+
+
+def _cadence_next(cadence, base):
+    n = _CADENCE_MONTHS.get(cadence)
+    return _add_months(base, n) if n else None
+
+
+def _assess_config(db, company_id):
+    cfg = db.query(AssessmentConfig).filter_by(company_id=company_id).first()
+    if cfg is None:
+        cfg = AssessmentConfig(company_id=company_id, cadence="none")
+        db.add(cfg); db.flush()
+    return cfg
+
+
+class AssessInviteIn(BaseModel):
+    name: str = ""
+    email: EmailStr
+
+
+class AssessRedeemIn(BaseModel):
+    token: str
+
+
+class AssessDraftIn(BaseModel):
+    responses: list[ScoreItem] = []
+
+
+def _next_participant_ref(db, cycle_id):
+    """Mint the next pseudonymous ref (P1, P2, …) for a cycle."""
+    used = [i.participant_ref for i in
+            db.query(AssessmentInvite).filter_by(cycle_id=cycle_id).all()
+            if i.participant_ref and i.participant_ref.startswith("P")]
+    n = 0
+    for r in used:
+        try:
+            n = max(n, int(r[1:]))
+        except ValueError:
+            pass
+    return f"P{n + 1}"
+
+
+def assess_session(authorization: str = Header(None), db=Depends(get_db)):
+    """Participant session dep: a token scoped to exactly ONE cycle's
+    questionnaire. It is purpose='assess', so get_current_user (purpose
+    'access') rejects it on every company route — this token can reach nothing
+    but its own cycle. Returns (invite, cycle)."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "Missing participant token")
+    token = authorization.split(" ", 1)[1].strip()
+    try:
+        payload = read_token(token, "assess")
+    except pyjwt.PyJWTError:
+        raise HTTPException(401, "This assessment link is invalid or has expired.")
+    cid = payload.get("cycle_id")
+    if cid is None or payload.get("scope") != f"assessment:{cid}":
+        raise HTTPException(403, "This link is not scoped to an assessment.")
+    inv = db.query(AssessmentInvite).filter_by(jti=payload.get("jti")).first()
+    if not inv or inv.cycle_id != cid or inv.participant_ref != payload.get("participant_ref"):
+        raise HTTPException(401, "This assessment session is no longer valid.")
+    cyc = db.get(AssessmentCycle, cid)
+    if not cyc:
+        raise HTTPException(404, "cycle not found")
+    return inv, cyc
+
+
+@router.post("/companies/{company_id}/assessment/cycles/{cid}/invites",
+             status_code=201)
+def invite_participant(company_id: int, cid: int, body: AssessInviteIn,
+                       member=Depends(require_company_admin),
+                       user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Admin invites a participant to an open cycle. Single-use per person per
+    cycle (jti); emails a scoped 'Begin assessment' magic link that notes the
+    cycle's anonymity mode."""
+    cyc = db.get(AssessmentCycle, cid)
+    if not cyc or cyc.company_id != company_id:
+        raise HTTPException(404, "cycle not found")
+    if cyc.closed_at:
+        raise HTTPException(409, "cycle is closed")
+    email = str(body.email).strip().lower()
+    name = (body.name or "").strip()
+    dup = (db.query(AssessmentInvite)
+             .filter_by(cycle_id=cid, email=email).first())
+    if dup:
+        raise HTTPException(409, "This person is already invited to this cycle.")
+    company_name = _company_name(db, company_id)
+    jti = secrets.token_urlsafe(16)
+    token = make_token(str(cid), purpose="assess-invite", ttl=30 * 86_400,
+                       jti=jti, cycle_id=cid, company_id=company_id,
+                       invited_email=email, invited_name=name)
+    inv = AssessmentInvite(cycle_id=cid, company_id=company_id, email=email,
+                           name=name, jti=jti, invited_by=user.id)
+    db.add(inv)
+    audit(db, user.id, "assessment_participant_invited", "company", company_id,
+          detail=f"cycle {cid} {email}")
+    db.commit(); db.refresh(inv)
+    send_assess_invite(email, name, company_name, token, cyc.anonymity_mode)
+    return {"ok": True, "cycle_id": cid, "invite_id": inv.id, "email": email,
+            "anonymity_mode": cyc.anonymity_mode, "expires_in_days": 30}
+
+
+@router.get("/companies/{company_id}/assessment/cycles/{cid}/invites")
+def list_participant_invites(company_id: int, cid: int,
+                             member=Depends(require_company_admin), db=Depends(get_db)):
+    """The responded-roster. ANONYMITY RULE, enforced here at the query layer:
+    in an anonymous cycle the roster shows {name, email, invited_at, responded}
+    and NEVER participant_ref — so the admin cannot map a person to their
+    scores. In an identified cycle participant_ref is included."""
+    cyc = db.get(AssessmentCycle, cid)
+    if not cyc or cyc.company_id != company_id:
+        raise HTTPException(404, "cycle not found")
+    anon = cyc.anonymity_mode == "anonymous"
+    rows = (db.query(AssessmentInvite).filter_by(cycle_id=cid)
+              .order_by(AssessmentInvite.id).all())
+    roster = []
+    for i in rows:
+        entry = {"name": i.name, "email": i.email, "invited_at": i.created_at,
+                 "redeemed": i.redeemed_at is not None,
+                 "responded": i.submitted_at is not None}
+        if not anon:
+            entry["participant_ref"] = i.participant_ref
+        roster.append(entry)
+    return {"cycle_id": cid, "anonymity_mode": cyc.anonymity_mode,
+            "invited": len(rows),
+            "responded": sum(1 for i in rows if i.submitted_at),
+            "roster": roster}
+
+
+@router.post("/assessment/redeem-assess-invite", status_code=201)
+def redeem_assess_invite(body: AssessRedeemIn, db=Depends(get_db)):
+    """Magic-link participant access — NO auth. Validates the invite token,
+    mints a stable pseudonymous participant_ref (P1, P2, …) on first redemption,
+    and returns a session token scoped to THIS cycle only. Repeat redemptions
+    of the same link return the SAME participant session (single person)."""
+    try:
+        payload = read_token(body.token, "assess-invite")
+    except pyjwt.PyJWTError:
+        raise HTTPException(400, "This assessment link is invalid or has expired.")
+    inv = db.query(AssessmentInvite).filter_by(jti=payload.get("jti")).first()
+    if not inv:
+        raise HTTPException(400, "This assessment invitation is no longer valid.")
+    cyc = db.get(AssessmentCycle, inv.cycle_id)
+    if not cyc:
+        raise HTTPException(404, "cycle not found")
+    if inv.participant_ref is None:                      # first redemption
+        inv.participant_ref = _next_participant_ref(db, inv.cycle_id)
+        inv.redeemed_at = datetime.utcnow()
+        audit(db, None, "assessment_invite_redeemed", "company", inv.company_id,
+              detail=f"cycle {inv.cycle_id} {inv.participant_ref}")
+        db.commit()
+    token = make_token(inv.participant_ref, purpose="assess", ttl=30 * 86_400,
+                       scope=f"assessment:{inv.cycle_id}", cycle_id=inv.cycle_id,
+                       company_id=inv.company_id, jti=inv.jti,
+                       participant_ref=inv.participant_ref)
+    return {"access_token": token, "token_type": "bearer",
+            "scope": f"assessment:{inv.cycle_id}", "expires_in_days": 30,
+            "cycle_id": inv.cycle_id, "participant_ref": inv.participant_ref,
+            "anonymity_mode": cyc.anonymity_mode,
+            "company_name": _company_name(db, inv.company_id),
+            "already_submitted": inv.submitted_at is not None}
+
+
+def _selected_items(db, framework_id):
+    return [i for i in db.query(AssessmentItem).filter_by(framework_id=framework_id)
+              .order_by(AssessmentItem.id).all() if i.selected]
+
+
+@router.get("/assessment/questionnaire")
+def participant_questionnaire(session=Depends(assess_session), db=Depends(get_db)):
+    """The curated questionnaire for the participant's cycle: the SELECTED items
+    (+ definitions) of the cycle's pinned framework revision, the participant's
+    own draft (resume), and — once submitted — their final, read-only answers."""
+    inv, cyc = session
+    items = _selected_items(db, cyc.framework_id)
+    final = None
+    if inv.submitted_at:
+        by_item = {r.item_id: r for r in db.query(AssessmentResponse)
+                   .filter_by(cycle_id=cyc.id, participant_ref=inv.participant_ref).all()}
+        final = {str(iid): {"score": r.score, "comment": r.comment}
+                 for iid, r in by_item.items()}
+    return {"cycle_id": cyc.id, "company_id": cyc.company_id,
+            "company_name": _company_name(db, cyc.company_id),
+            "anonymity_mode": cyc.anonymity_mode,
+            "participant_ref": inv.participant_ref, "revision": cyc.revision,
+            "closed": cyc.closed_at is not None,
+            "submitted": inv.submitted_at is not None,
+            "items": [{"id": i.id, "level": i.level, "code": i.code, "title": i.title,
+                       "definition": i.definition, "parent_code": i.parent_code}
+                      for i in items],
+            "draft": inv.draft or {}, "responses": final}
+
+
+@router.post("/assessment/responses")
+def participant_save_draft(body: AssessDraftIn, session=Depends(assess_session),
+                           db=Depends(get_db)):
+    """Save-as-you-go. Merges the posted scores into the participant's draft.
+    No effect after submit (answers are final)."""
+    inv, cyc = session
+    if inv.submitted_at:
+        raise HTTPException(409, "You have already submitted — answers are final.")
+    if cyc.closed_at:
+        raise HTTPException(409, "This assessment cycle is closed.")
+    valid = {i.id for i in _selected_items(db, cyc.framework_id)}
+    draft = dict(inv.draft or {})
+    for r in body.responses:
+        if r.item_id not in valid:
+            raise HTTPException(422, f"item {r.item_id} is not in this questionnaire")
+        if not (1 <= r.score <= 10):
+            raise HTTPException(422, "score must be an integer 1-10")
+        draft[str(r.item_id)] = {"score": r.score, "comment": r.comment}
+    inv.draft = draft
+    db.commit()
+    return {"ok": True, "saved": len(body.responses), "draft_size": len(draft)}
+
+
+@router.post("/assessment/submit", status_code=201)
+def participant_submit(body: AssessDraftIn, session=Depends(assess_session),
+                       db=Depends(get_db)):
+    """Finalize. One submission per participant; immutable after. If the body
+    carries no responses, the accumulated draft is submitted. Re-reads via GET
+    /assessment/questionnaire remain available; a second submit is rejected."""
+    inv, cyc = session
+    if inv.submitted_at:
+        raise HTTPException(409, "You have already submitted — answers are final.")
+    if cyc.closed_at:
+        raise HTTPException(409, "This assessment cycle is closed.")
+    if body.responses:
+        final = body.responses
+    else:
+        final = [ScoreItem(item_id=int(iid), score=v["score"], comment=v.get("comment"))
+                 for iid, v in (inv.draft or {}).items()]
+    if not final:
+        raise HTTPException(422, "No responses to submit.")
+    out = _submit_responses(db, cyc, inv.participant_ref, final, actor_id=None)
+    inv.submitted_at = datetime.utcnow()
+    inv.draft = None
+    db.commit()
+    return {**out, "submitted": True}
 
 
 # ---------------------------------------------------------------------- join
