@@ -428,6 +428,22 @@ class CSFProposal(Base):
     resolved_at = Column(DateTime, nullable=True)
 
 
+class ActionToken(Base):
+    """Single-use, initiative-scoped signed-action ledger (7e-E). Backs the
+    one-click RAG-update links in stale-nudge emails. Using any link in a batch
+    burns the whole batch."""
+    __tablename__ = "ax_action_tokens"
+    id = Column(Integer, primary_key=True)
+    jti = Column(String(64), unique=True, index=True, nullable=False)
+    batch_id = Column(String(32), index=True, nullable=False)
+    initiative_id = Column(Integer, index=True, nullable=False)
+    company_id = Column(Integer, nullable=False)
+    kind = Column(String(16), default="rag", nullable=False)
+    target_value = Column(String(16), nullable=False)          # green|amber|red
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+
+
 class AuditLog(Base):
     __tablename__ = "ax_audit"
     id = Column(Integer, primary_key=True)
@@ -471,7 +487,35 @@ def _notify_thread_reply(db, thread, post, author):
 
 
 def _notify_thread_reply_impl(db, thread, post, author):
-    return  # replaced in 7e-E
+    """7e-E owner-scoped: when someone other than the leader posts in an
+    initiative thread (a thread reply, or an admin note posted there), email the
+    active leader. Admin note-events on the initiative also surface here."""
+    if thread.type != "initiative" or not thread.linked_ref:
+        return
+    try:
+        ini = db.get(Initiative, int(thread.linked_ref))
+    except (TypeError, ValueError):
+        return
+    if not ini:
+        return
+    a = _active_assignment(db, ini.id)
+    if not a or a.status != "active" or not a.leader_user_id:
+        return
+    author_id = author.id if author else None
+    if a.leader_user_id == author_id:
+        return                                   # never notify the actor about themselves
+    leader = db.get(User, a.leader_user_id)
+    if not leader or not leader.email:
+        return
+    who = (author.name or author.email) if author else "Someone"
+    send(leader.email, f"New activity on {ini.ref_code} — {ini.title}", _wrap(
+        f"New comment on {ini.ref_code}",
+        f"""<p>{who} posted in the discussion for
+               <b>{ini.ref_code} — {ini.title}</b>:</p>
+            <blockquote style="border-left:3px solid #1f3a2a;padding-left:12px;
+               color:#cfe8da">{(post.body or '')[:400]}</blockquote>
+            <p><a href="{_app_url()}/initiatives/{ini.id}" style="color:#4ade80">
+               Open the initiative</a></p>"""))
 
 
 def _wrap(title: str, body_html: str) -> str:
@@ -601,6 +645,27 @@ def send_lead_invite(to: str, name: str, admin_name: str, ref: str, title: str,
             <p style="font-size:13px;color:#8fb59e">To accept you'll sign in to (or
                create) your AXIOM account with this email address.</p>
             <p style="font-size:12px;color:#8fb59e">This invitation is valid for 14 days.</p>"""))
+
+
+def _rag_button(url: str, label: str, bg: str, fg: str = "#0d1b12"):
+    return (f'<a href="{url}" style="background:{bg};color:{fg};padding:10px 18px;'
+            f'border-radius:8px;text-decoration:none;font-weight:600;display:inline-block;'
+            f'margin-right:8px">{label}</a>')
+
+
+def send_stale_nudge(to: str, name: str, ref: str, title: str, company_name: str,
+                     days: int, actions: dict):
+    greet = f"Hi {name}," if name else "Hi,"
+    buttons = (_rag_button(actions["green"], "On track (Green)", "#4ade80")
+               + _rag_button(actions["amber"], "At risk (Amber)", "#fbbf24")
+               + _rag_button(actions["red"], "Off track (Red)", "#f87171", "#ffffff"))
+    send(to, f"Quick status check — {ref} at {company_name}", _wrap(
+        f"How is {ref} tracking?",
+        f"""<p>{greet}</p>
+            <p><b>{ref} — {title}</b> hasn't been updated in {days} days. Set its
+               current status in one click:</p>
+            <p>{buttons}</p>
+            <p style="font-size:12px;color:#8fb59e">Each link works once.</p>"""))
 
 
 def send_admin_alert(to: str, company_name: str, subject: str, line: str):
@@ -2518,6 +2583,168 @@ def reject_csf_proposal(company_id: int, ppid: int, member=Depends(require_compa
     audit(db, user.id, "csf_text_rejected", "company", company_id, detail=f"{ini.ref_code} csf {pr.csf_id}")
     db.commit()
     return {"ok": True, "proposal_id": ppid, "status": "rejected"}
+
+
+# ====================================================================
+# 7e-E: notifications, stale-nudge, one-click RAG action tokens
+# ====================================================================
+from datetime import timedelta
+
+STALE_DAYS = 30
+
+
+def _initiative_thread(db, company_id, iid):
+    return (db.query(Thread).filter_by(company_id=company_id, type="initiative",
+                                       linked_ref=str(iid)).first())
+
+
+def _last_activity(db, ini):
+    ts = [ini.created_at]
+    if ini.rag_updated_at:
+        ts.append(ini.rag_updated_at)
+    ev = (db.query(InitiativeEvent).filter_by(initiative_id=ini.id)
+            .order_by(InitiativeEvent.created_at.desc()).first())
+    if ev:
+        ts.append(ev.created_at)
+    th = _initiative_thread(db, ini.company_id, ini.id)
+    if th:
+        lp = (db.query(ThreadPost).filter_by(thread_id=th.id)
+                .order_by(ThreadPost.created_at.desc()).first())
+        if lp:
+            ts.append(lp.created_at)
+    return max(ts)
+
+
+def _stale_initiatives(db, company_id, days=STALE_DAYS):
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    out = []
+    for ini in (db.query(Initiative)
+                  .filter_by(company_id=company_id, status="in_progress").all()):
+        la = _last_activity(db, ini)
+        if la < cutoff:
+            out.append((ini, la))
+    out.sort(key=lambda t: t[1])
+    return out
+
+
+def _leader_contact(db, iid):
+    a = _active_assignment(db, iid)
+    if a and a.status == "active" and a.leader_user_id:
+        u = db.get(User, a.leader_user_id)
+        return (u.email if u else a.invited_email), (u.name if u else a.invited_name)
+    if a:                                       # invited but not yet claimed
+        return a.invited_email, a.invited_name
+    return None, None
+
+
+@router.get("/companies/{company_id}/initiatives/stale")
+def list_stale(company_id: int, member=Depends(require_company_admin), db=Depends(get_db)):
+    """In-Progress initiatives with no activity in STALE_DAYS (computed on
+    access — no scheduler)."""
+    now = datetime.utcnow()
+    rows = _stale_initiatives(db, company_id)
+    out = []
+    for ini, la in rows:
+        email, name = _leader_contact(db, ini.id)
+        out.append({"id": ini.id, "ref_code": ini.ref_code, "title": ini.title,
+                    "rag": ini.rag, "last_activity": la, "days_stale": (now - la).days,
+                    "leader_email": email, "leader_name": name})
+    return {"company_id": company_id, "stale_days": STALE_DAYS,
+            "count": len(out), "initiatives": out}
+
+
+@router.post("/companies/{company_id}/initiatives/nudge-stale", status_code=201)
+def nudge_stale(company_id: int, member=Depends(require_company_admin),
+                user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Generate a one-click RAG-update link set (signed, single-use,
+    initiative-scoped) for each stale initiative and email it to the leader (or
+    the admin when unled)."""
+    now = datetime.utcnow()
+    rows = _stale_initiatives(db, company_id)
+    nudged = []
+    for ini, la in rows:
+        email, name = _leader_contact(db, ini.id)
+        to = email or _admin_email(db, company_id)
+        batch = secrets.token_urlsafe(8)
+        actions = {}
+        for val in ("green", "amber", "red"):
+            jti = secrets.token_urlsafe(12)
+            db.add(ActionToken(jti=jti, batch_id=batch, initiative_id=ini.id,
+                               company_id=company_id, kind="rag", target_value=val))
+            tok = make_token(str(ini.id), purpose="rag_action", ttl=14 * 86_400,
+                             jti=jti, initiative_id=ini.id, kind="rag", value=val)
+            actions[val] = f"{_app_url()}/rag-action?token={tok}"
+        if to:
+            send_stale_nudge(to, name or "", ini.ref_code, ini.title,
+                             _company_name(db, company_id), (now - la).days, actions)
+        nudged.append({"initiative_id": ini.id, "ref_code": ini.ref_code,
+                       "sent_to": to, "actions": actions})
+    audit(db, user.id, "stale_nudge_sent", "company", company_id, detail=f"{len(nudged)} initiatives")
+    db.commit()
+    return {"company_id": company_id, "count": len(nudged), "nudged": nudged}
+
+
+@router.get("/initiatives/rag-action")
+def rag_action(token: str, db=Depends(get_db)):
+    """One-click RAG update from a nudge email — validates the signed token,
+    applies the RAG, and burns the whole batch (single use)."""
+    try:
+        payload = read_token(token, "rag_action")
+    except pyjwt.PyJWTError:
+        raise HTTPException(400, "This action link is invalid or has expired.")
+    at = db.query(ActionToken).filter_by(jti=payload.get("jti")).first()
+    if not at:
+        raise HTTPException(400, "This action link is no longer valid.")
+    if at.used_at is not None:
+        raise HTTPException(409, "This action link has already been used.")
+    ini = db.get(Initiative, at.initiative_id)
+    if not ini:
+        raise HTTPException(404, "initiative not found")
+    old = ini.rag
+    ini.rag = at.target_value
+    ini.rag_updated_at = datetime.utcnow(); ini.rag_updated_by = None    # via one-click
+    now = datetime.utcnow()
+    for sib in db.query(ActionToken).filter_by(batch_id=at.batch_id).all():
+        if sib.used_at is None:
+            sib.used_at = now                    # burn the whole batch
+    _ini_event(db, ini, None, "rag_changed", old, at.target_value, "one-click nudge")
+    if at.target_value == "red":
+        _notify_admin_alert(db, ini.company_id, f"{ini.ref_code} RAG is RED",
+                            f"Initiative {ini.ref_code} — {ini.title} was set to RED "
+                            f"via a one-click nudge link.")
+    audit(db, None, "initiative_rag_oneclick", "company", ini.company_id,
+          detail=f"{ini.ref_code} {old}->{at.target_value}")
+    db.commit()
+    return {"ok": True, "initiative_id": ini.id, "ref_code": ini.ref_code,
+            "rag": ini.rag}
+
+
+@router.get("/companies/{company_id}/execution-digest")
+def execution_digest(company_id: int, member=Depends(require_company_admin), db=Depends(get_db)):
+    """Admin owner-scoped digest computed on access: proposals awaiting triage,
+    stale initiatives, red RAGs, broken CSFs."""
+    threads = {t.id for t in db.query(Thread).filter_by(company_id=company_id).all()}
+    flagged = sum(1 for p in db.query(ThreadPost)
+                    .filter(ThreadPost.proposal_status == "flagged").all()
+                  if p.thread_id in threads)
+    stale = _stale_initiatives(db, company_id)
+    inis = {i.id: i for i in db.query(Initiative).filter_by(company_id=company_id).all()}
+    red = [{"id": i.id, "ref_code": i.ref_code, "title": i.title}
+           for i in inis.values() if i.rag == "red"]
+    broken = []
+    for x in db.query(InitiativeCSF).filter_by(status="broken").all():
+        ini = inis.get(x.initiative_id)
+        if ini:
+            broken.append({"initiative_id": ini.id, "ref_code": ini.ref_code,
+                           "csf_id": x.id, "text": x.text})
+    return {"company_id": company_id,
+            "proposals_flagged": flagged,
+            "proposals_line": (f"{flagged} discussion post(s) flagged as proposals "
+                               f"awaiting triage" if flagged else None),
+            "stale_count": len(stale),
+            "stale_line": (f"{len(stale)} in-progress initiative(s) with no update in "
+                           f"{STALE_DAYS} days" if stale else None),
+            "red_rag": red, "csf_broken": broken}
 
 
 # ------------------------------------------- AXIOM Assessment Framework (7d-1)
