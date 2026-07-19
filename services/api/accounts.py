@@ -718,6 +718,26 @@ def send_stale_nudge(to: str, name: str, ref: str, title: str, company_name: str
             <p style="font-size:12px;color:#8fb59e">Each link works once.</p>"""))
 
 
+def send_report_share(to: str, name: str, admin_name: str, company_name: str,
+                      report_type: str, issued_at, token: str):
+    link = f"{_app_url()}/report?token={token}"
+    greet = f"Hi {name}," if name else "Hi,"
+    who = admin_name or "A company administrator"
+    when = issued_at.strftime("%d %b %Y") if issued_at else ""
+    send(to, f"{who} shared the {company_name} {report_type} with you", _wrap(
+        f"{company_name} — {report_type}",
+        f"""<p>{greet}</p>
+            <p>{who} shared the <b>{company_name} {report_type}</b>
+               (issued {when}) with you.</p>
+            <p><a href="{link}" style="background:#4ade80;color:#0d1b12;padding:12px 24px;
+               border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
+               View report</a></p>
+            <p style="font-size:13px;color:#8fb59e">This link opens just this one
+               report — it doesn't grant access to the workspace.</p>
+            <p style="font-size:12px;color:#8fb59e">Want the full picture? Ask
+               {who} for viewer access.</p>"""))
+
+
 def send_admin_alert(to: str, company_name: str, subject: str, line: str):
     send(to, f"AXIOM alert — {company_name}: {subject}", _wrap(
         subject, f"""<p>{line}</p>
@@ -3197,6 +3217,111 @@ def report_download_url(company_id: int, issue_id: int,
     if not url:
         raise HTTPException(503, "Report storage is not configured on this server")
     return {"url": url, "expires_in": 300, "filename": issue.filename}
+
+
+# ---------------------------------------------------- share-by-link (7f-C)
+class ShareRecipient(BaseModel):
+    name: str = ""
+    email: EmailStr
+
+
+class ShareIn(BaseModel):
+    recipients: list[ShareRecipient]
+    message: str | None = None
+    formats: list[str] | None = None       # informational (the issue has one format)
+
+
+def _share_out(s):
+    return {"share_id": s.id, "issue_id": s.issue_id, "recipient_email": s.recipient_email,
+            "recipient_name": s.recipient_name, "shared_by": s.shared_by,
+            "created_at": s.created_at, "revoked": s.revoked_at is not None,
+            "revoked_at": s.revoked_at}
+
+
+@router.post("/companies/{company_id}/reports/{issue_id}/share", status_code=201)
+def share_report(company_id: int, issue_id: int, body: ShareIn,
+                 member=Depends(require_company_admin),
+                 user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Share one issued artifact with named recipients. Each gets a scoped
+    report_view token (that issue only, 30-day) emailed as a 'View report' link."""
+    issue = db.get(ReportIssue, issue_id)
+    if not issue or issue.company_id != company_id:
+        raise HTTPException(404, "report not found")
+    if not body.recipients:
+        raise HTTPException(422, "at least one recipient is required")
+    company_name = _company_name(db, company_id)
+    out = []
+    for r in body.recipients:
+        email = _norm(str(r.email)); jti = secrets.token_urlsafe(16)
+        share = ReportShare(issue_id=issue_id, company_id=company_id, jti=jti,
+                            recipient_email=email, recipient_name=(r.name or "").strip(),
+                            message=body.message, shared_by=user.id)
+        db.add(share); db.flush()
+        token = make_token(str(issue_id), purpose="report_view", ttl=30 * 86_400,
+                           jti=jti, issue_id=issue_id, company_id=company_id)
+        send_report_share(email, share.recipient_name, user.name, company_name,
+                          issue.report_type, issue.issued_at, token)
+        out.append(_share_out(share))
+    audit(db, user.id, "report_shared", "company", company_id,
+          detail=f"issue={issue_id} to {len(out)}")
+    db.commit()
+    return {"issue_id": issue_id, "count": len(out), "shares": out}
+
+
+@router.get("/companies/{company_id}/reports/{issue_id}/shares")
+def list_report_shares(company_id: int, issue_id: int,
+                       member=Depends(require_company_admin), db=Depends(get_db)):
+    issue = db.get(ReportIssue, issue_id)
+    if not issue or issue.company_id != company_id:
+        raise HTTPException(404, "report not found")
+    rows = (db.query(ReportShare).filter_by(issue_id=issue_id)
+              .order_by(ReportShare.id.desc()).all())
+    return {"issue_id": issue_id, "shares": [_share_out(s) for s in rows]}
+
+
+@router.delete("/companies/{company_id}/reports/shares/{share_id}")
+def void_report_share(company_id: int, share_id: int,
+                      member=Depends(require_company_admin),
+                      user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Void a share — its report_view token stops working immediately."""
+    share = db.get(ReportShare, share_id)
+    if not share or share.company_id != company_id:
+        raise HTTPException(404, "share not found")
+    if share.revoked_at is None:
+        share.revoked_at = datetime.utcnow()
+        audit(db, user.id, "report_share_voided", "company", company_id, detail=f"share={share_id}")
+        db.commit()
+    return {"ok": True, "share_id": share_id, "revoked": True}
+
+
+@router.get("/report")
+def view_shared_report(token: str, db=Depends(get_db)):
+    """Serve the exact issued artifact for a report_view token — no workspace
+    access. Strictly one issue per token; revoked shares 403."""
+    try:
+        payload = read_token(token, "report_view")
+    except pyjwt.PyJWTError:
+        raise HTTPException(401, "This report link is invalid or has expired.")
+    share = db.query(ReportShare).filter_by(jti=payload.get("jti")).first()
+    if not share:
+        raise HTTPException(401, "This report link is no longer valid.")
+    if share.revoked_at is not None:
+        raise HTTPException(403, "This report link has been revoked.")
+    issue = db.get(ReportIssue, share.issue_id)
+    if not issue or issue.id != payload.get("issue_id"):
+        raise HTTPException(404, "report not found")
+    client, bucket = _r2_client()
+    if client is None:
+        raise HTTPException(503, "Report storage is not configured on this server")
+    try:
+        obj = client.get_object(Bucket=bucket, Key=issue.r2_key)
+        blob = obj["Body"].read()
+    except Exception:
+        raise HTTPException(404, "report artifact is unavailable")
+    from fastapi import Response
+    return Response(content=blob,
+                    media_type=_REPORT_CTYPE.get(issue.format, "application/octet-stream"),
+                    headers={"Content-Disposition": f'inline; filename="{issue.filename}"'})
 
 
 # ------------------------------------------- AXIOM Assessment Framework (7d-1)
