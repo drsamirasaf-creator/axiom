@@ -428,6 +428,25 @@ class CSFProposal(Base):
     resolved_at = Column(DateTime, nullable=True)
 
 
+class RecommendationDisposition(Base):
+    """A company's decision on an AXIOM engine recommendation (7e rider). Keyed
+    by a STABLE fingerprint (recommendation type + primary lever) so a later
+    brief recognizes the same recommendation instead of duplicating it."""
+    __tablename__ = "ax_recommendation_dispositions"
+    __table_args__ = (UniqueConstraint("company_id", "fingerprint", name="uq_rec_disp"),)
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    fingerprint = Column(String(32), index=True, nullable=False)
+    status = Column(String(16), default="none", nullable=False)   # none|adopted|parked|dismissed
+    initiative_id = Column(Integer, nullable=True)
+    decided_by = Column(Integer, nullable=True)
+    decided_at = Column(DateTime, nullable=True)
+    note = Column(Text, nullable=True)
+    first_seen_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_seen_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    times_reissued = Column(Integer, default=0, nullable=False)
+
+
 class ActionToken(Base):
     """Single-use, initiative-scoped signed-action ledger (7e-E). Backs the
     one-click RAG-update links in stale-nudge emails. Using any link in a batch
@@ -2747,6 +2766,228 @@ def execution_digest(company_id: int, member=Depends(require_company_admin), db=
             "red_rag": red, "csf_broken": broken}
 
 
+# ====================================================================
+# 7e rider: Recommendation Center dispositions
+# ====================================================================
+# primary lever -> best-matching taxonomy L2 (where derivable)
+_LEVER_ITEM = {"optimal_capital_structure": "9.4",   # treasury, cash, capital, funding
+               "working_capital": "9.2",             # revenue, receivables, credit, collections
+               "operating_margin": "9.7",            # economics, financial outcomes, value realization
+               "growth_investment": "3.1"}           # markets, customers, growth opportunities
+
+
+class RecAdoptIn(BaseModel):
+    priority: str | None = None
+
+
+class RecDismissIn(BaseModel):
+    note: str | None = None
+
+
+def _rec_fingerprint(rec: dict) -> str:
+    """Stable hash of recommendation type + primary lever(s) — same brief-over-
+    brief so re-derivation recognizes the recommendation."""
+    lever = "+".join(sorted((rec.get("params_changed") or {}).keys()))
+    return hashlib.sha256(f"{rec.get('move')}|{lever}".encode()).hexdigest()[:16]
+
+
+def _active_company_dataset(db, company_id):
+    from .modules.financials.models import FinancialDataset
+    return (db.query(FinancialDataset)
+              .filter_by(enterprise_id=company_id, is_active=True)
+              .order_by(FinancialDataset.version.desc()).first())
+
+
+def _derive_recommendations(db, company_id):
+    """(dataset, [rec dicts with fingerprint + linked_item_code]). Pure
+    derivation off the active dataset — no DB writes. [] on no data / error;
+    recommendations are additive and must never break their host payloads."""
+    try:
+        ds = _active_company_dataset(db, company_id)
+    except Exception:
+        return None, []
+    if not ds or not isinstance(ds.data, dict):
+        return ds, []
+    try:
+        from .modules.intelligence import engines as intel
+        recs = intel.recommend(ds.data).get("recommendations", [])
+    except Exception:
+        return ds, []
+    out = []
+    for r in recs:
+        out.append({"fingerprint": _rec_fingerprint(r), "move": r.get("move"),
+                    "title": r.get("title"), "description": r.get("description"),
+                    "expected_ev_impact": r.get("expected_ev_impact"),
+                    "expected_ev_impact_pct": r.get("expected_ev_impact_pct"),
+                    "rank": r.get("rank"), "params_changed": r.get("params_changed"),
+                    "linked_item_code": _LEVER_ITEM.get(r.get("move"))})
+    return ds, out
+
+
+def _dispositions(db, company_id):
+    return {d.fingerprint: d for d in
+            db.query(RecommendationDisposition).filter_by(company_id=company_id).all()}
+
+
+def _get_or_create_disp(db, company_id, fingerprint):
+    d = (db.query(RecommendationDisposition)
+           .filter_by(company_id=company_id, fingerprint=fingerprint).first())
+    if d is None:
+        now = datetime.utcnow()
+        d = RecommendationDisposition(company_id=company_id, fingerprint=fingerprint,
+                                      status="none", first_seen_at=now, last_seen_at=now,
+                                      times_reissued=0)
+        db.add(d); db.flush()
+    return d
+
+
+def _rec_view(rec, disp_map, db):
+    d = disp_map.get(rec["fingerprint"])
+    initiative = None
+    if d and d.status in ("adopted", "parked") and d.initiative_id:
+        ini = db.get(Initiative, d.initiative_id)
+        if ini:
+            initiative = {"id": ini.id, "ref": ini.ref_code, "status": ini.status, "rag": ini.rag}
+    return {**rec, "disposition": (d.status if d else "none"),
+            "initiative": initiative,
+            "times_reissued": (d.times_reissued if d else 0),
+            "note": (d.note if d else None)}
+
+
+@router.get("/companies/{company_id}/recommendations")
+def company_recommendations(company_id: int, member=Depends(require_company_member),
+                            db=Depends(get_db)):
+    """The Executive Brief recommendations, joined to dispositions by fingerprint.
+    Re-derivation recognizes existing fingerprints (bumps last_seen_at +
+    times_reissued) and never duplicates."""
+    ds, recs = _derive_recommendations(db, company_id)
+    if not recs:
+        return {"company_id": company_id, "has_data": ds is not None,
+                "dataset_id": ds.id if ds else None, "recommendations": []}
+    now = datetime.utcnow()
+    disp_map = _dispositions(db, company_id)
+    for r in recs:
+        d = disp_map.get(r["fingerprint"])
+        if d is None:
+            d = RecommendationDisposition(company_id=company_id, fingerprint=r["fingerprint"],
+                                          status="none", first_seen_at=now, last_seen_at=now,
+                                          times_reissued=0)
+            db.add(d); disp_map[r["fingerprint"]] = d
+        else:
+            d.last_seen_at = now
+            d.times_reissued = (d.times_reissued or 0) + 1
+    db.flush()
+    out = [_rec_view(r, disp_map, db) for r in recs]
+    db.commit()
+    return {"company_id": company_id, "has_data": True, "dataset_id": ds.id,
+            "recommendations": out}
+
+
+def _rec_by_fp(db, company_id, fingerprint):
+    ds, recs = _derive_recommendations(db, company_id)
+    return ds, next((r for r in recs if r["fingerprint"] == fingerprint), None)
+
+
+@router.post("/companies/{company_id}/recommendations/{fingerprint}/adopt", status_code=201)
+def adopt_recommendation(company_id: int, fingerprint: str, body: RecAdoptIn,
+                         member=Depends(require_company_admin),
+                         user: User = Depends(get_current_user), db=Depends(get_db)):
+    ds, rec = _rec_by_fp(db, company_id, fingerprint)
+    if not rec:
+        raise HTTPException(404, "recommendation not found on the active dataset")
+    disp = _get_or_create_disp(db, company_id, fingerprint)
+    if disp.status == "adopted" and disp.initiative_id:
+        ini = db.get(Initiative, disp.initiative_id)
+        if ini:
+            return _ini_out(ini)                     # idempotent
+    priority = (body.priority if body.priority in _PRIORITY
+                else ("high" if rec["rank"] == 1 else "medium"))
+    currency = ((ds.data.get("company") or {}).get("currency")
+                if ds and isinstance(ds.data, dict) else None)
+    ref = _next_ref(db, company_id, _band_of("proposed", priority))
+    ini = Initiative(
+        company_id=company_id, ref_code=ref, previous_refs=[], title=rec["title"][:300],
+        description=rec["description"] or "", source="axiom_recommendation",
+        source_dataset_version=(ds.version if ds else None),
+        importance=priority, urgency=priority, current_priority=priority, status="proposed",
+        expected_impact_amount=rec["expected_ev_impact"], impact_currency=currency,
+        linked_item_code=rec["linked_item_code"], created_by=user.id)
+    db.add(ini); db.flush()
+    _ini_event(db, ini, user.id, "created", None, ref, "adopted from AXIOM recommendation")
+    _ensure_initiative_thread(db, company_id, ini)
+    disp.status = "adopted"; disp.initiative_id = ini.id
+    disp.decided_by = user.id; disp.decided_at = datetime.utcnow()
+    audit(db, user.id, "recommendation_adopted", "company", company_id, detail=f"{ref} {fingerprint}")
+    db.commit()
+    return _ini_out(ini)
+
+
+@router.post("/companies/{company_id}/recommendations/{fingerprint}/park", status_code=201)
+def park_recommendation(company_id: int, fingerprint: str,
+                        member=Depends(require_company_admin),
+                        user: User = Depends(get_current_user), db=Depends(get_db)):
+    ds, rec = _rec_by_fp(db, company_id, fingerprint)
+    if not rec:
+        raise HTTPException(404, "recommendation not found on the active dataset")
+    disp = _get_or_create_disp(db, company_id, fingerprint)
+    if disp.status in ("adopted", "parked") and disp.initiative_id:
+        ini = db.get(Initiative, disp.initiative_id)
+        if ini:
+            return _ini_out(ini)
+    ref = _next_ref(db, company_id, "D")
+    ini = Initiative(
+        company_id=company_id, ref_code=ref, previous_refs=[], title=rec["title"][:300],
+        description=rec["description"] or "", source="axiom_recommendation",
+        source_dataset_version=(ds.version if ds else None),
+        importance="low", urgency="low", current_priority="low", status="deferred",
+        expected_impact_amount=rec["expected_ev_impact"],
+        linked_item_code=rec["linked_item_code"], created_by=user.id)
+    db.add(ini); db.flush()
+    _ini_event(db, ini, user.id, "created", None, ref, "parked from AXIOM recommendation")
+    disp.status = "parked"; disp.initiative_id = ini.id
+    disp.decided_by = user.id; disp.decided_at = datetime.utcnow()
+    audit(db, user.id, "recommendation_parked", "company", company_id, detail=f"{ref} {fingerprint}")
+    db.commit()
+    return _ini_out(ini)
+
+
+@router.post("/companies/{company_id}/recommendations/{fingerprint}/dismiss")
+def dismiss_recommendation(company_id: int, fingerprint: str, body: RecDismissIn,
+                           member=Depends(require_company_admin),
+                           user: User = Depends(get_current_user), db=Depends(get_db)):
+    ds, rec = _rec_by_fp(db, company_id, fingerprint)
+    if not rec:
+        raise HTTPException(404, "recommendation not found on the active dataset")
+    disp = _get_or_create_disp(db, company_id, fingerprint)
+    disp.status = "dismissed"; disp.note = body.note
+    disp.decided_by = user.id; disp.decided_at = datetime.utcnow()
+    audit(db, user.id, "recommendation_dismissed", "company", company_id, detail=fingerprint)
+    db.commit()
+    return {"ok": True, "fingerprint": fingerprint, "disposition": "dismissed",
+            "times_reissued": disp.times_reissued, "note": disp.note}
+
+
+def _recommendations_by_item(db, company_id):
+    """{taxonomy_item_code: [ {fingerprint, text, disposition, initiative_ref} ]}
+    for the SWOT per-item join. Read-only (no re-issue bookkeeping)."""
+    _, recs = _derive_recommendations(db, company_id)
+    disp = _dispositions(db, company_id)
+    out = {}
+    for r in recs:
+        code = r["linked_item_code"]
+        if not code:
+            continue
+        d = disp.get(r["fingerprint"])
+        ref = None
+        if d and d.status in ("adopted", "parked") and d.initiative_id:
+            ini = db.get(Initiative, d.initiative_id)
+            ref = ini.ref_code if ini else None
+        out.setdefault(code, []).append({"fingerprint": r["fingerprint"], "text": r["title"],
+                                         "disposition": (d.status if d else "none"),
+                                         "initiative_ref": ref})
+    return out
+
+
 # ------------------------------------------- AXIOM Assessment Framework (7d-1)
 class FrameworkPut(BaseModel):
     deselect: list[str] = []            # codes to deselect (keep, exclude from CEI)
@@ -3118,6 +3359,7 @@ def assessment_swot(company_id: int, member=Depends(require_company_member),
             links.setdefault(ini.linked_item_code, []).append(
                 {"ref_code": ini.ref_code, "title": ini.title, "status": ini.status})
 
+    rec_by_item = _recommendations_by_item(db, company_id)   # 7e rider: per-item recs
     buckets = {"strengths": [], "weaknesses": [], "opportunities": [],
                "threats": [], "watch_list": []}
     l2 = [i for i in db.query(AssessmentItem)
@@ -3140,7 +3382,8 @@ def assessment_swot(company_id: int, member=Depends(require_company_member),
                  "respondents": d.get("n"), "score_rag": score_rag(mean),
                  "text_sentiment": ts or None, "theme": sent.get("theme") or None,
                  "divergence": div, "trend_delta": trend_delta,
-                 "linked_initiatives": links.get(it.code, [])}
+                 "linked_initiatives": links.get(it.code, []),
+                 "recommendations": rec_by_item.get(it.code, [])}
         if mean >= 7.5 and not red:
             bucket = "strengths" if orient == "internal" else "opportunities"
         elif mean < 5 or red:
