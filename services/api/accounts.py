@@ -428,6 +428,37 @@ class CSFProposal(Base):
     resolved_at = Column(DateTime, nullable=True)
 
 
+class ReportIssue(Base):
+    """The issue registry (7f-A): one row per generated report/deck. The
+    forum's per-report threads and future review-diffs key on this."""
+    __tablename__ = "ax_report_issues"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    report_type = Column(String(48), default="Board Report", nullable=False)
+    format = Column(String(8), nullable=False)                # pdf | pptx
+    dataset_version = Column(Integer, nullable=True)
+    r2_key = Column(String(512), nullable=True)
+    filename = Column(String(256), nullable=False)
+    issued_by = Column(Integer, nullable=True)
+    issued_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class ReportShare(Base):
+    """A scoped share of ONE issued artifact (7f-C). The JWT (purpose
+    report_view) carries the capability; this row is the ledger + void switch."""
+    __tablename__ = "ax_report_shares"
+    id = Column(Integer, primary_key=True)
+    issue_id = Column(Integer, index=True, nullable=False)
+    company_id = Column(Integer, index=True, nullable=False)
+    jti = Column(String(64), unique=True, index=True, nullable=False)
+    recipient_email = Column(String(255), nullable=False)
+    recipient_name = Column(String(255), default="", nullable=False)
+    message = Column(Text, nullable=True)
+    shared_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+
+
 class RecommendationDisposition(Base):
     """A company's decision on an AXIOM engine recommendation (7e rider). Keyed
     by a STABLE fingerprint (recommendation type + primary lever) so a later
@@ -3026,6 +3057,146 @@ def _recommendations_by_item(db, company_id):
                                          "disposition": (d.status if d else "none"),
                                          "initiative_ref": ref})
     return out
+
+
+# ====================================================================
+# 7f: report outputs (PPTX deck, issued-dated PDF) + share-by-link
+# ====================================================================
+_REPORT_CTYPE = {"pdf": "application/pdf",
+                 "pptx": ("application/vnd.openxmlformats-officedocument"
+                          ".presentationml.presentation")}
+
+
+def _report_extras(db, company_id):
+    """Company-scoped context the deck/PDF overlay on the engine payload:
+    CEI, SWOT, recommendations-with-dispositions, initiatives board."""
+    cei = None
+    fw = _assess_current_framework(db, company_id)
+    if fw:
+        cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
+                    .order_by(AssessmentCycle.opened_at).all())
+        if cycles:
+            cc = _cycle_cei(db, cycles[-1])
+            if cc.get("cei") is not None:
+                cei = {"cei": cc["cei"], "l1_subscores": cc.get("l1_subscores", [])}
+    try:
+        swot = assessment_swot(company_id, member=None, db=db)
+    except Exception:
+        swot = None
+    _, recs = _derive_recommendations(db, company_id)
+    disp = _dispositions(db, company_id)
+    rec_view = [_rec_view(r, disp, db) for r in recs
+                if r["value_creating"] or _decided_with_initiative(disp, r["fingerprint"])]
+    inis = (db.query(Initiative).filter_by(company_id=company_id).all())
+    initiatives = [{"ref_code": i.ref_code, "current_priority": i.current_priority,
+                    "rag": i.rag, "owner_name": i.owner_name, "status": i.status}
+                   for i in inis if i.status != "rejected"]
+    return {"cei": cei, "swot": swot, "recommendations": rec_view, "initiatives": initiatives}
+
+
+def _store_report_blob(company_id, filename, content, content_type):
+    client, bucket = _r2_client()
+    if client is None:
+        raise HTTPException(503, "Report storage is not configured on this server")
+    import uuid as _uuid
+    key = f"{company_id}/reports/{_uuid.uuid4().hex}/{filename}"
+    try:
+        client.put_object(Bucket=bucket, Key=key, Body=content, ContentType=content_type)
+    except Exception as e:
+        raise HTTPException(502, f"upload to storage failed: {e}")
+    return key
+
+
+def _presign_report(key, filename, content_type, expires=300):
+    client, bucket = _r2_client()
+    if client is None or not key:
+        return None
+    return client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": bucket, "Key": key, "ResponseContentType": content_type,
+                "ResponseContentDisposition": f'attachment; filename="{filename}"'},
+        ExpiresIn=expires)
+
+
+def _issue_out(issue, url=None):
+    return {"issue_id": issue.id, "report_type": issue.report_type, "format": issue.format,
+            "dataset_version": issue.dataset_version, "filename": issue.filename,
+            "issued_by": issue.issued_by, "issued_at": issue.issued_at, "download_url": url}
+
+
+def _generate_report(db, company_id, user, fmt, report_type="Board Report"):
+    ds = _active_company_dataset(db, company_id)
+    if not ds or not isinstance(ds.data, dict):
+        raise HTTPException(409, "No active dataset for this company — upload data first.")
+    from . import reporting as R
+    from .modules.intelligence import engines as intel
+    report = intel.board_report(ds.data)
+    extras = _report_extras(db, company_id)
+    issued_at = datetime.utcnow()
+    company_name = _company_name(db, company_id)
+    meta = {"company_name": company_name, "report_type": report_type,
+            "issued_at": issued_at, "dataset_version": ds.version}
+    content = (R.build_pptx(report, extras, meta) if fmt == "pptx"
+               else R.build_pdf(report, extras, meta))
+    filename = R.report_filename(company_name, report_type, fmt, issued_at)
+    key = _store_report_blob(company_id, filename, content, _REPORT_CTYPE[fmt])
+    issue = ReportIssue(company_id=company_id, report_type=report_type, format=fmt,
+                        dataset_version=ds.version, r2_key=key, filename=filename,
+                        issued_by=user.id, issued_at=issued_at)
+    db.add(issue); db.flush()
+    audit(db, user.id, "report_issued", "company", company_id,
+          detail=f"{fmt} v{ds.version} issue={issue.id}")
+    db.commit(); db.refresh(issue)
+    return issue
+
+
+@router.post("/companies/{company_id}/reports/presentation", status_code=201)
+def generate_presentation(company_id: int, member=Depends(require_company_admin),
+                          user: User = Depends(get_current_user), db=Depends(get_db)):
+    issue = _generate_report(db, company_id, user, "pptx")
+    url = _presign_report(issue.r2_key, issue.filename, _REPORT_CTYPE["pptx"])
+    return _issue_out(issue, url)
+
+
+@router.post("/companies/{company_id}/reports/pdf", status_code=201)
+def generate_pdf_report(company_id: int, member=Depends(require_company_admin),
+                        user: User = Depends(get_current_user), db=Depends(get_db)):
+    issue = _generate_report(db, company_id, user, "pdf")
+    url = _presign_report(issue.r2_key, issue.filename, _REPORT_CTYPE["pdf"])
+    return _issue_out(issue, url)
+
+
+@router.get("/companies/{company_id}/reports")
+def list_report_issues(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+    rows = (db.query(ReportIssue).filter_by(company_id=company_id)
+              .order_by(ReportIssue.issued_at.desc()).all())
+    return {"company_id": company_id, "issues": [_issue_out(i) for i in rows]}
+
+
+@router.get("/companies/{company_id}/reports/latest")
+def reports_latest(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+    """Action-bar data: the newest issued PDF/PPTX and whether a fresh one can be
+    generated (there is an active dataset)."""
+    def latest(fmt):
+        i = (db.query(ReportIssue).filter_by(company_id=company_id, format=fmt)
+               .order_by(ReportIssue.issued_at.desc()).first())
+        return ({"issue_id": i.id, "issued_at": i.issued_at,
+                 "dataset_version": i.dataset_version, "filename": i.filename} if i else None)
+    ds = _active_company_dataset(db, company_id)
+    return {"company_id": company_id, "pdf": latest("pdf"), "pptx": latest("pptx"),
+            "can_generate": ds is not None}
+
+
+@router.get("/companies/{company_id}/reports/{issue_id}/download-url")
+def report_download_url(company_id: int, issue_id: int,
+                        member=Depends(require_company_member), db=Depends(get_db)):
+    issue = db.get(ReportIssue, issue_id)
+    if not issue or issue.company_id != company_id:
+        raise HTTPException(404, "report not found")
+    url = _presign_report(issue.r2_key, issue.filename, _REPORT_CTYPE.get(issue.format, "application/octet-stream"))
+    if not url:
+        raise HTTPException(503, "Report storage is not configured on this server")
+    return {"url": url, "expires_in": 300, "filename": issue.filename}
 
 
 # ------------------------------------------- AXIOM Assessment Framework (7d-1)
