@@ -225,6 +225,10 @@ class Initiative(Base):
     owner_name = Column(String(200), nullable=True)
     target_date = Column(String(40), nullable=True)             # ISO date
     linked_item_code = Column(String(40), nullable=True)        # assessment item this initiative addresses (7d-3 SWOT back-link)
+    source_thread_id = Column(Integer, nullable=True)           # discussion thread an adopted proposal came from (7e-B)
+    rag = Column(String(8), nullable=True)                      # green|amber|red — leader-writable (7e-D)
+    rag_updated_at = Column(DateTime, nullable=True)
+    rag_updated_by = Column(Integer, nullable=True)
     created_by = Column(Integer, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     completed_at = Column(DateTime, nullable=True)
@@ -347,6 +351,35 @@ class AssessmentInvite(Base):
     submitted_at = Column(DateTime, nullable=True)
 
 
+class Thread(Base):
+    """The single discussion primitive (7e-A). One 'General' thread per company
+    (auto), one per initiative (auto on creation), plus report/topic threads."""
+    __tablename__ = "ax_threads"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    type = Column(String(16), nullable=False)                # report|general|topic|initiative
+    title = Column(String(300), nullable=False)
+    linked_ref = Column(String(64), nullable=True)           # report issued_at / initiative id / null
+    created_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    status = Column(String(16), default="open", nullable=False)   # open|archived
+
+
+class ThreadPost(Base):
+    __tablename__ = "ax_thread_posts"
+    id = Column(Integer, primary_key=True)
+    thread_id = Column(Integer, index=True, nullable=False)
+    author_user_id = Column(Integer, nullable=True)
+    body = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    flagged_as_proposal = Column(Boolean, default=False, nullable=False)
+    # proposal lifecycle once flagged: flagged|adopted|parked|dismissed (null = not a proposal)
+    proposal_status = Column(String(16), nullable=True)
+    suggested_title = Column(String(120), nullable=True)      # Haiku (or fallback) at flag time
+    suggested_item_code = Column(String(40), nullable=True)   # best-matching taxonomy L2, or null
+    adopted_initiative_id = Column(Integer, nullable=True)
+
+
 class AuditLog(Base):
     __tablename__ = "ax_audit"
     id = Column(Integer, primary_key=True)
@@ -378,6 +411,19 @@ SUPPORT = "support@axiomdynamics.app"
 
 def _app_url():
     return os.environ.get("APP_URL", "https://axiomdynamics.app").rstrip("/")
+
+
+def _notify_thread_reply(db, thread, post, author):
+    """Owner-scoped thread-reply notification (7e-E). No-op until initiative
+    leaders exist; extended in stage E. Never raises into the request path."""
+    try:
+        _notify_thread_reply_impl(db, thread, post, author)
+    except Exception:
+        pass
+
+
+def _notify_thread_reply_impl(db, thread, post, author):
+    return  # replaced in 7e-E
 
 
 def _wrap(title: str, body_html: str) -> str:
@@ -1526,6 +1572,9 @@ def _ini_out(i):
             "actual_impact_amount": i.actual_impact_amount,
             "owner_name": i.owner_name, "target_date": i.target_date,
             "linked_item_code": i.linked_item_code,
+            "source_thread_id": i.source_thread_id,
+            "rag": i.rag, "rag_updated_at": i.rag_updated_at,
+            "rag_updated_by": i.rag_updated_by,
             "created_by": i.created_by, "created_at": i.created_at,
             "completed_at": i.completed_at}
 
@@ -1554,6 +1603,7 @@ def create_initiative(company_id: int, body: InitiativeCreate,
     db.add(ini)
     db.flush()
     _ini_event(db, ini, user.id, "created", None, ref, f"created as {body.status}")
+    _ensure_initiative_thread(db, company_id, ini)      # auto discussion thread (7e-A)
     audit(db, user.id, "initiative_created", "company", company_id,
           detail=f"{ref} {body.title}")
     db.commit()
@@ -1666,6 +1716,264 @@ def initiative_history(company_id: int, iid: int,
                         "to": e.to_value, "note": e.note,
                         "actor_user_id": e.actor_user_id, "created_at": e.created_at}
                        for e in events]}
+
+
+# ====================================================================
+# 7e-A: discussion threads   +   7e-B: proposals inbox
+# ====================================================================
+class ThreadCreate(BaseModel):
+    title: str
+    type: str = "topic"                 # admin creates topic (or report) threads
+    linked_ref: str | None = None
+
+
+class PostIn(BaseModel):
+    body: str
+
+
+class AdoptIn(BaseModel):
+    priority: str = "medium"            # high|medium|low
+    title: str | None = None
+    linked_item_code: str | None = None
+    importance: str | None = None
+    urgency: str | None = None
+    owner_name: str | None = None
+    target_date: str | None = None
+
+
+def _ensure_general_thread(db, company_id):
+    t = (db.query(Thread).filter_by(company_id=company_id, type="general").first())
+    if t is None:
+        t = Thread(company_id=company_id, type="general", title="General",
+                   linked_ref=None, created_by=None)
+        db.add(t); db.flush()
+    return t
+
+
+def _ensure_initiative_thread(db, company_id, ini):
+    t = (db.query(Thread).filter_by(company_id=company_id, type="initiative",
+                                    linked_ref=str(ini.id)).first())
+    if t is None:
+        t = Thread(company_id=company_id, type="initiative",
+                   title=f"{ini.ref_code} — {ini.title}", linked_ref=str(ini.id),
+                   created_by=ini.created_by)
+        db.add(t); db.flush()
+    return t
+
+
+def _thread_out(db, t, with_counts=True):
+    n = db.query(ThreadPost).filter_by(thread_id=t.id).count() if with_counts else None
+    return {"id": t.id, "company_id": t.company_id, "type": t.type, "title": t.title,
+            "linked_ref": t.linked_ref, "status": t.status, "created_by": t.created_by,
+            "created_at": t.created_at, "post_count": n}
+
+
+def _post_out(p):
+    return {"id": p.id, "thread_id": p.thread_id, "author_user_id": p.author_user_id,
+            "body": p.body, "created_at": p.created_at,
+            "flagged_as_proposal": p.flagged_as_proposal,
+            "proposal_status": p.proposal_status,
+            "adopted_initiative_id": p.adopted_initiative_id}
+
+
+@router.get("/companies/{company_id}/threads")
+def list_threads(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+    _ensure_general_thread(db, company_id); db.commit()
+    rows = (db.query(Thread).filter_by(company_id=company_id)
+              .order_by(Thread.created_at.desc()).all())
+    return {"company_id": company_id, "threads": [_thread_out(db, t) for t in rows]}
+
+
+@router.post("/companies/{company_id}/threads", status_code=201)
+def create_thread(company_id: int, body: ThreadCreate,
+                  member=Depends(require_company_admin),
+                  user: User = Depends(get_current_user), db=Depends(get_db)):
+    if body.type not in ("topic", "report", "general"):
+        raise HTTPException(422, "type must be topic|report|general")
+    if body.type == "general":
+        t = _ensure_general_thread(db, company_id)
+    else:
+        t = Thread(company_id=company_id, type=body.type, title=body.title.strip(),
+                   linked_ref=body.linked_ref, created_by=user.id)
+        db.add(t); db.flush()
+    audit(db, user.id, "thread_created", "company", company_id, detail=f"{t.type} {t.title}")
+    db.commit()
+    return _thread_out(db, t)
+
+
+@router.get("/companies/{company_id}/threads/{tid}")
+def thread_detail(company_id: int, tid: int,
+                  member=Depends(require_company_member), db=Depends(get_db)):
+    t = db.get(Thread, tid)
+    if not t or t.company_id != company_id:
+        raise HTTPException(404, "thread not found")
+    posts = (db.query(ThreadPost).filter_by(thread_id=tid)
+               .order_by(ThreadPost.created_at).all())
+    return {**_thread_out(db, t, with_counts=False),
+            "posts": [_post_out(p) for p in posts]}
+
+
+@router.post("/companies/{company_id}/threads/{tid}/posts", status_code=201)
+def create_post(company_id: int, tid: int, body: PostIn,
+                member=Depends(require_company_member),
+                user: User = Depends(get_current_user), db=Depends(get_db)):
+    t = db.get(Thread, tid)
+    if not t or t.company_id != company_id:
+        raise HTTPException(404, "thread not found")
+    if t.status == "archived":
+        raise HTTPException(409, "thread is archived")
+    # magic-link viewers may post in report/general/topic, NOT initiative threads
+    if getattr(user, "_token_scope", None) and t.type == "initiative":
+        raise HTTPException(403, "View-only access cannot post in initiative threads")
+    if not (body.body or "").strip():
+        raise HTTPException(422, "post body is required")
+    p = ThreadPost(thread_id=tid, author_user_id=user.id, body=body.body.strip())
+    db.add(p); db.flush()
+    _notify_thread_reply(db, t, p, user)         # 7e-E owner-scoped notification
+    audit(db, user.id, "thread_post", "company", company_id, detail=f"thread {tid}")
+    db.commit()
+    return _post_out(p)
+
+
+@router.post("/companies/{company_id}/threads/{tid}/archive")
+def archive_thread(company_id: int, tid: int, member=Depends(require_company_admin),
+                   user: User = Depends(get_current_user), db=Depends(get_db)):
+    t = db.get(Thread, tid)
+    if not t or t.company_id != company_id:
+        raise HTTPException(404, "thread not found")
+    if t.type in ("general", "initiative"):
+        raise HTTPException(409, "general and initiative threads cannot be archived")
+    t.status = "archived"
+    audit(db, user.id, "thread_archived", "company", company_id, detail=f"thread {tid}")
+    db.commit()
+    return _thread_out(db, t)
+
+
+def _suggest_proposal(db, company_id, body):
+    """Haiku one-shot: <=8-word title + best-matching taxonomy L2 code (or null).
+    Graceful skip when no key/error -> body-derived title, no code."""
+    fallback = (" ".join((body or "").split()[:8]).strip())[:80] or "New proposal"
+    fw = _assess_current_framework(db, company_id)
+    l2 = [i for i in _assess_items(db, fw) if i.level == 2 and i.selected] if fw else []
+    catalog = "\n".join(f"{i.code}: {i.title}" for i in l2[:120])
+    res = _anthropic_json(
+        "You turn a discussion comment into a concise initiative proposal. Return "
+        "strict JSON {\"title\":\"<=8 words\",\"item_code\":\"<taxonomy code or null>\"}. "
+        "item_code must be one of the provided codes that best matches, else null.",
+        f"Comment:\n{body}\n\nTaxonomy items:\n{catalog or '(none)'}", max_tokens=150)
+    if not res:
+        return fallback, None
+    title = (str(res.get("title") or "").strip() or fallback)[:120]
+    code = res.get("item_code")
+    return title, (code if code in {i.code for i in l2} else None)
+
+
+@router.post("/companies/{company_id}/posts/{pid}/flag-proposal", status_code=201)
+def flag_proposal(company_id: int, pid: int, member=Depends(require_company_member),
+                  user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Flag a post as a proposal (admin: any post; author: their own). Computes a
+    cached title/item-code suggestion so the inbox never re-calls the model."""
+    p = db.get(ThreadPost, pid)
+    t = db.get(Thread, p.thread_id) if p else None
+    if not p or not t or t.company_id != company_id:
+        raise HTTPException(404, "post not found")
+    if member.role != "admin" and p.author_user_id != user.id:
+        raise HTTPException(403, "Only the author or an admin can flag a post")
+    if not p.flagged_as_proposal:
+        title, code = _suggest_proposal(db, company_id, p.body)
+        p.flagged_as_proposal = True
+        p.proposal_status = "flagged"
+        p.suggested_title, p.suggested_item_code = title, code
+        audit(db, user.id, "post_flagged_proposal", "company", company_id, detail=f"post {pid}")
+        db.commit()
+    return _post_out(p)
+
+
+def _flagged_or_404(db, company_id, pid):
+    p = db.get(ThreadPost, pid)
+    t = db.get(Thread, p.thread_id) if p else None
+    if not p or not t or t.company_id != company_id:
+        raise HTTPException(404, "proposal not found")
+    if p.proposal_status != "flagged":
+        raise HTTPException(409, f"proposal is already {p.proposal_status or 'not flagged'}")
+    return p, t
+
+
+@router.get("/companies/{company_id}/initiatives/proposals")
+def list_proposals(company_id: int, member=Depends(require_company_admin), db=Depends(get_db)):
+    threads = {t.id: t for t in db.query(Thread).filter_by(company_id=company_id).all()}
+    rows = [p for p in db.query(ThreadPost)
+              .filter(ThreadPost.proposal_status == "flagged").all()
+            if p.thread_id in threads]
+    rows.sort(key=lambda p: p.created_at)
+    out = []
+    for p in rows:
+        t = threads[p.thread_id]
+        au = db.get(User, p.author_user_id) if p.author_user_id else None
+        out.append({
+            "post_id": p.id, "body": p.body, "created_at": p.created_at,
+            "author": ({"id": au.id, "name": au.name, "email": au.email} if au else None),
+            "thread": {"id": t.id, "type": t.type, "title": t.title, "linked_ref": t.linked_ref},
+            "suggested_title": p.suggested_title,
+            "suggested_linked_item_code": p.suggested_item_code})
+    return {"company_id": company_id, "proposals": out}
+
+
+@router.post("/companies/{company_id}/initiatives/proposals/{pid}/adopt", status_code=201)
+def adopt_proposal(company_id: int, pid: int, body: AdoptIn,
+                   member=Depends(require_company_admin),
+                   user: User = Depends(get_current_user), db=Depends(get_db)):
+    p, t = _flagged_or_404(db, company_id, pid)
+    priority = body.priority if body.priority in _PRIORITY else "medium"
+    title = (body.title or p.suggested_title
+             or " ".join(p.body.split()[:8]))[:300]
+    ref = _next_ref(db, company_id, _band_of("proposed", priority))
+    ini = Initiative(
+        company_id=company_id, ref_code=ref, previous_refs=[], title=title,
+        description=p.body, source="discussion", source_thread_id=t.id,
+        importance=body.importance or priority, urgency=body.urgency or priority,
+        current_priority=priority, status="proposed",
+        linked_item_code=body.linked_item_code or p.suggested_item_code,
+        owner_name=body.owner_name, target_date=body.target_date, created_by=user.id)
+    db.add(ini); db.flush()
+    _ini_event(db, ini, user.id, "created", None, ref, f"adopted from discussion (post {pid})")
+    _ensure_initiative_thread(db, company_id, ini)
+    p.proposal_status = "adopted"; p.adopted_initiative_id = ini.id
+    audit(db, user.id, "proposal_adopted", "company", company_id, detail=f"{ref} <- post {pid}")
+    db.commit()
+    return _ini_out(ini)
+
+
+@router.post("/companies/{company_id}/initiatives/proposals/{pid}/park", status_code=201)
+def park_proposal(company_id: int, pid: int,
+                  member=Depends(require_company_admin),
+                  user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Park -> a D-band (not-accepted) initiative, kept for the record."""
+    p, t = _flagged_or_404(db, company_id, pid)
+    ref = _next_ref(db, company_id, "D")
+    title = (p.suggested_title or " ".join(p.body.split()[:8]))[:300]
+    ini = Initiative(
+        company_id=company_id, ref_code=ref, previous_refs=[], title=title,
+        description=p.body, source="discussion", source_thread_id=t.id,
+        importance="low", urgency="low", current_priority="low", status="deferred",
+        linked_item_code=p.suggested_item_code, created_by=user.id)
+    db.add(ini); db.flush()
+    _ini_event(db, ini, user.id, "created", None, ref, f"parked from discussion (post {pid})")
+    p.proposal_status = "parked"; p.adopted_initiative_id = ini.id
+    audit(db, user.id, "proposal_parked", "company", company_id, detail=f"{ref} <- post {pid}")
+    db.commit()
+    return _ini_out(ini)
+
+
+@router.post("/companies/{company_id}/initiatives/proposals/{pid}/dismiss")
+def dismiss_proposal(company_id: int, pid: int,
+                     member=Depends(require_company_admin),
+                     user: User = Depends(get_current_user), db=Depends(get_db)):
+    p, t = _flagged_or_404(db, company_id, pid)
+    p.proposal_status = "dismissed"
+    audit(db, user.id, "proposal_dismissed", "company", company_id, detail=f"post {pid}")
+    db.commit()
+    return {"ok": True, "post_id": pid, "proposal_status": "dismissed"}
 
 
 # ------------------------------------------- AXIOM Assessment Framework (7d-1)
@@ -2266,6 +2574,28 @@ def _extract_json(text: str):
     if a == -1 or b == -1:
         raise ValueError("no json")
     return json.loads(s[a:b + 1])
+
+
+def _anthropic_json(system: str, user_text: str, max_tokens: int = 400) -> dict | None:
+    """One short Haiku call returning parsed JSON, or None on skip (no key / any
+    error). The single seam for the 7e assist features (proposal titles, CSF
+    drafts) — every caller degrades gracefully."""
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    if not key:
+        return None
+    try:
+        resp = httpx.post("https://api.anthropic.com/v1/messages", timeout=45,
+                          headers={"x-api-key": key, "anthropic-version": "2023-06-01",
+                                   "content-type": "application/json"},
+                          json={"model": _SENTIMENT_MODEL, "max_tokens": max_tokens,
+                                "system": system,
+                                "messages": [{"role": "user", "content": user_text}]})
+        resp.raise_for_status()
+        txt = "".join(b.get("text", "") for b in resp.json().get("content", [])
+                      if b.get("type") == "text")
+        return _extract_json(txt)
+    except Exception:
+        return None
 
 
 def _anthropic_sentiment(category_title: str, items: list[dict]) -> dict | None:
@@ -2987,6 +3317,11 @@ def _ensure_ax_columns(engine):
     # 7d-3 rider: orientation on assessment items, linked_item_code on initiatives
     _add("ax_assessment_items", "orientation", "orientation VARCHAR(16)")
     _add("ax_initiatives", "linked_item_code", "linked_item_code VARCHAR(40)")
+    # 7e: discussion linkage + leader RAG on initiatives
+    _add("ax_initiatives", "source_thread_id", "source_thread_id INTEGER")
+    _add("ax_initiatives", "rag", "rag VARCHAR(8)")
+    _add("ax_initiatives", "rag_updated_at", "rag_updated_at TIMESTAMP")
+    _add("ax_initiatives", "rag_updated_by", "rag_updated_by INTEGER")
 
     # Backfill orientation on existing framework revisions by item code (v2).
     try:
