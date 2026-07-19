@@ -17,21 +17,60 @@ def load_taxonomy() -> dict:
 
 
 def taxonomy_to_items(tax: dict) -> list[dict]:
-    """Flatten to item dicts: {level, code, title, definition, parent_code}.
-    L2 nests under 'items' (canonical) or 'subcategories'; L3 under 'children'."""
+    """Flatten to item dicts: {level, code, title, definition, parent_code,
+    orientation}. L2 nests under 'items' (canonical) or 'subcategories'; L3
+    under 'children'. orientation ("internal"|"external", v2+) is present on
+    L2/L3 and None on L1."""
     items = []
     for cat in tax["categories"]:
         items.append({"level": 1, "code": cat["code"], "title": cat["title"],
-                      "definition": cat.get("definition", ""), "parent_code": None})
+                      "definition": cat.get("definition", ""), "parent_code": None,
+                      "orientation": None})
         for sub in (cat.get("items") or cat.get("subcategories") or []):
             items.append({"level": 2, "code": sub["code"], "title": sub["title"],
                           "definition": sub.get("definition", ""),
-                          "parent_code": cat["code"]})
+                          "parent_code": cat["code"],
+                          "orientation": sub.get("orientation")})
             for ch in sub.get("children", []):
                 items.append({"level": 3, "code": ch["code"], "title": ch["title"],
                               "definition": ch.get("definition", ""),
-                              "parent_code": sub["code"]})
+                              "parent_code": sub["code"],
+                              "orientation": ch.get("orientation")})
     return items
+
+
+def orientation_by_code(tax: dict) -> dict:
+    """{code: orientation} for every L2/L3 in the taxonomy — used to backfill
+    orientation onto existing per-company framework items by code."""
+    return {it["code"]: it["orientation"]
+            for it in taxonomy_to_items(tax) if it["orientation"]}
+
+
+def score_rag(mean) -> str | None:
+    """Deterministic band from a mean score: green >=7.5, amber 5-7.5, red <5."""
+    if mean is None:
+        return None
+    if mean >= 7.5:
+        return "green"
+    if mean >= 5.0:
+        return "amber"
+    return "red"
+
+
+_RAG_LEVEL = {"red": 0, "amber": 1, "green": 2}
+_SENTIMENT_RAG = {"positive": "green", "neutral": "amber", "mixed": "amber",
+                  "negative": "red"}
+
+
+def rag_divergence(srag, text_sentiment) -> bool:
+    """Material divergence between the score RAG and text sentiment: >=2 RAG
+    levels apart (which is exactly green-score vs negative/red-text)."""
+    if not srag or not text_sentiment:
+        return False
+    trag = _SENTIMENT_RAG.get(text_sentiment)
+    if trag is None:
+        return False
+    return abs(_RAG_LEVEL[srag] - _RAG_LEVEL[trag]) >= 2
 
 
 def default_weights(l1_codes: list[str], provided: dict | None = None) -> dict:

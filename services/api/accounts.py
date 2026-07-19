@@ -224,6 +224,7 @@ class Initiative(Base):
     actual_impact_amount = Column(Float, nullable=True)         # set at completion
     owner_name = Column(String(200), nullable=True)
     target_date = Column(String(40), nullable=True)             # ISO date
+    linked_item_code = Column(String(40), nullable=True)        # assessment item this initiative addresses (7d-3 SWOT back-link)
     created_by = Column(Integer, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     completed_at = Column(DateTime, nullable=True)
@@ -263,6 +264,7 @@ class AssessmentItem(Base):
     parent_code = Column(String(40), nullable=True)
     selected = Column(Boolean, default=True, nullable=False)
     custom = Column(Boolean, default=False, nullable=False)
+    orientation = Column(String(16), nullable=True)     # internal|external (L2/L3, v2+); None for L1
 
 
 class AssessmentWeight(Base):
@@ -298,6 +300,18 @@ class AssessmentResponse(Base):
     score = Column(Integer, nullable=False)              # 1-10
     comment = Column(Text, nullable=True)
     submitted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AssessmentOverall(Base):
+    """One end-of-questionnaire freeform comment per participant per cycle
+    (distinct from per-item comments on AssessmentResponse). Linked to
+    participant_ref only; in anonymous cycles it is never grouped per person."""
+    __tablename__ = "ax_assessment_overall"
+    id = Column(Integer, primary_key=True)
+    cycle_id = Column(Integer, index=True, nullable=False)
+    participant_ref = Column(String(64), nullable=False)
+    comment = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 class AssessmentConfig(Base):
@@ -1431,6 +1445,7 @@ class InitiativeCreate(BaseModel):
     impact_currency: str | None = None
     owner_name: str | None = None
     target_date: str | None = None
+    linked_item_code: str | None = None
     source: str = "manual"
     source_report_issued_at: str | None = None
     source_dataset_version: int | None = None
@@ -1446,6 +1461,7 @@ class InitiativePatch(BaseModel):
     impact_currency: str | None = None
     owner_name: str | None = None
     target_date: str | None = None
+    linked_item_code: str | None = None
     source: str | None = None
     source_report_issued_at: str | None = None
     source_dataset_version: int | None = None
@@ -1509,6 +1525,7 @@ def _ini_out(i):
             "impact_currency": i.impact_currency,
             "actual_impact_amount": i.actual_impact_amount,
             "owner_name": i.owner_name, "target_date": i.target_date,
+            "linked_item_code": i.linked_item_code,
             "created_by": i.created_by, "created_at": i.created_at,
             "completed_at": i.completed_at}
 
@@ -1532,7 +1549,8 @@ def create_initiative(company_id: int, body: InitiativeCreate,
         current_priority=body.current_priority, status=body.status,
         expected_impact_amount=body.expected_impact_amount,
         impact_currency=body.impact_currency, owner_name=body.owner_name,
-        target_date=body.target_date, created_by=user.id)
+        target_date=body.target_date, linked_item_code=body.linked_item_code,
+        created_by=user.id)
     db.add(ini)
     db.flush()
     _ini_event(db, ini, user.id, "created", None, ref, f"created as {body.status}")
@@ -1575,7 +1593,7 @@ def patch_initiative(company_id: int, iid: int, body: InitiativePatch,
     changed = []
     for f in ("title", "description", "importance", "urgency", "current_priority",
               "expected_impact_amount", "impact_currency", "owner_name", "target_date",
-              "source", "source_report_issued_at", "source_dataset_version"):
+              "linked_item_code", "source", "source_report_issued_at", "source_dataset_version"):
         v = getattr(body, f)
         if v is not None and getattr(ini, f) != v:
             setattr(ini, f, v)
@@ -1655,8 +1673,9 @@ class FrameworkPut(BaseModel):
     deselect: list[str] = []            # codes to deselect (keep, exclude from CEI)
     select: list[str] = []              # codes to re-select
     delete: list[str] = []              # codes to remove entirely (+ their children)
-    add: list[dict] = []                # custom items [{level, code, title, definition?, parent_code?}]
+    add: list[dict] = []                # custom items [{level, code, title, definition?, parent_code?, orientation?}]
     weights: dict | None = None         # {l1_code: weight} (must sum ~100 over L1)
+    orientation: dict | None = None     # {code: "internal"|"external"} — edit item orientation
 
 
 class CycleIn(BaseModel):
@@ -1672,6 +1691,7 @@ class ScoreItem(BaseModel):
 
 class ScoreIn(BaseModel):
     responses: list[ScoreItem]
+    overall_comment: str | None = None
 
 
 def _assess_current_framework(db, company_id):
@@ -1687,7 +1707,8 @@ def _assess_seed_framework(db, company_id):
     for it in taxonomy_to_items(tax):
         db.add(AssessmentItem(framework_id=fw.id, level=it["level"], code=it["code"],
                               title=it["title"], definition=it["definition"],
-                              parent_code=it["parent_code"], selected=True, custom=False))
+                              parent_code=it["parent_code"], selected=True, custom=False,
+                              orientation=it.get("orientation")))
     l1 = [c["code"] for c in tax["categories"]]
     provided = {c["code"]: c.get("default_weight") for c in tax["categories"]}
     for code, w in default_weights(l1, provided).items():
@@ -1718,7 +1739,8 @@ def _framework_out(db, fw):
             "weights": _assess_weights(db, fw),
             "items": [{"id": i.id, "level": i.level, "code": i.code, "title": i.title,
                        "definition": i.definition, "parent_code": i.parent_code,
-                       "selected": i.selected, "custom": i.custom}
+                       "selected": i.selected, "custom": i.custom,
+                       "orientation": i.orientation}
                       for i in _assess_items(db, fw)]}
 
 
@@ -1749,9 +1771,11 @@ def _cycle_cei(db, cyc):
     return out
 
 
-def _submit_responses(db, cyc, participant_ref, responses, actor_id=None):
-    """Shared response-submission logic (admin scoring now; 7d-3 participants
-    bolt on): one submission per participant per cycle, immutable after."""
+def _submit_responses(db, cyc, participant_ref, responses, actor_id=None,
+                      overall_comment=None):
+    """Shared response-submission logic (admin scoring + 7d-3 participants):
+    one submission per participant per cycle, immutable after. An optional
+    end-of-questionnaire overall_comment is stored per participant."""
     if db.query(AssessmentResponse).filter_by(
             cycle_id=cyc.id, participant_ref=participant_ref).first():
         raise HTTPException(409, "This participant has already submitted for this "
@@ -1766,6 +1790,9 @@ def _submit_responses(db, cyc, participant_ref, responses, actor_id=None):
         db.add(AssessmentResponse(cycle_id=cyc.id, participant_ref=participant_ref,
                                   item_id=r.item_id, score=r.score, comment=r.comment))
         n += 1
+    if overall_comment and overall_comment.strip():
+        db.add(AssessmentOverall(cycle_id=cyc.id, participant_ref=participant_ref,
+                                 comment=overall_comment.strip()))
     audit(db, actor_id, "assessment_scored", "company", cyc.company_id,
           detail=f"cycle {cyc.id} participant {participant_ref} ({n} items)")
     db.commit()
@@ -1789,12 +1816,14 @@ def put_assessment_framework(company_id: int, body: FrameworkPut,
     its cycles/snapshots."""
     from .assessment_engine import renormalize, default_weights
     cur = _assess_ensure_framework(db, company_id)
-    if not (body.deselect or body.select or body.delete or body.add or body.weights is not None):
+    if not (body.deselect or body.select or body.delete or body.add
+            or body.weights is not None or body.orientation):
         return _framework_out(db, cur)      # no-op, no new revision
 
     by_code = {i.code: {"level": i.level, "code": i.code, "title": i.title,
                         "definition": i.definition, "parent_code": i.parent_code,
-                        "selected": i.selected, "custom": i.custom}
+                        "selected": i.selected, "custom": i.custom,
+                        "orientation": i.orientation}
                for i in _assess_items(db, cur)}
     weights = _assess_weights(db, cur)
     for c in body.deselect:
@@ -1810,11 +1839,21 @@ def put_assessment_framework(company_id: int, body: FrameworkPut,
             for k2 in [k2 for k2, v in by_code.items() if v["parent_code"] == k]:
                 by_code.pop(k2, None)
     for a in body.add:
-        by_code[a["code"]] = {"level": a["level"], "code": a["code"],
+        lvl = a["level"]
+        # custom L2/L3 default to internal (admin-editable); L1 has no orientation
+        orient = a.get("orientation") or ("internal" if lvl in (2, 3) else None)
+        if orient not in (None, "internal", "external"):
+            raise HTTPException(422, "orientation must be 'internal' or 'external'")
+        by_code[a["code"]] = {"level": lvl, "code": a["code"],
                               "title": a.get("title", a["code"]),
                               "definition": a.get("definition", ""),
                               "parent_code": a.get("parent_code"),
-                              "selected": True, "custom": True}
+                              "selected": True, "custom": True, "orientation": orient}
+    for code, o in (body.orientation or {}).items():
+        if o not in ("internal", "external"):
+            raise HTTPException(422, "orientation must be 'internal' or 'external'")
+        if code in by_code and by_code[code]["level"] in (2, 3):
+            by_code[code]["orientation"] = o
 
     new_l1 = [v["code"] for v in by_code.values() if v["level"] == 1]
     if body.weights is not None:
@@ -1833,7 +1872,7 @@ def put_assessment_framework(company_id: int, body: FrameworkPut,
         db.add(AssessmentItem(framework_id=fw.id, level=v["level"], code=v["code"],
                               title=v["title"], definition=v["definition"],
                               parent_code=v["parent_code"], selected=v["selected"],
-                              custom=v["custom"]))
+                              custom=v["custom"], orientation=v.get("orientation")))
     for code, w in new_weights.items():
         db.add(AssessmentWeight(framework_id=fw.id, l1_code=code, weight=round(float(w), 6)))
     audit(db, user.id, "assessment_framework_revised", "company", company_id,
@@ -1868,6 +1907,7 @@ def close_assessment_cycle(company_id: int, cid: int,
     if cyc.closed_at:
         raise HTTPException(409, "cycle already closed")
     snap = _cycle_cei(db, cyc)
+    snap.update(_sentiment_layer(db, cyc, snap))   # score RAG (always) + text sentiment (if key)
     cyc.closed_at = datetime.utcnow()
     cyc.snapshot = snap                    # revision-tagged snapshot for the trend
     cad = cyc.cadence or _assess_config(db, company_id).cadence or "none"
@@ -1892,7 +1932,30 @@ def score_assessment_cycle(company_id: int, cid: int, body: ScoreIn,
         raise HTTPException(404, "cycle not found")
     if cyc.closed_at:
         raise HTTPException(409, "cycle is closed")
-    return _submit_responses(db, cyc, f"admin:{user.id}", body.responses, user.id)
+    return _submit_responses(db, cyc, f"admin:{user.id}", body.responses, user.id,
+                             overall_comment=body.overall_comment)
+
+
+def _summary_rags(cei: dict, snapshot: dict | None) -> dict:
+    """Per-item and per-L1 {score_rag, text_sentiment, theme, divergence} for the
+    current cycle. score_rag is live from the mean; text sentiment/theme come from
+    the cycle snapshot (present only once the cycle is closed and a key was set)."""
+    from .assessment_engine import score_rag, rag_divergence
+    snap = snapshot or {}
+    item_sent, l1_sent = snap.get("item_sentiment") or {}, snap.get("l1_sentiment") or {}
+
+    def row(srag, sent):
+        ts = (sent or {}).get("sentiment")
+        return {"score_rag": srag, "text_sentiment": ts,
+                "theme": (sent or {}).get("theme"),
+                "divergence": rag_divergence(srag, ts)}
+
+    items = {code: row(score_rag((d or {}).get("mean")), item_sent.get(code))
+             for code, d in (cei.get("item_dispersion") or {}).items()}
+    l1s = {o["code"]: row(score_rag(o.get("score")), l1_sent.get(o["code"]))
+           for o in (cei.get("l1_subscores") or [])}
+    return {"item_rag": items, "l1_rag": l1s,
+            "sentiment_available": bool(item_sent or l1_sent)}
 
 
 @router.get("/companies/{company_id}/assessment/summary")
@@ -1930,6 +1993,7 @@ def assessment_summary(company_id: int, member=Depends(require_company_member),
     trend = [{"cycle_id": c.id, "revision": c.revision, "opened_at": c.opened_at,
               "closed_at": c.closed_at, "cei": (c.snapshot or {}).get("cei")}
              for c in cycles if c.snapshot]
+    rags = _summary_rags(current, latest.snapshot if latest else None)
     return {"revision": fw.revision,
             "current_cycle_id": latest.id if latest else None,
             "current_cycle_closed": bool(latest and latest.closed_at),
@@ -1938,7 +2002,82 @@ def assessment_summary(company_id: int, member=Depends(require_company_member),
             "l1_subscores": current.get("l1_subscores", []),
             "radar": current.get("radar", []),
             "item_dispersion": current.get("item_dispersion", {}),
+            "item_rag": rags["item_rag"], "l1_rag": rags["l1_rag"],
+            "sentiment_available": rags["sentiment_available"],
             "trend": trend, "cadence": cadence_block}
+
+
+@router.get("/companies/{company_id}/assessment/swot")
+def assessment_swot(company_id: int, member=Depends(require_company_member),
+                    db=Depends(get_db)):
+    """Derive a SWOT from the latest CLOSED cycle by classifying each selected,
+    scored L2 item on two axes: orientation (internal/external, from the
+    taxonomy) x strength (score RAG, adjusted down by a red text-sentiment
+    divergence). Mid-band items with no negative signal fall to a watch list.
+    Each entry carries trend vs the prior cycle and any linked initiatives."""
+    from .assessment_engine import score_rag
+    closed = (db.query(AssessmentCycle).filter_by(company_id=company_id)
+                .filter(AssessmentCycle.closed_at.isnot(None))
+                .order_by(AssessmentCycle.closed_at).all())
+    if not closed:
+        return {"has_data": False, "cycle_id": None, "closed_at": None,
+                "message": "No closed assessment cycle yet — SWOT appears once the "
+                           "first cycle closes.",
+                "strengths": [], "weaknesses": [], "opportunities": [],
+                "threats": [], "watch_list": []}
+    latest = closed[-1]
+    prior = closed[-2] if len(closed) > 1 else None
+    snap = latest.snapshot or {}
+    disp = snap.get("item_dispersion") or {}
+    item_sent = snap.get("item_sentiment") or {}
+    item_div = snap.get("item_divergence") or {}
+    prior_disp = (prior.snapshot or {}).get("item_dispersion") if prior else None
+
+    links = {}
+    for ini in db.query(Initiative).filter_by(company_id=company_id).all():
+        if ini.linked_item_code:
+            links.setdefault(ini.linked_item_code, []).append(
+                {"ref_code": ini.ref_code, "title": ini.title, "status": ini.status})
+
+    buckets = {"strengths": [], "weaknesses": [], "opportunities": [],
+               "threats": [], "watch_list": []}
+    l2 = [i for i in db.query(AssessmentItem)
+              .filter_by(framework_id=latest.framework_id, level=2).all() if i.selected]
+    for it in l2:
+        d = disp.get(it.code)
+        if not d or d.get("mean") is None:
+            continue                                  # not scored -> not classifiable
+        mean = d["mean"]
+        sent = item_sent.get(it.code) or {}
+        ts = sent.get("sentiment")
+        div = bool(item_div.get(it.code))
+        red = (ts == "negative") or div               # negative text OR RAG/text divergence
+        orient = it.orientation or "internal"
+        trend_delta = None
+        if prior_disp and (prior_disp.get(it.code) or {}).get("mean") is not None:
+            trend_delta = round(mean - prior_disp[it.code]["mean"], 4)
+        entry = {"item_code": it.code, "title": it.title, "orientation": orient,
+                 "mean": round(mean, 4), "dispersion": d.get("std"),
+                 "respondents": d.get("n"), "score_rag": score_rag(mean),
+                 "text_sentiment": ts or None, "theme": sent.get("theme") or None,
+                 "divergence": div, "trend_delta": trend_delta,
+                 "linked_initiatives": links.get(it.code, [])}
+        if mean >= 7.5 and not red:
+            bucket = "strengths" if orient == "internal" else "opportunities"
+        elif mean < 5 or red:
+            bucket = "weaknesses" if orient == "internal" else "threats"
+        else:
+            bucket = "watch_list"                     # mid-band, no negative signal
+        buckets[bucket].append(entry)
+    for b in ("strengths", "opportunities"):
+        buckets[b].sort(key=lambda e: -e["mean"])
+    for b in ("weaknesses", "threats", "watch_list"):
+        buckets[b].sort(key=lambda e: e["mean"])
+
+    return {"has_data": True, "cycle_id": latest.id, "revision": latest.revision,
+            "closed_at": latest.closed_at, "prior_cycle_id": prior.id if prior else None,
+            "sentiment_available": snap.get("sentiment_available", False),
+            "counts": {k: len(v) for k, v in buckets.items()}, **buckets}
 
 
 # ====================================================================
@@ -1981,6 +2120,12 @@ class AssessRedeemIn(BaseModel):
 
 class AssessDraftIn(BaseModel):
     responses: list[ScoreItem] = []
+    overall_comment: str | None = None
+
+
+COMMENT_DISCLOSURE = ("Your written comments are shared verbatim with company "
+                      "leadership. In an anonymous cycle they are never attributed "
+                      "to you by name.")
 
 
 def _next_participant_ref(db, cycle_id):
@@ -2083,6 +2228,182 @@ def list_participant_invites(company_id: int, cid: int,
             "roster": roster}
 
 
+def _l1_maps(db, framework_id):
+    """Return (item_id -> {code,title,l1_code}, l1_code -> title) for a
+    framework, walking parent_code up to the owning L1."""
+    items = db.query(AssessmentItem).filter_by(framework_id=framework_id).all()
+    by_code = {i.code: i for i in items}
+    l1_title = {i.code: i.title for i in items if i.level == 1}
+
+    def l1_of(it):
+        cur = it
+        seen = 0
+        while cur is not None and cur.level != 1 and seen < 5:
+            cur = by_code.get(cur.parent_code)
+            seen += 1
+        return cur.code if cur is not None and cur.level == 1 else None
+
+    id_map = {i.id: {"code": i.code, "title": i.title, "l1_code": l1_of(i)}
+              for i in items}
+    return id_map, l1_title
+
+
+_SENTIMENT_MODEL = os.environ.get("AXIOM_SENTIMENT_MODEL", "claude-haiku-4-5-20251001")
+_SENTIMENT_SYS = (
+    "You analyze anonymous employee assessment comments for a company leadership "
+    "team. For the category and each listed item, classify the overall sentiment "
+    "of its comments as exactly one of: positive, neutral, negative, mixed. Also "
+    "give a single short theme (max 12 words) capturing the recurring point. "
+    "Respond ONLY with strict JSON of shape "
+    '{"category":{"sentiment":"...","theme":"..."},'
+    '"items":{"<item_code>":{"sentiment":"...","theme":"..."}}}. No prose.')
+
+
+def _extract_json(text: str):
+    import json
+    s = text.strip()
+    a, b = s.find("{"), s.rfind("}")
+    if a == -1 or b == -1:
+        raise ValueError("no json")
+    return json.loads(s[a:b + 1])
+
+
+def _anthropic_sentiment(category_title: str, items: list[dict]) -> dict | None:
+    """Batched sentiment for one L1 category. items=[{code,title,comments:[str]}].
+    Returns {"category":{sentiment,theme}, "items":{code:{sentiment,theme}}} or
+    None on skip (no key / any error) — the caller degrades to score RAG only."""
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    if not key:
+        return None
+    import json
+    lines = [f"Category: {category_title}", ""]
+    for it in items:
+        if not it["comments"]:
+            continue
+        lines.append(f'Item {it["code"]} — {it["title"]}:')
+        for cmt in it["comments"]:
+            lines.append(f"  - {cmt}")
+        lines.append("")
+    try:
+        resp = httpx.post("https://api.anthropic.com/v1/messages", timeout=60,
+                          headers={"x-api-key": key, "anthropic-version": "2023-06-01",
+                                   "content-type": "application/json"},
+                          json={"model": _SENTIMENT_MODEL, "max_tokens": 900,
+                                "system": _SENTIMENT_SYS,
+                                "messages": [{"role": "user", "content": "\n".join(lines)}]})
+        resp.raise_for_status()
+        txt = "".join(b.get("text", "") for b in resp.json().get("content", [])
+                      if b.get("type") == "text")
+        out = _extract_json(txt)
+        valid = {"positive", "neutral", "negative", "mixed"}
+        cat = out.get("category") or {}
+        cat_s = cat.get("sentiment") if cat.get("sentiment") in valid else None
+        items_out = {}
+        for code, v in (out.get("items") or {}).items():
+            if isinstance(v, dict) and v.get("sentiment") in valid:
+                items_out[code] = {"sentiment": v["sentiment"], "theme": (v.get("theme") or "")[:160]}
+        return {"category": ({"sentiment": cat_s, "theme": (cat.get("theme") or "")[:160]}
+                             if cat_s else None),
+                "items": items_out}
+    except Exception:
+        return None
+
+
+def _sentiment_layer(db, cyc, cei: dict) -> dict:
+    """Per-item and per-L1 score_rag (deterministic, always) and — where comments
+    exist and a key is configured — text sentiment + theme via Haiku (batched per
+    L1). Divergence is flagged where the score RAG and text sentiment differ
+    materially. Returned dict is merged into the cycle snapshot (cache)."""
+    from .assessment_engine import score_rag, rag_divergence
+    id_map, l1_title = _l1_maps(db, cyc.framework_id)
+    code_meta = {m["code"]: m for m in id_map.values()}
+
+    item_rag = {code: score_rag((d or {}).get("mean"))
+                for code, d in (cei.get("item_dispersion") or {}).items()}
+    l1_rag = {o["code"]: score_rag(o.get("score")) for o in (cei.get("l1_subscores") or [])}
+
+    # comments grouped by item, then items grouped under their L1 for batching
+    comments_by_item = {}
+    for r in db.query(AssessmentResponse).filter_by(cycle_id=cyc.id).all():
+        if r.comment and r.comment.strip():
+            comments_by_item.setdefault(id_map.get(r.item_id, {}).get("code"), []).append(r.comment.strip())
+    comments_by_item.pop(None, None)
+
+    batches = {}
+    for code, cmts in comments_by_item.items():
+        l1 = (code_meta.get(code) or {}).get("l1_code")
+        if l1:
+            batches.setdefault(l1, []).append({"code": code, "title": code_meta[code]["title"],
+                                               "comments": cmts})
+
+    item_sent, l1_sent = {}, {}
+    for l1, items in batches.items():
+        res = _anthropic_sentiment(l1_title.get(l1, l1), items)
+        if not res:
+            continue
+        if res.get("category"):
+            l1_sent[l1] = res["category"]
+        item_sent.update(res.get("items") or {})
+
+    item_div = {code: rag_divergence(item_rag.get(code), (item_sent.get(code) or {}).get("sentiment"))
+                for code in item_rag}
+    l1_div = {code: rag_divergence(l1_rag.get(code), (l1_sent.get(code) or {}).get("sentiment"))
+              for code in l1_rag}
+
+    return {"item_rag": item_rag, "l1_rag": l1_rag,
+            "item_sentiment": item_sent, "l1_sentiment": l1_sent,
+            "item_divergence": item_div, "l1_divergence": l1_div,
+            "sentiment_available": bool(item_sent or l1_sent)}
+
+
+@router.get("/companies/{company_id}/assessment/cycles/{cid}/comments")
+def assessment_comments(company_id: int, cid: int,
+                        member=Depends(require_company_admin), db=Depends(get_db)):
+    """Freeform comments grouped BY ITEM and BY CATEGORY, plus overall comments.
+    ANONYMITY (query-layer): in an anonymous cycle comments carry NO
+    participant_ref, are SHUFFLED so order can't reconstruct a person, and are
+    never presented per-participant. In an identified cycle participant_ref is
+    attached."""
+    import random
+    cyc = db.get(AssessmentCycle, cid)
+    if not cyc or cyc.company_id != company_id:
+        raise HTTPException(404, "cycle not found")
+    anon = cyc.anonymity_mode == "anonymous"
+    id_map, l1_title = _l1_maps(db, cyc.framework_id)
+
+    by_item, by_cat = {}, {}
+    for r in db.query(AssessmentResponse).filter_by(cycle_id=cid).all():
+        if not (r.comment and r.comment.strip()):
+            continue
+        meta = id_map.get(r.item_id)
+        if not meta:
+            continue
+        rec = {"comment": r.comment.strip()}
+        if not anon:
+            rec["participant_ref"] = r.participant_ref
+        by_item.setdefault(meta["code"], {"title": meta["title"], "comments": []})["comments"].append(rec)
+        if meta["l1_code"]:
+            by_cat.setdefault(meta["l1_code"], {"title": l1_title.get(meta["l1_code"], meta["l1_code"]),
+                                                "comments": []})["comments"].append(rec)
+
+    overall = []
+    for o in db.query(AssessmentOverall).filter_by(cycle_id=cid).all():
+        rec = {"comment": o.comment}
+        if not anon:
+            rec["participant_ref"] = o.participant_ref
+        overall.append(rec)
+
+    if anon:                                # decouple order from participant order
+        for g in list(by_item.values()) + list(by_cat.values()):
+            random.shuffle(g["comments"])
+        random.shuffle(overall)
+
+    return {"cycle_id": cid, "anonymity_mode": cyc.anonymity_mode,
+            "by_item": [{"item_code": k, **v} for k, v in by_item.items()],
+            "by_category": [{"l1_code": k, **v} for k, v in by_cat.items()],
+            "overall": overall}
+
+
 @router.post("/assessment/redeem-assess-invite", status_code=201)
 def redeem_assess_invite(body: AssessRedeemIn, db=Depends(get_db)):
     """Magic-link participant access — NO auth. Validates the invite token,
@@ -2142,9 +2463,11 @@ def participant_questionnaire(session=Depends(assess_session), db=Depends(get_db
             "closed": cyc.closed_at is not None,
             "submitted": inv.submitted_at is not None,
             "items": [{"id": i.id, "level": i.level, "code": i.code, "title": i.title,
-                       "definition": i.definition, "parent_code": i.parent_code}
+                       "definition": i.definition, "parent_code": i.parent_code,
+                       "orientation": i.orientation}
                       for i in items],
-            "draft": inv.draft or {}, "responses": final}
+            "draft": inv.draft or {}, "responses": final,
+            "comment_disclosure": COMMENT_DISCLOSURE}
 
 
 @router.post("/assessment/responses")
@@ -2188,7 +2511,8 @@ def participant_submit(body: AssessDraftIn, session=Depends(assess_session),
                  for iid, v in (inv.draft or {}).items()]
     if not final:
         raise HTTPException(422, "No responses to submit.")
-    out = _submit_responses(db, cyc, inv.participant_ref, final, actor_id=None)
+    out = _submit_responses(db, cyc, inv.participant_ref, final, actor_id=None,
+                            overall_comment=body.overall_comment)
     inv.submitted_at = datetime.utcnow()
     inv.draft = None
     db.commit()
@@ -2650,6 +2974,36 @@ def _ensure_ax_columns(engine):
             conn.execute(_text(
                 "ALTER TABLE ax_users ADD COLUMN link_only BOOLEAN NOT NULL "
                 "DEFAULT false"))
+
+    def _add(table, col, ddl):
+        try:
+            present = {c["name"] for c in _inspect(engine).get_columns(table)}
+        except Exception:
+            return
+        if col not in present:
+            with engine.begin() as conn:
+                conn.execute(_text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
+
+    # 7d-3 rider: orientation on assessment items, linked_item_code on initiatives
+    _add("ax_assessment_items", "orientation", "orientation VARCHAR(16)")
+    _add("ax_initiatives", "linked_item_code", "linked_item_code VARCHAR(40)")
+
+    # Backfill orientation on existing framework revisions by item code (v2).
+    try:
+        from .assessment_engine import load_taxonomy, orientation_by_code
+        obc = orientation_by_code(load_taxonomy())
+        with engine.begin() as conn:
+            need = conn.execute(_text(
+                "SELECT DISTINCT code FROM ax_assessment_items "
+                "WHERE orientation IS NULL AND level IN (2, 3)")).fetchall()
+            for (code,) in need:
+                o = obc.get(code)
+                if o:
+                    conn.execute(_text("UPDATE ax_assessment_items SET orientation=:o "
+                                       "WHERE code=:c AND orientation IS NULL"),
+                                 {"o": o, "c": code})
+    except Exception:
+        pass
 
 
 def include_accounts(app, create_tables: bool = True):

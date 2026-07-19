@@ -6,14 +6,16 @@ taxonomy: add a new versioned JSON to assets/, then bump TAXONOMY_VERSION and
 TAXONOMY_FILE here. Existing per-company frameworks keep the revision they were
 seeded with; only fresh first-touches use the current version.
 
-axiom_assessment_taxonomy_v1.json: 13 L1 (definitions + default weights),
-78 L2 (definitions), 361 L3 children (code + title).
+axiom_assessment_taxonomy_v2.json: 13 L1 (definitions + default weights),
+78 L2 (definitions + orientation), 361 L3 children (code + title +
+orientation). v2 supersedes v1 by adding an orientation ("internal" |
+"external") to every L2 and L3 — the axis SWOT derivation reads.
 """
 import json
 import os
 
-TAXONOMY_VERSION = "v1"
-TAXONOMY_FILE = "axiom_assessment_taxonomy_v1.json"
+TAXONOMY_VERSION = "v2"
+TAXONOMY_FILE = "axiom_assessment_taxonomy_v2.json"
 
 
 def taxonomy() -> dict:

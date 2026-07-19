@@ -1,0 +1,2510 @@
+{
+ "version": 2,
+ "source_note": "Synthesized APQC PCF v8.0 + EFQM 2025 unified taxonomy (L1/L2) with APQC L3 processes attached; scoring grain L2, L3 optional drill-down. v2: orientation tags (internal|external) per item for SWOT derivation; L3 inherits from parent.",
+ "categories": [
+  {
+   "code": "1.0",
+   "title": "Strategy, Purpose & Governance",
+   "definition": "How the organisation sets its purpose and direction, and how leadership governs strategy, structure, and performance.",
+   "default_weight": 7.6923,
+   "items": [
+    {
+     "code": "1.1",
+     "title": "Define purpose, vision, mission, and long-term direction",
+     "definition": "Clarity and communication of why the organisation exists and where it is going long term.",
+     "children": [
+      {
+       "code": "1.1.1",
+       "title": "Assess the external environment",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.1.2",
+       "title": "Survey market and determine customer needs and wants",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.1.3",
+       "title": "Assess the internal environment",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.1.4",
+       "title": "Establish strategic vision",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.1.5",
+       "title": "Conduct organization restructuring opportunities",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "1.2",
+     "title": "Understand the ecosystem, market, capabilities, and major challenges",
+     "definition": "How well leadership understands its markets, competitive ecosystem, internal capabilities, and the challenges ahead.",
+     "children": [],
+     "orientation": "external"
+    },
+    {
+     "code": "1.3",
+     "title": "Identify and understand key stakeholder needs and expectations",
+     "definition": "How systematically stakeholder needs and expectations are identified and reflected in decisions.",
+     "children": [],
+     "orientation": "external"
+    },
+    {
+     "code": "1.4",
+     "title": "Develop and adapt enterprise and business-unit strategy",
+     "definition": "Quality and adaptiveness of enterprise and business-unit strategy development.",
+     "children": [
+      {
+       "code": "1.2.1",
+       "title": "Develop overall mission statement",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.2.2",
+       "title": "Define and evaluate strategic options to achieve the mission",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.2.3",
+       "title": "Set/Develop long-term enterprise strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.2.4",
+       "title": "Coordinate and align cross-functional and process strategies",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.2.5",
+       "title": "Create organizational design",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.2.6",
+       "title": "Develop and set organizational objectives",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.2.7",
+       "title": "Formulate business unit strategies",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.2.8",
+       "title": "Develop customer experience strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.2.9",
+       "title": "Communicate strategies internally and externally",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "1.5",
+     "title": "Develop strategic initiatives and transformation priorities",
+     "definition": "How strategic initiatives and transformation priorities are defined, funded, and sequenced.",
+     "children": [
+      {
+       "code": "1.3.1",
+       "title": "Develop strategic initiatives",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.3.2",
+       "title": "Evaluate strategic initiatives",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.3.3",
+       "title": "Select strategic initiatives",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.3.4",
+       "title": "Establish high-level measures",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.3.5",
+       "title": "Execute strategic initiatives",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.3.6",
+       "title": "Review execution of strategic initiatives",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.3.7",
+       "title": "Refine strategic initiatives and project plans as needed",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "1.6",
+     "title": "Design and maintain business models",
+     "definition": "How deliberately the business model is designed, tested, and kept current.",
+     "children": [
+      {
+       "code": "1.4.1",
+       "title": "Develop business models",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.4.2",
+       "title": "Maintain business models",
+       "orientation": "internal"
+      },
+      {
+       "code": "1.4.3",
+       "title": "Establish business model governance",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "1.7",
+     "title": "Design organisational structure and governance",
+     "definition": "Fitness of organisational structure, decision rights, and governance arrangements.",
+     "children": [],
+     "orientation": "internal"
+    },
+    {
+     "code": "1.8",
+     "title": "Establish performance management and strategic review systems",
+     "definition": "Rigor of performance management and the cadence of strategic review and course correction.",
+     "children": [],
+     "orientation": "internal"
+    }
+   ]
+  },
+  {
+   "code": "2.0",
+   "title": "Products, Services & Sustainable Value",
+   "definition": "How offerings are conceived, developed, launched, and managed to create lasting value for customers and society.",
+   "default_weight": 7.6923,
+   "items": [
+    {
+     "code": "2.1",
+     "title": "Govern product and service portfolios and lifecycles",
+     "definition": "Portfolio-level governance of products and services across their lifecycles.",
+     "children": [],
+     "orientation": "internal"
+    },
+    {
+     "code": "2.2",
+     "title": "Generate and define new product and service concepts",
+     "definition": "Strength of the pipeline for generating and defining new product and service concepts.",
+     "children": [
+      {
+       "code": "2.1.1",
+       "title": "Manage product and service portfolio",
+       "orientation": "internal"
+      },
+      {
+       "code": "2.1.2",
+       "title": "Manage product and service life cycle",
+       "orientation": "internal"
+      },
+      {
+       "code": "2.1.3",
+       "title": "Manage patents, copyrights, and regulatory requirements",
+       "orientation": "internal"
+      },
+      {
+       "code": "2.1.4",
+       "title": "Manage product and service master data",
+       "orientation": "internal"
+      },
+      {
+       "code": "2.2.1",
+       "title": "Perform discovery research",
+       "orientation": "internal"
+      },
+      {
+       "code": "2.2.2",
+       "title": "Generate new product/service concepts",
+       "orientation": "internal"
+      },
+      {
+       "code": "2.2.3",
+       "title": "Define product/service development requirements",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "2.3",
+     "title": "Develop, test, launch, and improve products and services",
+     "definition": "Effectiveness of development, testing, launch, and post-launch improvement.",
+     "children": [
+      {
+       "code": "2.3.1",
+       "title": "Design and prototype products and services",
+       "orientation": "internal"
+      },
+      {
+       "code": "2.3.2",
+       "title": "Test market for new or revised products and services",
+       "orientation": "internal"
+      },
+      {
+       "code": "2.3.3",
+       "title": "Prepare for production/service delivery",
+       "orientation": "internal"
+      },
+      {
+       "code": "2.3.4",
+       "title": "Define warranty claims",
+       "orientation": "internal"
+      },
+      {
+       "code": "2.3.5",
+       "title": "Develop recall strategy",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "2.4",
+     "title": "Design how sustainable value is created and delivered",
+     "definition": "How the organisation designs offerings to create sustainable economic, social, and environmental value.",
+     "children": [],
+     "orientation": "internal"
+    },
+    {
+     "code": "2.5",
+     "title": "Manage product, service, warranty, and regulatory requirements",
+     "definition": "Management of product/service requirements, warranties, and regulatory conformity.",
+     "children": [],
+     "orientation": "external"
+    }
+   ]
+  },
+  {
+   "code": "3.0",
+   "title": "Marketing, Sales & Customer Growth",
+   "definition": "How the organisation understands markets, builds its brand, sells effectively, and grows customer relationships.",
+   "default_weight": 7.6923,
+   "items": [
+    {
+     "code": "3.1",
+     "title": "Understand markets, customers, and growth opportunities",
+     "definition": "Depth of market, customer, and opportunity insight informing growth choices.",
+     "children": [
+      {
+       "code": "3.1.1",
+       "title": "Perform customer and market intelligence analysis",
+       "orientation": "external"
+      },
+      {
+       "code": "3.1.2",
+       "title": "Evaluate and prioritize market opportunities",
+       "orientation": "external"
+      }
+     ],
+     "orientation": "external"
+    },
+    {
+     "code": "3.2",
+     "title": "Develop brand, positioning, pricing, and channel strategy",
+     "definition": "Coherence of brand, positioning, pricing, and channel strategy.",
+     "children": [],
+     "orientation": "internal"
+    },
+    {
+     "code": "3.3",
+     "title": "Develop and manage marketing plans and communications",
+     "definition": "Quality and impact of marketing planning and communications.",
+     "children": [
+      {
+       "code": "3.2.1",
+       "title": "Define offering and customer value proposition",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.2.2",
+       "title": "Develop and manage brands",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.2.3",
+       "title": "Define pricing strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.2.4",
+       "title": "Define and manage channel strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.2.5",
+       "title": "Analyze and manage channel performance",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.2.6",
+       "title": "Develop marketing communication strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.2.7",
+       "title": "Design and manage customer loyalty program",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.3.1",
+       "title": "Establish goals, objectives, and measures for products/services by channel/segment",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.3.2",
+       "title": "Establish marketing budgets",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.3.3",
+       "title": "Develop and manage pricing",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.3.4",
+       "title": "Develop and manage promotional activities",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.3.5",
+       "title": "Track customer management measures",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.3.6",
+       "title": "Analyze and respond to customer insight",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.3.7",
+       "title": "Develop and manage packaging strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.3.8",
+       "title": "Develop go-to-market strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.3.9",
+       "title": "Manage product marketing material",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.5.1",
+       "title": "Manage leads/opportunities",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.5.2",
+       "title": "Manage customers and accounts",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.5.3",
+       "title": "Develop and manage sales proposals, bids, and quotes",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.5.4",
+       "title": "Manage sales orders",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.5.5",
+       "title": "Manage sales partners and alliances",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.5.6",
+       "title": "Perform sales at physical outlets",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.5.7",
+       "title": "Perform field sales",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.5.8",
+       "title": "Perform digital sales",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "3.4",
+     "title": "Develop sales strategy, forecasts, goals, and budgets",
+     "definition": "Discipline of sales strategy, forecasting, target setting, and budgeting.",
+     "children": [
+      {
+       "code": "3.4.1",
+       "title": "Develop sales forecast",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.4.2",
+       "title": "Develop sales partner/alliance relationships",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.4.3",
+       "title": "Establish overall sales budgets",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.4.4",
+       "title": "Establish sales goals and measures",
+       "orientation": "internal"
+      },
+      {
+       "code": "3.4.5",
+       "title": "Establish customer management measures",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "3.5",
+     "title": "Manage leads, opportunities, accounts, proposals, and sales",
+     "definition": "Effectiveness of pipeline management from lead through proposal to closed sale.",
+     "children": [],
+     "orientation": "internal"
+    },
+    {
+     "code": "3.6",
+     "title": "Manage customer loyalty, retention, and growth",
+     "definition": "How well customer loyalty, retention, and account growth are cultivated.",
+     "children": [],
+     "orientation": "internal"
+    }
+   ]
+  },
+  {
+   "code": "4.0",
+   "title": "Supply Chain, Procurement & Logistics",
+   "definition": "How materials and services are planned, sourced, produced, and moved — and how the supply chain stays resilient.",
+   "default_weight": 7.6923,
+   "items": [
+    {
+     "code": "4.1",
+     "title": "Plan and align supply chain resources, demand, and capacity",
+     "definition": "Alignment of supply chain resources and capacity with demand plans.",
+     "children": [
+      {
+       "code": "4.1.1",
+       "title": "Develop production and materials strategies",
+       "orientation": "internal"
+      },
+      {
+       "code": "4.1.2",
+       "title": "Manage demand for products",
+       "orientation": "internal"
+      },
+      {
+       "code": "4.1.3",
+       "title": "Create materials plan",
+       "orientation": "internal"
+      },
+      {
+       "code": "4.1.4",
+       "title": "Create and manage master production schedule",
+       "orientation": "internal"
+      },
+      {
+       "code": "4.1.5",
+       "title": "Plan distribution requirements",
+       "orientation": "internal"
+      },
+      {
+       "code": "4.1.6",
+       "title": "Establish distribution planning constraints",
+       "orientation": "internal"
+      },
+      {
+       "code": "4.1.7",
+       "title": "Review distribution planning policies",
+       "orientation": "internal"
+      },
+      {
+       "code": "4.1.8",
+       "title": "Develop quality standards and procedures",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "4.2",
+     "title": "Source and procure materials and services",
+     "definition": "Effectiveness and economics of sourcing and procurement.",
+     "children": [
+      {
+       "code": "4.2.1",
+       "title": "Provide sourcing governance",
+       "orientation": "internal"
+      },
+      {
+       "code": "4.2.3",
+       "title": "Select suppliers and develop/maintain contracts",
+       "orientation": "internal"
+      },
+      {
+       "code": "4.2.4",
+       "title": "Order materials and services",
+       "orientation": "internal"
+      },
+      {
+       "code": "4.2.5",
+       "title": "Manage suppliers",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "4.3",
+     "title": "Manage suppliers, partners, contracts, and categories",
+     "definition": "Strength of supplier, partner, contract, and category management.",
+     "children": [],
+     "orientation": "internal"
+    },
+    {
+     "code": "4.4",
+     "title": "Produce, assemble, test, and assure product quality",
+     "definition": "Reliability of production, assembly, testing, and quality assurance.",
+     "children": [
+      {
+       "code": "4.3.1",
+       "title": "Schedule production",
+       "orientation": "internal"
+      },
+      {
+       "code": "4.3.2",
+       "title": "Produce/Assemble product",
+       "orientation": "internal"
+      },
+      {
+       "code": "4.3.3",
+       "title": "Perform quality testing",
+       "orientation": "internal"
+      },
+      {
+       "code": "4.3.4",
+       "title": "Maintain production records and manage lot traceability",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "4.5",
+     "title": "Manage warehousing, inventory, transportation, and logistics",
+     "definition": "Efficiency of warehousing, inventory, transportation, and logistics.",
+     "children": [],
+     "orientation": "internal"
+    },
+    {
+     "code": "4.6",
+     "title": "Manage supply chain resilience and continuity",
+     "definition": "Preparedness of the supply chain for disruption, and speed of recovery.",
+     "children": [
+      {
+       "code": "4.4.1",
+       "title": "Provide logistics governance",
+       "orientation": "external"
+      },
+      {
+       "code": "4.4.2",
+       "title": "Plan and manage inbound material flow",
+       "orientation": "external"
+      },
+      {
+       "code": "4.4.3",
+       "title": "Operate warehousing",
+       "orientation": "external"
+      },
+      {
+       "code": "4.4.4",
+       "title": "Operate outbound transportation",
+       "orientation": "external"
+      },
+      {
+       "code": "4.4.5",
+       "title": "Deliver last mile delivery services",
+       "orientation": "external"
+      }
+     ],
+     "orientation": "external"
+    }
+   ]
+  },
+  {
+   "code": "5.0",
+   "title": "Service Delivery & Operations",
+   "definition": "How services are planned, resourced, operated, and delivered reliably to customers day to day.",
+   "default_weight": 7.6923,
+   "items": [
+    {
+     "code": "5.1",
+     "title": "Establish service delivery governance and strategy",
+     "definition": "Clarity of governance and strategy for service delivery.",
+     "children": [
+      {
+       "code": "5.1.1",
+       "title": "Establish service delivery governance",
+       "orientation": "internal"
+      },
+      {
+       "code": "5.1.2",
+       "title": "Develop service delivery strategies",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "5.2",
+     "title": "Plan and manage service delivery resources and capacity",
+     "definition": "Planning of service delivery resources and capacity against demand.",
+     "children": [
+      {
+       "code": "5.2.1",
+       "title": "Manage service delivery resource demand",
+       "orientation": "internal"
+      },
+      {
+       "code": "5.2.2",
+       "title": "Create and manage resource plan",
+       "orientation": "internal"
+      },
+      {
+       "code": "5.2.3",
+       "title": "Enable service delivery resources",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "5.3",
+     "title": "Operate and assure service delivery systems",
+     "definition": "Stability and assurance of the systems that run service operations.",
+     "children": [
+      {
+       "code": "5.3.1",
+       "title": "Perform service delivery system planning",
+       "orientation": "internal"
+      },
+      {
+       "code": "5.3.2",
+       "title": "Perform service delivery system startup",
+       "orientation": "internal"
+      },
+      {
+       "code": "5.3.3",
+       "title": "Operate service delivery system",
+       "orientation": "internal"
+      },
+      {
+       "code": "5.3.4",
+       "title": "Assure service delivery system service",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "5.4",
+     "title": "Deliver services to customers",
+     "definition": "Consistency and quality of day-to-day service delivery to customers.",
+     "children": [
+      {
+       "code": "5.4.1",
+       "title": "Initiate service delivery",
+       "orientation": "internal"
+      },
+      {
+       "code": "5.4.2",
+       "title": "Execute service delivery",
+       "orientation": "internal"
+      },
+      {
+       "code": "5.4.3",
+       "title": "Complete service delivery",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "5.5",
+     "title": "Manage operational performance and continuous improvement",
+     "definition": "Use of operational metrics and continuous improvement in service operations.",
+     "children": [],
+     "orientation": "internal"
+    }
+   ]
+  },
+  {
+   "code": "6.0",
+   "title": "Customer Service & Experience",
+   "definition": "How customer inquiries, issues, and post-sale needs are handled, and how the customer experience is measured and improved.",
+   "default_weight": 7.6923,
+   "items": [
+    {
+     "code": "6.1",
+     "title": "Develop customer service and experience strategy",
+     "definition": "Existence and clarity of a customer service and experience strategy.",
+     "children": [
+      {
+       "code": "6.1.1",
+       "title": "Define customer service requirements across the enterprise",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.1.2",
+       "title": "Define customer service experience",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.1.3",
+       "title": "Define and manage customer service channel strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.1.4",
+       "title": "Define customer service policies and procedures",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.1.5",
+       "title": "Establish target service level for each customer segment",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.1.6",
+       "title": "Identify and define customer service strategy integrations",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.5.1",
+       "title": "Measure customer satisfaction with customer problems, requests, and inquiries handling",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.5.2",
+       "title": "Measure customer satisfaction with customer-complaint handling and resolution",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.5.3",
+       "title": "Measure customer satisfaction with products and services",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.5.4",
+       "title": "Evaluate and manage warranty performance",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.5.5",
+       "title": "Evaluate recall performance",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "6.2",
+     "title": "Plan and manage customer service channels and workforce",
+     "definition": "Planning of service channels and the service workforce.",
+     "children": [
+      {
+       "code": "6.2.1",
+       "title": "Plan and manage customer service workforce",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.2.2",
+       "title": "Manage customer service problems, requests, and inquiries",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.2.3",
+       "title": "Manage customer complaints",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.2.4",
+       "title": "Process returns",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.2.5",
+       "title": "Report incidents and risks to regulatory bodies",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "6.3",
+     "title": "Manage customer inquiries, requests, complaints, and returns",
+     "definition": "Handling of inquiries, requests, complaints, and returns.",
+     "children": [
+      {
+       "code": "6.4.1",
+       "title": "Initiate recall",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.4.2",
+       "title": "Assess the likelihood and consequences of occurrence of any hazards",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.4.3",
+       "title": "Manage recall related communications",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.4.4",
+       "title": "Submit regulatory reports",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.4.5",
+       "title": "Monitor and audit recall effectiveness",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.4.6",
+       "title": "Manage recall termination",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "6.4",
+     "title": "Provide post-sale service, warranty, and support",
+     "definition": "Quality of post-sale service, warranty fulfilment, and support.",
+     "children": [
+      {
+       "code": "6.3.1",
+       "title": "Register products",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.3.2",
+       "title": "Process warranty claims",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.3.3",
+       "title": "Manage supplier recovery",
+       "orientation": "internal"
+      },
+      {
+       "code": "6.3.4",
+       "title": "Service products",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "6.5",
+     "title": "Measure and improve customer experience and perceptions",
+     "definition": "Measurement of customer experience and how findings drive improvement.",
+     "children": [],
+     "orientation": "external"
+    }
+   ]
+  },
+  {
+   "code": "7.0",
+   "title": "People, Culture & Leadership",
+   "definition": "How the organisation attracts, develops, and retains people — and how culture, leadership, and engagement are built.",
+   "default_weight": 7.6923,
+   "items": [
+    {
+     "code": "7.1",
+     "title": "Develop workforce strategy, policies, and plans",
+     "definition": "Quality of workforce strategy, policies, and workforce planning.",
+     "children": [
+      {
+       "code": "7.1.1",
+       "title": "Develop human resources strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.1.2",
+       "title": "Develop and implement workforce planning, policies, and strategies",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.1.3",
+       "title": "Monitor and update HR strategies, plans, and policies",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.1.4",
+       "title": "Develop competency management models",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "7.2",
+     "title": "Recruit, onboard, deploy, and retain people",
+     "definition": "Effectiveness of recruiting, onboarding, deployment, and retention.",
+     "children": [
+      {
+       "code": "7.2.1",
+       "title": "Manage employee requisitions",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.2.2",
+       "title": "Recruit/Source candidates",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.2.3",
+       "title": "Screen and select candidates",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.2.4",
+       "title": "Manage new hire/re-hire",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.2.5",
+       "title": "Manage applicant information",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.5.1",
+       "title": "Develop and manage reward, recognition, and motivation programs",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.5.2",
+       "title": "Manage and administer benefits",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.5.3",
+       "title": "Manage employee assistance and retention",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.5.4",
+       "title": "Administer payroll",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.6.1",
+       "title": "Manage promotion and demotion process",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.6.2",
+       "title": "Manage separation",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.6.3",
+       "title": "Relocate employees and manage assignments",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "7.3",
+     "title": "Develop capabilities, learning, careers, and succession",
+     "definition": "Investment in capability building, learning, careers, and succession.",
+     "children": [],
+     "orientation": "internal"
+    },
+    {
+     "code": "7.4",
+     "title": "Manage performance, rewards, recognition, and wellbeing",
+     "definition": "Fairness and effectiveness of performance management, rewards, recognition, and wellbeing.",
+     "children": [
+      {
+       "code": "7.3.1",
+       "title": "Manage employee onboarding",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.3.2",
+       "title": "Manage employee performance",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.3.3",
+       "title": "Manage employee career development",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.3.4",
+       "title": "Develop and train employees",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.4.1",
+       "title": "Manage labor relations",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.4.2",
+       "title": "Manage collective bargaining process",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.4.3",
+       "title": "Manage labor management partnerships",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.4.4",
+       "title": "Manage employee grievances",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.4.5",
+       "title": "Monitor legal and regulatory environment",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.7.1",
+       "title": "Manage reporting processes",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.7.2",
+       "title": "Manage employee inquiry process",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.7.3",
+       "title": "Manage and maintain employee data",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.7.4",
+       "title": "Manage human resource information systems",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.7.5",
+       "title": "Develop and manage employee measures",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.7.6",
+       "title": "Develop and manage time and attendance systems",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.7.7",
+       "title": "Develop workforce analytics",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.7.8",
+       "title": "Implement workforce analytics",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.7.9",
+       "title": "Manage/Collect employee suggestions and perform employee research",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.8.1",
+       "title": "Develop employee communication plan",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.8.2",
+       "title": "Conduct employee engagement surveys",
+       "orientation": "internal"
+      },
+      {
+       "code": "7.8.3",
+       "title": "Deliver employee communications",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "7.5",
+     "title": "Shape organisational culture and nurture core values",
+     "definition": "Strength and consistency of organisational culture and lived values.",
+     "children": [],
+     "orientation": "internal"
+    },
+    {
+     "code": "7.6",
+     "title": "Develop leadership and engage people in purpose and strategy",
+     "definition": "Leadership development and how well people are engaged in purpose and strategy.",
+     "children": [],
+     "orientation": "internal"
+    },
+    {
+     "code": "7.7",
+     "title": "Create conditions for change, agility, creativity, and innovation",
+     "definition": "Conditions for change-readiness, agility, creativity, and innovation in the workforce.",
+     "children": [],
+     "orientation": "internal"
+    }
+   ]
+  },
+  {
+   "code": "8.0",
+   "title": "Technology, Data & Innovation",
+   "definition": "How technology, data, and innovation are governed, operated, protected, and used to transform the business.",
+   "default_weight": 7.6923,
+   "items": [
+    {
+     "code": "8.1",
+     "title": "Develop and manage technology strategy and governance",
+     "definition": "Quality of technology strategy and IT governance.",
+     "children": [
+      {
+       "code": "8.1.1",
+       "title": "Understand IT customer needs",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.1.2",
+       "title": "Identify IT customer transformation needs",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.1.3",
+       "title": "Plan and communicate IT services",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.1.4",
+       "title": "Provide IT transformation guidance",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.1.5",
+       "title": "Develop and manage IT service levels",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.1.6",
+       "title": "Manage IT customer relationships",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.1.7",
+       "title": "Analyze service performance",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.2.1",
+       "title": "Define business technology and governance strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.2.2",
+       "title": "Manage IT portfolio strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.2.3",
+       "title": "Define and maintain enterprise architecture",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.2.4",
+       "title": "Define IT service management strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.2.5",
+       "title": "Control IT management system",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.2.6",
+       "title": "Manage IT value portfolio",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.2.7",
+       "title": "Define and manage technology innovation",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.3.1",
+       "title": "Develop IT compliance, risk, and security strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.3.2",
+       "title": "Develop IT resilience strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.3.3",
+       "title": "Control IT risk, compliance, and security",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.3.4",
+       "title": "Plan and manage IT continuity",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.3.5",
+       "title": "Develop and manage IT security, privacy, and data protection",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.3.6",
+       "title": "Conduct and analyze IT compliance assessments",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.3.7",
+       "title": "Develop and execute IT resilience and continuity operations",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.3.8",
+       "title": "Manage IT user identity and authorization",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.5.1",
+       "title": "Develop service/solution and integration strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.5.2",
+       "title": "Manage service/solution lifecycle planning",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.5.3",
+       "title": "Develop and manage service/solution architecture",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.5.4",
+       "title": "Execute IT service/solution creation and testing",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.5.5",
+       "title": "Perform service/solution maintenance and testing",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "8.2",
+     "title": "Manage technology services, applications, and infrastructure",
+     "definition": "Reliability and efficiency of technology services, applications, and infrastructure.",
+     "children": [
+      {
+       "code": "8.6.1",
+       "title": "Develop and manage service/solution deployment strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.6.2",
+       "title": "Plan service and solution implementation",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.6.3",
+       "title": "Manage change deployment control",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.6.4",
+       "title": "Implement technology solutions",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.6.5",
+       "title": "Perform service and solution rollout",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "8.3",
+     "title": "Manage information, data, knowledge, and analytics",
+     "definition": "Management of information, data, knowledge, and analytics as enterprise assets.",
+     "children": [
+      {
+       "code": "8.4.1",
+       "title": "Define business information and analytics strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.4.2",
+       "title": "Define and maintain business information architecture",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.4.3",
+       "title": "Define and execute business information lifecycle planning and control",
+       "orientation": "internal"
+      },
+      {
+       "code": "8.4.4",
+       "title": "Manage business information",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.8.1",
+       "title": "Identify needs from stakeholders",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.8.2",
+       "title": "Scope analytics project",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.8.3",
+       "title": "Develop and manage hypotheses",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.8.4",
+       "title": "Collect data",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.8.5",
+       "title": "Prepare data",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.8.6",
+       "title": "Analyze data",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.8.7",
+       "title": "Create data models",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.8.8",
+       "title": "Review data models with stakeholders",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.8.9",
+       "title": "Refine data models",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.8.10",
+       "title": "Report on analysis",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.8.11",
+       "title": "Identify remedial actions",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "8.4",
+     "title": "Manage cybersecurity, privacy, and technology risk",
+     "definition": "Strength of cybersecurity, privacy protection, and technology risk management.",
+     "children": [],
+     "orientation": "internal"
+    },
+    {
+     "code": "8.5",
+     "title": "Drive digital transformation and technology-enabled innovation",
+     "definition": "Progress and ambition of digital transformation and technology-enabled innovation.",
+     "children": [],
+     "orientation": "internal"
+    },
+    {
+     "code": "8.6",
+     "title": "Evaluate and adopt emerging technologies",
+     "definition": "Discipline in evaluating and adopting emerging technologies.",
+     "children": [
+      {
+       "code": "8.7.1",
+       "title": "Define and establish service delivery strategy",
+       "orientation": "external"
+      },
+      {
+       "code": "8.7.2",
+       "title": "Define and develop service support strategy",
+       "orientation": "external"
+      },
+      {
+       "code": "8.7.3",
+       "title": "Plan and manage service delivery control",
+       "orientation": "external"
+      },
+      {
+       "code": "8.7.4",
+       "title": "Develop and manage infrastructure resource planning",
+       "orientation": "external"
+      },
+      {
+       "code": "8.7.5",
+       "title": "Define service support planning",
+       "orientation": "external"
+      },
+      {
+       "code": "8.7.6",
+       "title": "Develop and manage service delivery operations",
+       "orientation": "external"
+      },
+      {
+       "code": "8.7.7",
+       "title": "Manage infrastructure resource administration",
+       "orientation": "external"
+      },
+      {
+       "code": "8.7.8",
+       "title": "Operate IT user support",
+       "orientation": "external"
+      }
+     ],
+     "orientation": "external"
+    }
+   ]
+  },
+  {
+   "code": "9.0",
+   "title": "Finance & Enterprise Performance",
+   "definition": "How financial performance is planned, managed, reported, and translated into enterprise value.",
+   "default_weight": 7.6923,
+   "items": [
+    {
+     "code": "9.1",
+     "title": "Plan, budget, forecast, and manage financial performance",
+     "definition": "Rigor of planning, budgeting, forecasting, and management accounting.",
+     "children": [
+      {
+       "code": "9.1.1",
+       "title": "Develop and manage financial resources strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.1.2",
+       "title": "Perform planning/budgeting/forecasting",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.1.3",
+       "title": "Perform cost accounting and control",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.1.4",
+       "title": "Perform cost management",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.1.5",
+       "title": "Evaluate and manage financial performance",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "9.2",
+     "title": "Manage revenue, receivables, credit, and collections",
+     "definition": "Management of revenue, receivables, credit, and collections.",
+     "children": [
+      {
+       "code": "9.2.1",
+       "title": "Process customer credit",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.2.2",
+       "title": "Invoice customer",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.2.3",
+       "title": "Process accounts receivable (AR)",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.2.4",
+       "title": "Manage and process collections",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.2.5",
+       "title": "Manage and process adjustments/deductions",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "9.3",
+     "title": "Manage accounting, close, consolidation, and reporting",
+     "definition": "Quality of accounting operations, close, consolidation, and reporting.",
+     "children": [
+      {
+       "code": "9.3.1",
+       "title": "Manage financial policies and procedures",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.3.2",
+       "title": "Perform general accounting",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.3.3",
+       "title": "Perform fixed-asset accounting",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.3.4",
+       "title": "Perform financial reporting",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.5.1",
+       "title": "Report time",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.5.2",
+       "title": "Manage pay",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.5.3",
+       "title": "Manage and process payroll taxes",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.6.1",
+       "title": "Process accounts payable (AP)",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.6.2",
+       "title": "Process expense reimbursements",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.6.3",
+       "title": "Manage corporate credit cards",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.10.1",
+       "title": "Monitor international rates",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.10.2",
+       "title": "Manage transactions",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.10.3",
+       "title": "Monitor currency exposure/hedge currency",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.10.4",
+       "title": "Report results",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "9.4",
+     "title": "Manage treasury, cash, capital, and funding",
+     "definition": "Effectiveness of treasury, cash, capital, and funding management.",
+     "children": [
+      {
+       "code": "9.4.1",
+       "title": "Perform capital planning and project approval",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.4.2",
+       "title": "Perform capital project accounting",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "9.5",
+     "title": "Manage tax and statutory financial obligations",
+     "definition": "Management of tax and statutory financial obligations.",
+     "children": [
+      {
+       "code": "9.7.1",
+       "title": "Manage treasury policies and procedures",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.7.2",
+       "title": "Manage cash",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.7.3",
+       "title": "Manage in-house bank accounts",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.7.4",
+       "title": "Manage debt and investment",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.7.5",
+       "title": "Monitor and execute risk and hedging transactions",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.7.6",
+       "title": "Manage financial fraud/dispute cases",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.8.1",
+       "title": "Establish internal controls, policies, and procedures",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.8.2",
+       "title": "Operate controls and monitor compliance with internal controls policies and procedures",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.8.3",
+       "title": "Report on internal controls compliance",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.9.1",
+       "title": "Develop tax strategy and plan",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.9.2",
+       "title": "Process taxes",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.11.1",
+       "title": "Screen sanctioned party list",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.11.2",
+       "title": "Control exports and imports",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.11.3",
+       "title": "Classify products",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.11.4",
+       "title": "Perform currency conversion",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.11.5",
+       "title": "Calculate duty",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.11.6",
+       "title": "Communicate with customs",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.11.7",
+       "title": "Document trade",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.11.8",
+       "title": "Process trade preferences",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.11.9",
+       "title": "Handle restitution",
+       "orientation": "internal"
+      },
+      {
+       "code": "9.11.10",
+       "title": "Prepare letter of credit",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "9.6",
+     "title": "Measure strategic and operational performance",
+     "definition": "Measurement of strategic and operational performance against targets.",
+     "children": [],
+     "orientation": "internal"
+    },
+    {
+     "code": "9.7",
+     "title": "Manage economics, financial outcomes, and value realization",
+     "definition": "Translation of financial management into economic outcomes and realized value.",
+     "children": [],
+     "orientation": "internal"
+    }
+   ]
+  },
+  {
+   "code": "10.0",
+   "title": "Assets & Enterprise Resources",
+   "definition": "How physical assets, facilities, and enterprise resources are acquired, operated, maintained, and optimized.",
+   "default_weight": 7.6923,
+   "items": [
+    {
+     "code": "10.1",
+     "title": "Plan, acquire, construct, and deploy assets",
+     "definition": "Planning, acquisition, construction, and deployment of assets.",
+     "children": [
+      {
+       "code": "10.1.1",
+       "title": "Develop property strategy and long term vision",
+       "orientation": "internal"
+      },
+      {
+       "code": "10.1.2",
+       "title": "Plan facility",
+       "orientation": "internal"
+      },
+      {
+       "code": "10.1.3",
+       "title": "Provide workspace and facilities",
+       "orientation": "internal"
+      },
+      {
+       "code": "10.1.4",
+       "title": "Manage facilities operations",
+       "orientation": "internal"
+      },
+      {
+       "code": "10.2.1",
+       "title": "Manage capital program for assets",
+       "orientation": "internal"
+      },
+      {
+       "code": "10.2.2",
+       "title": "Design and plan asset construction",
+       "orientation": "internal"
+      },
+      {
+       "code": "10.2.3",
+       "title": "Schedule and perform construction work",
+       "orientation": "internal"
+      },
+      {
+       "code": "10.2.4",
+       "title": "Manage asset construction",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "10.2",
+     "title": "Operate, maintain, and optimize physical assets",
+     "definition": "Operation, maintenance, and optimization of physical assets.",
+     "children": [
+      {
+       "code": "10.3.1",
+       "title": "Plan asset maintenance",
+       "orientation": "internal"
+      },
+      {
+       "code": "10.3.2",
+       "title": "Manage asset maintenance",
+       "orientation": "internal"
+      },
+      {
+       "code": "10.3.3",
+       "title": "Perform asset maintenance",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "10.3",
+     "title": "Manage facilities, property, and workplace resources",
+     "definition": "Management of facilities, property, and workplace resources.",
+     "children": [],
+     "orientation": "internal"
+    },
+    {
+     "code": "10.4",
+     "title": "Manage asset lifecycle, disposal, and retirement",
+     "definition": "Lifecycle management of assets through disposal and retirement.",
+     "children": [
+      {
+       "code": "10.4.1",
+       "title": "Develop exit strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "10.4.2",
+       "title": "Decomission productive assets",
+       "orientation": "internal"
+      },
+      {
+       "code": "10.4.3",
+       "title": "Perform sale or trade",
+       "orientation": "internal"
+      },
+      {
+       "code": "10.4.4",
+       "title": "Manage take-back centers",
+       "orientation": "internal"
+      },
+      {
+       "code": "10.4.5",
+       "title": "Dismantle assets",
+       "orientation": "internal"
+      },
+      {
+       "code": "10.4.6",
+       "title": "Track parts",
+       "orientation": "internal"
+      },
+      {
+       "code": "10.4.7",
+       "title": "Recycle parts",
+       "orientation": "internal"
+      },
+      {
+       "code": "10.4.8",
+       "title": "Ship hazardous material",
+       "orientation": "internal"
+      },
+      {
+       "code": "10.4.9",
+       "title": "Provide government reporting",
+       "orientation": "internal"
+      },
+      {
+       "code": "10.4.10",
+       "title": "Perform abandonment",
+       "orientation": "internal"
+      },
+      {
+       "code": "10.4.11",
+       "title": "Perform waste and hazardous goods management",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "10.5",
+     "title": "Optimize enterprise resource utilization",
+     "definition": "Optimization of utilization across enterprise resources.",
+     "children": [],
+     "orientation": "internal"
+    }
+   ]
+  },
+  {
+   "code": "11.0",
+   "title": "Risk, Compliance & Resilience",
+   "definition": "How risk, compliance, controls, continuity, and sustainability obligations are managed to protect the enterprise.",
+   "default_weight": 7.6923,
+   "items": [
+    {
+     "code": "11.1",
+     "title": "Manage enterprise, strategic, operational, and financial risk",
+     "definition": "Management of enterprise, strategic, operational, and financial risk.",
+     "children": [
+      {
+       "code": "11.1.1",
+       "title": "Establish the enterprise risk framework and policies",
+       "orientation": "internal"
+      },
+      {
+       "code": "11.1.2",
+       "title": "Oversee and coordinate enterprise risk management activities",
+       "orientation": "internal"
+      },
+      {
+       "code": "11.1.3",
+       "title": "Manage business unit and function risk",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "11.2",
+     "title": "Manage compliance, ethics, legal, and regulatory obligations",
+     "definition": "Management of compliance, ethics, legal, and regulatory obligations.",
+     "children": [
+      {
+       "code": "11.2.1",
+       "title": "Establish compliance framework and policies",
+       "orientation": "internal"
+      },
+      {
+       "code": "11.2.2",
+       "title": "Manage regulatory compliance",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "11.3",
+     "title": "Manage audit, controls, assurance, and remediation",
+     "definition": "Strength of audit, internal controls, assurance, and remediation.",
+     "children": [
+      {
+       "code": "11.3.1",
+       "title": "Create remediation plans",
+       "orientation": "internal"
+      },
+      {
+       "code": "11.3.2",
+       "title": "Contact and confer with experts",
+       "orientation": "internal"
+      },
+      {
+       "code": "11.3.3",
+       "title": "Identify/dedicate resources",
+       "orientation": "internal"
+      },
+      {
+       "code": "11.3.4",
+       "title": "Investigate legal aspects",
+       "orientation": "internal"
+      },
+      {
+       "code": "11.3.5",
+       "title": "Investigate damage cause",
+       "orientation": "internal"
+      },
+      {
+       "code": "11.3.6",
+       "title": "Amend or create policy",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "11.4",
+     "title": "Manage business continuity, crisis response, and resilience",
+     "definition": "Preparedness for business continuity, crisis response, and resilience.",
+     "children": [
+      {
+       "code": "11.4.1",
+       "title": "Develop the business resilience strategy",
+       "orientation": "external"
+      },
+      {
+       "code": "11.4.2",
+       "title": "Perform continuous business operations planning",
+       "orientation": "external"
+      },
+      {
+       "code": "11.4.3",
+       "title": "Test continuous business operations",
+       "orientation": "external"
+      },
+      {
+       "code": "11.4.4",
+       "title": "Maintain continuous business operations",
+       "orientation": "external"
+      },
+      {
+       "code": "11.4.5",
+       "title": "Share knowledge of specific risks across other parts of the organization",
+       "orientation": "external"
+      }
+     ],
+     "orientation": "external"
+    },
+    {
+     "code": "11.5",
+     "title": "Manage environmental, social, and sustainability obligations",
+     "definition": "Management of environmental, social, and sustainability obligations.",
+     "children": [],
+     "orientation": "external"
+    }
+   ]
+  },
+  {
+   "code": "12.0",
+   "title": "Stakeholder & External Relationships",
+   "definition": "How relationships with investors, regulators, communities, partners, and the board are managed and measured.",
+   "default_weight": 7.6923,
+   "items": [
+    {
+     "code": "12.1",
+     "title": "Manage investor and capital-provider relationships",
+     "definition": "Quality of investor and capital-provider relationships and communications.",
+     "children": [
+      {
+       "code": "12.1.1",
+       "title": "Plan, build, and manage lender relations",
+       "orientation": "external"
+      },
+      {
+       "code": "12.1.2",
+       "title": "Plan, build, and manage analyst relations",
+       "orientation": "external"
+      },
+      {
+       "code": "12.1.3",
+       "title": "Communicate with shareholders",
+       "orientation": "external"
+      }
+     ],
+     "orientation": "external"
+    },
+    {
+     "code": "12.2",
+     "title": "Manage government, regulatory, and public relationships",
+     "definition": "Management of government, regulatory, and public relationships.",
+     "children": [
+      {
+       "code": "12.2.1",
+       "title": "Manage government relations",
+       "orientation": "external"
+      },
+      {
+       "code": "12.2.2",
+       "title": "Manage relations with quasi-government bodies",
+       "orientation": "external"
+      },
+      {
+       "code": "12.2.3",
+       "title": "Manage relations with trade or industry groups",
+       "orientation": "external"
+      },
+      {
+       "code": "12.2.4",
+       "title": "Manage lobby activities",
+       "orientation": "external"
+      },
+      {
+       "code": "12.5.1",
+       "title": "Manage community relations",
+       "orientation": "external"
+      },
+      {
+       "code": "12.5.2",
+       "title": "Manage media relations",
+       "orientation": "external"
+      },
+      {
+       "code": "12.5.3",
+       "title": "Promote political stability",
+       "orientation": "external"
+      },
+      {
+       "code": "12.5.4",
+       "title": "Create press releases",
+       "orientation": "external"
+      },
+      {
+       "code": "12.5.5",
+       "title": "Issue press releases",
+       "orientation": "external"
+      }
+     ],
+     "orientation": "external"
+    },
+    {
+     "code": "12.3",
+     "title": "Manage community, society, and social-impact relationships",
+     "definition": "Engagement with communities, society, and social-impact commitments.",
+     "children": [],
+     "orientation": "external"
+    },
+    {
+     "code": "12.4",
+     "title": "Manage partner, alliance, and ecosystem relationships",
+     "definition": "Health of partner, alliance, and ecosystem relationships.",
+     "children": [
+      {
+       "code": "12.4.1",
+       "title": "Create ethics policies",
+       "orientation": "external"
+      },
+      {
+       "code": "12.4.2",
+       "title": "Manage corporate governance policies",
+       "orientation": "external"
+      },
+      {
+       "code": "12.4.3",
+       "title": "Develop and perform preventive law programs",
+       "orientation": "external"
+      },
+      {
+       "code": "12.4.4",
+       "title": "Ensure compliance",
+       "orientation": "external"
+      },
+      {
+       "code": "12.4.5",
+       "title": "Manage outside counsel",
+       "orientation": "external"
+      },
+      {
+       "code": "12.4.6",
+       "title": "Protect intellectual property",
+       "orientation": "external"
+      },
+      {
+       "code": "12.4.7",
+       "title": "Resolve disputes and litigations",
+       "orientation": "external"
+      },
+      {
+       "code": "12.4.8",
+       "title": "Provide legal advice/counseling",
+       "orientation": "external"
+      },
+      {
+       "code": "12.4.9",
+       "title": "Negotiate and document agreements/contracts",
+       "orientation": "external"
+      }
+     ],
+     "orientation": "external"
+    },
+    {
+     "code": "12.5",
+     "title": "Manage board, governance, and key external stakeholder engagement",
+     "definition": "Engagement between management, the board, and key external stakeholders.",
+     "children": [
+      {
+       "code": "12.3.1",
+       "title": "Report financial results",
+       "orientation": "external"
+      },
+      {
+       "code": "12.3.2",
+       "title": "Report audit findings",
+       "orientation": "external"
+      }
+     ],
+     "orientation": "external"
+    },
+    {
+     "code": "12.6",
+     "title": "Measure and respond to stakeholder perceptions",
+     "definition": "Measurement of, and response to, stakeholder perceptions.",
+     "children": [],
+     "orientation": "external"
+    }
+   ]
+  },
+  {
+   "code": "13.0",
+   "title": "Transformation, Process & Business Capability Management",
+   "definition": "How the organisation manages its processes, capabilities, programs, change, and continuous transformation.",
+   "default_weight": 7.6923,
+   "items": [
+    {
+     "code": "13.1",
+     "title": "Manage enterprise processes and process architecture",
+     "definition": "Management of enterprise processes and process architecture.",
+     "children": [
+      {
+       "code": "13.2.1",
+       "title": "Manage portfolio",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.2.2",
+       "title": "Manage programs",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.2.3",
+       "title": "Manage projects",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.3.1",
+       "title": "Establish quality requirements",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.3.2",
+       "title": "Evaluate performance to requirements",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.3.3",
+       "title": "Manage non-conformance",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.3.4",
+       "title": "Implement and maintain the enterprise quality management system (EQMS)",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.9.1",
+       "title": "Determine environmental health and safety impacts",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.9.2",
+       "title": "Develop EHS program",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.9.3",
+       "title": "Monitor and manage EHS program",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "13.2",
+     "title": "Manage business capabilities and operating model",
+     "definition": "Management of business capabilities and the operating model.",
+     "children": [
+      {
+       "code": "13.1.1",
+       "title": "Establish and maintain process management governance",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.1.2",
+       "title": "Define and manage process frameworks",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.1.3",
+       "title": "Define processes",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.1.4",
+       "title": "Manage process performance",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.1.5",
+       "title": "Improve processes",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.10.1",
+       "title": "Develop sustainability capability",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.10.2",
+       "title": "Manage sustainability capability",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "13.3",
+     "title": "Manage quality, excellence, benchmarking, and continuous improvement",
+     "definition": "Pursuit of quality, excellence, benchmarking, and continuous improvement.",
+     "children": [
+      {
+       "code": "13.7.1",
+       "title": "Define and manage organizational performance strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.7.2",
+       "title": "Benchmark performance",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.7.3",
+       "title": "Evaluate performance",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "13.4",
+     "title": "Manage programs, projects, and transformation portfolios",
+     "definition": "Management of programs, projects, and transformation portfolios.",
+     "children": [],
+     "orientation": "internal"
+    },
+    {
+     "code": "13.5",
+     "title": "Manage change and organisational transformation",
+     "definition": "Management of change and organisational transformation.",
+     "children": [
+      {
+       "code": "13.4.1",
+       "title": "Plan for change",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.4.2",
+       "title": "Design the change",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.4.3",
+       "title": "Implement change",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.4.4",
+       "title": "Sustain improvement",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "13.6",
+     "title": "Manage knowledge, learning, and organisational maturity",
+     "definition": "Management of knowledge, learning, and organisational maturity.",
+     "children": [
+      {
+       "code": "13.5.1",
+       "title": "Develop KM strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.5.2",
+       "title": "Assess KM capabilities",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.5.3",
+       "title": "Design and implement KM capabilities",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.5.4",
+       "title": "Evolve and sustain KM capabilities",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.6.1",
+       "title": "Define content management strategy",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.6.2",
+       "title": "Develop and manage taxonomies",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.6.3",
+       "title": "Define content systems of record and storage requirements",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.6.4",
+       "title": "Manage content infrastructure",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.6.5",
+       "title": "Develop and manage content",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.6.6",
+       "title": "Deliver approved content",
+       "orientation": "internal"
+      },
+      {
+       "code": "13.6.7",
+       "title": "Control delivered content",
+       "orientation": "internal"
+      }
+     ],
+     "orientation": "internal"
+    },
+    {
+     "code": "13.7",
+     "title": "Drive innovation and future-readiness",
+     "definition": "How deliberately the organisation drives innovation and future-readiness.",
+     "children": [],
+     "orientation": "external"
+    }
+   ]
+  }
+ ]
+}
