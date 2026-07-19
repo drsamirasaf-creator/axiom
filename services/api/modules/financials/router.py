@@ -170,11 +170,19 @@ def enterprise_profile(dataset_id: int, db: Session = Depends(get_db),
         latest = {"run_id": vr.id, "mode": vr.mode,
                   "enterprise_value": det.get("enterprise_value"),
                   "raev": ra.get("raev"), "created_at": vr.created_at}
+    logo_url = None
+    if row.enterprise_id:
+        try:
+            from ...accounts import _logo_url as _lu   # 7f rider: company identity
+            logo_url = _lu(db, row.enterprise_id)
+        except Exception:
+            logo_url = None
     return {"dataset_id": row.id, "name": row.name, "source": row.source,
            "company": {k: c.get(k) for k in
                         ("name", "ownership", "standard", "currency",
                          "sector", "tax_rate", "shares_outstanding",
                          "share_price")},
+            "logo_url": logo_url,
             "coverage": engines.data_coverage(data),
             "lineage_depth": depth, "root_is_self": depth == 0,
             "documents_attached": docs, "latest_valuation": latest,

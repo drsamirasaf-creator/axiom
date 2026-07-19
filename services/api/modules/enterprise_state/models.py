@@ -22,6 +22,9 @@ class Enterprise(Base):
         String(16), default="actual", server_default="actual")
     ownership: Mapped[str] = mapped_column(
         String(16), default="private", server_default="private")  # public | private
+    # Phase 7f rider: client company logo (stored in R2)
+    logo_r2_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    logo_content_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     snapshots: Mapped[list["StateSnapshot"]] = relationship(
         back_populates="enterprise", cascade="all, delete-orphan",

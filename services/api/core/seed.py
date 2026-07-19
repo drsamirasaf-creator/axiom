@@ -130,6 +130,63 @@ def _backfill_showcase_names(db):
         logging.getLogger("axiom.seed").exception("name backfill failed")
 
 
+def _backfill_showcase_logos(db):
+    """SYNTHETIC showcase demo data (7f rider): give the three showcase companies
+    real Enterprise rows + tasteful wordmark logos so the report/deck logo
+    feature demos end-to-end. Guarded — skips if R2 isn't configured, and per
+    company once its logo already exists. The wordmarks are plain text-on-color
+    placeholders, clearly not the companies' real brands (they are fictional)."""
+    import uuid as _uuid
+    from ..modules.enterprise_state.models import Enterprise
+    from ..modules.financials import models as fin_models
+    try:
+        from ..accounts import _r2_client
+        from ..reporting import wordmark_png
+    except Exception:
+        return
+    client, bucket = _r2_client()
+    if client is None:
+        return
+    # (direct-dataset name prefix, clean name, short mark, bg, fg)
+    SPECS = [
+        ("Meridian Industries", "Meridian Industries, Inc.", "MERIDIAN", "#12233A", "#EAF2FB"),
+        ("Halcyon Components", "Halcyon Components GmbH", "HALCYON", "#16302A", "#E7F3EA"),
+        ("Helios", "Helios, Inc.", "HELIOS", "#2A1E12", "#FBEFE2"),
+    ]
+    try:
+        for prefix, name, mark, bg, fg in SPECS:
+            ds = (db.query(fin_models.FinancialDataset).filter(
+                    fin_models.FinancialDataset.tenant == SHOWCASE_TENANT,
+                    fin_models.FinancialDataset.source == "direct",
+                    fin_models.FinancialDataset.name.like(f"{prefix}%")).first())
+            if not ds:
+                continue
+            ent = db.get(Enterprise, ds.enterprise_id) if ds.enterprise_id else None
+            if ent is None:
+                ent = db.query(Enterprise).filter_by(tenant=SHOWCASE_TENANT, name=name).first()
+            if ent is None:
+                comp = ds.data.get("company") if isinstance(ds.data, dict) else {}
+                ent = Enterprise(tenant=SHOWCASE_TENANT, name=name,
+                                 sector=(comp or {}).get("sector", ""),
+                                 ownership=ds.ownership or "public",
+                                 reporting_currency=(comp or {}).get("currency", "USD"))
+                db.add(ent); db.flush()
+            if ds.enterprise_id != ent.id:
+                ds.enterprise_id = ent.id
+            ds.is_active = True                     # so /companies/{ent.id}/reports works
+            if ent.logo_r2_key:
+                continue                            # logo already seeded
+            png = wordmark_png(mark, bg_hex=bg, fg_hex=fg)
+            key = f"logos/{ent.id}/{_uuid.uuid4().hex}.png"
+            client.put_object(Bucket=bucket, Key=key, Body=png, ContentType="image/png")
+            ent.logo_r2_key = key; ent.logo_content_type = "image/png"
+        db.commit()
+    except Exception:
+        db.rollback()
+        import logging
+        logging.getLogger("axiom.seed").exception("showcase logo backfill failed")
+
+
 def _backfill_showcase_helios(db):
     """Idempotent: seed the Helios (stressed public) reference company if it's
     absent. Production was first seeded before Helios was added, so its showcase
@@ -185,7 +242,7 @@ def seed_showcase():
             # _backfill_showcase_shares call previously NameError'd here and
             # silently blocked every showcase backfill).
             for _fn in (_backfill_showcase_oci, _backfill_showcase_helios,
-                        _backfill_showcase_names):
+                        _backfill_showcase_names, _backfill_showcase_logos):
                 try:
                     _fn(db)
                 except Exception:

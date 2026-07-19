@@ -167,6 +167,50 @@ def chart_radar(l1_subscores):
     return _png(fig)
 
 
+from PIL import Image, ImageDraw, ImageFont
+import matplotlib.font_manager as _fm
+
+
+def _px_size(png: bytes):
+    try:
+        return Image.open(io.BytesIO(png)).size      # (w, h)
+    except Exception:
+        return None
+
+
+def _fit_box(iw, ih, max_w, max_h):
+    """Fit (iw,ih) inside (max_w,max_h) preserving aspect — never stretch."""
+    if not iw or not ih:
+        return max_w, max_h
+    scale = min(max_w / iw, max_h / ih)
+    return iw * scale, ih * scale
+
+
+def wordmark_png(text, bg_hex=PINE, fg_hex=IVORY, accent_hex=BRASS, w=680, h=260):
+    """A simple, tasteful text wordmark (for the showcase companies)."""
+    img = Image.new("RGB", (w, h), _RGB(bg_hex))
+    d = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.truetype(_fm.findfont("DejaVu Sans:bold"), 62)
+    except Exception:
+        font = ImageFont.load_default()
+    bb = d.textbbox((0, 0), text, font=font)
+    tw, th = bb[2] - bb[0], bb[3] - bb[1]
+    x, y = (w - tw) / 2 - bb[0], (h - th) / 2 - bb[1]
+    d.text((x, y), text, fill=_RGB(fg_hex), font=font)
+    d.rectangle([(w - tw) / 2, y + th + 18, (w - tw) / 2 + tw, y + th + 26], fill=_RGB(accent_hex))
+    buf = io.BytesIO(); img.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def _logo_from_meta(meta):
+    lg = (meta or {}).get("logo")
+    if not lg:
+        return None
+    png = lg[0] if isinstance(lg, (tuple, list)) else lg.get("bytes")
+    return png or None
+
+
 # ============================================================================
 # PPTX board deck
 # ============================================================================
@@ -217,10 +261,18 @@ def _panel(slide, l, t, w, h, color=PANEL):
     return sh
 
 
-def _header(slide, kicker, title):
-    _tb(slide, 0.6, 0.42, 12, 0.34, kicker.upper(), size=11, color=BRASS, bold=True)
-    _tb(slide, 0.6, 0.74, 12.1, 0.9, title, size=26, color=IVORY, bold=True)
+def _header(slide, kicker, title, logo_png=None):
+    _tb(slide, 0.6, 0.42, 10.5, 0.34, kicker.upper(), size=11, color=BRASS, bold=True)
+    _tb(slide, 0.6, 0.74, 10.6, 0.9, title, size=26, color=IVORY, bold=True)
     _rule(slide, 0.62, 1.62, 3.2)
+    if logo_png:                                     # small client mark, top-right corner
+        sz = _px_size(logo_png)
+        w, h = _fit_box(sz[0], sz[1], 1.25, 0.55) if sz else (1.1, 0.5)
+        try:
+            slide.shapes.add_picture(io.BytesIO(logo_png), Inches(13.333 - 0.5 - w),
+                                     Inches(0.42), Inches(w), Inches(h))
+        except Exception:
+            pass
 
 
 def _pic(slide, png, l, t, w, h):
@@ -272,21 +324,32 @@ def build_pptx(report: dict, extras: dict, meta: dict) -> bytes:
     company = report.get("company", {})
     cur = company.get("currency", "")
     issued = meta["issued_at"]
+    logo_png = _logo_from_meta(meta)
 
-    # 1. Title
+    # 1. Title — the client's logo leads (it's their board deck); AXIOM subordinate
     s = _blank(prs)
-    _tb(s, 0.9, 2.15, 11.5, 0.5, "AXIOM", size=18, color=BRASS, bold=True)
-    _tb(s, 0.9, 2.75, 11.5, 1.4, meta.get("company_name", company.get("name", "Company")),
-        size=42, color=IVORY, bold=True)
-    _tb(s, 0.9, 4.15, 11.5, 0.6, meta.get("report_type", "Board Report"), size=22, color=MUTED)
-    _rule(s, 0.94, 4.95, 4.0)
-    _tb(s, 0.9, 5.15, 11.5, 0.5, issued_line(issued, meta.get("dataset_version")),
+    if logo_png:
+        sz = _px_size(logo_png)
+        w, h = _fit_box(sz[0], sz[1], 5.2, 1.9) if sz else (4.4, 1.6)
+        try:
+            s.shapes.add_picture(io.BytesIO(logo_png), Inches(0.9), Inches(1.35),
+                                 Inches(w), Inches(h))
+        except Exception:
+            logo_png = None
+    if not logo_png:
+        _tb(s, 0.9, 2.15, 11.5, 0.5, "AXIOM", size=18, color=BRASS, bold=True)
+    top = 3.55 if _logo_from_meta(meta) else 2.75
+    _tb(s, 0.9, top, 11.5, 1.4, meta.get("company_name", company.get("name", "Company")),
+        size=40, color=IVORY, bold=True)
+    _tb(s, 0.9, top + 1.35, 11.5, 0.6, meta.get("report_type", "Board Report"), size=22, color=MUTED)
+    _rule(s, 0.94, top + 2.15, 4.0)
+    _tb(s, 0.9, top + 2.35, 11.5, 0.5, issued_line(issued, meta.get("dataset_version")),
         size=13, color=MUTED)
-    _tb(s, 0.9, 6.7, 11.5, 0.4, "Confidential — prepared by AXIOM Dynamics", size=10,
+    _tb(s, 0.9, 6.9, 11.5, 0.4, "Confidential — prepared by AXIOM Dynamics", size=10,
         color=MUTED, italic=True)
 
     # 2. Executive summary
-    s = _blank(prs); _header(s, "Executive summary", "The company at a glance")
+    s = _blank(prs); _header(s, "Executive summary", "The company at a glance", logo_png)
     sm = S.get("summary", {}); sc = sm.get("scorecard", {}); hm = sm.get("headline_metric", {})
     _panel(s, 0.6, 1.95, 5.4, 2.0)
     _tb(s, 0.85, 2.15, 5.0, 0.4, hm.get("label", report.get("headline", {}).get("label", "Enterprise Value")),
@@ -312,7 +375,7 @@ def build_pptx(report: dict, extras: dict, meta: dict) -> bytes:
     ], size=12, color=IVORY)
 
     # 3. Statement highlights (KPIs)
-    s = _blank(prs); _header(s, "Financial highlights", "Latest actuals vs. prior period")
+    s = _blank(prs); _header(s, "Financial highlights", "Latest actuals vs. prior period", logo_png)
     kpis = S.get("diagnostic", {}).get("kpi_strip") or []
     rows = [[k.get("kpi"), f"{k.get('current'):,.1f}" if k.get("current") is not None else "—",
              f"{k.get('previous'):,.1f}" if k.get("previous") is not None else "—",
@@ -324,7 +387,7 @@ def build_pptx(report: dict, extras: dict, meta: dict) -> bytes:
         size=10, color=MUTED, italic=True)
 
     # 4. Statement highlights — forecast bands (P05–P95)
-    s = _blank(prs); _header(s, "Forecast bands", "Revenue distribution by year (P05–P95)")
+    s = _blank(prs); _header(s, "Forecast bands", "Revenue distribution by year (P05–P95)", logo_png)
     fan = (S.get("outlook", {}).get("simulation_baseline", {}) or {}).get("revenue_fan") or []
     rows = [[p.get("year"), f"{p.get('p05'):,.0f}", f"{p.get('p25'):,.0f}",
              f"{p.get('p50'):,.0f}", f"{p.get('p75'):,.0f}", f"{p.get('p95'):,.0f}"] for p in fan]
@@ -335,11 +398,11 @@ def build_pptx(report: dict, extras: dict, meta: dict) -> bytes:
             size=13, color=MUTED)
 
     # 5. Forecast fan
-    s = _blank(prs); _header(s, "Outlook", "Probabilistic revenue forecast")
+    s = _blank(prs); _header(s, "Outlook", "Probabilistic revenue forecast", logo_png)
     _pic(s, chart_fan(fan), 0.7, 1.95, 11.9, 5.0)
 
     # 6. Valuation lenses
-    s = _blank(prs); _header(s, "Valuation", "Three independent lenses")
+    s = _blank(prs); _header(s, "Valuation", "Three independent lenses", logo_png)
     va = S.get("valuation", {})
     _pic(s, chart_valuation_lenses(va.get("dcf"), va.get("real_options")), 0.9, 1.95, 8.0, 4.7)
     dcf = va.get("dcf", {}); mc = dcf.get("monte_carlo", {})
@@ -355,11 +418,11 @@ def build_pptx(report: dict, extras: dict, meta: dict) -> bytes:
     ], size=12, color=IVORY)
 
     # 7. Value drivers / tornado
-    s = _blank(prs); _header(s, "Value drivers", "EV impact of each lever")
+    s = _blank(prs); _header(s, "Value drivers", "EV impact of each lever", logo_png)
     _pic(s, chart_tornado(S.get("actions", {}).get("recommendations")), 0.7, 1.9, 11.9, 5.1)
 
     # 8. Risk indicators
-    s = _blank(prs); _header(s, "Risk", "Key risk indicators")
+    s = _blank(prs); _header(s, "Risk", "Key risk indicators", logo_png)
     rg = S.get("diagnostic", {}).get("risk_grade", {})
     runway = S.get("outlook", {}).get("cash_runway", {})
     cov = S.get("outlook", {}).get("coverage", {})
@@ -377,7 +440,7 @@ def build_pptx(report: dict, extras: dict, meta: dict) -> bytes:
         size=12, color=IVORY)
 
     # 9. CEI + SWOT
-    s = _blank(prs); _header(s, "Organizational excellence", "Assessment & SWOT")
+    s = _blank(prs); _header(s, "Organizational excellence", "Assessment & SWOT", logo_png)
     cei = extras.get("cei"); swot = extras.get("swot")
     if cei and cei.get("cei") is not None:
         _pic(s, chart_radar(cei.get("l1_subscores")), 0.7, 1.85, 5.2, 5.2)
@@ -395,7 +458,7 @@ def build_pptx(report: dict, extras: dict, meta: dict) -> bytes:
             size=15, color=MUTED, italic=True)
 
     # 10. Recommendations + dispositions
-    s = _blank(prs); _header(s, "Recommendations", "AXIOM levers & decisions")
+    s = _blank(prs); _header(s, "Recommendations", "AXIOM levers & decisions", logo_png)
     rows = []
     for r in (extras.get("recommendations") or [])[:8]:
         disp = r.get("disposition", "none")
@@ -413,7 +476,7 @@ def build_pptx(report: dict, extras: dict, meta: dict) -> bytes:
             size=13, color=MUTED)
 
     # 11. Initiatives status board
-    s = _blank(prs); _header(s, "Execution", "Key initiatives status board")
+    s = _blank(prs); _header(s, "Execution", "Key initiatives status board", logo_png)
     rows = [[i.get("ref_code"), (i.get("current_priority") or "").title(),
              _rag_word(i.get("rag")), i.get("owner_name") or "—",
              (i.get("status") or "").replace("_", " ").title()]
@@ -476,14 +539,26 @@ def build_pdf(report: dict, extras: dict, meta: dict) -> bytes:
     issued = meta["issued_at"]
     story = []
 
-    # cover
-    story += [Spacer(1, 1.6 * inch),
-              Paragraph("AXIOM", KICK),
-              Paragraph(meta.get("company_name", company.get("name", "Company")), H1),
+    # cover — client logo leads (their board deck), AXIOM subordinate
+    logo_png = _logo_from_meta(meta)
+    story.append(Spacer(1, 1.1 * inch))
+    if logo_png:
+        sz = _px_size(logo_png)
+        w, h = _fit_box(sz[0], sz[1], 3.6, 1.5) if sz else (3.0, 1.2)
+        try:
+            story += [RLImage(io.BytesIO(logo_png), width=w * inch, height=h * inch),
+                      Spacer(1, 0.4 * inch)]
+        except Exception:
+            logo_png = None
+    if not logo_png:
+        story += [Spacer(1, 0.5 * inch), Paragraph("AXIOM", KICK)]
+    story += [Paragraph(meta.get("company_name", company.get("name", "Company")), H1),
               Spacer(1, 0.15 * inch),
               Paragraph(meta.get("report_type", "Board Report"), MUT),
               Spacer(1, 0.1 * inch),
               Paragraph(issued_line(issued, meta.get("dataset_version")), MUT),
+              Spacer(1, 0.3 * inch),
+              Paragraph("Prepared by AXIOM Dynamics", MUT),
               PageBreak()]
 
     def tbl(headers, rows, widths):

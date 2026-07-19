@@ -1282,6 +1282,7 @@ def my_companies(user: User = Depends(get_current_user), db=Depends(get_db)):
         companies.append({
             "company_id": a.company_id,
             "name": ent.name if ent else None,
+            "logo_url": _presign_logo(ent),
             "cid": a.cid,
             "created_at": a.created_at,
             "viewer_count": viewer_count,
@@ -3154,8 +3155,12 @@ def _generate_report(db, company_id, user, fmt, report_type="Board Report"):
     extras = _report_extras(db, company_id)
     issued_at = datetime.utcnow()
     company_name = _company_name(db, company_id)
+    try:
+        logo = _logo_bytes(_enterprise(db, company_id))      # (bytes, content_type) or None
+    except Exception:
+        logo = None                                          # logo is optional — never block a report
     meta = {"company_name": company_name, "report_type": report_type,
-            "issued_at": issued_at, "dataset_version": ds.version}
+            "issued_at": issued_at, "dataset_version": ds.version, "logo": logo}
     content = (R.build_pptx(report, extras, meta) if fmt == "pptx"
                else R.build_pdf(report, extras, meta))
     filename = R.report_filename(company_name, report_type, fmt, issued_at)
@@ -3322,6 +3327,161 @@ def view_shared_report(token: str, db=Depends(get_db)):
     return Response(content=blob,
                     media_type=_REPORT_CTYPE.get(issue.format, "application/octet-stream"),
                     headers={"Content-Disposition": f'inline; filename="{issue.filename}"'})
+
+
+# ---------------------------------------------------- client logos (7f rider)
+# python-pptx cannot embed SVG and cairosvg needs system Cairo; v1 accepts
+# raster only (PNG/JPG) and rejects SVG with a clear message.
+_LOGO_EXTS = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
+MAX_LOGO_BYTES = 2 * 1024 * 1024
+
+
+def _enterprise(db, company_id):
+    from .modules.enterprise_state.models import Enterprise
+    return db.get(Enterprise, company_id)
+
+
+def _presign_logo(ent, expires=600):
+    if not ent or not getattr(ent, "logo_r2_key", None):
+        return None
+    client, bucket = _r2_client()
+    if client is None:
+        return None
+    try:
+        return client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket, "Key": ent.logo_r2_key,
+                    "ResponseContentType": ent.logo_content_type or "image/png"},
+            ExpiresIn=expires)
+    except Exception:
+        return None
+
+
+def _logo_url(db, company_id):
+    return _presign_logo(_enterprise(db, company_id))
+
+
+def _logo_bytes(ent):
+    """Fetch the logo blob (for report embedding), or None."""
+    if not ent or not getattr(ent, "logo_r2_key", None):
+        return None
+    client, bucket = _r2_client()
+    if client is None:
+        return None
+    try:
+        obj = client.get_object(Bucket=bucket, Key=ent.logo_r2_key)
+        return obj["Body"].read(), (ent.logo_content_type or "image/png")
+    except Exception:
+        return None
+
+
+@router.post("/companies/{company_id}/logo", status_code=201)
+async def upload_logo(company_id: int, file: UploadFile = File(...),
+                      member=Depends(require_company_admin),
+                      user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Upload a PNG/JPG company logo (≤2 MB) to R2 under logos/{id}/{uuid}.ext.
+    Replacing overwrites the reference and removes the old object."""
+    import uuid as _uuid
+    ent = _enterprise(db, company_id)
+    if not ent:
+        raise HTTPException(404, "Company not found")
+    fname = (file.filename or "logo").lower()
+    ext = ("." + fname.rsplit(".", 1)[-1]) if "." in fname else ""
+    ctype_in = (file.content_type or "").lower()
+    if ext == ".svg" or "svg" in ctype_in:
+        raise HTTPException(422, "SVG logos aren't supported yet — please upload a PNG or JPG.")
+    if ext not in _LOGO_EXTS:
+        raise HTTPException(422, "Only PNG or JPG logos are allowed")
+    content = await file.read()
+    if len(content) > MAX_LOGO_BYTES:
+        raise HTTPException(422, "Logo exceeds the 2 MB limit")
+    if not content:
+        raise HTTPException(422, "Empty file")
+    client, bucket = _r2_client()
+    if client is None:
+        raise HTTPException(503, "Logo storage is not configured on this server")
+    ctype = ctype_in if ctype_in.startswith("image/") else _LOGO_EXTS[ext]
+    key = f"logos/{company_id}/{_uuid.uuid4().hex}{ext}"
+    try:
+        client.put_object(Bucket=bucket, Key=key, Body=content, ContentType=ctype)
+    except Exception as e:
+        raise HTTPException(502, f"upload to storage failed: {e}")
+    old = ent.logo_r2_key
+    ent.logo_r2_key = key; ent.logo_content_type = ctype
+    if old and old != key:
+        try:
+            client.delete_object(Bucket=bucket, Key=old)
+        except Exception:
+            pass
+    audit(db, user.id, "logo_uploaded", "company", company_id, detail=key)
+    db.commit()
+    return {"ok": True, "company_id": company_id, "content_type": ctype,
+            "logo_url": _presign_logo(ent)}
+
+
+def _logo_read_ok(db, company_id, authorization, token):
+    raw = token
+    if not raw and authorization and authorization.lower().startswith("bearer "):
+        raw = authorization.split(" ", 1)[1].strip()
+    if not raw:
+        return False
+    # a report_view token scoped to an (unrevoked) share in this company may read
+    try:
+        p = read_token(raw, "report_view")
+        share = db.query(ReportShare).filter_by(jti=p.get("jti")).first()
+        if share and share.revoked_at is None and share.company_id == company_id:
+            return True
+    except pyjwt.PyJWTError:
+        pass
+    try:
+        p = read_token(raw, "access")
+    except pyjwt.PyJWTError:
+        return False
+    u = db.get(User, int(p["sub"]))
+    if not u or u.status != "active":
+        return False
+    scope = p.get("scope")
+    if scope and scope != f"company:{company_id}:view":
+        return False
+    if u.platform_role in ("staff", "super") and not scope:
+        return True
+    m = _membership(db, u.id, company_id)
+    return bool(m and m.status == "active")
+
+
+@router.get("/companies/{company_id}/logo")
+def get_logo(company_id: int, authorization: str = Header(None),
+             token: str | None = None, db=Depends(get_db)):
+    """Presigned logo URL. Readable by a company member OR a report_view token
+    scoped to a share in this company (so a shared-report page can render it)."""
+    ent = _enterprise(db, company_id)
+    if not ent or not ent.logo_r2_key:
+        raise HTTPException(404, "no logo set for this company")
+    if not _logo_read_ok(db, company_id, authorization, token):
+        raise HTTPException(401, "Not authorized to read this company's logo")
+    url = _presign_logo(ent)
+    if not url:
+        raise HTTPException(503, "Logo storage is not configured on this server")
+    return {"logo_url": url, "content_type": ent.logo_content_type, "expires_in": 600}
+
+
+@router.delete("/companies/{company_id}/logo")
+def delete_logo(company_id: int, member=Depends(require_company_admin),
+                user: User = Depends(get_current_user), db=Depends(get_db)):
+    ent = _enterprise(db, company_id)
+    if not ent:
+        raise HTTPException(404, "Company not found")
+    if ent.logo_r2_key:
+        client, bucket = _r2_client()
+        if client is not None:
+            try:
+                client.delete_object(Bucket=bucket, Key=ent.logo_r2_key)
+            except Exception:
+                pass
+        ent.logo_r2_key = None; ent.logo_content_type = None
+        audit(db, user.id, "logo_deleted", "company", company_id)
+        db.commit()
+    return {"ok": True, "company_id": company_id}
 
 
 # ------------------------------------------- AXIOM Assessment Framework (7d-1)
@@ -4672,6 +4832,9 @@ def _ensure_ax_columns(engine):
     _add("ax_initiatives", "rag", "rag VARCHAR(8)")
     _add("ax_initiatives", "rag_updated_at", "rag_updated_at TIMESTAMP")
     _add("ax_initiatives", "rag_updated_by", "rag_updated_by INTEGER")
+    # 7f rider: client company logo on the enterprise
+    _add("enterprises", "logo_r2_key", "logo_r2_key VARCHAR(512)")
+    _add("enterprises", "logo_content_type", "logo_content_type VARCHAR(64)")
 
     # Backfill orientation on existing framework revisions by item code (v2).
     try:
