@@ -43,6 +43,23 @@ def _enforce_company_limit(db, authorization):
     enforce_company_limit(db, user, creating_new=True)
 
 
+def _historicals_only(data: dict) -> dict:
+    """A view of a dataset with any existing pro forma stripped, so the trend
+    forecast can be (re)generated from the historicals. The showcase reference
+    companies ship WITH a plan (forecast years), so /forecast would otherwise
+    422 ('already contains pro forma years'); re-forecasting from historicals
+    is the sensible Financial-Forecasts behaviour."""
+    hist = {str(y) for y in data["periods"]["historical"]}
+    out = dict(data)
+    out["periods"] = {"historical": list(data["periods"]["historical"]), "forecast": []}
+    for block in ("income_statement", "balance_sheet", "cash_flow"):
+        blk = data.get(block)
+        if isinstance(blk, dict):
+            out[block] = {key: {y: v for y, v in (series or {}).items() if y in hist}
+                          for key, series in blk.items()}
+    return out
+
+
 def _store(db, tenant, name, data, source, warnings, enterprise_id=None):
     row = models.FinancialDataset(
         tenant=tenant, enterprise_id=enterprise_id, name=name,
@@ -186,8 +203,14 @@ def forecast_dataset(dataset_id: int, body: schemas.ForecastRequest,
         enforce_write({"authenticated": authed,
                        "plan": _plan_of(db, tenant) if authed else None,
                        "tenant": tenant})
+    # A dataset that already carries a plan (forecast years) is re-forecast
+    # from its historicals rather than rejected, so /forecast works on every
+    # dataset (incl. the showcase reference companies).
+    fdata = row.data
+    if (fdata.get("periods") or {}).get("forecast"):
+        fdata = _historicals_only(fdata)
     try:
-        fc = engines.auto_forecast(row.data, body.assumptions)
+        fc = engines.auto_forecast(fdata, body.assumptions)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     provenance = fc.pop("_forecast_provenance")
