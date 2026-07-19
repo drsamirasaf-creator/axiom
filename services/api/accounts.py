@@ -2815,12 +2815,17 @@ def _derive_recommendations(db, company_id):
         return ds, []
     out = []
     for r in recs:
+        ev = r.get("expected_ev_impact")
         out.append({"fingerprint": _rec_fingerprint(r), "move": r.get("move"),
                     "title": r.get("title"), "description": r.get("description"),
-                    "expected_ev_impact": r.get("expected_ev_impact"),
+                    "expected_ev_impact": ev,
                     "expected_ev_impact_pct": r.get("expected_ev_impact_pct"),
                     "rank": r.get("rank"), "params_changed": r.get("params_changed"),
-                    "linked_item_code": _LEVER_ITEM.get(r.get("move"))})
+                    "linked_item_code": _LEVER_ITEM.get(r.get("move")),
+                    # a candidate is only a RECOMMENDATION if it creates value;
+                    # the engine also returns value-destructive lever moves (its
+                    # what-if set) which must never be surfaced as "adopt this".
+                    "value_creating": (ev is not None and ev > 0)})
     return ds, out
 
 
@@ -2854,19 +2859,38 @@ def _rec_view(rec, disp_map, db):
             "note": (d.note if d else None)}
 
 
+def _reason_not_recommended(rec):
+    return ("Value-destructive for the current dataset — this lever move's "
+            "returns fall below the cost of capital, so it lowers enterprise "
+            f"value (expected EV impact {rec['expected_ev_impact']}). Shown for "
+            "transparency; not offered for adoption.")
+
+
+def _decided_with_initiative(disp_map, fp):
+    d = disp_map.get(fp)
+    return bool(d and d.status in ("adopted", "parked") and d.initiative_id)
+
+
 @router.get("/companies/{company_id}/recommendations")
 def company_recommendations(company_id: int, member=Depends(require_company_member),
                             db=Depends(get_db)):
-    """The Executive Brief recommendations, joined to dispositions by fingerprint.
-    Re-derivation recognizes existing fingerprints (bumps last_seen_at +
-    times_reissued) and never duplicates."""
+    """The Executive Brief. Only VALUE-CREATING lever moves are surfaced as
+    adoptable recommendations; the engine's value-destructive candidates go to a
+    labelled `not_recommended` tray (never "AXIOM recommends"). Re-derivation
+    recognizes existing fingerprints (bumps last_seen_at + times_reissued) and
+    never duplicates; only the adoptable set carries a disposition lifecycle."""
     ds, recs = _derive_recommendations(db, company_id)
     if not recs:
         return {"company_id": company_id, "has_data": ds is not None,
-                "dataset_id": ds.id if ds else None, "recommendations": []}
+                "dataset_id": ds.id if ds else None,
+                "recommendations": [], "not_recommended": []}
     now = datetime.utcnow()
     disp_map = _dispositions(db, company_id)
-    for r in recs:
+    # adoptable = value-creating, plus any already-decided move (so a prior
+    # decision + its initiative stay visible even if the sign later flips).
+    main = [r for r in recs if r["value_creating"] or _decided_with_initiative(disp_map, r["fingerprint"])]
+    tray = [r for r in recs if r not in main]
+    for r in main:
         d = disp_map.get(r["fingerprint"])
         if d is None:
             d = RecommendationDisposition(company_id=company_id, fingerprint=r["fingerprint"],
@@ -2877,10 +2901,15 @@ def company_recommendations(company_id: int, member=Depends(require_company_memb
             d.last_seen_at = now
             d.times_reissued = (d.times_reissued or 0) + 1
     db.flush()
-    out = [_rec_view(r, disp_map, db) for r in recs]
+    out = [_rec_view(r, disp_map, db) for r in main]
+    not_rec = [{"fingerprint": r["fingerprint"], "move": r["move"], "title": r["title"],
+                "description": r["description"], "expected_ev_impact": r["expected_ev_impact"],
+                "expected_ev_impact_pct": r["expected_ev_impact_pct"], "rank": r["rank"],
+                "linked_item_code": r["linked_item_code"],
+                "reason": _reason_not_recommended(r)} for r in tray]
     db.commit()
     return {"company_id": company_id, "has_data": True, "dataset_id": ds.id,
-            "recommendations": out}
+            "recommendations": out, "not_recommended": not_rec}
 
 
 def _rec_by_fp(db, company_id, fingerprint):
@@ -2900,6 +2929,10 @@ def adopt_recommendation(company_id: int, fingerprint: str, body: RecAdoptIn,
         ini = db.get(Initiative, disp.initiative_id)
         if ini:
             return _ini_out(ini)                     # idempotent
+    if not rec["value_creating"]:
+        raise HTTPException(422, "This lever move is value-destructive for the "
+                                 "current dataset (expected EV impact <= 0) and is "
+                                 "not offered for adoption.")
     priority = (body.priority if body.priority in _PRIORITY
                 else ("high" if rec["rank"] == 1 else "medium"))
     currency = ((ds.data.get("company") or {}).get("currency")
@@ -2934,6 +2967,10 @@ def park_recommendation(company_id: int, fingerprint: str,
         ini = db.get(Initiative, disp.initiative_id)
         if ini:
             return _ini_out(ini)
+    if not rec["value_creating"]:
+        raise HTTPException(422, "This lever move is value-destructive for the "
+                                 "current dataset (expected EV impact <= 0) and is "
+                                 "not offered for adoption.")
     ref = _next_ref(db, company_id, "D")
     ini = Initiative(
         company_id=company_id, ref_code=ref, previous_refs=[], title=rec["title"][:300],
@@ -2976,6 +3013,9 @@ def _recommendations_by_item(db, company_id):
     for r in recs:
         code = r["linked_item_code"]
         if not code:
+            continue
+        # only surface value-creating recommendations (or ones already acted on)
+        if not (r["value_creating"] or _decided_with_initiative(disp, r["fingerprint"])):
             continue
         d = disp.get(r["fingerprint"])
         ref = None
