@@ -70,7 +70,7 @@ def meridian():
         assets = BS["cash"][str(y)] + 0.22*v + BS["noncurrent_assets"][str(y)]
         BS["total_equity"][str(y)] = round(assets - 0.12*v - st - 400.0, 6)
         prev = y
-    company = {"name": "Meridian Industries Inc.", "ownership": "public", "sector": "Industrials",
+    company = {"name": "Meridian Industries, Inc.", "ownership": "public", "sector": "Industrials",
                "standard": "us_gaap", "currency": "USD", "tax_rate": 0.25,
                "risk_free_rate": 0.04, "market_risk_premium": 0.055,
                "cost_of_debt": 0.06, "shares_outstanding": 100.0,
@@ -114,7 +114,7 @@ def halcyon():
         CF["capex"][str(y)] = round(0.07*v, 6)
         CF["net_borrowing"][str(y)] = 0.0
         CF["dividends"][str(y)] = 2.0
-    company = {"name": "Halcyon Components Ltd", "ownership": "private",
+    company = {"name": "Halcyon Components GmbH", "ownership": "private",
                "standard": "ifrs", "currency": "EUR", "tax_rate": 0.21,
                "risk_free_rate": 0.035, "market_risk_premium": 0.055,
                "cost_of_debt": 0.07, "unlevered_industry_beta": 0.9,
@@ -200,7 +200,7 @@ def helios():
         cash_y = (eq + 0.16*v + st + lt_last) - assets_ex_cash
         BS["cash"][str(y)] = round(max(cash_y, 1.0), 6)
         eq_prev = eq; prev = y
-    company = {"name": "Helios Freight Systems Inc.", "ownership": "public",
+    company = {"name": "Helios, Inc.", "ownership": "public",
                "sector": "Industrials", "standard": "us_gaap",
                "currency": "USD", "tax_rate": 0.25, "risk_free_rate": 0.04,
                "market_risk_premium": 0.055, "cost_of_debt": 0.085,

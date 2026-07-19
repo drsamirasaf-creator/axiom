@@ -619,7 +619,7 @@ GLOSSARY.update({
 
 # ---- Phase 11: sandbox glossary --------------------------------------------
 GLOSSARY.update({
-    "Sandbox": "The fully populated showcase every visitor sees without an account: real engines running on fictional reference companies (Meridian Industries, Halcyon Components), including a complete plan-to-actuals-to-re-forecast story. Read and explore everything; creating or changing data is where a free account begins — and everything you enter stays private to it.",
+    "Sandbox": "The fully populated showcase every visitor sees without an account: real engines running on fictional reference companies (Meridian Industries, Inc., Halcyon Components GmbH), including a complete plan-to-actuals-to-re-forecast story. Read and explore everything; creating or changing data is where a free account begins — and everything you enter stays private to it.",
 })
 
 
