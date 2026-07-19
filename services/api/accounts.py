@@ -380,6 +380,54 @@ class ThreadPost(Base):
     adopted_initiative_id = Column(Integer, nullable=True)
 
 
+class InitiativeAssignment(Base):
+    """Leadership of one initiative (7e-C). Exactly one non-revoked assignment
+    per initiative; reassignment revokes the current one (write access ends
+    immediately) and creates a fresh invited assignment. History is never
+    rewritten — prior events keep their original attribution."""
+    __tablename__ = "ax_initiative_assignments"
+    id = Column(Integer, primary_key=True)
+    initiative_id = Column(Integer, index=True, nullable=False)
+    company_id = Column(Integer, index=True, nullable=False)
+    leader_user_id = Column(Integer, nullable=True)          # null until claimed
+    invited_email = Column(String(255), nullable=False)
+    invited_name = Column(String(255), default="", nullable=False)
+    status = Column(String(16), default="invited", nullable=False)   # invited|active|revoked
+    jti = Column(String(64), unique=True, index=True, nullable=False)
+    grant_viewer_access = Column(Boolean, default=False, nullable=False)
+    note = Column(Text, nullable=True)
+    invited_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    accepted_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+
+
+class InitiativeCSF(Base):
+    """A Critical Success Factor (7e-D). Admin owns the text (2-5 per
+    initiative); the leader owns the status and may propose text changes."""
+    __tablename__ = "ax_initiative_csfs"
+    id = Column(Integer, primary_key=True)
+    initiative_id = Column(Integer, index=True, nullable=False)
+    text = Column(Text, nullable=False)
+    position = Column(Integer, default=0, nullable=False)
+    status = Column(String(16), default="holding", nullable=False)   # holding|at_risk|broken
+    updated_by = Column(Integer, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class CSFProposal(Base):
+    """A leader's proposed CSF text change, pending admin approval (7e-D)."""
+    __tablename__ = "ax_csf_proposals"
+    id = Column(Integer, primary_key=True)
+    csf_id = Column(Integer, index=True, nullable=False)
+    initiative_id = Column(Integer, index=True, nullable=False)
+    proposed_text = Column(Text, nullable=False)
+    proposed_by = Column(Integer, nullable=True)
+    status = Column(String(16), default="pending", nullable=False)   # pending|approved|rejected
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    resolved_by = Column(Integer, nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+
+
 class AuditLog(Base):
     __tablename__ = "ax_audit"
     id = Column(Integer, primary_key=True)
@@ -534,6 +582,32 @@ def send_assess_invite(to: str, name: str, company_name: str, token: str,
             <p style="font-size:13px;color:#8fb59e">{privacy}</p>
             <p style="font-size:12px;color:#8fb59e">This link is unique to you and can
                be used once. It is valid for 30 days.</p>"""))
+
+
+def send_lead_invite(to: str, name: str, admin_name: str, ref: str, title: str,
+                     company_name: str, token: str):
+    link = f"{_app_url()}/lead?invite={token}"
+    greet = f"Hi {name}," if name else "Hi,"
+    who = admin_name or "A company administrator"
+    send(to, f"{who} has asked you to lead initiative {ref} at {company_name}", _wrap(
+        f"Lead initiative {ref} — {title}",
+        f"""<p>{greet}</p>
+            <p>{who} has asked you to lead <b>{ref} — {title}</b> at
+               <b>{company_name}</b>. You can review the initiative, its critical
+               success factors, and the discussion behind it before you accept.</p>
+            <p><a href="{link}" style="background:#4ade80;color:#0d1b12;padding:12px 24px;
+               border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
+               Review your initiative</a></p>
+            <p style="font-size:13px;color:#8fb59e">To accept you'll sign in to (or
+               create) your AXIOM account with this email address.</p>
+            <p style="font-size:12px;color:#8fb59e">This invitation is valid for 14 days.</p>"""))
+
+
+def send_admin_alert(to: str, company_name: str, subject: str, line: str):
+    send(to, f"AXIOM alert — {company_name}: {subject}", _wrap(
+        subject, f"""<p>{line}</p>
+            <p style="font-size:12px;color:#8fb59e">You're receiving this because you
+               administer {company_name} on AXIOM.</p>"""))
 
 
 def send_email_change(to: str, token: str):
@@ -1974,6 +2048,476 @@ def dismiss_proposal(company_id: int, pid: int,
     audit(db, user.id, "proposal_dismissed", "company", company_id, detail=f"post {pid}")
     db.commit()
     return {"ok": True, "post_id": pid, "proposal_status": "dismissed"}
+
+
+# ====================================================================
+# 7e-C: initiative leaders   +   7e-D: CSFs + RAG + leader boundary
+# ====================================================================
+class AssignLeaderIn(BaseModel):
+    name: str = ""
+    email: EmailStr
+    note: str | None = None
+    grant_viewer_access: bool = False
+
+
+class LeadAcceptIn(BaseModel):
+    token: str
+
+
+class RagIn(BaseModel):
+    rag: str
+    note: str | None = None
+
+
+class LeaderStatusIn(BaseModel):
+    status: str
+    note: str | None = None
+    actual_impact_amount: float | None = None
+
+
+class CSFItem(BaseModel):
+    id: int | None = None
+    text: str
+
+
+class CSFPut(BaseModel):
+    csfs: list[CSFItem]
+
+
+class CSFStatusIn(BaseModel):
+    status: str
+
+
+class CSFProposeIn(BaseModel):
+    text: str
+
+
+def _active_assignment(db, iid):
+    return (db.query(InitiativeAssignment)
+              .filter(InitiativeAssignment.initiative_id == iid,
+                      InitiativeAssignment.status != "revoked").first())
+
+
+def _is_company_admin(db, user, company_id):
+    if getattr(user, "_token_scope", None):
+        return False
+    if user.platform_role in ("staff", "super"):
+        return True
+    m = _membership(db, user.id, company_id)
+    return bool(m and m.role == "admin" and m.status == "active")
+
+
+def _leader_or_admin(company_id, iid, user, db):
+    """The central 7e-D boundary: a company admin, or the initiative's ACTIVE
+    leader, may perform leader-scoped writes (status/rag/csf-status/notes) —
+    and ONLY on this initiative. Everyone else, and any other initiative, 403."""
+    ini = db.get(Initiative, iid)
+    if not ini or ini.company_id != company_id:
+        raise HTTPException(404, "initiative not found")
+    if _is_company_admin(db, user, company_id):
+        return ini, "admin"
+    a = _active_assignment(db, iid)
+    if (a and a.status == "active" and a.leader_user_id == user.id
+            and not getattr(user, "_token_scope", None)):
+        return ini, "leader"
+    raise HTTPException(403, "Only this initiative's active leader or a company "
+                             "admin may update it")
+
+
+def _admin_email(db, company_id):
+    m = _active_admin(db, company_id)
+    u = db.get(User, m.user_id) if m else None
+    return u.email if u else None
+
+
+def _notify_admin_alert(db, company_id, subject, line):
+    try:
+        to = _admin_email(db, company_id)
+        if to:
+            send_admin_alert(to, _company_name(db, company_id), subject, line)
+    except Exception:
+        pass
+
+
+def _grant_viewer(db, company_id, user_id):
+    m = _membership(db, user_id, company_id)
+    if m is None:
+        db.add(Membership(user_id=user_id, company_id=company_id, role="viewer",
+                          status="active", approved_at=datetime.utcnow()))
+    elif m.status != "active":
+        m.status = "active"
+        m.approved_at = m.approved_at or datetime.utcnow()
+
+
+def _assignment_out(a):
+    return {"id": a.id, "initiative_id": a.initiative_id,
+            "leader_user_id": a.leader_user_id, "invited_email": a.invited_email,
+            "invited_name": a.invited_name, "status": a.status,
+            "grant_viewer_access": a.grant_viewer_access, "note": a.note,
+            "invited_at": a.invited_at, "accepted_at": a.accepted_at,
+            "revoked_at": a.revoked_at}
+
+
+def _csf_out(x):
+    return {"id": x.id, "initiative_id": x.initiative_id, "text": x.text,
+            "position": x.position, "status": x.status,
+            "updated_by": x.updated_by, "updated_at": x.updated_at}
+
+
+def _create_assignment(db, ini, company_id, email, name, note, grant, actor_id):
+    jti = secrets.token_urlsafe(16)
+    a = InitiativeAssignment(initiative_id=ini.id, company_id=company_id,
+                             invited_email=_norm(email), invited_name=(name or "").strip(),
+                             status="invited", jti=jti, grant_viewer_access=bool(grant),
+                             note=note)
+    db.add(a); db.flush()
+    if grant:
+        u = db.query(User).filter_by(email=_norm(email)).first()
+        if u:
+            _grant_viewer(db, company_id, u.id)
+    token = make_token(str(ini.id), purpose="lead_invite", ttl=14 * 86_400, jti=jti,
+                       initiative_id=ini.id, company_id=company_id,
+                       invited_email=_norm(email))
+    return a, token
+
+
+@router.post("/companies/{company_id}/initiatives/{iid}/assign-leader", status_code=201)
+def assign_leader(company_id: int, iid: int, body: AssignLeaderIn,
+                  member=Depends(require_company_admin),
+                  user: User = Depends(get_current_user), db=Depends(get_db)):
+    ini = db.get(Initiative, iid)
+    if not ini or ini.company_id != company_id:
+        raise HTTPException(404, "initiative not found")
+    if _active_assignment(db, iid):
+        raise HTTPException(409, "This initiative already has a leader or a pending "
+                                 "invite — use reassign-leader.")
+    a, token = _create_assignment(db, ini, company_id, body.email, body.name,
+                                  body.note, body.grant_viewer_access, user.id)
+    _ini_event(db, ini, user.id, "leader_invited", None, a.invited_email, body.note)
+    audit(db, user.id, "leader_invited", "company", company_id, detail=f"{ini.ref_code} {a.invited_email}")
+    db.commit()
+    send_lead_invite(a.invited_email, a.invited_name, user.name, ini.ref_code, ini.title,
+                     _company_name(db, company_id), token)
+    return _assignment_out(a)
+
+
+@router.post("/companies/{company_id}/initiatives/{iid}/reassign-leader", status_code=201)
+def reassign_leader(company_id: int, iid: int, body: AssignLeaderIn,
+                    member=Depends(require_company_admin),
+                    user: User = Depends(get_current_user), db=Depends(get_db)):
+    ini = db.get(Initiative, iid)
+    if not ini or ini.company_id != company_id:
+        raise HTTPException(404, "initiative not found")
+    cur = _active_assignment(db, iid)
+    if cur:
+        cur.status = "revoked"; cur.revoked_at = datetime.utcnow()   # write access ends now
+        _ini_event(db, ini, user.id, "leader_revoked", cur.invited_email, None, "reassigned")
+    a, token = _create_assignment(db, ini, company_id, body.email, body.name,
+                                  body.note, body.grant_viewer_access, user.id)
+    _ini_event(db, ini, user.id, "leader_invited", None, a.invited_email, body.note)
+    audit(db, user.id, "leader_reassigned", "company", company_id, detail=f"{ini.ref_code} -> {a.invited_email}")
+    db.commit()
+    send_lead_invite(a.invited_email, a.invited_name, user.name, ini.ref_code, ini.title,
+                     _company_name(db, company_id), token)
+    return _assignment_out(a)
+
+
+@router.get("/companies/{company_id}/initiatives/{iid}/assignment")
+def get_assignment(company_id: int, iid: int,
+                   member=Depends(require_company_member), db=Depends(get_db)):
+    ini = db.get(Initiative, iid)
+    if not ini or ini.company_id != company_id:
+        raise HTTPException(404, "initiative not found")
+    cur = _active_assignment(db, iid)
+    history = (db.query(InitiativeAssignment).filter_by(initiative_id=iid)
+                 .order_by(InitiativeAssignment.id).all())
+    return {"initiative_id": iid, "current": _assignment_out(cur) if cur else None,
+            "history": [_assignment_out(a) for a in history]}
+
+
+def _briefing_payload(db, ini):
+    csfs = (db.query(InitiativeCSF).filter_by(initiative_id=ini.id)
+              .order_by(InitiativeCSF.position, InitiativeCSF.id).all())
+    linked = None
+    if ini.linked_item_code:
+        from .assessment_engine import score_rag
+        cyc = (db.query(AssessmentCycle).filter_by(company_id=ini.company_id)
+                 .filter(AssessmentCycle.closed_at.isnot(None))
+                 .order_by(AssessmentCycle.closed_at).all())
+        snap = (cyc[-1].snapshot or {}) if cyc else {}
+        d = (snap.get("item_dispersion") or {}).get(ini.linked_item_code)
+        sent = (snap.get("item_sentiment") or {}).get(ini.linked_item_code)
+        if d or sent:
+            linked = {"item_code": ini.linked_item_code,
+                      "mean": (d or {}).get("mean"),
+                      "score_rag": score_rag((d or {}).get("mean")),
+                      "text_sentiment": (sent or {}).get("sentiment"),
+                      "theme": (sent or {}).get("theme")}
+    excerpt = None
+    if ini.source_thread_id:
+        post = (db.query(ThreadPost).filter_by(adopted_initiative_id=ini.id).first()
+                or db.query(ThreadPost).filter_by(thread_id=ini.source_thread_id)
+                     .order_by(ThreadPost.created_at).first())
+        excerpt = post.body[:600] if post else None
+    return {"csfs": [_csf_out(x) for x in csfs],
+            "expected_impact": {"amount": ini.expected_impact_amount,
+                                "currency": ini.impact_currency},
+            "linked_assessment": linked, "source_excerpt": excerpt}
+
+
+@router.get("/initiatives/lead-briefing")
+def lead_briefing(token: str, db=Depends(get_db)):
+    """Read-only briefing, open via the lead-invite token (no auth) so the
+    invitee can review before deciding."""
+    try:
+        payload = read_token(token, "lead_invite")
+    except pyjwt.PyJWTError:
+        raise HTTPException(400, "This invitation link is invalid or has expired.")
+    a = db.query(InitiativeAssignment).filter_by(jti=payload.get("jti")).first()
+    if not a or a.status == "revoked":
+        raise HTTPException(400, "This leadership invitation is no longer valid.")
+    ini = db.get(Initiative, a.initiative_id)
+    if not ini:
+        raise HTTPException(404, "initiative not found")
+    return {"initiative": _ini_out(ini), "company_name": _company_name(db, a.company_id),
+            "invited_name": a.invited_name, "invited_email": a.invited_email,
+            "assignment_status": a.status, "note": a.note, **_briefing_payload(db, ini)}
+
+
+@router.post("/initiatives/lead-accept", status_code=201)
+def lead_accept(body: LeadAcceptIn, user: User = Depends(get_current_user),
+                db=Depends(get_db)):
+    """Claim leadership — requires an authenticated session on the invited email
+    (deliberately stricter than viewer magic links). Reuses the register/
+    merge-on-email machinery: the invitee signs in or registers with the invited
+    address, then accepts here."""
+    if getattr(user, "_token_scope", None):
+        raise HTTPException(403, "A view-only link cannot accept leadership.")
+    try:
+        payload = read_token(body.token, "lead_invite")
+    except pyjwt.PyJWTError:
+        raise HTTPException(400, "This invitation link is invalid or has expired.")
+    a = db.query(InitiativeAssignment).filter_by(jti=payload.get("jti")).first()
+    if not a:
+        raise HTTPException(400, "This leadership invitation is no longer valid.")
+    ini = db.get(Initiative, a.initiative_id)
+    if a.status == "revoked":
+        raise HTTPException(409, "This leadership invitation was revoked.")
+    if a.status == "active":
+        if a.leader_user_id == user.id:
+            return {"ok": True, "already": True, "initiative_id": a.initiative_id,
+                    "ref_code": ini.ref_code, "status": "active"}
+        raise HTTPException(409, "This initiative has already been claimed.")
+    if _norm(user.email) != _norm(a.invited_email):
+        raise HTTPException(403, "Sign in with the email address the invitation was "
+                                 "sent to, then accept.")
+    a.leader_user_id = user.id; a.status = "active"; a.accepted_at = datetime.utcnow()
+    if a.grant_viewer_access:
+        _grant_viewer(db, a.company_id, user.id)
+    _ini_event(db, ini, user.id, "leader_accepted", None, user.email, None)
+    audit(db, user.id, "leader_accepted", "company", a.company_id, detail=f"{ini.ref_code} {user.email}")
+    db.commit()
+    return {"ok": True, "initiative_id": a.initiative_id, "ref_code": ini.ref_code,
+            "status": "active"}
+
+
+@router.post("/companies/{company_id}/initiatives/{iid}/rag")
+def set_initiative_rag(company_id: int, iid: int, body: RagIn,
+                       user: User = Depends(get_current_user), db=Depends(get_db)):
+    ini, role = _leader_or_admin(company_id, iid, user, db)
+    if body.rag not in ("green", "amber", "red"):
+        raise HTTPException(422, "rag must be green|amber|red")
+    old = ini.rag
+    ini.rag = body.rag; ini.rag_updated_at = datetime.utcnow(); ini.rag_updated_by = user.id
+    _ini_event(db, ini, user.id, "rag_changed", old, body.rag, body.note)
+    if body.rag == "red":
+        _notify_admin_alert(db, company_id, f"{ini.ref_code} RAG is RED",
+                            f"Initiative {ini.ref_code} — {ini.title} was set to RED"
+                            f"{' by its leader' if role == 'leader' else ''}."
+                            + (f" Note: {body.note}" if body.note else ""))
+    audit(db, user.id, "initiative_rag", "company", company_id, detail=f"{ini.ref_code} {old}->{body.rag}")
+    db.commit()
+    return _ini_out(ini)
+
+
+@router.post("/companies/{company_id}/initiatives/{iid}/leader-status")
+def leader_set_status(company_id: int, iid: int, body: LeaderStatusIn,
+                      user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Leader (or admin) advances the execution status. Rejection stays an admin
+    governance action (POST .../status); completion requires impact settlement."""
+    ini, role = _leader_or_admin(company_id, iid, user, db)
+    leader_allowed = {"accepted", "in_progress", "deferred", "completed"}
+    if body.status not in _STATUSES:
+        raise HTTPException(422, "invalid status")
+    if role == "leader" and body.status not in leader_allowed:
+        raise HTTPException(403, "Leaders cannot set this status")
+    if body.status == ini.status:
+        return _ini_out(ini)
+    old = ini.status
+    note = body.note
+    if body.status == "completed":
+        if body.actual_impact_amount is None and ini.actual_impact_amount is None:
+            raise HTTPException(422, "completing an initiative requires actual_impact_amount")
+        if body.actual_impact_amount is not None:
+            ini.actual_impact_amount = body.actual_impact_amount
+        ini.completed_at = datetime.utcnow()
+        note = f"actual impact {ini.actual_impact_amount}" + (f" · {body.note}" if body.note else "")
+    ini.status = body.status
+    rel = _reletter(db, ini)
+    _ini_event(db, ini, user.id, "status_changed", (rel[0] if rel else old),
+               (rel[1] if rel else body.status), f"{old}->{body.status}"
+               + (f" · {note}" if note else ""))
+    audit(db, user.id, "initiative_status", "company", company_id, detail=f"{ini.ref_code} {old}->{body.status}")
+    db.commit()
+    return _ini_out(ini)
+
+
+@router.get("/companies/{company_id}/initiatives/{iid}/csfs")
+def list_csfs(company_id: int, iid: int, member=Depends(require_company_member),
+              db=Depends(get_db)):
+    ini = db.get(Initiative, iid)
+    if not ini or ini.company_id != company_id:
+        raise HTTPException(404, "initiative not found")
+    csfs = (db.query(InitiativeCSF).filter_by(initiative_id=iid)
+              .order_by(InitiativeCSF.position, InitiativeCSF.id).all())
+    props = (db.query(CSFProposal).filter_by(initiative_id=iid, status="pending")
+               .order_by(CSFProposal.id).all())
+    return {"initiative_id": iid, "csfs": [_csf_out(x) for x in csfs],
+            "pending_text_proposals": [{"id": p.id, "csf_id": p.csf_id,
+                                        "proposed_text": p.proposed_text,
+                                        "proposed_by": p.proposed_by,
+                                        "created_at": p.created_at} for p in props]}
+
+
+@router.put("/companies/{company_id}/initiatives/{iid}/csfs")
+def put_csfs(company_id: int, iid: int, body: CSFPut,
+             member=Depends(require_company_admin),
+             user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Admin defines/edits CSF text (2-5). Reconciles by id: updates kept ones
+    (status preserved), adds new (status=holding), deletes omitted."""
+    ini = db.get(Initiative, iid)
+    if not ini or ini.company_id != company_id:
+        raise HTTPException(404, "initiative not found")
+    if not (2 <= len(body.csfs) <= 5):
+        raise HTTPException(422, "an initiative must have between 2 and 5 CSFs")
+    existing = {x.id: x for x in db.query(InitiativeCSF).filter_by(initiative_id=iid).all()}
+    keep = set()
+    for pos, item in enumerate(body.csfs):
+        text = (item.text or "").strip()
+        if not text:
+            raise HTTPException(422, "CSF text is required")
+        if item.id and item.id in existing:
+            x = existing[item.id]
+            x.text = text; x.position = pos
+            keep.add(item.id)
+        else:
+            db.add(InitiativeCSF(initiative_id=iid, text=text, position=pos,
+                                 status="holding", updated_by=user.id))
+    for cid, x in existing.items():
+        if cid not in keep:
+            db.delete(x)
+    audit(db, user.id, "csfs_updated", "company", company_id, detail=f"{ini.ref_code} ({len(body.csfs)})")
+    db.commit()
+    rows = (db.query(InitiativeCSF).filter_by(initiative_id=iid)
+              .order_by(InitiativeCSF.position, InitiativeCSF.id).all())
+    return {"initiative_id": iid, "csfs": [_csf_out(x) for x in rows]}
+
+
+@router.post("/companies/{company_id}/initiatives/{iid}/csfs/suggest")
+def suggest_csfs(company_id: int, iid: int, member=Depends(require_company_admin),
+                 db=Depends(get_db)):
+    """Haiku pre-draft: 3 suggested CSFs from the initiative + source context.
+    Graceful skip -> generic fallback."""
+    ini = db.get(Initiative, iid)
+    if not ini or ini.company_id != company_id:
+        raise HTTPException(404, "initiative not found")
+    res = _anthropic_json(
+        "You propose exactly 3 concise, measurable Critical Success Factors for a "
+        "business initiative. Return strict JSON {\"csfs\":[\"..\",\"..\",\"..\"]}.",
+        f"Initiative: {ini.title}\nDetail: {ini.description or '(none)'}", max_tokens=300)
+    csfs = res.get("csfs") if isinstance(res, dict) else None
+    if isinstance(csfs, list) and csfs:
+        sug = [str(x).strip()[:300] for x in csfs if str(x).strip()][:3]
+    else:
+        sug = [f"Clear owner and milestone plan for: {ini.title}"[:300],
+               "A measurable target with a defined completion date",
+               "Required resources and stakeholder alignment secured"]
+    return {"initiative_id": iid, "suggested_csfs": sug, "ai": bool(csfs)}
+
+
+@router.post("/companies/{company_id}/initiatives/{iid}/csfs/{cid}/status")
+def set_csf_status(company_id: int, iid: int, cid: int, body: CSFStatusIn,
+                   user: User = Depends(get_current_user), db=Depends(get_db)):
+    ini, role = _leader_or_admin(company_id, iid, user, db)
+    csf = db.get(InitiativeCSF, cid)
+    if not csf or csf.initiative_id != iid:
+        raise HTTPException(404, "CSF not found")
+    if body.status not in ("holding", "at_risk", "broken"):
+        raise HTTPException(422, "status must be holding|at_risk|broken")
+    csf.status = body.status; csf.updated_by = user.id; csf.updated_at = datetime.utcnow()
+    if body.status == "broken":
+        _notify_admin_alert(db, company_id, f"{ini.ref_code} CSF broken",
+                            f"A critical success factor on {ini.ref_code} — {ini.title} "
+                            f"was marked BROKEN: \"{csf.text[:120]}\".")
+    audit(db, user.id, "csf_status", "company", company_id, detail=f"{ini.ref_code} csf {cid} -> {body.status}")
+    db.commit()
+    return _csf_out(csf)
+
+
+@router.post("/companies/{company_id}/initiatives/{iid}/csfs/{cid}/propose-text", status_code=201)
+def propose_csf_text(company_id: int, iid: int, cid: int, body: CSFProposeIn,
+                     user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Leader (or admin) proposes new CSF text — never edits directly. Admin
+    approves/rejects."""
+    ini, role = _leader_or_admin(company_id, iid, user, db)
+    csf = db.get(InitiativeCSF, cid)
+    if not csf or csf.initiative_id != iid:
+        raise HTTPException(404, "CSF not found")
+    if not (body.text or "").strip():
+        raise HTTPException(422, "proposed text is required")
+    pr = CSFProposal(csf_id=cid, initiative_id=iid, proposed_text=body.text.strip(),
+                     proposed_by=user.id)
+    db.add(pr); db.flush()
+    _notify_admin_alert(db, company_id, f"{ini.ref_code} CSF text change proposed",
+                        f"A CSF text change was proposed on {ini.ref_code} — {ini.title}.")
+    audit(db, user.id, "csf_text_proposed", "company", company_id, detail=f"{ini.ref_code} csf {cid}")
+    db.commit()
+    return {"proposal_id": pr.id, "csf_id": cid, "status": "pending",
+            "proposed_text": pr.proposed_text}
+
+
+def _csf_proposal_or_404(db, company_id, ppid):
+    pr = db.get(CSFProposal, ppid)
+    ini = db.get(Initiative, pr.initiative_id) if pr else None
+    if not pr or not ini or ini.company_id != company_id:
+        raise HTTPException(404, "proposal not found")
+    if pr.status != "pending":
+        raise HTTPException(409, f"proposal already {pr.status}")
+    return pr, ini
+
+
+@router.post("/companies/{company_id}/csf-proposals/{ppid}/approve")
+def approve_csf_proposal(company_id: int, ppid: int, member=Depends(require_company_admin),
+                         user: User = Depends(get_current_user), db=Depends(get_db)):
+    pr, ini = _csf_proposal_or_404(db, company_id, ppid)
+    csf = db.get(InitiativeCSF, pr.csf_id)
+    if csf:
+        csf.text = pr.proposed_text; csf.updated_by = user.id; csf.updated_at = datetime.utcnow()
+    pr.status = "approved"; pr.resolved_by = user.id; pr.resolved_at = datetime.utcnow()
+    audit(db, user.id, "csf_text_approved", "company", company_id, detail=f"{ini.ref_code} csf {pr.csf_id}")
+    db.commit()
+    return {"ok": True, "proposal_id": ppid, "status": "approved",
+            "csf": _csf_out(csf) if csf else None}
+
+
+@router.post("/companies/{company_id}/csf-proposals/{ppid}/reject")
+def reject_csf_proposal(company_id: int, ppid: int, member=Depends(require_company_admin),
+                        user: User = Depends(get_current_user), db=Depends(get_db)):
+    pr, ini = _csf_proposal_or_404(db, company_id, ppid)
+    pr.status = "rejected"; pr.resolved_by = user.id; pr.resolved_at = datetime.utcnow()
+    audit(db, user.id, "csf_text_rejected", "company", company_id, detail=f"{ini.ref_code} csf {pr.csf_id}")
+    db.commit()
+    return {"ok": True, "proposal_id": ppid, "status": "rejected"}
 
 
 # ------------------------------------------- AXIOM Assessment Framework (7d-1)
