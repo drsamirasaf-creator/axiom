@@ -3162,6 +3162,73 @@ def _recommendations_by_item(db, company_id):
     return out
 
 
+@router.get("/companies/{company_id}/twin/gap")
+def twin_gap(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+    """Current vs optimized enterprise, composed from EXISTING optimizer/brief
+    outputs (no new math). Each waterfall bar is joined to its recommendation's
+    disposition via the fingerprint machinery. Defensive: any engine failure
+    degrades to has_data:false, never breaks."""
+    try:
+        ds = _active_company_dataset(db, company_id)
+        if not ds or not isinstance(ds.data, dict):
+            return {"has_data": False, "message": "No active dataset for this company."}
+        from .modules.intelligence import engines as intel
+        rep = intel.board_report(ds.data)
+        S = {s["id"]: s for s in rep.get("sections", [])}
+        di = S.get("diagnostic", {}); va = S.get("valuation", {})
+        bd = S.get("best_decision", {}); ac = S.get("actions", {}); ou = S.get("outlook", {})
+        kpi = {k["kpi"]: k.get("current") for k in di.get("kpi_strip", [])}
+        dcf = va.get("dcf", {}); recd = (bd.get("frontier") or {}).get("recommended", {})
+        cur_ev = dcf.get("enterprise_value")
+        rev, ebitda = kpi.get("Revenue"), kpi.get("EBITDA")
+        health = (di.get("health") or {}).get("index") or S.get("summary", {}).get("scorecard", {}).get("health_index")
+        current = {"ev": cur_ev, "health": health, "revenue": rev,
+                   "ebitda_margin": (round(ebitda / rev, 4) if (rev and ebitda is not None) else None),
+                   "fcf": kpi.get("FCFF"), "wacc": kpi.get("WACC") or dcf.get("wacc"),
+                   "leverage": kpi.get("Debt / Equity"), "roic": kpi.get("ROIC")}
+        # waterfall — each recommendation move joined to its disposition (fingerprints)
+        _, recs = _derive_recommendations(db, company_id)
+        disp = _dispositions(db, company_id)
+        waterfall, pos_sum = [], 0.0
+        for r in recs:
+            d = disp.get(r["fingerprint"]); ini = None
+            if d and d.status in ("adopted", "parked") and d.initiative_id:
+                io = db.get(Initiative, d.initiative_id)
+                if io:
+                    ini = {"ref": io.ref_code, "status": io.status, "rag": io.rag}
+            ev = r.get("expected_ev_impact")
+            if r["value_creating"] and ev:
+                pos_sum += ev
+            waterfall.append({"move": r["move"], "text": r["title"], "ev_contribution": ev,
+                              "fingerprint": r["fingerprint"],
+                              "disposition": (d.status if d else "none"), "initiative": ini})
+        opt_ev = round(cur_ev + pos_sum, 4) if cur_ev is not None else None
+        plan = ac.get("optimizer_plan") or []
+        optimized = {"ev": opt_ev, "health": None,
+                     "revenue": (plan[-1].get("revenue_target") if plan else None),
+                     "ebitda_margin": None, "fcf": None,
+                     "wacc": recd.get("wacc"), "leverage": recd.get("de"), "roic": None}
+        gaps = []
+        for m in ("ev", "revenue", "wacc", "leverage", "health", "ebitda_margin", "fcf", "roic"):
+            cv, ov = current.get(m), optimized.get(m)
+            if cv is not None and ov is not None:
+                gaps.append({"metric": m, "current": cv, "optimized": ov,
+                             "gap_abs": round(ov - cv, 4),
+                             "gap_pct": (round((ov - cv) / cv, 4) if cv else None)})
+        fan = (ou.get("simulation_baseline") or {}).get("fcff_fan") or []
+        years = [p["year"] for p in fan]
+        cur_path = [p.get("p50") for p in fan]
+        factor = (opt_ev / cur_ev) if (opt_ev and cur_ev) else 1.0
+        opt_path = [round(v * factor, 2) if v is not None else None for v in cur_path]
+        trajectory = {"metric": "fcff", "years": years,
+                      "current_path": cur_path, "optimized_path": opt_path}
+        return {"has_data": True, "company_id": company_id, "dataset_version": ds.version,
+                "current": current, "optimized": optimized, "gaps": gaps,
+                "waterfall": waterfall, "trajectory": trajectory}
+    except Exception:
+        return {"has_data": False, "message": "Gap analysis is temporarily unavailable."}
+
+
 # ====================================================================
 # 7f: report outputs (PPTX deck, issued-dated PDF) + share-by-link
 # ====================================================================
