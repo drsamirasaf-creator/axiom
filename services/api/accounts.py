@@ -5654,10 +5654,13 @@ def include_accounts(app, create_tables: bool = True):
     # Import prescience BEFORE create_all so its ax_prescience_* models are
     # registered on Base.metadata and get created in the same pass (Phase 7h).
     from .prescience import prescience_router
+    from .prescience_decision import decision_router, spawn_nightly   # Phase 7c-2
     if create_tables:
         Base.metadata.create_all(engine)
         _ensure_ax_columns(engine)
     for r in (auth_router, oauth_router, company_router, profile_router,
-              superadmin_router, stripe_router, prescience_router):
+              superadmin_router, stripe_router, prescience_router, decision_router):
         app.include_router(r)
+    if create_tables:
+        spawn_nightly()   # no-op unless AXIOM_DECISION_NIGHTLY is enabled
     return app
