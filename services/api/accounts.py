@@ -439,6 +439,7 @@ class ReportIssue(Base):
     report_type = Column(String(48), default="Board Report", nullable=False)
     format = Column(String(8), nullable=False)                # pdf | pptx
     deck_type = Column(String(16), nullable=True)             # comprehensive | executive (pptx)
+    builder_version = Column(String(32), nullable=True)       # cache key for showcase pre-gen
     dataset_version = Column(Integer, nullable=True)
     r2_key = Column(String(512), nullable=True)
     filename = Column(String(256), nullable=False)
@@ -3235,6 +3236,48 @@ def twin_gap(company_id: int, member=Depends(require_company_member), db=Depends
 _REPORT_CTYPE = {"pdf": "application/pdf",
                  "pptx": ("application/vnd.openxmlformats-officedocument"
                           ".presentationml.presentation")}
+# Bump when the deck/PDF builder changes so showcase artifacts regenerate.
+REPORT_BUILDER_VERSION = "7f-comprehensive-1"
+SHOWCASE_TENANT = "showcase"
+
+
+def _is_showcase_company(db, company_id):
+    """True only for the three built-in showcase companies (tenant='showcase') —
+    never a real customer company. Defensive: any lookup error -> False (treat as
+    a real, access-controlled company)."""
+    try:
+        ent = _enterprise(db, company_id)
+    except Exception:
+        return False
+    return bool(ent and getattr(ent, "tenant", None) == SHOWCASE_TENANT)
+
+
+def require_report_read(company_id: int, authorization: str = Header(None),
+                        db=Depends(get_db)):
+    """Read auth for report endpoints: the showcase demo companies are readable
+    by anyone (anonymous visitors + signed-in non-members alike); every real
+    company still requires active membership (mirrors require_company_member)."""
+    if _is_showcase_company(db, company_id):
+        return "showcase"
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "Missing bearer token")
+    try:
+        payload = read_token(authorization.split(" ", 1)[1].strip(), "access")
+    except pyjwt.PyJWTError:
+        raise HTTPException(401, "Invalid or expired token")
+    user = db.get(User, int(payload["sub"]))
+    if not user or user.status != "active":
+        raise HTTPException(401, "Account unavailable")
+    scope = payload.get("scope")
+    if scope and scope != f"company:{company_id}:view":
+        raise HTTPException(403, "This link grants access to a different company")
+    if not scope and user.platform_role in ("staff", "super"):
+        return "staff"
+    _gate_account(db, company_id)
+    m = _membership(db, user.id, company_id)
+    if not m or m.status != "active":
+        raise HTTPException(403, "No active access to this company")
+    return "member"
 
 
 def _report_extras(db, company_id):
@@ -3343,15 +3386,92 @@ def _generate_report(db, company_id, user, fmt, deck_type="comprehensive"):
         content = R.build_pdf(report, extras, meta)
     filename = R.report_filename(company_name, report_type, fmt, issued_at)
     key = _store_report_blob(company_id, filename, content, _REPORT_CTYPE[fmt])
+    uid = user.id if user else None                          # None = system pre-generation
     issue = ReportIssue(company_id=company_id, report_type=report_type, format=fmt,
                         deck_type=(deck_type if is_pptx else None),
+                        builder_version=REPORT_BUILDER_VERSION,
                         dataset_version=ds.version, r2_key=key, filename=filename,
-                        issued_by=user.id, issued_at=issued_at)
+                        issued_by=uid, issued_at=issued_at)
     db.add(issue); db.flush()
-    audit(db, user.id, "report_issued", "company", company_id,
+    audit(db, uid, "report_issued", "company", company_id,
           detail=f"{fmt}/{deck_type if is_pptx else '-'} v{ds.version} issue={issue.id}")
     db.commit(); db.refresh(issue)
     return issue
+
+
+# ------------------------------------------- showcase report pre-generation
+_SHOWCASE_SLOTS = (("pptx", "comprehensive"), ("pptx", "executive"), ("pdf", None))
+
+
+def _showcase_report_is_current(db, company_id, fmt, deck_type, ds_version):
+    q = db.query(ReportIssue).filter_by(company_id=company_id, format=fmt,
+                                        builder_version=REPORT_BUILDER_VERSION,
+                                        dataset_version=ds_version)
+    if fmt == "pptx":
+        q = q.filter_by(deck_type=deck_type)
+    return q.first() is not None
+
+
+def _delete_showcase_issues(db, company_id, fmt, deck_type):
+    q = db.query(ReportIssue).filter_by(company_id=company_id, format=fmt)
+    if fmt == "pptx":
+        q = q.filter_by(deck_type=deck_type)
+    client, bucket = _r2_client()
+    for iss in q.all():
+        if client is not None and iss.r2_key:
+            try:
+                client.delete_object(Bucket=bucket, Key=iss.r2_key)
+            except Exception:
+                pass
+        db.delete(iss)
+    db.commit()
+
+
+def _backfill_showcase_reports():
+    """Idempotent pre-generation of the comprehensive deck, executive deck, and
+    PDF for each showcase company — keyed on dataset_version + builder version so
+    /reports/latest always has fresh artifacts to serve anonymously (the demo
+    never triggers on-demand generation). Runs in a background thread at boot;
+    a no-op fast path when everything is already current."""
+    if os.environ.get("AXIOM_SEED_SHOWCASE", "true").strip().lower() in ("0", "false", "no", "off"):
+        return
+    client, _bucket = _r2_client()
+    if client is None:
+        return                                   # storage not configured — nothing to serve
+    from .modules.enterprise_state.models import Enterprise
+    db = SessionLocal()
+    try:
+        ents = db.query(Enterprise).filter_by(tenant=SHOWCASE_TENANT).all()
+        for ent in ents:
+            ds = _active_company_dataset(db, ent.id)
+            if not ds or not isinstance(ds.data, dict):
+                continue
+            for fmt, dt in _SHOWCASE_SLOTS:
+                if _showcase_report_is_current(db, ent.id, fmt, dt, ds.version):
+                    continue
+                try:
+                    _delete_showcase_issues(db, ent.id, fmt, dt)   # drop stale version + R2 blob
+                    _generate_report(db, ent.id, None, fmt, deck_type=(dt or "comprehensive"))
+                except Exception:
+                    import logging
+                    logging.getLogger("axiom.reports").exception(
+                        "showcase pre-gen failed for company=%s %s/%s", ent.id, fmt, dt)
+                    db.rollback()
+    finally:
+        db.close()
+
+
+def _spawn_showcase_reports():
+    """Kick the showcase pre-generation off the request path (non-blocking boot)."""
+    import threading
+
+    def _run():
+        try:
+            _backfill_showcase_reports()
+        except Exception:
+            import logging
+            logging.getLogger("axiom.reports").exception("showcase report backfill crashed")
+    threading.Thread(target=_run, name="showcase-reports", daemon=True).start()
 
 
 class PresentationIn(BaseModel):
@@ -3386,9 +3506,10 @@ def list_report_issues(company_id: int, member=Depends(require_company_member), 
 
 
 @router.get("/companies/{company_id}/reports/latest")
-def reports_latest(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+def reports_latest(company_id: int, _=Depends(require_report_read), db=Depends(get_db)):
     """Action-bar data: the newest issued PDF/PPTX and whether a fresh one can be
-    generated (there is an active dataset)."""
+    generated. Readable without membership for the showcase demo companies (their
+    artifacts are pre-generated); every real company still requires membership."""
     def _out(i):
         return ({"issue_id": i.id, "issued_at": i.issued_at, "deck_type": i.deck_type,
                  "dataset_version": i.dataset_version, "filename": i.filename} if i else None)
@@ -3406,7 +3527,7 @@ def reports_latest(company_id: int, member=Depends(require_company_member), db=D
 
 @router.get("/companies/{company_id}/reports/{issue_id}/download-url")
 def report_download_url(company_id: int, issue_id: int,
-                        member=Depends(require_company_member), db=Depends(get_db)):
+                        _=Depends(require_report_read), db=Depends(get_db)):
     issue = db.get(ReportIssue, issue_id)
     if not issue or issue.company_id != company_id:
         raise HTTPException(404, "report not found")
@@ -5101,6 +5222,7 @@ def _ensure_ax_columns(engine):
     _add("enterprises", "logo_content_type", "logo_content_type VARCHAR(64)")
     # 7f revision: deck variant on the issue registry
     _add("ax_report_issues", "deck_type", "deck_type VARCHAR(16)")
+    _add("ax_report_issues", "builder_version", "builder_version VARCHAR(32)")
     # 7g-C: thread categories + anchors (+ mechanical backfill from type/linked_ref)
     _add("ax_threads", "category", "category VARCHAR(16)")
     _add("ax_threads", "anchor_ref", "anchor_ref VARCHAR(64)")

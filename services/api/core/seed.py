@@ -249,6 +249,12 @@ def seed_showcase():
                     import logging
                     logging.getLogger("axiom.seed").exception(
                         "%s failed", _fn.__name__)
+            try:                                    # pre-generate showcase reports off-thread
+                from ..accounts import _spawn_showcase_reports
+                _spawn_showcase_reports()
+            except Exception:
+                import logging
+                logging.getLogger("axiom.seed").exception("showcase report spawn failed")
             return                                  # already seeded
 
         def store(name, data, source, parent_id=None):
