@@ -3854,6 +3854,9 @@ def assessment_summary(company_id: int, member=Depends(require_company_member),
               "closed_at": c.closed_at, "cei": (c.snapshot or {}).get("cei")}
              for c in cycles if c.snapshot]
     rags = _summary_rags(current, latest.snapshot if latest else None)
+    actioned = _actioned_item_codes(db, company_id)     # 7g-D: "no action yet" flags
+    for code, entry in rags["item_rag"].items():
+        entry["has_action"] = code in actioned
     return {"revision": fw.revision,
             "current_cycle_id": latest.id if latest else None,
             "current_cycle_closed": bool(latest and latest.closed_at),
@@ -3865,6 +3868,75 @@ def assessment_summary(company_id: int, member=Depends(require_company_member),
             "item_rag": rags["item_rag"], "l1_rag": rags["l1_rag"],
             "sentiment_available": rags["sentiment_available"],
             "trend": trend, "cadence": cadence_block}
+
+
+def _actioned_item_codes(db, company_id):
+    """Item codes that have an action against them — a linked (non-rejected)
+    initiative or an adopted recommendation (7g-D)."""
+    codes = set()
+    for i in db.query(Initiative).filter_by(company_id=company_id).all():
+        if i.linked_item_code and i.status != "rejected":
+            codes.add(i.linked_item_code)
+    for code, recs in _recommendations_by_item(db, company_id).items():
+        if any(r.get("disposition") == "adopted" for r in recs):
+            codes.add(code)
+    return codes
+
+
+@router.get("/companies/{company_id}/assessment/items/{item_code}/drill")
+def assessment_item_drill(company_id: int, item_code: str,
+                          member=Depends(require_company_member), db=Depends(get_db)):
+    """The full drill-down for one L2 item on the latest CLOSED cycle:
+    'who scored it, what was asked, why, what now'. Anonymity-safe — only
+    aggregates (a score distribution, counts) are returned, never per-person."""
+    from .assessment_engine import score_rag
+    closed = (db.query(AssessmentCycle).filter_by(company_id=company_id)
+                .filter(AssessmentCycle.closed_at.isnot(None))
+                .order_by(AssessmentCycle.closed_at).all())
+    if not closed:
+        return {"has_data": False, "item_code": item_code,
+                "message": "No closed assessment cycle yet."}
+    cyc = closed[-1]; snap = cyc.snapshot or {}
+    item = (db.query(AssessmentItem)
+              .filter_by(framework_id=cyc.framework_id, code=item_code).first())
+    if not item:
+        return {"has_data": False, "item_code": item_code,
+                "message": "Item not found in the latest cycle's framework."}
+    resp = (db.query(AssessmentResponse)
+              .filter_by(cycle_id=cyc.id, item_id=item.id).all())
+    scores = [r.score for r in resp]
+    distribution = [{"score": s, "count": scores.count(s)} for s in range(1, 11)]
+    respondents_n = len({r.participant_ref for r in resp})
+    comments_n = sum(1 for r in resp if r.comment and r.comment.strip())
+    d = (snap.get("item_dispersion") or {}).get(item_code) or {}
+    mean = d.get("mean")
+    sent = (snap.get("item_sentiment") or {}).get(item_code) or {}
+    trend = [{"cycle_id": c.id, "closed_at": c.closed_at,
+              "mean": ((c.snapshot or {}).get("item_dispersion") or {}).get(item_code, {}).get("mean")}
+             for c in closed]
+    linked = [{"ref": i.ref_code, "status": i.status, "rag": i.rag}
+              for i in db.query(Initiative)
+                .filter_by(company_id=company_id, linked_item_code=item_code).all()
+              if i.status != "rejected"]
+    recs = _recommendations_by_item(db, company_id).get(item_code, [])
+    children = (db.query(AssessmentItem)
+                  .filter_by(framework_id=cyc.framework_id, parent_code=item_code).all())
+    l3 = []
+    for ch in children:
+        cd = (snap.get("item_dispersion") or {}).get(ch.code)
+        if cd and cd.get("mean") is not None:
+            l3.append({"code": ch.code, "title": ch.title, "mean": cd["mean"],
+                       "score_rag": score_rag(cd["mean"]), "respondents_n": cd.get("n")})
+    return {"has_data": True, "item_code": item_code, "title": item.title,
+            "definition": item.definition, "level": item.level,
+            "orientation": item.orientation, "cycle_id": cyc.id, "closed_at": cyc.closed_at,
+            "anonymity_mode": cyc.anonymity_mode, "respondents_n": respondents_n,
+            "score_mean": mean, "score_distribution": distribution,
+            "dispersion": d.get("std"), "score_rag": score_rag(mean),
+            "text_sentiment": sent.get("sentiment"), "theme": sent.get("theme"),
+            "divergence": bool((snap.get("item_divergence") or {}).get(item_code)),
+            "comments_n": comments_n, "trend": trend,
+            "linked_initiatives": linked, "recommendations": recs, "l3_children": l3}
 
 
 @router.get("/companies/{company_id}/assessment/swot")
