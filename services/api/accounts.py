@@ -1297,6 +1297,19 @@ def my_companies(user: User = Depends(get_current_user), db=Depends(get_db)):
             "companies": companies, "can_create": can_create}
 
 
+@router.get("/access/showcase-companies")
+def showcase_companies(db=Depends(get_db)):
+    """Anonymous source of truth for the demo companies — the frontend derives
+    their ids from here instead of hardcoding. Exactly the tenant='showcase'
+    enterprises (the flag, never fixed ids), ordered by id, each with a
+    short-lived presigned logo URL."""
+    from .modules.enterprise_state.models import Enterprise
+    rows = (db.query(Enterprise).filter_by(tenant=SHOWCASE_TENANT)
+              .order_by(Enterprise.id).all())
+    return {"companies": [{"company_id": e.id, "name": e.name,
+                           "logo_url": _presign_logo(e)} for e in rows]}
+
+
 # ----------------------------------------------------- viewer invites (7a-3)
 class InviteIn(BaseModel):
     name: str = ""
