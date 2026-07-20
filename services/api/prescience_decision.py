@@ -50,6 +50,9 @@ CHEAP_PATHS = _cfg_int("AXIOM_DECISION_CHEAP_PATHS", 100)
 FULL_PATHS = _cfg_int("AXIOM_DECISION_FULL_PATHS", 2000)
 LAMBDA = _cfg_float("AXIOM_DECISION_LAMBDA", 0.5)
 NIGHTLY_ENABLED = os.environ.get("AXIOM_DECISION_NIGHTLY", "").strip().lower() in ("1", "true", "yes", "on")
+# Phase 7i: the Sentinel (viability + radar) family folds into THIS one scheduler /
+# one single-flight lock. Env-gated separately, default off until cost is reported.
+SENTINEL_NIGHTLY = os.environ.get("AXIOM_SENTINEL_NIGHTLY", "").strip().lower() in ("1", "true", "yes", "on")
 NIGHTLY_PERIOD_S = _cfg_int("AXIOM_DECISION_NIGHTLY_PERIOD", 86400)
 
 ATOM_TYPES = ("revenue", "pricing", "cost", "working_capital", "capex",
@@ -770,10 +773,19 @@ def recompute_all_frontiers(only_stale=True):
                 moves = [_move_to_dict(m) for m in db.query(StrategicMove)
                          .filter_by(company_id=cid, enabled=True).all()]
                 sig = library_signature(moves)
-                if only_stale and db.query(DecisionFrontier).filter_by(
-                        company_id=cid, dataset_version=ds.version, library_signature=sig).first():
+                frontier_current = bool(db.query(DecisionFrontier).filter_by(
+                    company_id=cid, dataset_version=ds.version, library_signature=sig).first())
+                viab_current = True
+                if SENTINEL_NIGHTLY:                       # one lock, one sweep — 7i folds in here
+                    from . import sentinel
+                    viab_current = sentinel.viability_current(db, cid, ds.version, sig)
+                if only_stale and frontier_current and viab_current:
                     summary["skipped"] += 1; continue
-                build_frontier(db, cid)
+                if not frontier_current:
+                    build_frontier(db, cid)               # sentinel needs a frontier for the radar headline
+                if SENTINEL_NIGHTLY and not viab_current:
+                    from . import sentinel
+                    sentinel.sentinel_recompute(db, cid, do_frontier=False)
                 summary["recomputed"] += 1
             except Exception:
                 summary["errors"] += 1
@@ -793,8 +805,24 @@ def _nightly_loop():
 
 
 def spawn_nightly():
-    if NIGHTLY_ENABLED:
-        threading.Thread(target=_nightly_loop, name="decision-nightly", daemon=True).start()
+    # one daemon for BOTH families (decision frontier + 7i sentinel)
+    if NIGHTLY_ENABLED or SENTINEL_NIGHTLY:
+        threading.Thread(target=_nightly_loop, name="prescience-nightly", daemon=True).start()
+
+
+def _spawn_recompute(company_id):
+    """On-upload trigger: recompute the affected company's frontier + viability in
+    the background (frontier is ~10s, so never inline). Always runs, env-independent."""
+    def _run():
+        db = A.SessionLocal()
+        try:
+            from . import sentinel
+            sentinel.sentinel_recompute(db, company_id, do_frontier=True)
+        except Exception:
+            pass
+        finally:
+            db.close()
+    threading.Thread(target=_run, name=f"upload-recompute-{company_id}", daemon=True).start()
 
 
 @decision_router.post("/internal/frontier/recompute")

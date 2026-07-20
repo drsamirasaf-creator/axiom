@@ -1701,6 +1701,11 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
           detail=f"dataset={ds.id} v{version} {frequency}")
     _pilot_touch(db, company_id, "Data Loaded")   # FP-1 auto lifecycle
     db.commit()
+    try:                                           # 7i: recompute frontier + viability (background)
+        from .prescience_decision import _spawn_recompute
+        _spawn_recompute(company_id)
+    except Exception:
+        pass
     return {"dataset_id": ds.id, "version": version, "frequency": frequency,
             "periods_detected": data["periods"], "warnings": warnings,
             "active": True}
@@ -5711,11 +5716,13 @@ def include_accounts(app, create_tables: bool = True):
     # registered on Base.metadata and get created in the same pass (Phase 7h).
     from .prescience import prescience_router
     from .prescience_decision import decision_router, spawn_nightly   # Phase 7c-2
+    from .sentinel import sentinel_router                             # Phase 7i
     if create_tables:
         Base.metadata.create_all(engine)
         _ensure_ax_columns(engine)
     for r in (auth_router, oauth_router, company_router, profile_router,
-              superadmin_router, stripe_router, prescience_router, decision_router):
+              superadmin_router, stripe_router, prescience_router, decision_router,
+              sentinel_router):
         app.include_router(r)
     if create_tables:
         spawn_nightly()   # no-op unless AXIOM_DECISION_NIGHTLY is enabled
