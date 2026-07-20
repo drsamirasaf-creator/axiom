@@ -5319,10 +5319,13 @@ def _ensure_ax_columns(engine):
 
 
 def include_accounts(app, create_tables: bool = True):
+    # Import prescience BEFORE create_all so its ax_prescience_* models are
+    # registered on Base.metadata and get created in the same pass (Phase 7h).
+    from .prescience import prescience_router
     if create_tables:
         Base.metadata.create_all(engine)
         _ensure_ax_columns(engine)
     for r in (auth_router, oauth_router, company_router, profile_router,
-              superadmin_router, stripe_router):
+              superadmin_router, stripe_router, prescience_router):
         app.include_router(r)
     return app
