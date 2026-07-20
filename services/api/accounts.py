@@ -436,6 +436,7 @@ class ReportIssue(Base):
     company_id = Column(Integer, index=True, nullable=False)
     report_type = Column(String(48), default="Board Report", nullable=False)
     format = Column(String(8), nullable=False)                # pdf | pptx
+    deck_type = Column(String(16), nullable=True)             # comprehensive | executive (pptx)
     dataset_version = Column(Integer, nullable=True)
     r2_key = Column(String(512), nullable=True)
     filename = Column(String(256), nullable=False)
@@ -3089,17 +3090,16 @@ _REPORT_CTYPE = {"pdf": "application/pdf",
 
 
 def _report_extras(db, company_id):
-    """Company-scoped context the deck/PDF overlay on the engine payload:
-    CEI, SWOT, recommendations-with-dispositions, initiatives board."""
+    """Company-scoped context the deck/PDF overlay on the engine payload: CEI
+    (full assessment summary), SWOT, recommendations-with-dispositions,
+    initiatives board, CSF health, discussion activity."""
     cei = None
-    fw = _assess_current_framework(db, company_id)
-    if fw:
-        cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
-                    .order_by(AssessmentCycle.opened_at).all())
-        if cycles:
-            cc = _cycle_cei(db, cycles[-1])
-            if cc.get("cei") is not None:
-                cei = {"cei": cc["cei"], "l1_subscores": cc.get("l1_subscores", [])}
+    try:
+        summ = assessment_summary(company_id, member=None, db=db)
+        if summ.get("cei") is not None:
+            cei = summ
+    except Exception:
+        cei = None
     try:
         swot = assessment_swot(company_id, member=None, db=db)
     except Exception:
@@ -3110,9 +3110,24 @@ def _report_extras(db, company_id):
                 if r["value_creating"] or _decided_with_initiative(disp, r["fingerprint"])]
     inis = (db.query(Initiative).filter_by(company_id=company_id).all())
     initiatives = [{"ref_code": i.ref_code, "current_priority": i.current_priority,
-                    "rag": i.rag, "owner_name": i.owner_name, "status": i.status}
+                    "rag": i.rag, "owner_name": i.owner_name, "status": i.status,
+                    "expected_impact_amount": i.expected_impact_amount,
+                    "actual_impact_amount": i.actual_impact_amount}
                    for i in inis if i.status != "rejected"]
-    return {"cei": cei, "swot": swot, "recommendations": rec_view, "initiatives": initiatives}
+    ini_ids = [i.id for i in inis]
+    csf_health = {"holding": 0, "at_risk": 0, "broken": 0}
+    if ini_ids:
+        for x in db.query(InitiativeCSF).filter(InitiativeCSF.initiative_id.in_(ini_ids)).all():
+            csf_health[x.status] = csf_health.get(x.status, 0) + 1
+    threads = db.query(Thread).filter_by(company_id=company_id).all()
+    tids = {t.id for t in threads}
+    posts = (db.query(ThreadPost).filter(ThreadPost.thread_id.in_(tids)).count() if tids else 0)
+    pend = [p for p in db.query(ThreadPost).filter(ThreadPost.proposal_status == "flagged").all()
+            if p.thread_id in tids]
+    discussion = {"threads": len(threads), "posts": posts, "pending_proposals": len(pend),
+                  "proposal_titles": [(p.suggested_title or (p.body or "")[:40]) for p in pend[:8]]}
+    return {"cei": cei, "swot": swot, "recommendations": rec_view, "initiatives": initiatives,
+            "csf_health": csf_health, "discussion": discussion}
 
 
 def _store_report_blob(company_id, filename, content, content_type):
@@ -3141,11 +3156,12 @@ def _presign_report(key, filename, content_type, expires=300):
 
 def _issue_out(issue, url=None):
     return {"issue_id": issue.id, "report_type": issue.report_type, "format": issue.format,
-            "dataset_version": issue.dataset_version, "filename": issue.filename,
-            "issued_by": issue.issued_by, "issued_at": issue.issued_at, "download_url": url}
+            "deck_type": issue.deck_type, "dataset_version": issue.dataset_version,
+            "filename": issue.filename, "issued_by": issue.issued_by,
+            "issued_at": issue.issued_at, "download_url": url}
 
 
-def _generate_report(db, company_id, user, fmt, report_type="Board Report"):
+def _generate_report(db, company_id, user, fmt, deck_type="comprehensive"):
     ds = _active_company_dataset(db, company_id)
     if not ds or not isinstance(ds.data, dict):
         raise HTTPException(409, "No active dataset for this company — upload data first.")
@@ -3153,6 +3169,16 @@ def _generate_report(db, company_id, user, fmt, report_type="Board Report"):
     from .modules.intelligence import engines as intel
     report = intel.board_report(ds.data)
     extras = _report_extras(db, company_id)
+    try:                                                     # benchmark KPIs for the comprehensive deck
+        sector = (ds.data.get("company") or {}).get("sector")
+        if sector:
+            from .modules.benchmarks import engines as _bmk
+            extras["benchmark_kpis"] = _bmk.compare(ds.data, sector).get("kpis", [])
+    except Exception:
+        extras["benchmark_kpis"] = []
+    is_pptx = (fmt == "pptx")
+    report_type = ("Comprehensive Board Presentation" if (is_pptx and deck_type == "comprehensive")
+                   else "Executive Summary" if is_pptx else "Board Report")
     issued_at = datetime.utcnow()
     company_name = _company_name(db, company_id)
     try:
@@ -3161,24 +3187,37 @@ def _generate_report(db, company_id, user, fmt, report_type="Board Report"):
         logo = None                                          # logo is optional — never block a report
     meta = {"company_name": company_name, "report_type": report_type,
             "issued_at": issued_at, "dataset_version": ds.version, "logo": logo}
-    content = (R.build_pptx(report, extras, meta) if fmt == "pptx"
-               else R.build_pdf(report, extras, meta))
+    if is_pptx and deck_type == "comprehensive":
+        content = R.build_pptx_comprehensive(report, extras, meta, ds.data)
+    elif is_pptx:
+        content = R.build_pptx(report, extras, meta)
+    else:
+        content = R.build_pdf(report, extras, meta)
     filename = R.report_filename(company_name, report_type, fmt, issued_at)
     key = _store_report_blob(company_id, filename, content, _REPORT_CTYPE[fmt])
     issue = ReportIssue(company_id=company_id, report_type=report_type, format=fmt,
+                        deck_type=(deck_type if is_pptx else None),
                         dataset_version=ds.version, r2_key=key, filename=filename,
                         issued_by=user.id, issued_at=issued_at)
     db.add(issue); db.flush()
     audit(db, user.id, "report_issued", "company", company_id,
-          detail=f"{fmt} v{ds.version} issue={issue.id}")
+          detail=f"{fmt}/{deck_type if is_pptx else '-'} v{ds.version} issue={issue.id}")
     db.commit(); db.refresh(issue)
     return issue
 
 
+class PresentationIn(BaseModel):
+    deck_type: str = "comprehensive"        # comprehensive | executive
+
+
 @router.post("/companies/{company_id}/reports/presentation", status_code=201)
-def generate_presentation(company_id: int, member=Depends(require_company_admin),
+def generate_presentation(company_id: int, body: PresentationIn = PresentationIn(),
+                          member=Depends(require_company_admin),
                           user: User = Depends(get_current_user), db=Depends(get_db)):
-    issue = _generate_report(db, company_id, user, "pptx")
+    """Generate a board deck. deck_type 'comprehensive' (default, ~55-75 slides
+    mirroring the webapp nav) or 'executive' (the condensed deck). 30-90s."""
+    dt = body.deck_type if body.deck_type in ("comprehensive", "executive") else "comprehensive"
+    issue = _generate_report(db, company_id, user, "pptx", deck_type=dt)
     url = _presign_report(issue.r2_key, issue.filename, _REPORT_CTYPE["pptx"])
     return _issue_out(issue, url)
 
@@ -3202,13 +3241,18 @@ def list_report_issues(company_id: int, member=Depends(require_company_member), 
 def reports_latest(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
     """Action-bar data: the newest issued PDF/PPTX and whether a fresh one can be
     generated (there is an active dataset)."""
-    def latest(fmt):
-        i = (db.query(ReportIssue).filter_by(company_id=company_id, format=fmt)
-               .order_by(ReportIssue.issued_at.desc()).first())
-        return ({"issue_id": i.id, "issued_at": i.issued_at,
+    def _out(i):
+        return ({"issue_id": i.id, "issued_at": i.issued_at, "deck_type": i.deck_type,
                  "dataset_version": i.dataset_version, "filename": i.filename} if i else None)
+
+    def latest(**flt):
+        return _out(db.query(ReportIssue).filter_by(company_id=company_id, **flt)
+                      .order_by(ReportIssue.issued_at.desc()).first())
     ds = _active_company_dataset(db, company_id)
-    return {"company_id": company_id, "pdf": latest("pdf"), "pptx": latest("pptx"),
+    return {"company_id": company_id,
+            "pdf": latest(format="pdf"),
+            "pptx": {"comprehensive": latest(format="pptx", deck_type="comprehensive"),
+                     "executive": latest(format="pptx", deck_type="executive")},
             "can_generate": ds is not None}
 
 
@@ -4835,6 +4879,8 @@ def _ensure_ax_columns(engine):
     # 7f rider: client company logo on the enterprise
     _add("enterprises", "logo_r2_key", "logo_r2_key VARCHAR(512)")
     _add("enterprises", "logo_content_type", "logo_content_type VARCHAR(64)")
+    # 7f revision: deck variant on the issue registry
+    _add("ax_report_issues", "deck_type", "deck_type VARCHAR(16)")
 
     # Backfill orientation on existing framework revisions by item code (v2).
     try:
