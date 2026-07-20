@@ -49,6 +49,29 @@ app.add_middleware(CORSMiddleware, allow_origins=allowed_origins(),
                    allow_methods=["*"],
                    allow_headers=["Authorization", "Content-Type", "X-AXIOM-Tenant"])
 
+
+# Unhandled 500s are produced by Starlette's ServerErrorMiddleware OUTSIDE the
+# CORS middleware, so they ship without an Access-Control-Allow-Origin header and
+# the browser surfaces them as an opaque "Failed to fetch" (CORS error) instead of
+# a readable 500. Re-attach CORS headers here (echoing the request Origin only when
+# it is in the allowed list — never a blanket "*" when the list is locked down) so
+# every future server error presents honestly. Handled 4xx already carry CORS via
+# the middleware; this covers the 5xx path only.
+import logging
+from starlette.responses import JSONResponse
+
+
+@app.exception_handler(Exception)
+async def _cors_safe_500(request, exc):
+    logging.exception("unhandled error on %s %s", request.method, request.url.path)
+    resp = JSONResponse({"detail": "Internal Server Error"}, status_code=500)
+    origin = request.headers.get("origin")
+    allowed = allowed_origins()
+    if origin and (origin in allowed or "*" in allowed):
+        resp.headers["Access-Control-Allow-Origin"] = "*" if "*" in allowed else origin
+        resp.headers["Vary"] = "Origin"
+    return resp
+
 @app.get("/health", tags=["platform"])
 def health():
     return {"status": "ok", "service": "axiom-api", "phase": 18}

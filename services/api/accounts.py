@@ -1382,7 +1382,7 @@ def my_companies(user: User = Depends(get_current_user), db=Depends(get_db)):
             "created_at": a.created_at,
             "viewer_count": viewer_count,
             "status": account.status if account else "none"})
-    slots_used = _slots_used(db, account.id)
+    slots_used = _slots_used(db, account.id) if account else 0
     can_create = bool(account and account.status == "active" and slots_used < slots_total)
     return {"slots_total": slots_total, "slots_used": slots_used,
             "companies": companies, "can_create": can_create}
