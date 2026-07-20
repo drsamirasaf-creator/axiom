@@ -1461,8 +1461,12 @@ def resolve_cid(cid: str, user: User = Depends(get_current_user), db=Depends(get
 # ------------------------------------------------- data ingestion (7a-2)
 @router.get("/companies/{company_id}/data-template")
 def data_template(company_id: int, frequency: str = "annual",
-                  member=Depends(require_company_member), db=Depends(get_db)):
-    """Generate the themed, pre-filled Excel input template for this company."""
+                  authorization: str = Header(None), db=Depends(get_db)):
+    """Generate the themed, pre-filled Excel input template for this company.
+    Readable without membership for the showcase demo companies (so the demo's
+    'Download sample template' works for anonymous + non-member visitors); every
+    real company still requires active membership."""
+    require_report_read(company_id, authorization, db)   # showcase -> allowed; real -> member
     from .modules.enterprise_state.models import Enterprise
     from .modules.financials import ingest
     ent = db.get(Enterprise, company_id)
