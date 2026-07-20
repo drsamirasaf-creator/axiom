@@ -186,6 +186,15 @@ def read_tenant(authorization: str | None = Header(default=None),
     invalid token is still a 401 (never a silent downgrade)."""
     user, _ = _session_user(db, authorization)
     if user:
+        # Signed-in users are scoped to their OWN private tenant — EXCEPT an
+        # explicit 'showcase' request, which reads the public read-only showcase
+        # (never a real company's tenant, so no isolation is weakened). 'demo' is
+        # deliberately NOT honored here: the frontend sends X-AXIOM-Tenant: demo
+        # on every /api/v1 call, so honoring demo would route own-company reads to
+        # the showcase. The Sample Workspace sends X-AXIOM-Tenant: showcase
+        # explicitly. Any other tenant string is ignored -> isolation preserved.
+        if (x_axiom_tenant or "").strip()[:64] == SHOWCASE_TENANT:
+            return SHOWCASE_TENANT
         return user.tenant
     if authorization:
         raise HTTPException(status_code=401,
