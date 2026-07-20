@@ -20,6 +20,7 @@ import os
 import copy
 import json
 import hashlib
+import logging
 import threading
 import time as _time
 from datetime import datetime, timedelta, timezone
@@ -54,6 +55,7 @@ NIGHTLY_ENABLED = os.environ.get("AXIOM_DECISION_NIGHTLY", "").strip().lower() i
 # one single-flight lock. Env-gated separately, default off until cost is reported.
 SENTINEL_NIGHTLY = os.environ.get("AXIOM_SENTINEL_NIGHTLY", "").strip().lower() in ("1", "true", "yes", "on")
 NIGHTLY_PERIOD_S = _cfg_int("AXIOM_DECISION_NIGHTLY_PERIOD", 86400)
+_log = logging.getLogger("axiom.prescience.nightly")
 
 ATOM_TYPES = ("revenue", "pricing", "cost", "working_capital", "capex",
               "refinancing", "capital_structure", "entity")
@@ -757,9 +759,12 @@ def recompute_all_frontiers(only_stale=True):
     """Sweep every company; skip when (dataset_version, library signature) unchanged."""
     from .modules.enterprise_state.models import Enterprise
     db = A.SessionLocal()
-    summary = {"considered": 0, "recomputed": 0, "skipped": 0, "errors": 0}
+    t0 = _time.monotonic()
+    summary = {"considered": 0, "recomputed": 0, "skipped": 0, "errors": 0,
+               "frontiers_built": 0, "viability_recomputed": 0}
     if not _acquire_nightly_lock(db):
         db.close()
+        _log.info("nightly sweep skipped: another replica holds the lock")
         return {"skipped_reason": "another replica holds the nightly lock"}
     try:
         cids = [e.id for e in db.query(Enterprise).all()]
@@ -783,24 +788,28 @@ def recompute_all_frontiers(only_stale=True):
                     summary["skipped"] += 1; continue
                 if not frontier_current:
                     build_frontier(db, cid)               # sentinel needs a frontier for the radar headline
+                    summary["frontiers_built"] += 1
                 if SENTINEL_NIGHTLY and not viab_current:
                     from . import sentinel
                     sentinel.sentinel_recompute(db, cid, do_frontier=False)
+                    summary["viability_recomputed"] += 1
                 summary["recomputed"] += 1
             except Exception:
                 summary["errors"] += 1
     finally:
         _release_nightly_lock(db)
         db.close()
+    summary["wall_s"] = round(_time.monotonic() - t0, 2)
     return summary
 
 
 def _nightly_loop():
     while True:
         try:
-            recompute_all_frontiers(only_stale=True)
+            s = recompute_all_frontiers(only_stale=True)
+            _log.info("nightly sweep done: %s", s)
         except Exception:
-            pass
+            _log.exception("nightly sweep failed")
         _time.sleep(NIGHTLY_PERIOD_S)
 
 
