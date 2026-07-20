@@ -1399,12 +1399,28 @@ def my_companies(user: User = Depends(get_current_user), db=Depends(get_db)):
             "companies": companies, "can_create": can_create}
 
 
+def _summary_access(company_id: int, authorization: str = Header(None),
+                    db=Depends(get_db)):
+    """Access for the read-only company summary. Authenticated callers go through
+    the normal require_company_member gate (member role, scoped-viewer confinement,
+    operator bypass) — so the existing matrix is untouched. Additionally, showcase
+    companies are readable ANONYMOUSLY (role None), mirroring require_report_read;
+    every non-showcase company still requires auth exactly as before."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        if _is_showcase_company(db, company_id):
+            return None
+        raise HTTPException(401, "Missing bearer token")
+    user = get_current_user(authorization, db)               # 401 on invalid token
+    return require_company_member(company_id, user, db).role  # 403 on non-member
+
+
 @router.get("/companies/{company_id}")
-def company_summary(company_id: int, member=Depends(require_company_member),
+def company_summary(company_id: int, role: str | None = Depends(_summary_access),
                     db=Depends(get_db)):
     """Company header/summary for the data-input default tab. Read-only — any
-    active member INCLUDING a magic-link scoped viewer (a pilot CFO) may read it,
-    plus platform operators via the member bypass. Writes nothing."""
+    active member INCLUDING a magic-link scoped viewer (a pilot CFO), platform
+    operators via the member bypass, and anonymous visitors on SHOWCASE companies
+    only. Writes nothing."""
     from .modules.enterprise_state.models import Enterprise
     ent = db.get(Enterprise, company_id)
     if not ent:
@@ -1423,7 +1439,7 @@ def company_summary(company_id: int, member=Depends(require_company_member),
         "logo_url": _presign_logo(ent),
         "has_data": bool(ds and isinstance(ds.data, dict)),
         "dataset_version": ds.version if ds else None,
-        "role": member.role,
+        "role": role,
     }
 
 
