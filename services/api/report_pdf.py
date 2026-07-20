@@ -24,6 +24,7 @@ from reportlab.lib.units import inch
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.utils import ImageReader
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import (Paragraph, Spacer, Table, TableStyle, PageBreak,
                                 Image, HRFlowable, NextPageTemplate, PageTemplate,
                                 BaseDocTemplate, Frame)
@@ -64,6 +65,12 @@ def _img(fig, w=5.9, h=2.7):
     buf = io.BytesIO(); fig.savefig(buf, format="png", bbox_inches="tight", dpi=150)
     plt.close(fig); buf.seek(0)
     return Image(buf, width=w * inch, height=h * inch)
+
+
+def _png_img(png, w=5.9):
+    """Wrap raw PNG bytes (e.g. a shared deck chart) as a reportlab Image, preserving aspect ratio."""
+    iw, ih = ImageReader(io.BytesIO(png)).getSize()
+    return Image(io.BytesIO(png), width=w * inch, height=w * inch * ih / iw)
 
 
 def _fan(fandata, sample=None, color="#12B5A5", title=""):
@@ -143,8 +150,8 @@ def build_board_pdf(report: dict, extras: dict, meta: dict) -> bytes:
     addS("Take", fontName="Helvetica-Oblique", fontSize=12.5, textColor=SLATE, spaceAfter=9, leading=15)
     addS("Body", fontName="Helvetica", fontSize=11, textColor=INK, leading=16, spaceAfter=5)
     addS("Sm", fontName="Helvetica", fontSize=9, textColor=SLATE, leading=12.5)
-    addS("CardV", fontName="Helvetica-Bold", fontSize=15, textColor=NAVY)
-    addS("CardL", fontName="Helvetica", fontSize=8.5, textColor=SLATE)
+    addS("CardV", fontName="Helvetica-Bold", fontSize=16, textColor=NAVY, leading=19, spaceAfter=4)
+    addS("CardL", fontName="Helvetica", fontSize=8.5, textColor=SLATE, leading=11)
     addS("Find", fontName="Helvetica-Bold", fontSize=12.5, textColor=NAVY, leading=14, spaceAfter=2)
 
     def kicker(kick, title, take):
@@ -155,9 +162,16 @@ def build_board_pdf(report: dict, extras: dict, meta: dict) -> bytes:
         return out
 
     def cards(items):
-        row = [[Paragraph(str(v), ParagraphStyle("cv", parent=styles["CardV"],
-                textColor=(colors.HexColor(RAGHEX[r]) if r else NAVY))),
-                Paragraph(l, styles["CardL"])] for l, v, r in items]
+        avail = (6.9 / len(items)) * inch - 18  # usable cell width (left/right padding), pts
+        row = []
+        for l, v, r in items:
+            s = str(v)
+            fs = 16.0  # shrink the value to keep it on one line at this card width (e.g. long ranges)
+            while fs > 10.5 and stringWidth(s, "Helvetica-Bold", fs) > avail:
+                fs -= 0.5
+            vst = ParagraphStyle("cv", parent=styles["CardV"], fontSize=fs, leading=fs + 3,
+                                 textColor=(colors.HexColor(RAGHEX[r]) if r else NAVY))
+            row.append([Paragraph(s, vst), Paragraph(l, styles["CardL"])])
         t = Table([row], colWidths=[(6.9 / len(row)) * inch] * len(row))
         t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), LIGHT), ("INNERGRID", (0, 0), (-1, -1), 6, colors.white),
                    ("LEFTPADDING", (0, 0), (-1, -1), 10), ("TOPPADDING", (0, 0), (-1, -1), 11),
@@ -530,10 +544,12 @@ def build_board_pdf(report: dict, extras: dict, meta: dict) -> bytes:
     s = sec["valuation"]
     story += kicker("Question 4 · Valuation", "Valuation — Three Independent Lenses", s["takeaway"])
     ev = s["dcf"]["enterprise_value"]; mult = s.get("multiples")
-    labels = ["DCF (intrinsic)"]; vals = [ev]; cols = ["#0B1F3A"]
-    if mult:
-        labels += ["EV/EBITDA", "EV/EBIT"]; vals += [mult["methods"][0]["enterprise_value"], mult["methods"][1]["enterprise_value"]]; cols += ["#12B5A5", "#7FD8CE"]
-    story.append(_barchart(labels, vals, cols, f"Enterprise value by method ({sym.strip()}M)"))
+    # One chart truth: reuse the deck's four-lens chart (DCF intrinsic / Monte Carlo mean /
+    # 95% tail CVaR / real-option expand) — theme-colored bars with value labels.
+    from .reporting import chart_lenses
+    _lens = chart_lenses(s["dcf"], s.get("real_options"))
+    if _lens:
+        story.append(_png_img(_lens, 5.9))
     story.append(Spacer(1, 6))
     story.append(cards([("DCF enterprise value", M(ev), None), ("Equity value", M(s["dcf"]["equity_value"]), None),
                         ("Value / share", (f"{sym}{NUM(s['dcf']['value_per_share'],2)}" if s['dcf'].get('value_per_share') is not None else "—"), None),
