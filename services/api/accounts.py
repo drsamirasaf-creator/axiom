@@ -3280,6 +3280,43 @@ def require_report_read(company_id: int, authorization: str = Header(None),
     return "member"
 
 
+def _require_company_admin_inline(company_id, authorization, db):
+    """require_company_admin, called inline (so a showcase short-circuit can run
+    first). Returns the admin User or raises 401/402/403/404."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "Missing bearer token")
+    try:
+        payload = read_token(authorization.split(" ", 1)[1].strip(), "access")
+    except pyjwt.PyJWTError:
+        raise HTTPException(401, "Invalid or expired token")
+    user = db.get(User, int(payload["sub"]))
+    if not user or user.status != "active":
+        raise HTTPException(401, "Account unavailable")
+    if payload.get("scope"):
+        raise HTTPException(403, "View-only link cannot administer a company")
+    if user.platform_role in ("staff", "super"):
+        return user
+    _gate_account(db, company_id)
+    m = _membership(db, user.id, company_id)
+    if not m or m.status != "active" or m.role != "admin":
+        raise HTTPException(403, "Administrator access required")
+    return user
+
+
+def _serve_showcase_latest(db, company_id, fmt, deck_type=None):
+    """Serve a showcase company's pre-generated latest artifact (NO compute), so
+    the demo's generate buttons work for anonymous/non-member visitors without
+    ever triggering on-demand generation."""
+    q = db.query(ReportIssue).filter_by(company_id=company_id, format=fmt)
+    if fmt == "pptx":
+        q = q.filter_by(deck_type=deck_type)
+    issue = q.order_by(ReportIssue.issued_at.desc()).first()
+    if not issue:
+        raise HTTPException(404, "This report is being prepared — please try again shortly.")
+    url = _presign_report(issue.r2_key, issue.filename, _REPORT_CTYPE[fmt])
+    return _issue_out(issue, url)
+
+
 def _report_extras(db, company_id):
     """Company-scoped context the deck/PDF overlay on the engine payload: CEI
     (full assessment summary), SWOT, recommendations-with-dispositions,
@@ -3480,26 +3517,34 @@ class PresentationIn(BaseModel):
 
 @router.post("/companies/{company_id}/reports/presentation", status_code=201)
 def generate_presentation(company_id: int, body: PresentationIn = PresentationIn(),
-                          member=Depends(require_company_admin),
-                          user: User = Depends(get_current_user), db=Depends(get_db)):
-    """Generate a board deck. deck_type 'comprehensive' (default, ~55-75 slides
-    mirroring the webapp nav) or 'executive' (the condensed deck). 30-90s."""
+                          authorization: str = Header(None), db=Depends(get_db)):
+    """Board deck. deck_type 'comprehensive' (default) or 'executive'. For a
+    SHOWCASE company this returns the pre-generated artifact (no compute, no
+    membership); for a real company it requires admin and generates on demand."""
     dt = body.deck_type if body.deck_type in ("comprehensive", "executive") else "comprehensive"
+    if _is_showcase_company(db, company_id):
+        return _serve_showcase_latest(db, company_id, "pptx", dt)
+    user = _require_company_admin_inline(company_id, authorization, db)
     issue = _generate_report(db, company_id, user, "pptx", deck_type=dt)
     url = _presign_report(issue.r2_key, issue.filename, _REPORT_CTYPE["pptx"])
     return _issue_out(issue, url)
 
 
 @router.post("/companies/{company_id}/reports/pdf", status_code=201)
-def generate_pdf_report(company_id: int, member=Depends(require_company_admin),
-                        user: User = Depends(get_current_user), db=Depends(get_db)):
+def generate_pdf_report(company_id: int, authorization: str = Header(None), db=Depends(get_db)):
+    """The Board Report PDF. Showcase -> the pre-generated PDF (no compute, no
+    membership); real company -> admin generates on demand."""
+    if _is_showcase_company(db, company_id):
+        return _serve_showcase_latest(db, company_id, "pdf")
+    user = _require_company_admin_inline(company_id, authorization, db)
     issue = _generate_report(db, company_id, user, "pdf")
     url = _presign_report(issue.r2_key, issue.filename, _REPORT_CTYPE["pdf"])
     return _issue_out(issue, url)
 
 
 @router.get("/companies/{company_id}/reports")
-def list_report_issues(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+def list_report_issues(company_id: int, _=Depends(require_report_read), db=Depends(get_db)):
+    """Issue history. Readable without membership for showcase companies."""
     rows = (db.query(ReportIssue).filter_by(company_id=company_id)
               .order_by(ReportIssue.issued_at.desc()).all())
     return {"company_id": company_id, "issues": [_issue_out(i) for i in rows]}
