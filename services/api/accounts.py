@@ -1399,6 +1399,34 @@ def my_companies(user: User = Depends(get_current_user), db=Depends(get_db)):
             "companies": companies, "can_create": can_create}
 
 
+@router.get("/companies/{company_id}")
+def company_summary(company_id: int, member=Depends(require_company_member),
+                    db=Depends(get_db)):
+    """Company header/summary for the data-input default tab. Read-only — any
+    active member INCLUDING a magic-link scoped viewer (a pilot CFO) may read it,
+    plus platform operators via the member bypass. Writes nothing."""
+    from .modules.enterprise_state.models import Enterprise
+    ent = db.get(Enterprise, company_id)
+    if not ent:
+        raise HTTPException(404, "Company not found")
+    access = db.query(CompanyAccess).filter_by(company_id=company_id).first()
+    pilot = db.query(PilotCompany).filter_by(company_id=company_id).first()
+    ds = _active_company_dataset(db, company_id)
+    return {
+        "company_id": company_id,
+        "name": ent.name,
+        "cid": access.cid if access else None,
+        "sector": ent.sector or None,
+        "ownership": ent.ownership,
+        "is_pilot": pilot is not None,
+        "pilot_status": pilot.status if pilot else None,
+        "logo_url": _presign_logo(ent),
+        "has_data": bool(ds and isinstance(ds.data, dict)),
+        "dataset_version": ds.version if ds else None,
+        "role": member.role,
+    }
+
+
 @router.get("/access/showcase-companies")
 def showcase_companies(db=Depends(get_db)):
     """Anonymous source of truth for the demo companies — the frontend derives
