@@ -595,136 +595,14 @@ def build_pptx(report: dict, extras: dict, meta: dict) -> bytes:
 
 
 # ============================================================================
-# PDF (issued, themed) — reportlab
+# Board Report PDF — the polished, multi-page report in report_pdf.py is the
+# ONE AND ONLY board-report PDF builder. The minimal 7f dark builder that used
+# to live here was removed (quarantined) so nothing can select it — one PDF
+# truth. build_pdf simply delegates to it.
 # ============================================================================
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.units import inch
-from reportlab.lib import colors as _rc
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-                                Image as RLImage, PageBreak)
-
-_PINE = _rc.HexColor(PINE); _IVORY = _rc.HexColor(IVORY); _BRASS = _rc.HexColor(BRASS)
-_MUTED = _rc.HexColor(MUTED); _PANEL = _rc.HexColor(PANEL)
-
-
-def _pdf_bg(canvas, doc):
-    canvas.saveState()
-    canvas.setFillColor(_PINE)
-    canvas.rect(0, 0, letter[0], letter[1], stroke=0, fill=1)
-    canvas.setFillColor(_MUTED); canvas.setFont("Helvetica", 8)
-    canvas.drawString(0.75 * inch, 0.5 * inch, "AXIOM Dynamics — Confidential")
-    canvas.drawRightString(letter[0] - 0.75 * inch, 0.5 * inch, f"Page {doc.page}")
-    canvas.restoreState()
-
-
 def build_pdf(report: dict, extras: dict, meta: dict) -> bytes:
-    extras = extras or {}
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=letter, topMargin=0.9 * inch,
-                            bottomMargin=0.8 * inch, leftMargin=0.75 * inch, rightMargin=0.75 * inch)
-    ss = getSampleStyleSheet()
-    H1 = ParagraphStyle("H1", parent=ss["Title"], textColor=_IVORY, fontSize=26, leading=30)
-    KICK = ParagraphStyle("KICK", parent=ss["Normal"], textColor=_BRASS, fontSize=11, leading=13, spaceAfter=2)
-    H2 = ParagraphStyle("H2", parent=ss["Heading2"], textColor=_IVORY, fontSize=16, leading=19, spaceBefore=10)
-    BODY = ParagraphStyle("BODY", parent=ss["Normal"], textColor=_IVORY, fontSize=10.5, leading=15)
-    MUT = ParagraphStyle("MUT", parent=ss["Normal"], textColor=_MUTED, fontSize=10, leading=14)
-    company = report.get("company", {}); cur = company.get("currency", "")
-    S = {s["id"]: s for s in report.get("sections", [])}
-    issued = meta["issued_at"]
-    story = []
-
-    # cover — client logo leads (their board deck), AXIOM subordinate
-    logo_png = _logo_from_meta(meta)
-    story.append(Spacer(1, 1.1 * inch))
-    if logo_png:
-        sz = _px_size(logo_png)
-        w, h = _fit_box(sz[0], sz[1], 3.6, 1.5) if sz else (3.0, 1.2)
-        try:
-            story += [RLImage(io.BytesIO(logo_png), width=w * inch, height=h * inch),
-                      Spacer(1, 0.4 * inch)]
-        except Exception:
-            logo_png = None
-    if not logo_png:
-        story += [Spacer(1, 0.5 * inch), Paragraph("AXIOM", KICK)]
-    story += [Paragraph(meta.get("company_name", company.get("name", "Company")), H1),
-              Spacer(1, 0.15 * inch),
-              Paragraph(meta.get("report_type", "Board Report"), MUT),
-              Spacer(1, 0.1 * inch),
-              Paragraph(issued_line(issued, meta.get("dataset_version")), MUT),
-              Spacer(1, 0.3 * inch),
-              Paragraph("Prepared by AXIOM Dynamics", MUT),
-              PageBreak()]
-
-    def tbl(headers, rows, widths):
-        data = [headers] + rows
-        t = Table(data, colWidths=[w * inch for w in widths])
-        t.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), _BRASS),
-            ("TEXTCOLOR", (0, 0), (-1, 0), _PINE),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("TEXTCOLOR", (0, 1), (-1, -1), _IVORY),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [_PINE, _PANEL]),
-            ("GRID", (0, 0), (-1, -1), 0.4, _MUTED),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
-        return t
-
-    # executive summary
-    sm = S.get("summary", {}); sc = sm.get("scorecard", {}); hm = sm.get("headline_metric", {})
-    story += [Paragraph("EXECUTIVE SUMMARY", KICK), Paragraph("The company at a glance", H2),
-              Spacer(1, 0.1 * inch),
-              Paragraph(f"<b>{hm.get('label', 'Enterprise Value')}:</b> "
-                        f"{hm.get('value', 0):,.0f} {cur}", BODY),
-              Paragraph(sm.get("takeaway", ""), MUT), Spacer(1, 0.12 * inch),
-              tbl(["Metric", "Value"],
-                  [["Health index", _fmt(sc.get("health_index"))],
-                   ["Risk grade", sc.get("risk_grade", "—")],
-                   ["Optimization", sc.get("optimization_status", "—")],
-                   ["Optimizer uplift", f"{sc.get('optimization_uplift', 0):,.0f} {cur}"]],
-                  [2.4, 3.6]),
-              Spacer(1, 0.15 * inch)]
-    for w in sm.get("four_answers", [])[:4]:
-        story.append(Paragraph("• " + w, BODY))
-
-    # valuation
-    va = S.get("valuation", {}); dcf = va.get("dcf", {}); mc = dcf.get("monte_carlo", {})
-    lenses = chart_valuation_lenses(dcf, va.get("real_options"))
-    story += [PageBreak(), Paragraph("VALUATION", KICK),
-              Paragraph("Three independent lenses", H2), Spacer(1, 0.1 * inch)]
-    if lenses:
-        story.append(RLImage(io.BytesIO(lenses), width=6.4 * inch, height=3.4 * inch))
-    story += [Spacer(1, 0.1 * inch),
-              tbl(["Lens", "Value"],
-                  [["DCF enterprise value", f"{dcf.get('enterprise_value', 0):,.0f} {cur}"],
-                   ["Monte Carlo mean", f"{mc.get('mean', 0):,.0f} {cur}"],
-                   ["95% tail (CVaR)", f"{mc.get('cvar95', 0):,.0f} {cur}"],
-                   ["WACC", _fmt(dcf.get("wacc"), pct=True)]], [3.0, 3.0])]
-
-    # forecast fan
-    fan = (S.get("outlook", {}).get("simulation_baseline", {}) or {}).get("revenue_fan") or []
-    fanpng = chart_fan(fan)
-    if fanpng:
-        story += [PageBreak(), Paragraph("OUTLOOK", KICK),
-                  Paragraph("Probabilistic revenue forecast", H2), Spacer(1, 0.1 * inch),
-                  RLImage(io.BytesIO(fanpng), width=6.6 * inch, height=3.5 * inch)]
-
-    # recommendations
-    rrows = []
-    for r in (extras.get("recommendations") or [])[:8]:
-        ini = r.get("initiative") or {}
-        disp = {"adopted": f"Adopted → {ini.get('ref', '')}", "parked": f"Parked → {ini.get('ref', '')}",
-                "dismissed": "Dismissed", "none": "—"}.get(r.get("disposition"), r.get("disposition"))
-        rrows.append([r.get("title", "")[:46], f"{r.get('expected_ev_impact', 0):+,.1f}", disp])
-    if rrows:
-        story += [PageBreak(), Paragraph("RECOMMENDATIONS", KICK),
-                  Paragraph("AXIOM levers & decisions", H2), Spacer(1, 0.1 * inch),
-                  tbl(["Recommendation", "EV impact", "Disposition"], rrows, [3.4, 1.2, 1.9])]
-
-    doc.build(story, onFirstPage=_pdf_bg, onLaterPages=_pdf_bg)
-    return buf.getvalue()
-
+    from .report_pdf import build_board_pdf
+    return build_board_pdf(report, extras, meta)
 
 # ============================================================================
 # Comprehensive board presentation (7f revision) — mirrors the webapp nav

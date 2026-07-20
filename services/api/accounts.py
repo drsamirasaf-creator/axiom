@@ -3254,7 +3254,7 @@ _REPORT_CTYPE = {"pdf": "application/pdf",
                  "pptx": ("application/vnd.openxmlformats-officedocument"
                           ".presentationml.presentation")}
 # Bump when the deck/PDF builder changes so showcase artifacts regenerate.
-REPORT_BUILDER_VERSION = "7f-comprehensive-1"
+REPORT_BUILDER_VERSION = "polished-pdf-1"
 SHOWCASE_TENANT = "showcase"
 
 
