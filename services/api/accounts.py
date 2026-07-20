@@ -360,6 +360,8 @@ class Thread(Base):
     type = Column(String(16), nullable=False)                # report|general|topic|initiative
     title = Column(String(300), nullable=False)
     linked_ref = Column(String(64), nullable=True)           # report issued_at / initiative id / null
+    category = Column(String(16), nullable=True)             # report|assessment|initiative|general (7g-C)
+    anchor_ref = Column(String(64), nullable=True)           # taxonomy L1/item code, report issue_id, initiative id
     created_by = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     status = Column(String(16), default="open", nullable=False)   # open|archived
@@ -1936,6 +1938,14 @@ class ThreadCreate(BaseModel):
     title: str
     type: str = "topic"                 # admin creates topic (or report) threads
     linked_ref: str | None = None
+    category: str | None = None         # report|assessment|initiative|general
+    anchor_ref: str | None = None
+
+
+class ThreadAnchorIn(BaseModel):
+    category: str                       # assessment|report|initiative|general
+    anchor_ref: str
+    title: str | None = None
 
 
 class PostIn(BaseModel):
@@ -1956,8 +1966,10 @@ def _ensure_general_thread(db, company_id):
     t = (db.query(Thread).filter_by(company_id=company_id, type="general").first())
     if t is None:
         t = Thread(company_id=company_id, type="general", title="General",
-                   linked_ref=None, created_by=None)
+                   linked_ref=None, category="general", created_by=None)
         db.add(t); db.flush()
+    elif t.category is None:
+        t.category = "general"
     return t
 
 
@@ -1967,6 +1979,7 @@ def _ensure_initiative_thread(db, company_id, ini):
     if t is None:
         t = Thread(company_id=company_id, type="initiative",
                    title=f"{ini.ref_code} — {ini.title}", linked_ref=str(ini.id),
+                   category="initiative", anchor_ref=str(ini.id),
                    created_by=ini.created_by)
         db.add(t); db.flush()
     return t
@@ -1975,7 +1988,8 @@ def _ensure_initiative_thread(db, company_id, ini):
 def _thread_out(db, t, with_counts=True):
     n = db.query(ThreadPost).filter_by(thread_id=t.id).count() if with_counts else None
     return {"id": t.id, "company_id": t.company_id, "type": t.type, "title": t.title,
-            "linked_ref": t.linked_ref, "status": t.status, "created_by": t.created_by,
+            "linked_ref": t.linked_ref, "category": t.category, "anchor_ref": t.anchor_ref,
+            "status": t.status, "created_by": t.created_by,
             "created_at": t.created_at, "post_count": n}
 
 
@@ -2001,15 +2015,74 @@ def create_thread(company_id: int, body: ThreadCreate,
                   user: User = Depends(get_current_user), db=Depends(get_db)):
     if body.type not in ("topic", "report", "general"):
         raise HTTPException(422, "type must be topic|report|general")
+    cat = body.category if body.category in ("report", "assessment", "initiative", "general") else None
     if body.type == "general":
         t = _ensure_general_thread(db, company_id)
     else:
         t = Thread(company_id=company_id, type=body.type, title=body.title.strip(),
-                   linked_ref=body.linked_ref, created_by=user.id)
+                   linked_ref=body.linked_ref,
+                   category=cat or ("report" if body.type == "report" else "general"),
+                   anchor_ref=body.anchor_ref or body.linked_ref, created_by=user.id)
         db.add(t); db.flush()
     audit(db, user.id, "thread_created", "company", company_id, detail=f"{t.type} {t.title}")
     db.commit()
     return _thread_out(db, t)
+
+
+def _anchor_title(db, company_id, category, anchor_ref):
+    """Human title for an anchored thread: item title / report / initiative ref."""
+    if category == "assessment":
+        fw = _assess_current_framework(db, company_id)
+        if fw:
+            it = db.query(AssessmentItem).filter_by(framework_id=fw.id, code=anchor_ref).first()
+            if it:
+                return f"{it.code} — {it.title}"
+        return f"Assessment item {anchor_ref}"
+    if category == "initiative":
+        try:
+            ini = db.get(Initiative, int(anchor_ref))
+            if ini and ini.company_id == company_id:
+                return f"{ini.ref_code} — {ini.title}"
+        except (TypeError, ValueError):
+            pass
+        return f"Initiative {anchor_ref}"
+    if category == "report":
+        try:
+            iss = db.get(ReportIssue, int(anchor_ref))
+            if iss and iss.company_id == company_id:
+                return f"{iss.report_type} (issued {iss.issued_at:%d %b %Y})"
+        except (TypeError, ValueError):
+            pass
+        return f"Report {anchor_ref}"
+    return "Discussion"
+
+
+@router.post("/companies/{company_id}/threads/anchor", status_code=201)
+def ensure_anchor_thread(company_id: int, body: ThreadAnchorIn,
+                         member=Depends(require_company_member),
+                         user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Get-or-create the thread for an anchor (an assessment item, SWOT tile,
+    report, or initiative). Idempotent per (company, category, anchor_ref) — a
+    discussion opened from the same tile always lands in the same thread."""
+    cat = body.category
+    if cat not in ("assessment", "report", "initiative", "general"):
+        raise HTTPException(422, "category must be assessment|report|initiative|general")
+    ref = (body.anchor_ref or "").strip()
+    if not ref:
+        raise HTTPException(422, "anchor_ref is required")
+    existing = (db.query(Thread)
+                  .filter_by(company_id=company_id, category=cat, anchor_ref=ref).first())
+    if existing:
+        return {**_thread_out(db, existing), "created": False}
+    title = (body.title or "").strip() or _anchor_title(db, company_id, cat, ref)
+    ttype = {"assessment": "topic", "report": "report",
+             "initiative": "initiative", "general": "topic"}[cat]
+    t = Thread(company_id=company_id, type=ttype, title=title[:300],
+               category=cat, anchor_ref=ref, linked_ref=ref, created_by=user.id)
+    db.add(t); db.flush()
+    audit(db, user.id, "thread_anchored", "company", company_id, detail=f"{cat}:{ref}")
+    db.commit()
+    return {**_thread_out(db, t), "created": True}
 
 
 @router.get("/companies/{company_id}/threads/{tid}")
@@ -2020,7 +2093,15 @@ def thread_detail(company_id: int, tid: int,
         raise HTTPException(404, "thread not found")
     posts = (db.query(ThreadPost).filter_by(thread_id=tid)
                .order_by(ThreadPost.created_at).all())
-    return {**_thread_out(db, t, with_counts=False),
+    flagged_n = sum(1 for p in posts if p.proposal_status == "flagged")
+    born = [{"ref": i.ref_code, "status": i.status}
+            for i in db.query(Initiative).filter_by(company_id=company_id, source_thread_id=tid).all()]
+    context = {"anchor_type": t.category,
+               "anchor_title": (_anchor_title(db, company_id, t.category, t.anchor_ref)
+                                if t.category and t.anchor_ref else t.title),
+               "anchor_link_ref": t.anchor_ref,
+               "action_state": {"proposals_flagged_n": flagged_n, "initiatives_born": born}}
+    return {**_thread_out(db, t, with_counts=False), "context": context,
             "posts": [_post_out(p) for p in posts]}
 
 
@@ -4953,6 +5034,20 @@ def _ensure_ax_columns(engine):
     _add("enterprises", "logo_content_type", "logo_content_type VARCHAR(64)")
     # 7f revision: deck variant on the issue registry
     _add("ax_report_issues", "deck_type", "deck_type VARCHAR(16)")
+    # 7g-C: thread categories + anchors (+ mechanical backfill from type/linked_ref)
+    _add("ax_threads", "category", "category VARCHAR(16)")
+    _add("ax_threads", "anchor_ref", "anchor_ref VARCHAR(64)")
+    try:
+        with engine.begin() as conn:
+            conn.execute(_text(
+                "UPDATE ax_threads SET category = CASE type "
+                "WHEN 'initiative' THEN 'initiative' WHEN 'report' THEN 'report' "
+                "ELSE 'general' END WHERE category IS NULL"))
+            conn.execute(_text(
+                "UPDATE ax_threads SET anchor_ref = linked_ref WHERE anchor_ref IS NULL "
+                "AND linked_ref IS NOT NULL AND type IN ('initiative', 'report')"))
+    except Exception:
+        pass
 
     # Backfill orientation on existing framework revisions by item code (v2).
     try:
