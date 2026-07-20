@@ -1414,13 +1414,10 @@ def _summary_access(company_id: int, authorization: str = Header(None),
     return require_company_member(company_id, user, db).role  # 403 on non-member
 
 
-@router.get("/companies/{company_id}")
-def company_summary(company_id: int, role: str | None = Depends(_summary_access),
-                    db=Depends(get_db)):
-    """Company header/summary for the data-input default tab. Read-only — any
-    active member INCLUDING a magic-link scoped viewer (a pilot CFO), platform
-    operators via the member bypass, and anonymous visitors on SHOWCASE companies
-    only. Writes nothing."""
+def _company_summary_payload(db, company_id: int, role: str | None):
+    """The shared company header/summary shape, returned by both GET (read) and
+    PATCH (write). currency/units live on the Enterprise row (their canonical home
+    since 7a-1 create-company)."""
     from .modules.enterprise_state.models import Enterprise
     ent = db.get(Enterprise, company_id)
     if not ent:
@@ -1434,6 +1431,8 @@ def company_summary(company_id: int, role: str | None = Depends(_summary_access)
         "cid": access.cid if access else None,
         "sector": ent.sector or None,
         "ownership": ent.ownership,
+        "currency": ent.reporting_currency or None,
+        "units": ent.statement_units or "actual",
         "is_pilot": pilot is not None,
         "pilot_status": pilot.status if pilot else None,
         "logo_url": _presign_logo(ent),
@@ -1441,6 +1440,56 @@ def company_summary(company_id: int, role: str | None = Depends(_summary_access)
         "dataset_version": ds.version if ds else None,
         "role": role,
     }
+
+
+@router.get("/companies/{company_id}")
+def company_summary(company_id: int, role: str | None = Depends(_summary_access),
+                    db=Depends(get_db)):
+    """Company header/summary for the data-input default tab. Read-only — any
+    active member INCLUDING a magic-link scoped viewer (a pilot CFO), platform
+    operators via the member bypass, and anonymous visitors on SHOWCASE companies
+    only. Writes nothing."""
+    return _company_summary_payload(db, company_id, role)
+
+
+class CompanyPatchIn(BaseModel):
+    name: str | None = None
+    currency: str | None = None
+    units: str | None = None
+
+
+@router.patch("/companies/{company_id}")
+def update_company_summary(company_id: int, body: CompanyPatchIn,
+                           member=Depends(require_company_admin), db=Depends(get_db)):
+    """Setup Wizard step 1: partial-update the company profile (name / reporting
+    currency / statement units). This WRITES, so it is admin/write-gated — a
+    scoped magic-link viewer gets 403 here, unlike the read-only GET. Only the
+    fields present in the body are touched; each persists on the Enterprise row.
+    Returns the updated summary in the same shape as GET."""
+    from .modules.enterprise_state.models import Enterprise
+    ent = db.get(Enterprise, company_id)
+    if not ent:
+        raise HTTPException(404, "Company not found")
+    changed = []
+    if body.name is not None:
+        name = body.name.strip()
+        if not name:
+            raise HTTPException(422, "name cannot be empty")
+        ent.name = name; changed.append("name")
+    if body.currency is not None:
+        currency = body.currency.strip().upper()
+        if not (2 <= len(currency) <= 8):
+            raise HTTPException(422, "reporting_currency must be a valid currency code")
+        ent.reporting_currency = currency; changed.append("currency")
+    if body.units is not None:
+        units = body.units.strip().lower()
+        if units not in ("actual", "thousands", "millions"):
+            raise HTTPException(422, "statement_units must be 'actual', 'thousands', or 'millions'")
+        ent.statement_units = units; changed.append("units")
+    audit(db, member.user_id, "company.profile.update", "company", company_id,
+          detail=f"fields={changed}")
+    db.commit()
+    return _company_summary_payload(db, company_id, member.role)
 
 
 @router.get("/access/showcase-companies")
