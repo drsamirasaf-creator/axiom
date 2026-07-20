@@ -5,7 +5,6 @@ from fastapi import (APIRouter, Depends, Header, HTTPException, UploadFile,
                      File, Form, Response)
 from sqlalchemy.orm import Session
 from ...core.db import get_db
-from ...core.config import tenant_from_header
 from . import engines, models, schemas, templates
 
 router = APIRouter(prefix="/api/v1/financials", tags=["financials"])

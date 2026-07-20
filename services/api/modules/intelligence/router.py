@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from ...core.db import get_db
-from ...core.config import tenant_from_header, ai_model
+from ...core.config import ai_model
 from ..financials import models as fin_models
 from ..financials import engines as fin_engines
 from . import ai_client, engines

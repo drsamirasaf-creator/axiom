@@ -4,7 +4,6 @@ from pydantic import BaseModel
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 from ...core.db import get_db
-from ...core.config import tenant_from_header
 from ..financials import models as fin_models
 from . import engines, models, schemas
 

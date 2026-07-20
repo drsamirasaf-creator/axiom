@@ -525,6 +525,17 @@ PILOT_STAMP = {"Created": "created_at", "Data Loaded": "data_loaded_at",
                "Assessment Live": "assessment_live_at", "Reports Ready": "reports_ready_at",
                "CFO Invited": "cfo_invited_at", "Transferred": "transferred_at",
                "Archived": "archived_at"}
+# Accept both the Proper-Case label ("Data Loaded") and the snake_case key
+# ("data_loaded") the UI emits — normalize either to the canonical label.
+_PILOT_LABEL_BY_KEY = {s.lower().replace(" ", "_"): s for s in PILOT_FLOW}
+
+
+def _normalize_pilot_status(raw: str) -> str | None:
+    """Return the canonical PILOT_FLOW label for a label or snake_case key, else None."""
+    s = (raw or "").strip()
+    if s in PILOT_FLOW:
+        return s
+    return _PILOT_LABEL_BY_KEY.get(s.lower())
 
 
 class PilotCompany(Base):
@@ -5307,9 +5318,10 @@ def override_pilot_status(company_id: int, body: PilotStatusIn,
                           actor: User = Depends(require_super), db=Depends(get_db)):
     """Manual lifecycle override (super-admin). Any stage is settable EXCEPT
     'Transferred' — that only happens through a claimed transfer offer."""
-    status = body.status.strip()
-    if status not in PILOT_FLOW:
-        raise HTTPException(422, f"status must be one of {list(PILOT_FLOW)}")
+    status = _normalize_pilot_status(body.status)
+    if status is None:
+        raise HTTPException(422, f"status must be one of {list(PILOT_FLOW)} "
+                                 "(labels or snake_case keys accepted)")
     if status == "Transferred":
         raise HTTPException(422, "'Transferred' is set only by completing a transfer offer.")
     p = db.query(PilotCompany).filter_by(company_id=company_id).first()

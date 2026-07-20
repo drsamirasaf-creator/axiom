@@ -2,13 +2,11 @@
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 from ...core.db import get_db
-from ...core.config import tenant_from_header
+from ..identity.deps import read_tenant as _tenant  # auth-aware tenant (seam fix)
 from . import models, schemas
 
 router = APIRouter(prefix="/api/v1/enterprises", tags=["enterprise-state"])
 
-def _tenant(x_axiom_tenant: str | None = Header(default=None)) -> str:
-    return tenant_from_header(x_axiom_tenant)
 
 def _get(db: Session, tenant: str, eid: int) -> models.Enterprise:
     ent = db.get(models.Enterprise, eid)
