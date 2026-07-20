@@ -515,6 +515,53 @@ def audit(db, actor_user_id, action, target_type=None, target_id=None, detail=""
                     target_id=str(target_id) if target_id is not None else None,
                     detail=detail))
 
+
+# ---- Free Pilot (Phase FP-1) ------------------------------------------------
+# Lifecycle order — automatic where a signal exists, manual override for the rest.
+PILOT_FLOW = ("Created", "Data Loaded", "Assessment Live", "Reports Ready",
+              "CFO Invited", "Transferred", "Archived")
+# per-status timestamp column for each stage (Archived shares the manual path)
+PILOT_STAMP = {"Created": "created_at", "Data Loaded": "data_loaded_at",
+               "Assessment Live": "assessment_live_at", "Reports Ready": "reports_ready_at",
+               "CFO Invited": "cfo_invited_at", "Transferred": "transferred_at",
+               "Archived": "archived_at"}
+
+
+class PilotCompany(Base):
+    """A super-admin-owned Free Pilot company. Its existence marks is_pilot; the
+    company is a normal Enterprise + CompanyAccess (so CID / participant links /
+    share tokens all work) held on a super account and EXCLUDED from that
+    account's purchased-slot count while status != 'Transferred'. Every lifecycle
+    transition is date-stamped in its own column."""
+    __tablename__ = "ax_pilot_companies"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, unique=True, index=True, nullable=False)
+    status = Column(String(24), default="Created", nullable=False)
+    created_by = Column(Integer, nullable=False)          # super user id
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    data_loaded_at = Column(DateTime, nullable=True)
+    assessment_live_at = Column(DateTime, nullable=True)
+    reports_ready_at = Column(DateTime, nullable=True)
+    cfo_invited_at = Column(DateTime, nullable=True)
+    transferred_at = Column(DateTime, nullable=True)
+    archived_at = Column(DateTime, nullable=True)
+
+
+class TransferOffer(Base):
+    """An offer to hand a pilot company to a CFO's email. On that buyer's Stripe
+    checkout completion the purchased slot applies to the transfer instead of a
+    blank company create. Revocable only while pending."""
+    __tablename__ = "ax_transfer_offers"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    target_email = Column(String(255), index=True, nullable=False)   # stored lowercased
+    status = Column(String(16), default="pending", nullable=False)   # pending|claimed|revoked
+    created_by = Column(Integer, nullable=False)
+    claimed_by_user_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    claimed_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+
 # ======================================================================
 # emailer
 # ======================================================================
@@ -819,6 +866,50 @@ def _membership(db, user_id: int, company_id: int):
     return db.query(Membership).filter_by(user_id=user_id, company_id=company_id).first()
 
 
+def _pilot_transferred_away(db, company_id: int) -> bool:
+    """True once a pilot company has been transferred to a buyer. Such a company
+    is fully handed off: even platform operators lose the god-bypass to it, so
+    the seller (super-admin) is genuinely revoked. Queried only in the operator
+    branch below, so normal-user requests pay nothing."""
+    return db.query(PilotCompany.id).filter_by(
+        company_id=company_id, status="Transferred").first() is not None
+
+
+def _operator_bypass_ok(db, user, company_id: int) -> bool:
+    return (user.platform_role in ("staff", "super")
+            and not _pilot_transferred_away(db, company_id))
+
+
+def _slots_used(db, account_id: int) -> int:
+    """Purchased-slot consumption for an account. A pilot company held on the
+    account is EXCLUDED until it is transferred — a pilot consumes no slot. For a
+    normal buyer account (no non-transferred pilot rows) this equals the raw
+    CompanyAccess count, so the paying path is byte-for-byte unchanged."""
+    exempt = [c for (c,) in db.query(PilotCompany.company_id)
+              .filter(PilotCompany.status != "Transferred").all()]
+    q = db.query(CompanyAccess).filter_by(account_id=account_id)
+    if exempt:
+        q = q.filter(~CompanyAccess.company_id.in_(exempt))
+    return q.count()
+
+
+def _pilot_touch(db, company_id: int, status: str):
+    """Advance a pilot company's lifecycle to `status`, monotonically (never
+    regresses), date-stamping the stage column. No-op for non-pilots — so the
+    hook can be sprinkled on shared endpoints without touching normal companies."""
+    row = db.query(PilotCompany).filter_by(company_id=company_id).first()
+    if not row or status not in PILOT_FLOW:
+        return
+    now = datetime.utcnow()
+    # always stamp the stage's own column if not yet stamped
+    col = PILOT_STAMP.get(status)
+    if col and getattr(row, col, None) is None:
+        setattr(row, col, now)
+    # advance current status only forward along the flow (Archived/Transferred set explicitly)
+    if PILOT_FLOW.index(status) > PILOT_FLOW.index(row.status):
+        row.status = status
+
+
 def require_company_member(company_id: int,
                            user: User = Depends(get_current_user),
                            db=Depends(get_db)) -> Membership:
@@ -827,7 +918,7 @@ def require_company_member(company_id: int,
     scope = getattr(user, "_token_scope", None)
     if scope and scope != f"company:{company_id}:view":
         raise HTTPException(403, "This link grants access to a different company")
-    if not scope and user.platform_role in ("staff", "super"):
+    if not scope and _operator_bypass_ok(db, user, company_id):
         return Membership(user_id=user.id, company_id=company_id,
                           role="admin", status="active")  # transient bypass object
     _gate_account(db, company_id)
@@ -845,7 +936,7 @@ def require_company_admin(company_id: int,
     """The single company admin (or platform staff). Viewers get 403."""
     if getattr(user, "_token_scope", None):
         raise HTTPException(403, "View-only link cannot administer a company")
-    if user.platform_role in ("staff", "super"):
+    if _operator_bypass_ok(db, user, company_id):
         return Membership(user_id=user.id, company_id=company_id,
                           role="admin", status="active")
     _gate_account(db, company_id)
@@ -1181,7 +1272,7 @@ def activate_company(body: ActivateIn, user: User = Depends(get_current_user),
         raise HTTPException(402, "Subscription is not active")
     if db.query(CompanyAccess).filter_by(company_id=body.company_id).first():
         raise HTTPException(409, "Company is already activated")
-    used = db.query(CompanyAccess).filter_by(account_id=account.id).count()
+    used = _slots_used(db, account.id)
     if used >= account.company_slots:
         raise HTTPException(402, f"All {account.company_slots} purchased company "
                                  "licenses are in use. Purchase an additional license.")
@@ -1238,7 +1329,7 @@ def create_company(body: CreateCompanyIn, user: User = Depends(get_current_user)
     if not account or account.status != "active":
         raise HTTPException(402, "No active company license. Purchase a company "
                                  "license before creating a company.")
-    used = db.query(CompanyAccess).filter_by(account_id=account.id).count()
+    used = _slots_used(db, account.id)
     if used >= account.company_slots:
         raise HTTPException(402, f"All {account.company_slots} company license(s) "
                                  f"are in use ({used}/{account.company_slots}). "
@@ -1291,7 +1382,7 @@ def my_companies(user: User = Depends(get_current_user), db=Depends(get_db)):
             "created_at": a.created_at,
             "viewer_count": viewer_count,
             "status": account.status if account else "none"})
-    slots_used = len(accesses)
+    slots_used = _slots_used(db, account.id)
     can_create = bool(account and account.status == "active" and slots_used < slots_total)
     return {"slots_total": slots_total, "slots_used": slots_used,
             "companies": companies, "can_create": can_create}
@@ -1343,6 +1434,7 @@ def invite_viewer(company_id: int, body: InviteIn,
                  invited_by=user.id)
     db.add(inv)
     audit(db, user.id, "viewer_invited", "company", company_id, detail=email)
+    _pilot_touch(db, company_id, "CFO Invited")   # FP-1 auto lifecycle
     db.commit()
     db.refresh(inv)
     send_invite(email, name, company_name, token)
@@ -1552,6 +1644,7 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
     db.flush()
     audit(db, user.id, "data_uploaded", "company", company_id,
           detail=f"dataset={ds.id} v{version} {frequency}")
+    _pilot_touch(db, company_id, "Data Loaded")   # FP-1 auto lifecycle
     db.commit()
     return {"dataset_id": ds.id, "version": version, "frequency": frequency,
             "periods_detected": data["periods"], "warnings": warnings,
@@ -3449,12 +3542,15 @@ def _generate_report(db, company_id, user, fmt, deck_type="comprehensive"):
     db.add(issue); db.flush()
     audit(db, uid, "report_issued", "company", company_id,
           detail=f"{fmt}/{deck_type if is_pptx else '-'} v{ds.version} issue={issue.id}")
+    _pilot_touch(db, company_id, "Reports Ready")   # FP-1 auto lifecycle
     db.commit(); db.refresh(issue)
     return issue
 
 
 # ------------------------------------------- showcase report pre-generation
-_SHOWCASE_SLOTS = (("pptx", "comprehensive"), ("pptx", "executive"), ("pdf", None))
+# FP-1 Step 4: Executive Summary PPTX is discontinued — no longer pre-generated.
+# Existing stored executive artifacts remain; they simply stop being produced.
+_SHOWCASE_SLOTS = (("pptx", "comprehensive"), ("pdf", None))
 
 
 def _showcase_report_is_current(db, company_id, fmt, deck_type, ds_version):
@@ -3538,7 +3634,11 @@ def generate_presentation(company_id: int, body: PresentationIn = PresentationIn
     """Board deck. deck_type 'comprehensive' (default) or 'executive'. For a
     SHOWCASE company this returns the pre-generated artifact (no compute, no
     membership); for a real company it requires admin and generates on demand."""
-    dt = body.deck_type if body.deck_type in ("comprehensive", "executive") else "comprehensive"
+    # FP-1 Step 4: the Executive Summary deck is discontinued.
+    if body.deck_type == "executive":
+        raise HTTPException(410, "The Executive Summary deck has been discontinued. "
+                                 "Use the comprehensive board deck or the board-report PDF.")
+    dt = body.deck_type if body.deck_type in ("comprehensive",) else "comprehensive"
     if _is_showcase_company(db, company_id):
         return _serve_showcase_latest(db, company_id, "pptx", dt)
     user = _require_company_admin_inline(company_id, authorization, db)
@@ -4084,6 +4184,7 @@ def open_assessment_cycle(company_id: int, body: CycleIn,
         _assess_config(db, company_id).cadence = body.cadence
     audit(db, user.id, "assessment_cycle_opened", "company", company_id,
           detail=f"cycle {cyc.id} rev {fw.revision}")
+    _pilot_touch(db, company_id, "Assessment Live")   # FP-1 auto lifecycle
     db.commit()
     return _cycle_out(cyc)
 
@@ -5114,6 +5215,226 @@ def audit_log(limit: int = 100, actor: User = Depends(require_staff),
                        "target_id": r.target_id, "detail": r.detail,
                        "created_at": r.created_at} for r in rows]}
 
+
+# ======================================================================
+# Free Pilot (Phase FP-1) — super-admin pilot lifecycle + CFO transfer
+# ======================================================================
+class PilotCreateIn(BaseModel):
+    name: str
+    sector: str = ""
+    reporting_currency: str = "USD"
+    fiscal_year_end: int = 12
+    statement_units: str = "millions"
+    is_public: bool = False
+
+
+class PilotStatusIn(BaseModel):
+    status: str
+
+
+class TransferOfferIn(BaseModel):
+    company_id: int
+    target_email: EmailStr
+
+
+def _super_holding_account(db, super_user) -> "Account":
+    """The account that HOLDS pilot companies for a super-admin. Pilots bound to
+    it never count against purchased slots (_slots_used excludes them), so it can
+    carry any number of pilots without a purchase."""
+    acct = db.query(Account).filter_by(owner_user_id=super_user.id).first()
+    if not acct:
+        acct = Account(owner_user_id=super_user.id, status="active", company_slots=0)
+        db.add(acct); db.flush()
+    elif acct.status != "active":
+        acct.status = "active"
+    return acct
+
+
+def _pilot_out(db, p):
+    from .modules.enterprise_state.models import Enterprise
+    ent = db.get(Enterprise, p.company_id)
+    access = db.query(CompanyAccess).filter_by(company_id=p.company_id).first()
+    return {"company_id": p.company_id, "name": ent.name if ent else None,
+            "cid": access.cid if access else None, "is_pilot": True,
+            "status": p.status,
+            "dates": {k: getattr(p, v) for k, v in PILOT_STAMP.items()}}
+
+
+@router.post("/pilots", status_code=201)
+def create_pilot(body: PilotCreateIn, actor: User = Depends(require_super),
+                 db=Depends(get_db)):
+    """Create a Free Pilot company (super-admin only). Consumes NO purchased slot.
+    A normal Enterprise + CompanyAccess (CID minted) held on the operator's
+    account, plus a pilot lifecycle row at status 'Created'."""
+    from .modules.enterprise_state.models import Enterprise
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(422, "name is required")
+    units = body.statement_units.strip().lower()
+    if units not in ("actual", "thousands", "millions"):
+        raise HTTPException(422, "statement_units must be 'actual', 'thousands', or 'millions'")
+    if not (1 <= body.fiscal_year_end <= 12):
+        raise HTTPException(422, "fiscal_year_end must be a month number 1-12")
+    currency = body.reporting_currency.strip().upper()
+    if not (2 <= len(currency) <= 8):
+        raise HTTPException(422, "reporting_currency must be a valid currency code")
+    account = _super_holding_account(db, actor)
+    tenant = _linked_tenant(db, actor)
+    ent = Enterprise(tenant=tenant, name=name, sector=body.sector,
+                     reporting_currency=currency, fiscal_year_end=body.fiscal_year_end,
+                     statement_units=units,
+                     ownership="public" if body.is_public else "private")
+    db.add(ent); db.flush()
+    access = CompanyAccess(company_id=ent.id, account_id=account.id, cid=new_cid())
+    db.add(access)
+    db.add(Membership(user_id=actor.id, company_id=ent.id, role="admin",
+                      status="active", approved_at=datetime.utcnow()))
+    db.add(PilotCompany(company_id=ent.id, status="Created", created_by=actor.id))
+    audit(db, actor.id, "pilot_created", "company", ent.id, detail=name)
+    db.commit()
+    return {"company_id": ent.id, "cid": access.cid, "name": name,
+            "is_pilot": True, "status": "Created"}
+
+
+@router.get("/pilots")
+def list_pilots(actor: User = Depends(require_super), db=Depends(get_db)):
+    rows = db.query(PilotCompany).order_by(PilotCompany.id.desc()).all()
+    return {"pilots": [_pilot_out(db, p) for p in rows]}
+
+
+@router.post("/pilots/{company_id}/status")
+def override_pilot_status(company_id: int, body: PilotStatusIn,
+                          actor: User = Depends(require_super), db=Depends(get_db)):
+    """Manual lifecycle override (super-admin). Any stage is settable EXCEPT
+    'Transferred' — that only happens through a claimed transfer offer."""
+    status = body.status.strip()
+    if status not in PILOT_FLOW:
+        raise HTTPException(422, f"status must be one of {list(PILOT_FLOW)}")
+    if status == "Transferred":
+        raise HTTPException(422, "'Transferred' is set only by completing a transfer offer.")
+    p = db.query(PilotCompany).filter_by(company_id=company_id).first()
+    if not p:
+        raise HTTPException(404, "Not a pilot company")
+    if p.status == "Transferred":
+        raise HTTPException(409, "Company already transferred; lifecycle is closed.")
+    now = datetime.utcnow()
+    col = PILOT_STAMP.get(status)
+    if col and getattr(p, col, None) is None:
+        setattr(p, col, now)
+    p.status = status                       # manual override may move in either direction
+    audit(db, actor.id, "pilot_status_override", "company", company_id, detail=status)
+    db.commit()
+    return _pilot_out(db, p)
+
+
+@router.post("/transfer-offers", status_code=201)
+def create_transfer_offer(body: TransferOfferIn, actor: User = Depends(require_super),
+                          db=Depends(get_db)):
+    """Offer a pilot company to a CFO's email. On that buyer's checkout the
+    purchased slot applies to the transfer instead of a blank company create."""
+    p = db.query(PilotCompany).filter_by(company_id=body.company_id).first()
+    if not p:
+        raise HTTPException(404, "Not a pilot company")
+    if p.status == "Transferred":
+        raise HTTPException(409, "Company already transferred.")
+    email = str(body.target_email).strip().lower()
+    if db.query(TransferOffer).filter_by(company_id=body.company_id, status="pending").first():
+        raise HTTPException(409, "This pilot already has a pending transfer offer; revoke it first.")
+    offer = TransferOffer(company_id=body.company_id, target_email=email,
+                          status="pending", created_by=actor.id)
+    db.add(offer)
+    audit(db, actor.id, "transfer_offer_created", "company", body.company_id, detail=email)
+    db.commit(); db.refresh(offer)
+    return _offer_out(offer)
+
+
+def _offer_out(o):
+    return {"id": o.id, "company_id": o.company_id, "target_email": o.target_email,
+            "status": o.status, "created_at": o.created_at, "claimed_at": o.claimed_at,
+            "revoked_at": o.revoked_at, "claimed_by_user_id": o.claimed_by_user_id}
+
+
+@router.get("/transfer-offers")
+def list_transfer_offers(actor: User = Depends(require_super), db=Depends(get_db)):
+    rows = db.query(TransferOffer).order_by(TransferOffer.id.desc()).all()
+    return {"offers": [_offer_out(o) for o in rows]}
+
+
+@router.post("/transfer-offers/{offer_id}/revoke")
+def revoke_transfer_offer(offer_id: int, actor: User = Depends(require_super),
+                          db=Depends(get_db)):
+    o = db.get(TransferOffer, offer_id)
+    if not o:
+        raise HTTPException(404, "Offer not found")
+    if o.status != "pending":
+        raise HTTPException(409, f"Cannot revoke a {o.status} offer.")
+    o.status = "revoked"; o.revoked_at = datetime.utcnow()
+    audit(db, actor.id, "transfer_offer_revoked", "company", o.company_id, detail=o.target_email)
+    db.commit()
+    return _offer_out(o)
+
+
+def _execute_transfer(db, offer, buyer_user, buyer_account):
+    """Move a pilot company + EVERY dependent object from the operator to the
+    buyer. Rewrites tenant across the Financial-Core world (else the seller keeps
+    legacy read access and the buyer can't see the data), reassigns the account
+    binding (CID survives), swaps membership, and closes the offer. Company_id-
+    keyed data (assessments, initiatives, threads, artifacts, tokens) rides along
+    unchanged. Runs inside the caller's transaction — commit is the caller's."""
+    from .modules.enterprise_state.models import Enterprise
+    from .modules.financials.models import FinancialDataset, EnterpriseDocument
+    from .modules.valuation.models import ValuationRun
+    from .modules.learning.models import LearningRun
+    from .modules.optimization.models import OptimizationRun
+    from .modules.simulation.models import SimulationRun
+    from .modules.risk.models import RiskRun
+    cid_ = offer.company_id
+    buyer_tenant = _linked_tenant(db, buyer_user)         # creates legacy shadow user if absent
+
+    # (B) tenant rewrite — Financial-Core world (gates purely on tenant)
+    ds_ids = [d for (d,) in db.query(FinancialDataset.id).filter_by(enterprise_id=cid_).all()]
+    ent = db.get(Enterprise, cid_)
+    if ent:
+        ent.tenant = buyer_tenant
+    db.query(FinancialDataset).filter_by(enterprise_id=cid_).update(
+        {"tenant": buyer_tenant}, synchronize_session=False)
+    for Model in (LearningRun, OptimizationRun, SimulationRun, RiskRun):
+        db.query(Model).filter_by(enterprise_id=cid_).update(
+            {"tenant": buyer_tenant}, synchronize_session=False)
+    if ds_ids:
+        db.query(ValuationRun).filter(ValuationRun.dataset_id.in_(ds_ids)).update(
+            {"tenant": buyer_tenant}, synchronize_session=False)
+        db.query(EnterpriseDocument).filter(EnterpriseDocument.dataset_id.in_(ds_ids)).update(
+            {"tenant": buyer_tenant}, synchronize_session=False)
+
+    # (B) account binding -> buyer; CID kept (survives)
+    access = db.query(CompanyAccess).filter_by(company_id=cid_).first()
+    if access:
+        access.account_id = buyer_account.id
+
+    # (C) membership: revoke ALL seller-side, grant buyer admin
+    db.query(Membership).filter_by(company_id=cid_).delete(synchronize_session=False)
+    db.add(Membership(user_id=buyer_user.id, company_id=cid_, role="admin",
+                      status="active", approved_at=datetime.utcnow()))
+    # (C) seller's private Prescience threads on this company (per-user) — drop
+    from .prescience import PrescienceConversation, PrescienceMessage
+    conv_ids = [c for (c,) in db.query(PrescienceConversation.id)
+                .filter_by(company_id=cid_).all()]
+    if conv_ids:
+        db.query(PrescienceMessage).filter(
+            PrescienceMessage.conversation_id.in_(conv_ids)).delete(synchronize_session=False)
+        db.query(PrescienceConversation).filter_by(company_id=cid_).delete(synchronize_session=False)
+
+    # pilot + offer closure
+    p = db.query(PilotCompany).filter_by(company_id=cid_).first()
+    if p:
+        p.status = "Transferred"; p.transferred_at = datetime.utcnow()
+    offer.status = "claimed"; offer.claimed_at = datetime.utcnow()
+    offer.claimed_by_user_id = buyer_user.id
+    audit(db, buyer_user.id, "company_transferred", "company", cid_,
+          detail=f"offer={offer.id} to={offer.target_email}")
+
+
 superadmin_router = router
 
 
@@ -5194,8 +5515,19 @@ async def stripe_webhook(request: Request, db=Depends(get_db)):
                               stripe_subscription_id=obj.get("subscription"),
                               company_slots=slots, status="active")
             db.add(account)
+        db.flush()
         audit(db, None, "stripe_checkout_completed", "account", user_id,
               detail=f"session={session_id}")
+        # FP-1: if the buyer's email matches a pending pilot transfer offer, the
+        # purchased slot applies to the transfer instead of a blank company create.
+        buyer = db.get(User, int(user_id))
+        if buyer:
+            email = (buyer.email or "").strip().lower()
+            offer = (db.query(TransferOffer)
+                     .filter_by(target_email=email, status="pending")
+                     .order_by(TransferOffer.id).first())
+            if offer:
+                _execute_transfer(db, offer, buyer, account)
         db.commit()
         return {"ok": True}
 
