@@ -23,12 +23,33 @@ class UserOut(BaseModel):
     plan: str = "free"
     accepted_eula: bool = False
     created_at: datetime
+    # platform_role is owned by the accounts world (ax_users), not the legacy
+    # identity User; resolved by email and surfaced here so the frontend can gate
+    # operator-only tabs. None for normal users / no accounts row.
+    platform_role: str | None = None
 
 
 class SessionOut(BaseModel):
     token: str
     expires_at: datetime
     user: UserOut
+
+
+def _platform_role(db: Session, email: str) -> str | None:
+    """Cross-seam lookup: the accounts world (ax_users) owns platform_role;
+    resolve it for a legacy identity user by (unique) email. None-safe."""
+    try:
+        from ...accounts import User as AxUser  # lazy: avoid import cycle
+        ax = db.query(AxUser).filter_by(email=email).first()
+        return ax.platform_role if ax else None
+    except Exception:
+        return None
+
+
+def _user_out(db: Session, user: models.User) -> UserOut:
+    out = UserOut.model_validate(user)
+    out.platform_role = _platform_role(db, user.email)
+    return out
 
 
 def _issue_session(db: Session, user: models.User) -> SessionOut:
@@ -38,7 +59,7 @@ def _issue_session(db: Session, user: models.User) -> SessionOut:
                               user_id=user.id, expires_at=expires))
     db.commit()
     return SessionOut(token=token, expires_at=expires,
-                      user=UserOut.model_validate(user))
+                      user=_user_out(db, user))
 
 
 @router.post("/register", response_model=SessionOut, status_code=201)
@@ -79,8 +100,8 @@ def logout(sess: models.AuthSession = Depends(deps.current_session),
 
 
 @router.get("/me", response_model=UserOut)
-def me(user: models.User = Depends(deps.current_user)):
-    return user
+def me(user: models.User = Depends(deps.current_user), db: Session = Depends(get_db)):
+    return _user_out(db, user)
 
 
 # ---- Phase 12 (ADR-011): entitlement administration -------------------------
