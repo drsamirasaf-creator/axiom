@@ -4493,7 +4493,16 @@ def assessment_summary(company_id: int, member=Depends(require_company_member),
                 "radar": [], "item_dispersion": {}, "trend": [], "cadence": cadence_block}
     cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
                 .order_by(AssessmentCycle.opened_at).all())
-    latest = cycles[-1] if cycles else None
+    # Headline source: the latest CLOSED cycle that has responses, so an open or
+    # empty cycle can never mask a closed cycle's results. Fall back to the newest
+    # cycle when no closed-with-responses cycle exists (unchanged first-run behavior).
+    latest = None
+    for c in reversed(cycles):
+        if c.closed_at and db.query(AssessmentResponse.id).filter_by(cycle_id=c.id).first():
+            latest = c
+            break
+    if latest is None:
+        latest = cycles[-1] if cycles else None
     current = _cycle_cei(db, latest) if latest else {}
     # respondent count on the live cycle = distinct participant_refs with responses
     n_resp = 0
