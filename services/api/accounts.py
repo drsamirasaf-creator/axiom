@@ -717,6 +717,20 @@ def send_invite(to: str, name: str, company_name: str, token: str):
             <p style="font-size:12px;color:#8fb59e">This invitation is valid for 7 days.</p>"""))
 
 
+def _try_send_assess_invite(to, name, company_name, token, anonymity_mode, company_id):
+    """Best-effort email: the invite row is already committed, so a mail-provider
+    failure must NOT 500 the request (nor leave the operator unable to invite).
+    Returns whether the email actually went out."""
+    try:
+        send_assess_invite(to, name, company_name, token, anonymity_mode)
+        return True
+    except Exception:
+        import logging
+        logging.getLogger("axiom.assessment").warning(
+            "assessment invite email failed to send (company=%s) — invite still created", company_id)
+        return False
+
+
 def send_assess_invite(to: str, name: str, company_name: str, token: str,
                        anonymity_mode: str = "anonymous"):
     link = f"{_app_url()}/assess?invite={token}"
@@ -4726,9 +4740,9 @@ def invite_participant(company_id: int, cid: int, body: AssessInviteIn,
     audit(db, user.id, "assessment_participant_invited", "company", company_id,
           detail=f"cycle {cid} {email}")
     db.commit(); db.refresh(inv)
-    send_assess_invite(email, name, company_name, token, cyc.anonymity_mode)
+    email_sent = _try_send_assess_invite(email, name, company_name, token, cyc.anonymity_mode, company_id)
     return {"ok": True, "cycle_id": cid, "invite_id": inv.id, "email": email,
-            "anonymity_mode": cyc.anonymity_mode, "expires_in_days": 30}
+            "email_sent": email_sent, "anonymity_mode": cyc.anonymity_mode, "expires_in_days": 30}
 
 
 @router.post("/companies/{company_id}/assessment/invites", status_code=201)
@@ -4754,10 +4768,10 @@ def invite_assessor(company_id: int, body: AssessInviteIn,
     audit(db, user.id, "assessment_participant_invited", "company", company_id,
           detail=f"cycle {cyc.id} {email}" + (" (cycle auto-opened)" if opened else ""))
     db.commit(); db.refresh(inv)
-    send_assess_invite(email, name, company_name, token, cyc.anonymity_mode)
+    email_sent = _try_send_assess_invite(email, name, company_name, token, cyc.anonymity_mode, company_id)
     return {"ok": True, "cycle_id": cyc.id, "cycle_auto_opened": opened,
-            "invite_id": inv.id, "email": email, "anonymity_mode": cyc.anonymity_mode,
-            "expires_in_days": 30}
+            "invite_id": inv.id, "email": email, "email_sent": email_sent,
+            "anonymity_mode": cyc.anonymity_mode, "expires_in_days": 30}
 
 
 @router.get("/companies/{company_id}/assessment/current")
