@@ -15,7 +15,11 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from . import engines
 from .templates import LABELS, COMPANY_ROWS, BLOCK_KEYS
 
-TEMPLATE_VERSION = "7a2-v1"
+TEMPLATE_VERSION = "7k-v2"
+# statement_units -> factor that normalizes raw figures to the canonical internal
+# unit (MILLIONS) the valuation engine + report builder assume. Honoring this is
+# how "actual / thousands / millions" flows correctly end-to-end.
+UNIT_SCALE = {"actual": 1e-6, "thousands": 1e-3, "millions": 1.0}
 META_SIG = "AXIOM-COMPANY-TEMPLATE"
 _LOCK_PWD = "AXIOM"
 
@@ -46,7 +50,8 @@ SUBTOTALS = {
 
 
 _WM_FILL = "FFE8A3"   # amber watermark
-WATERMARK = "SAMPLE DATA — replace with your figures"
+WATERMARK = ("SAMPLE DATA (illustrative, in thousands) — replace on EVERY sheet "
+             "with your own figures")
 
 
 def _watermark(cell):
@@ -176,8 +181,9 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     ws["A3"].font = Font(color="446655")
     for r, line in enumerate([
         "How to complete this workbook:",
-        "1. The template contains sample figures for a fictional company —",
-        "   replace them with your own, keeping the same currency and units shown.",
+        "1. The green cells hold SAMPLE figures for a fictional company (illustrative,",
+        "   in thousands). Replace them on EVERY sheet with your own figures in the",
+        f"   units shown ({unit_label}). Leaving any sheet's sample data in is rejected on upload.",
         f"2. Enter {ncols} {'years' if frequency=='annual' else 'quarters'} across the statement sheets.",
         "   Row 4 = the period label; row 3 marks Historical or Forecast.",
         "   At least one historical period is required.",
@@ -279,6 +285,7 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     ws["A3"] = "frequency"; ws["B3"] = frequency
     ws["A4"] = "template_version"; ws["B4"] = TEMPLATE_VERSION
     ws["A5"] = "standard"; ws["B5"] = standard
+    ws["A6"] = "statement_units"; ws["B6"] = statement_units
     ws.sheet_state = "hidden"
     ws.protection.sheet = True
     ws.protection.password = _LOCK_PWD
@@ -300,10 +307,12 @@ def read_upload_metadata(content: bytes) -> dict | None:
     if ws["A1"].value != META_SIG:
         return None
     try:
+        units = ws["B6"].value
         return {"company_id": int(ws["B2"].value),
                 "frequency": str(ws["B3"].value or "annual"),
                 "template_version": str(ws["B4"].value or ""),
-                "standard": str(ws["B5"].value or "us_gaap")}
+                "standard": str(ws["B5"].value or "us_gaap"),
+                "statement_units": (str(units).strip().lower() if units else None)}
     except (TypeError, ValueError):
         return None
 
@@ -319,12 +328,16 @@ def _sheet_for(engine_error: str, lab: dict) -> str | None:
     return None
 
 
-def parse_and_validate(content: bytes, expected_company_id: int):
+def parse_and_validate(content: bytes, expected_company_id: int,
+                       statement_units: str | None = None):
     """Parse + validate an uploaded company workbook into the canonical dataset.
 
     Returns (data|None, errors, meta, warnings). `errors` is a structured list
     of {sheet, cell, message}; when non-empty NOTHING should be written. On
-    success `data` is the engine-ready canonical dataset (values coerced)."""
+    success `data` is the engine-ready canonical dataset with statement figures
+    normalized to the canonical MILLIONS scale (honoring statement_units).
+    `statement_units` is the caller's fallback when the template metadata omits
+    it (older templates)."""
     errors = []
     meta = read_upload_metadata(content)
     if meta is None:
@@ -459,6 +472,57 @@ def parse_and_validate(content: bytes, expected_company_id: int):
                                       f"assets {assets:,.2f} vs liabilities+equity "
                                       f"{le:,.2f} (must match within 0.5%)"})
 
+    # resolve the declared unit (template metadata wins; caller is the fallback)
+    units = ((meta or {}).get("statement_units")
+             or (statement_units or "").strip().lower() or "millions")
+    if units not in UNIT_SCALE:
+        units = "millions"
+    unit_label = {"actual": "actual amounts", "thousands": "thousands",
+                  "millions": "millions"}[units]
+
+    # ---- (b) sentinel: reject a workbook still holding the template SAMPLE data ----
+    try:
+        sample = build_sample_data(company.get("ownership") or "private", standard,
+                                   (meta or {}).get("frequency", "annual"))
+        for block in ("income_statement", "balance_sheet", "cash_flow"):
+            up_vals = sorted(v for row in data.get(block, {}).values() for v in row.values())
+            sm_vals = sorted(v for row in sample.get(block, {}).values() for v in row.values())
+            if up_vals and up_vals == sm_vals:
+                errors.append({"sheet": lab["sheets"][block], "cell": None,
+                               "message": f"The '{lab['sheets'][block]}' sheet still contains the "
+                                          "template's sample figures. Replace every sheet with your "
+                                          "company's own numbers before uploading."})
+    except Exception:
+        pass
+
+    # ---- (b) cross-sheet magnitude sanity (catches mixed-scale uploads) ----
+    try:
+        yref = str((hist or fcst)[-1])
+        rev = data["income_statement"]["revenue"][yref]
+        ta = (bs["cash"][yref] + bs["other_current_assets"][yref] + bs["noncurrent_assets"][yref])
+        if rev and ta:
+            turn = rev / ta
+            if turn > 50 or turn < 0.01:
+                errors.append({"sheet": None, "cell": None,
+                               "message": f"Income-statement and balance-sheet figures look like they "
+                                          f"are on different scales: revenue is {turn:,.0f}x total assets "
+                                          f"in {yref}, an asset turnover of {turn:,.1f}x that is not "
+                                          f"plausible. Check that every sheet uses the same units "
+                                          f"({unit_label})."})
+            elif turn > 20 or turn < 0.04:
+                warnings.append(f"Unusual asset turnover in {yref} ({turn:,.1f}x) — please verify every "
+                                f"sheet uses the same units ({unit_label}).")
+    except (KeyError, ZeroDivisionError, IndexError, TypeError):
+        pass
+
     if errors:
         return None, errors, meta, warnings
+
+    # ---- (a) normalize statement figures to the canonical MILLIONS scale ----
+    factor = UNIT_SCALE.get(units, 1.0)
+    if factor != 1.0:
+        for block in ("income_statement", "balance_sheet", "cash_flow"):
+            for row in data[block].values():
+                for ys in list(row):
+                    row[ys] = row[ys] * factor
     return data, [], meta, warnings

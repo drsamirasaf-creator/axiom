@@ -1724,7 +1724,8 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
     content = await file.read()
     if len(content) > 5 * 1024 * 1024:
         raise HTTPException(413, "file exceeds 5 MB")
-    data, errors, meta, warnings = ingest.parse_and_validate(content, company_id)
+    data, errors, meta, warnings = ingest.parse_and_validate(
+        content, company_id, statement_units=ent.statement_units)
     if errors:
         raise HTTPException(422, detail={
             "message": "Upload validation failed — no data was saved.",
