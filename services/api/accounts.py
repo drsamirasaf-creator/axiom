@@ -4212,9 +4212,19 @@ def _resolve_responses(db, cyc, raw):
     items = db.query(AssessmentItem).filter_by(framework_id=cyc.framework_id).all()
     valid_ids = {i.id for i in items}
     code_to_id = {i.code: i.id for i in items}      # scoped to this framework revision
-    out = []
+
+    def _numeric_ref(v):                             # int / int-string / dotted-NUMERIC
+        if isinstance(v, bool):
+            return False
+        if isinstance(v, int):
+            return True
+        s = str(v).strip()
+        return bool(s) and all(p.isdigit() for p in s.split("."))
+
+    resolved, skipped = [], []
     for r in raw:
         rid = r.item_id
+        iid = None
         if isinstance(rid, bool):
             iid = None
         elif isinstance(rid, int):
@@ -4223,23 +4233,28 @@ def _resolve_responses(db, cyc, raw):
             iid = int(rid.strip())
         elif isinstance(rid, str) and rid.strip() in code_to_id:
             iid = code_to_id[rid.strip()]
-        elif isinstance(rid, str):
-            raise HTTPException(422, detail=f"Unknown item code '{rid}' — not in this cycle's framework.")
-        else:
-            iid = None
-        if iid is None or iid not in valid_ids:
+        if iid is not None and iid in valid_ids:
+            # a REAL framework item -> score is strict (a real answer is never dropped)
+            sc = r.score.strip() if isinstance(r.score, str) else (None if isinstance(r.score, bool) else r.score)
+            if sc is None or sc == "":
+                raise HTTPException(422, detail=f"Score for item '{rid}' is required (a number 1-10).")
+            try:
+                score = int(round(float(sc)))
+            except (TypeError, ValueError):
+                raise HTTPException(422, detail=f"Score for item '{rid}' must be a number 1-10 (got '{r.score}').")
+            if not (1 <= score <= 10):
+                raise HTTPException(422, detail=f"Score for item '{rid}' must be between 1 and 10 (got {score}).")
+            resolved.append(ScoreItem(item_id=iid, score=score, comment=r.comment))
+        elif _numeric_ref(rid):
+            # an id / dotted-numeric code that resolves to nothing here -> LOUD (fatal)
             raise HTTPException(422, detail=f"Item '{rid}' is not in this cycle's framework.")
-        sc = r.score.strip() if isinstance(r.score, str) else (None if isinstance(r.score, bool) else r.score)
-        if sc is None or sc == "":
-            raise HTTPException(422, detail=f"Score for item '{rid}' is required (a number 1-10).")
-        try:
-            score = int(round(float(sc)))
-        except (TypeError, ValueError):
-            raise HTTPException(422, detail=f"Score for item '{rid}' must be a number 1-10 (got '{r.score}').")
-        if not (1 <= score <= 10):
-            raise HTTPException(422, detail=f"Score for item '{rid}' must be between 1 and 10 (got {score}).")
-        out.append(ScoreItem(item_id=iid, score=score, comment=r.comment))
-    return out
+        else:
+            # a non-framework meta SLUG (e.g. "strategy.intent") -> SKIP + echo verbatim
+            entry = {"item": rid}
+            if r.comment is not None and str(r.comment).strip():
+                entry["comment"] = r.comment
+            skipped.append(entry)
+    return resolved, skipped
 
 
 def _submit_responses(db, cyc, participant_ref, responses, actor_id=None,
@@ -4252,8 +4267,13 @@ def _submit_responses(db, cyc, participant_ref, responses, actor_id=None,
             cycle_id=cyc.id, participant_ref=participant_ref).first():
         raise HTTPException(409, "This participant has already submitted for this "
                                  "cycle — submissions are immutable.")
+    resolved, skipped = _resolve_responses(db, cyc, responses)
+    if not resolved:
+        raise HTTPException(422, detail="No answerable items were submitted"
+                            + (f" (only non-framework entries: "
+                               f"{', '.join(str(s['item']) for s in skipped)})." if skipped else "."))
     n = 0
-    for r in _resolve_responses(db, cyc, responses):
+    for r in resolved:
         db.add(AssessmentResponse(cycle_id=cyc.id, participant_ref=participant_ref,
                                   item_id=r.item_id, score=r.score, comment=r.comment))
         n += 1
@@ -4261,10 +4281,10 @@ def _submit_responses(db, cyc, participant_ref, responses, actor_id=None,
         db.add(AssessmentOverall(cycle_id=cyc.id, participant_ref=participant_ref,
                                  comment=overall_comment.strip()))
     audit(db, actor_id, "assessment_scored", "company", cyc.company_id,
-          detail=f"cycle {cyc.id} participant {participant_ref} ({n} items)")
+          detail=f"cycle {cyc.id} participant {participant_ref} ({n} items, {len(skipped)} skipped)")
     db.commit()
     return {"ok": True, "cycle_id": cyc.id, "participant_ref": participant_ref,
-            "n_responses": n}
+            "n_responses": n, "saved": n, "skipped": skipped}
 
 
 @router.get("/companies/{company_id}/assessment/framework")
@@ -5126,13 +5146,13 @@ def participant_save_draft(body: AssessDraftIn, session=Depends(assess_session),
         raise HTTPException(409, "You have already submitted — answers are final.")
     if cyc.closed_at:
         raise HTTPException(409, "This assessment cycle is closed.")
-    resolved = _resolve_responses(db, cyc, body.responses)   # id-or-code + score coercion
+    resolved, skipped = _resolve_responses(db, cyc, body.responses)   # id-or-code + skip meta
     draft = dict(inv.draft or {})
     for r in resolved:
         draft[str(r.item_id)] = {"score": r.score, "comment": r.comment}
     inv.draft = draft
     db.commit()
-    return {"ok": True, "saved": len(resolved), "draft_size": len(draft)}
+    return {"ok": True, "saved": len(resolved), "draft_size": len(draft), "skipped": skipped}
 
 
 @router.post("/assessment/submit", status_code=201)
