@@ -4,6 +4,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .core.db import init_db
 
+# Root logging config so app INFO (custom loggers like axiom.prescience.nightly)
+# reaches stdout. Without a configured root, non-uvicorn INFO records fall through
+# to Python's last-resort handler (WARNING+ only) and vanish. Chatty third-party
+# loggers are pinned to WARNING so INFO doesn't open a firehose.
+import logging as _logging
+_logging.basicConfig(level=_logging.INFO)
+for _noisy in ("botocore", "boto3", "s3transfer", "urllib3", "httpx", "httpcore",
+               "sqlalchemy.engine", "asyncio"):
+    _logging.getLogger(_noisy).setLevel(_logging.WARNING)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()

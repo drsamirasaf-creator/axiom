@@ -800,14 +800,14 @@ def recompute_all_frontiers(only_stale=True):
         _release_nightly_lock(db)
         db.close()
     summary["wall_s"] = round(_time.monotonic() - t0, 2)
+    _log.info("nightly sweep done: %s", summary)   # every caller (boot + internal endpoint) emits this
     return summary
 
 
 def _nightly_loop():
     while True:
         try:
-            s = recompute_all_frontiers(only_stale=True)
-            _log.info("nightly sweep done: %s", s)
+            recompute_all_frontiers(only_stale=True)   # logs its own summary
         except Exception:
             _log.exception("nightly sweep failed")
         _time.sleep(NIGHTLY_PERIOD_S)
