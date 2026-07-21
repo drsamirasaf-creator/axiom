@@ -4297,6 +4297,28 @@ def put_assessment_framework(company_id: int, body: FrameworkPut,
     return _framework_out(db, fw)
 
 
+def _current_open_cycle(db, company_id):
+    return (db.query(AssessmentCycle)
+              .filter_by(company_id=company_id, closed_at=None)
+              .order_by(AssessmentCycle.id.desc()).first())
+
+
+def _ensure_open_cycle(db, company_id, user_id, anonymity_mode="anonymous"):
+    """Return the company's open cycle, auto-opening one when none is open so an
+    assessor invite never orphans (lifecycle-gap fix). Returns (cycle, opened)."""
+    cyc = _current_open_cycle(db, company_id)
+    if cyc:
+        return cyc, False
+    fw = _assess_ensure_framework(db, company_id)
+    cyc = AssessmentCycle(company_id=company_id, framework_id=fw.id, revision=fw.revision,
+                          anonymity_mode=anonymity_mode or "anonymous")
+    db.add(cyc); db.flush()
+    audit(db, user_id, "assessment_cycle_opened", "company", company_id,
+          detail=f"cycle {cyc.id} rev {fw.revision} (auto-opened for invite)")
+    _pilot_touch(db, company_id, "Assessment Live")
+    return cyc, True
+
+
 @router.post("/companies/{company_id}/assessment/cycles", status_code=201)
 def open_assessment_cycle(company_id: int, body: CycleIn,
                           member=Depends(require_company_admin),
@@ -4707,6 +4729,49 @@ def invite_participant(company_id: int, cid: int, body: AssessInviteIn,
     send_assess_invite(email, name, company_name, token, cyc.anonymity_mode)
     return {"ok": True, "cycle_id": cid, "invite_id": inv.id, "email": email,
             "anonymity_mode": cyc.anonymity_mode, "expires_in_days": 30}
+
+
+@router.post("/companies/{company_id}/assessment/invites", status_code=201)
+def invite_assessor(company_id: int, body: AssessInviteIn,
+                    member=Depends(require_company_admin),
+                    user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Company-level assessor invite — AUTO-OPENS a cycle when none is open so an
+    invite never orphans (lifecycle-gap fix). Otherwise identical to the
+    cid-scoped invite. Reports whether a cycle was auto-opened."""
+    cyc, opened = _ensure_open_cycle(db, company_id, user.id)
+    email = str(body.email).strip().lower()
+    name = (body.name or "").strip()
+    if db.query(AssessmentInvite).filter_by(cycle_id=cyc.id, email=email).first():
+        raise HTTPException(409, "This person is already invited to the open cycle.")
+    company_name = _company_name(db, company_id)
+    jti = secrets.token_urlsafe(16)
+    token = make_token(str(cyc.id), purpose="assess-invite", ttl=30 * 86_400,
+                       jti=jti, cycle_id=cyc.id, company_id=company_id,
+                       invited_email=email, invited_name=name)
+    inv = AssessmentInvite(cycle_id=cyc.id, company_id=company_id, email=email,
+                           name=name, jti=jti, invited_by=user.id)
+    db.add(inv)
+    audit(db, user.id, "assessment_participant_invited", "company", company_id,
+          detail=f"cycle {cyc.id} {email}" + (" (cycle auto-opened)" if opened else ""))
+    db.commit(); db.refresh(inv)
+    send_assess_invite(email, name, company_name, token, cyc.anonymity_mode)
+    return {"ok": True, "cycle_id": cyc.id, "cycle_auto_opened": opened,
+            "invite_id": inv.id, "email": email, "anonymity_mode": cyc.anonymity_mode,
+            "expires_in_days": 30}
+
+
+@router.get("/companies/{company_id}/assessment/current")
+def current_cycle_status(company_id: int, member=Depends(require_company_member),
+                         db=Depends(get_db)):
+    """CE surface: the open cycle (if any) with invited/responded counts."""
+    cyc = _current_open_cycle(db, company_id)
+    if not cyc:
+        return {"company_id": company_id, "open_cycle": None, "invited": 0, "responded": 0}
+    invited = db.query(AssessmentInvite).filter_by(cycle_id=cyc.id).count()
+    responded = len({r.participant_ref for r in
+                     db.query(AssessmentResponse.participant_ref).filter_by(cycle_id=cyc.id).all()})
+    return {"company_id": company_id, "open_cycle": _cycle_out(cyc),
+            "invited": invited, "responded": responded}
 
 
 @router.get("/companies/{company_id}/assessment/cycles/{cid}/invites")
