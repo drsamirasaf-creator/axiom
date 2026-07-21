@@ -1852,7 +1852,13 @@ async def upload_doc(company_id: int, file: UploadFile = File(...),
     db.flush()
     audit(db, user.id, "document_uploaded", "company", company_id,
           detail=f"doc={doc.id} {fname}")
+    doc_id = doc.id
     db.commit()
+    try:                                               # 7k: extract text in the background
+        from .document_intel import spawn_extract
+        spawn_extract(doc_id)
+    except Exception:
+        pass
     return _doc_out(doc)
 
 
@@ -1863,7 +1869,12 @@ def list_docs(company_id: int, member=Depends(require_company_member),
     auth — a company:{id}:view token can only reach its own company)."""
     rows = (db.query(Document).filter_by(company_id=company_id)
               .order_by(Document.id.desc()).all())
-    return {"company_id": company_id, "documents": [_doc_out(d) for d in rows]}
+    try:                                               # 7k: attach extraction status
+        from .document_intel import extraction_status
+        out = [{**_doc_out(d), "extraction": extraction_status(db, d.id)} for d in rows]
+    except Exception:
+        out = [_doc_out(d) for d in rows]
+    return {"company_id": company_id, "documents": out}
 
 
 @router.get("/companies/{company_id}/documents/{doc_id}/download-url")
@@ -4489,15 +4500,30 @@ def assessment_swot(company_id: int, member=Depends(require_company_member),
     divergence). Mid-band items with no negative signal fall to a watch list.
     Each entry carries trend vs the prior cycle and any linked initiatives."""
     from .assessment_engine import score_rag
+    # 7k: adopted document-derived SWOT entries render in the quadrants alongside
+    # assessment-derived ones, each source-tagged with its doc citations (decision 3).
+    doc_swot = {q: [] for q in ("strengths", "weaknesses", "opportunities", "threats")}
+    try:
+        from .document_intel import swot_entries_for
+        doc_swot = swot_entries_for(db, company_id)
+    except Exception:
+        pass
+    doc_swot_count = sum(len(v) for v in doc_swot.values())
+
     closed = (db.query(AssessmentCycle).filter_by(company_id=company_id)
                 .filter(AssessmentCycle.closed_at.isnot(None))
                 .order_by(AssessmentCycle.closed_at).all())
     if not closed:
-        return {"has_data": False, "cycle_id": None, "closed_at": None,
-                "message": "No closed assessment cycle yet — SWOT appears once the "
-                           "first cycle closes.",
-                "strengths": [], "weaknesses": [], "opportunities": [],
-                "threats": [], "watch_list": []}
+        buckets = {"strengths": [], "weaknesses": [], "opportunities": [],
+                   "threats": [], "watch_list": []}
+        for q, entries in doc_swot.items():
+            buckets[q].extend(entries)
+        return {"has_data": doc_swot_count > 0, "cycle_id": None, "closed_at": None,
+                "message": ("No closed assessment cycle yet — SWOT appears once the "
+                            "first cycle closes." if doc_swot_count == 0
+                            else "Document-derived SWOT entries shown; assessment-derived "
+                                 "entries appear once the first cycle closes."),
+                "counts": {k: len(v) for k, v in buckets.items()}, **buckets}
     latest = closed[-1]
     prior = closed[-2] if len(closed) > 1 else None
     snap = latest.snapshot or {}
@@ -4548,6 +4574,8 @@ def assessment_swot(company_id: int, member=Depends(require_company_member),
         buckets[b].sort(key=lambda e: -e["mean"])
     for b in ("weaknesses", "threats", "watch_list"):
         buckets[b].sort(key=lambda e: e["mean"])
+    for q, entries in doc_swot.items():                # 7k: fold in document-derived entries
+        buckets[q].extend(entries)
 
     return {"has_data": True, "cycle_id": latest.id, "revision": latest.revision,
             "closed_at": latest.closed_at, "prior_cycle_id": prior.id if prior else None,
@@ -5766,12 +5794,13 @@ def include_accounts(app, create_tables: bool = True):
     from .prescience import prescience_router
     from .prescience_decision import decision_router, spawn_nightly   # Phase 7c-2
     from .sentinel import sentinel_router                             # Phase 7i
+    from .document_intel import document_router                       # Phase 7k
     if create_tables:
         Base.metadata.create_all(engine)
         _ensure_ax_columns(engine)
     for r in (auth_router, oauth_router, company_router, profile_router,
               superadmin_router, stripe_router, prescience_router, decision_router,
-              sentinel_router):
+              sentinel_router, document_router):
         app.include_router(r)
     if create_tables:
         spawn_nightly()   # no-op unless AXIOM_DECISION_NIGHTLY is enabled
