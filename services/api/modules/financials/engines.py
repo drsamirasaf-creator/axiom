@@ -98,8 +98,8 @@ def validate_dataset(data: dict) -> dict:
         errors.append("periods must be strictly increasing and non-overlapping")
     if len(hist) > 10:
         warnings.append("more than 10 historical years supplied; all are used")
-    if fcst and not (1 <= len(fcst) <= 10):
-        errors.append("periods.forecast supports 1-10 years")
+    if fcst and not (1 <= len(fcst) <= 15):
+        errors.append("periods.forecast supports 1-15 years")
 
     for block_name, keys in (("income_statement", IS_KEYS),
                              ("balance_sheet", BS_KEYS),
@@ -296,8 +296,8 @@ def auto_forecast(data: dict, assumptions: dict | None = None) -> dict:
     """
     a = dict(assumptions or {})
     horizon = int(a.get("horizon", 5))
-    if not (1 <= horizon <= 10):
-        raise ValueError("horizon must be between 1 and 10 years")
+    if not (1 <= horizon <= 15):
+        raise ValueError("horizon must be between 1 and 15 years")
     hist = list(data["periods"]["historical"])
     if data["periods"].get("forecast"):
         raise ValueError("dataset already contains pro forma years; "

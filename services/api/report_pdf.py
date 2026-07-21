@@ -353,7 +353,7 @@ def build_board_pdf(report: dict, extras: dict, meta: dict) -> bytes:
     s = sec["outlook"]
     story += kicker("Question 2 · Forward View", "What Is Likely to Happen Next", s["takeaway"])
     sb = s["simulation_baseline"]
-    story.append(_fan(sb["revenue_fan"], sb["sample_paths"]["revenue"], "#12B5A5", f"Revenue — 5-year projection with volatility ({sym.strip()}M)"))
+    story.append(_fan(sb["revenue_fan"], sb["sample_paths"]["revenue"], "#12B5A5", f"Revenue — projection with volatility ({sym.strip()}M)"))
     story.append(Spacer(1, 4))
     story.append(_fan(sb["fcff_fan"], sb["sample_paths"]["fcff"], "#0B7A8F", f"Free cash flow to firm — projection ({sym.strip()}M)"))
     story.append(PageBreak())
@@ -400,8 +400,17 @@ def build_board_pdf(report: dict, extras: dict, meta: dict) -> bytes:
     story.append(PageBreak())
 
     # ===== PRO FORMA STATEMENTS =====
-    pfy = PFsec["forecast_years"]; pfs = PFsec["statements"]
+    # 7L: the print report caps pro-forma tables at the first 5 forecast years so
+    # wide horizons (up to 15) never overflow the page; the full horizon lives in
+    # the app. A note is appended when the horizon is truncated here.
+    _pfy_all = PFsec["forecast_years"]; _pfs_all = PFsec["statements"]
+    _PF_CAP = 5
+    pfy = _pfy_all[:_PF_CAP]; pfs = _pfs_all[:_PF_CAP]
     YHDR = [str(y) for y in pfy]
+    _pf_truncated = len(_pfy_all) > _PF_CAP
+    _PF_NOTE = (f"Showing the first {_PF_CAP} of {len(_pfy_all)} forecast years — "
+                f"the full {len(_pfy_all)}-year horizon is available in the AXIOM app."
+                if _pf_truncated else None)
 
     def _plan(st, key, kind):
         return st["stochastic"][key]["plan"] if kind == "stoch" else st["deterministic"][key]
@@ -457,6 +466,8 @@ def build_board_pdf(report: dict, extras: dict, meta: dict) -> bytes:
                ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5), ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F4F7FA"))]))
     story.append(ft); story.append(Spacer(1, 8))
+    if _PF_NOTE:
+        story.append(Paragraph(_PF_NOTE, styles["Sm"])); story.append(Spacer(1, 8))
     cg = PFsec["plan_cagr"]
     story.append(Paragraph(f"<b>Compound annual growth (plan):</b> revenue {PC(cg['revenue'])}, "
                  f"EBIT {PC(cg['ebit'])}, net income {PC(cg['net_income'])}, FCFF {PC(cg['fcff'])}. "

@@ -285,13 +285,18 @@ SCENARIOS = {
 }
 
 
-def simulate(data: dict, scenario: str = "baseline", horizon: int = 5,
+def simulate(data: dict, scenario: str = "baseline", horizon: int | None = None,
              n_paths: int = 2000, seed: int = SIM_SEED,
              custom: dict | None = None) -> dict:
     """Seeded scenario fan on the client's fitted trend drivers.
     Cash path assumes no new financing (net borrowing 0, no dividends):
     cash_t = cash_{t-1} + FCFE_t with FCFE = FCFF - interest x (1 - T) —
-    a deliberately conservative liquidity view, stated, not hidden."""
+    a deliberately conservative liquidity view, stated, not hidden.
+
+    horizon=None (the default) derives the fan length from the dataset's own
+    forecast horizon (len(periods.forecast), capped 1-15, fallback 5 when there
+    are no forecast years) so report fans match the pro-forma tables beside them
+    (7L). Callers that need a fixed length still pass an explicit horizon."""
     import random as _random
     if scenario == "custom":
         sc = {"growth_shift": 0.0, "margin_shift": 0.0, "sigma_scale": 1.0,
@@ -301,8 +306,11 @@ def simulate(data: dict, scenario: str = "baseline", horizon: int = 5,
     else:
         raise ValueError(f"scenario must be one of "
                          f"{sorted(SCENARIOS) + ['custom']}")
-    if not (1 <= horizon <= 10):
-        raise ValueError("horizon must be 1-10 years")
+    if horizon is None:
+        _fc = (data.get("periods") or {}).get("forecast") or []
+        horizon = min(15, max(1, len(_fc))) if _fc else 5
+    if not (1 <= horizon <= 15):
+        raise ValueError("horizon must be 1-15 years")
     if not (200 <= n_paths <= 10000):
         raise ValueError("n_paths must be 200-10000")
     if not (0.1 <= sc["sigma_scale"] <= 5.0):
@@ -519,8 +527,8 @@ def compare(data_a: dict, data_b: dict, n_paths: int = 2000) -> dict:
                        "at the subject's certified rate)")}
 
     # ---- 2. distributional divergence of simulated futures ----------------
-    sim_a = simulate(data_a, "baseline", n_paths=n_paths)
-    sim_b = simulate(data_b, "baseline", n_paths=n_paths)
+    sim_a = simulate(data_a, "baseline", horizon=5, n_paths=n_paths)   # observatory pins 5y
+    sim_b = simulate(data_b, "baseline", horizon=5, n_paths=n_paths)
 
     def _samples(dat, seedoff):
         import random as _r
