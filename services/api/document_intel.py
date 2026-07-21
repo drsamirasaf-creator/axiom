@@ -53,7 +53,7 @@ DOC_INJECT_PER_DOC = int(os.environ.get("AXIOM_DOC_INJECT_PER_DOC", "6"))
 DOC_INJECT_TOKEN_BUDGET = int(os.environ.get("AXIOM_DOC_INJECT_TOKENS", "5000"))
 SYNTH_MODEL = os.environ.get("AXIOM_PRESCIENCE_MODEL", "claude-sonnet-4-6")
 SYNTH_MAX_INPUT_TOKENS = int(os.environ.get("AXIOM_DOC_SYNTH_MAX_INPUT", "120000"))
-SYNTH_MAX_TOKENS = int(os.environ.get("AXIOM_DOC_SYNTH_MAX_TOKENS", "2500"))
+SYNTH_MAX_TOKENS = int(os.environ.get("AXIOM_DOC_SYNTH_MAX_TOKENS", "4000"))
 # Known editor/trial watermarks that pollute extracted text (decision 1 rider).
 WATERMARKS = ["Wondershare", "PDFelement", "Remove Watermark", "www.wondershare.com"]
 _QUADRANTS = ("strengths", "weaknesses", "opportunities", "threats")
@@ -398,7 +398,10 @@ SYNTH_SYSTEM = (
     "4. Do NOT propose SWOT entries that are purely financial-ratio / KPI / variance "
     "observations (those come from a different engine). Focus on qualitative "
     "strategy, market, operations, governance, and execution signals in the text.\n"
-    "5. Respond with ONLY strict JSON of shape: {\"swot\": [{\"quadrant\": "
+    "5. Be selective: at most 6 SWOT entries and 6 recommendations, the most "
+    "material first; keep each 'detail'/'description' to one or two sentences so the "
+    "JSON stays complete.\n"
+    "6. Respond with ONLY strict JSON of shape: {\"swot\": [{\"quadrant\": "
     "\"strengths|weaknesses|opportunities|threats\", \"title\": str, \"detail\": str, "
     "\"citations\": [str]}], \"recommendations\": [{\"title\": str, \"description\": "
     "str, \"citations\": [str]}]}. No prose outside the JSON."
