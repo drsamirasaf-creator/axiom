@@ -4114,8 +4114,8 @@ class CycleIn(BaseModel):
 
 
 class ScoreItem(BaseModel):
-    item_id: int
-    score: int
+    item_id: int | str            # int id, int-string "4109", or dotted code "1.1.1"
+    score: int | str | float | None = None   # coerced + bounds-checked in _resolve_responses
     comment: str | None = None
 
 
@@ -4201,22 +4201,59 @@ def _cycle_cei(db, cyc):
     return out
 
 
+def _resolve_responses(db, cyc, raw):
+    """Resolve answers against THIS cycle's framework revision ONLY — never a global
+    code lookup (codes repeat across frameworks; a cross-framework match would be a
+    contamination-class bug). Builds the code->id map once. item_id may be an int,
+    an int-string ("4109"), or a dotted framework code ("1.1.1"); score may be an
+    int, a numeric string ("7"), or a float. Any per-item problem raises 422 with a
+    HUMAN-READABLE string detail (never a bare model dump). Returns ScoreItems with
+    int item_id + int score."""
+    items = db.query(AssessmentItem).filter_by(framework_id=cyc.framework_id).all()
+    valid_ids = {i.id for i in items}
+    code_to_id = {i.code: i.id for i in items}      # scoped to this framework revision
+    out = []
+    for r in raw:
+        rid = r.item_id
+        if isinstance(rid, bool):
+            iid = None
+        elif isinstance(rid, int):
+            iid = rid
+        elif isinstance(rid, str) and rid.strip().lstrip("+-").isdigit():
+            iid = int(rid.strip())
+        elif isinstance(rid, str) and rid.strip() in code_to_id:
+            iid = code_to_id[rid.strip()]
+        elif isinstance(rid, str):
+            raise HTTPException(422, detail=f"Unknown item code '{rid}' — not in this cycle's framework.")
+        else:
+            iid = None
+        if iid is None or iid not in valid_ids:
+            raise HTTPException(422, detail=f"Item '{rid}' is not in this cycle's framework.")
+        sc = r.score.strip() if isinstance(r.score, str) else (None if isinstance(r.score, bool) else r.score)
+        if sc is None or sc == "":
+            raise HTTPException(422, detail=f"Score for item '{rid}' is required (a number 1-10).")
+        try:
+            score = int(round(float(sc)))
+        except (TypeError, ValueError):
+            raise HTTPException(422, detail=f"Score for item '{rid}' must be a number 1-10 (got '{r.score}').")
+        if not (1 <= score <= 10):
+            raise HTTPException(422, detail=f"Score for item '{rid}' must be between 1 and 10 (got {score}).")
+        out.append(ScoreItem(item_id=iid, score=score, comment=r.comment))
+    return out
+
+
 def _submit_responses(db, cyc, participant_ref, responses, actor_id=None,
                       overall_comment=None):
     """Shared response-submission logic (admin scoring + 7d-3 participants):
     one submission per participant per cycle, immutable after. An optional
-    end-of-questionnaire overall_comment is stored per participant."""
+    end-of-questionnaire overall_comment is stored per participant. item_id/score
+    tolerance is handled by _resolve_responses (id or dotted code, coerced score)."""
     if db.query(AssessmentResponse).filter_by(
             cycle_id=cyc.id, participant_ref=participant_ref).first():
         raise HTTPException(409, "This participant has already submitted for this "
                                  "cycle — submissions are immutable.")
-    valid = {i.id for i in db.query(AssessmentItem).filter_by(framework_id=cyc.framework_id).all()}
     n = 0
-    for r in responses:
-        if r.item_id not in valid:
-            raise HTTPException(422, f"item {r.item_id} is not in this cycle's framework")
-        if not (1 <= r.score <= 10):
-            raise HTTPException(422, "score must be an integer 1-10")
+    for r in _resolve_responses(db, cyc, responses):
         db.add(AssessmentResponse(cycle_id=cyc.id, participant_ref=participant_ref,
                                   item_id=r.item_id, score=r.score, comment=r.comment))
         n += 1
@@ -5089,17 +5126,13 @@ def participant_save_draft(body: AssessDraftIn, session=Depends(assess_session),
         raise HTTPException(409, "You have already submitted — answers are final.")
     if cyc.closed_at:
         raise HTTPException(409, "This assessment cycle is closed.")
-    valid = {i.id for i in _selected_items(db, cyc.framework_id)}
+    resolved = _resolve_responses(db, cyc, body.responses)   # id-or-code + score coercion
     draft = dict(inv.draft or {})
-    for r in body.responses:
-        if r.item_id not in valid:
-            raise HTTPException(422, f"item {r.item_id} is not in this questionnaire")
-        if not (1 <= r.score <= 10):
-            raise HTTPException(422, "score must be an integer 1-10")
+    for r in resolved:
         draft[str(r.item_id)] = {"score": r.score, "comment": r.comment}
     inv.draft = draft
     db.commit()
-    return {"ok": True, "saved": len(body.responses), "draft_size": len(draft)}
+    return {"ok": True, "saved": len(resolved), "draft_size": len(draft)}
 
 
 @router.post("/assessment/submit", status_code=201)
