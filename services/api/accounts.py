@@ -5109,6 +5109,27 @@ def _selected_items(db, framework_id):
               .order_by(AssessmentItem.id).all() if i.selected]
 
 
+def _framework_tree(db, framework_id):
+    """Nested render tree of the SELECTED items for the cycle's framework revision:
+    L1 categories -> L2 items -> L3 sub_items, in taxonomy (id) order. Additive to
+    the flat `items` list; existing consumers are untouched."""
+    items = [i for i in db.query(AssessmentItem).filter_by(framework_id=framework_id)
+             .order_by(AssessmentItem.id).all() if i.selected]
+    l2_by_parent, l3_by_parent = {}, {}
+    for i in items:
+        if i.level == 2:
+            l2_by_parent.setdefault(i.parent_code, []).append(i)
+        elif i.level == 3:
+            l3_by_parent.setdefault(i.parent_code, []).append(i)
+    return {"categories": [
+        {"code": c.code, "title": c.title,
+         "items": [{"id": it.id, "code": it.code, "title": it.title,
+                    "sub_items": [{"id": s.id, "code": s.code, "title": s.title}
+                                  for s in l3_by_parent.get(it.code, [])]}
+                   for it in l2_by_parent.get(c.code, [])]}
+        for c in items if c.level == 1]}
+
+
 @router.get("/assessment/questionnaire")
 def participant_questionnaire(session=Depends(assess_session), db=Depends(get_db)):
     """The curated questionnaire for the participant's cycle: the SELECTED items
@@ -5132,6 +5153,7 @@ def participant_questionnaire(session=Depends(assess_session), db=Depends(get_db
                        "definition": i.definition, "parent_code": i.parent_code,
                        "orientation": i.orientation}
                       for i in items],
+            "framework": _framework_tree(db, cyc.framework_id),
             "draft": inv.draft or {}, "responses": final,
             "comment_disclosure": COMMENT_DISCLOSURE}
 
