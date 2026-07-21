@@ -60,6 +60,17 @@ class KpiValue(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class Readiness(Base):
+    """Persisted transformation-readiness slider inputs per company (7L cleanup).
+    The six ANFIS antecedents on a 0-10 scale; previously computed but never
+    stored, so the sliders reset on revisit."""
+    __tablename__ = "ax_readiness"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, unique=True, nullable=False)
+    responses = Column(JSON, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 # ======================================================================
 # safe arithmetic evaluator over named statement lines
 # ======================================================================
@@ -263,6 +274,54 @@ def delete_kpi(company_id: int, kpi_id: int, member=Depends(require_company_admi
     db.query(KpiValue).filter_by(kpi_id=kpi_id).delete()
     db.delete(kpi); db.commit()
     return {"deleted": True, "kpi_id": kpi_id}
+
+
+# ---------------------------------------------------------------- readiness
+from .modules.intelligence.engines import anfis_readiness, ANFIS_INPUTS
+_READINESS_DEFAULT = 5.0                    # neutral on the 0-10 scale
+
+
+def _readiness_responses(row):
+    stored = (row.responses if row else None) or {}
+    return {k: float(stored.get(k, _READINESS_DEFAULT)) for k in ANFIS_INPUTS}
+
+
+class ReadinessIn(BaseModel):
+    responses: dict
+
+
+@planning_router.get("/companies/{company_id}/readiness")
+def get_readiness(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+    row = db.query(Readiness).filter_by(company_id=company_id).first()
+    responses = _readiness_responses(row)
+    return {"company_id": company_id, "inputs": list(ANFIS_INPUTS), "scale": "0-10",
+            "responses": responses, "saved": row is not None,
+            "computed": anfis_readiness(responses)}
+
+
+@planning_router.put("/companies/{company_id}/readiness")
+def put_readiness(company_id: int, body: ReadinessIn,
+                  member=Depends(require_company_admin),
+                  user=Depends(get_current_user), db=Depends(get_db)):
+    resp = {}
+    for k in ANFIS_INPUTS:
+        v = body.responses.get(k, _READINESS_DEFAULT)
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            raise HTTPException(422, f"'{k}' must be a number on the 0-10 scale")
+        if not (0.0 <= v <= 10.0):
+            raise HTTPException(422, f"'{k}' must be between 0 and 10")
+        resp[k] = v
+    row = db.query(Readiness).filter_by(company_id=company_id).first()
+    if row:
+        row.responses = resp; row.updated_at = datetime.utcnow()
+    else:
+        db.add(Readiness(company_id=company_id, responses=resp))
+    audit(db, user.id, "readiness_saved", "company", company_id, detail="")
+    db.commit()
+    return {"company_id": company_id, "responses": resp, "saved": True,
+            "computed": anfis_readiness(resp)}
 
 
 @planning_router.post("/companies/{company_id}/kpis/{kpi_id}/values", status_code=201)

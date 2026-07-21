@@ -981,6 +981,7 @@ class RegisterIn(BaseModel):
 class LoginIn(BaseModel):
     email: EmailStr
     password: str
+    remember: bool = False          # 30-day persistent session vs 24h default
 
 
 class EmailIn(BaseModel):
@@ -1072,7 +1073,9 @@ def login(body: LoginIn, db=Depends(get_db)):
     user.last_login_at = datetime.utcnow()
     db.commit()
     _maybe_promote_super(user, db)
-    return {"access_token": make_token(user.id, "access", ttl=24 * 3600),
+    ttl = 30 * 86_400 if body.remember else 24 * 3600      # remember-me: 30-day session
+    return {"access_token": make_token(user.id, "access", ttl=ttl),
+            "expires_in": ttl,
             "token_type": "bearer",
             "user": {"id": user.id, "email": user.email, "name": user.name,
                      "platform_role": user.platform_role}}
@@ -1356,6 +1359,7 @@ def create_company(body: CreateCompanyIn, user: User = Depends(get_current_user)
                      statement_units=units, ownership=ownership)
     db.add(ent)
     db.flush()
+    _assess_seed_framework(db, ent.id)   # born with the full CEI framework (13/78/361, weights=100)
 
     # (3) license binding + admin membership (same internals as activate)
     access = CompanyAccess(company_id=ent.id, account_id=account.id, cid=new_cid())
@@ -5423,6 +5427,7 @@ def create_pilot(body: PilotCreateIn, actor: User = Depends(require_super),
                      statement_units=units,
                      ownership="public" if body.is_public else "private")
     db.add(ent); db.flush()
+    _assess_seed_framework(db, ent.id)   # born with the full CEI framework (13/78/361, weights=100)
     access = CompanyAccess(company_id=ent.id, account_id=account.id, cid=new_cid())
     db.add(access)
     db.add(Membership(user_id=actor.id, company_id=ent.id, role="admin",
