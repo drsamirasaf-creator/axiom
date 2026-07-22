@@ -552,10 +552,16 @@ def _parse_json(text):
 def _proposal_out(db, company_id, p):
     disp = (db.query(RecommendationDisposition)
             .filter_by(company_id=company_id, fingerprint=p.fingerprint).first())
+    status = disp.status if disp else "none"
     return {"fingerprint": p.fingerprint, "kind": p.kind, "quadrant": p.quadrant,
             "title": p.title, "description": p.description, "citations": p.citations or [],
-            "status": disp.status if disp else "none",
+            "created_at": p.created_at,
+            "status": status,
+            "actioned": bool(disp and status not in ("none", None)),
             "initiative_id": disp.initiative_id if disp else None,
+            "note": disp.note if disp else None,
+            "decided_by": disp.decided_by if disp else None,
+            "decided_at": disp.decided_at if disp else None,
             "times_reissued": disp.times_reissued if disp else 0}
 
 
@@ -603,9 +609,18 @@ def synthesis_endpoint(company_id: int, force: bool = False,
 
 @document_router.get("/companies/{company_id}/proposals")
 def list_proposals(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+    """Every doc-derived proposal JOINED with its disposition state, so ONE call
+    tells the review surface what's actioned. `counts` summarizes the queue."""
     props = db.query(DocumentProposal).filter_by(company_id=company_id).all()
-    return {"company_id": company_id,
-            "proposals": [_proposal_out(db, company_id, p) for p in props]}
+    out = [_proposal_out(db, company_id, p) for p in props]
+    by_status = {}
+    for o in out:
+        by_status[o["status"]] = by_status.get(o["status"], 0) + 1
+    return {"company_id": company_id, "proposals": out,
+            "counts": {"total": len(out),
+                       "actioned": sum(1 for o in out if o["actioned"]),
+                       "pending": sum(1 for o in out if not o["actioned"]),
+                       "by_status": by_status}}
 
 
 @document_router.post("/companies/{company_id}/proposals/{fingerprint}/adopt", status_code=201)

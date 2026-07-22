@@ -758,6 +758,40 @@ def send_assess_invite(to: str, name: str, company_name: str, token: str,
                be used once. It is valid for 30 days.</p>"""))
 
 
+def send_assess_thankyou(to: str, name: str, company_name: str,
+                         anonymity_mode: str = "anonymous"):
+    greet = f"Hi {name}," if name else "Hi,"
+    privacy = ("Your individual answers stay <b>anonymous</b> — leadership sees only "
+               "the combined results."
+               if anonymity_mode == "anonymous" else
+               "This was an <b>identified</b> assessment — your responses are visible "
+               "to the company administrator alongside your name.")
+    send(to, f"Thank you for assessing {company_name}", _wrap(
+        f"Thank you for assessing {company_name}",
+        f"""<p>{greet}</p>
+            <p>Your assessment of {company_name} has been submitted — thank you. Your
+               input now feeds the company's Composite Excellence Index, SWOT, and
+               improvement priorities.</p>
+            <p><b>What happens next:</b> company leadership reviews the combined
+               results and turns the biggest gaps into initiatives. {privacy}</p>
+            <p style="font-size:12px;color:#8fb59e">Your answers are final. You can
+               review what you submitted any time via your original assessment link —
+               it stays valid for 30 days.</p>"""))
+
+
+def _try_send_assess_thankyou(to, name, company_name, anonymity_mode, company_id):
+    """Best-effort thank-you on submit. The responses are already committed, so a
+    mail-provider failure must NEVER 500 the submit. Returns whether it went out."""
+    try:
+        send_assess_thankyou(to, name, company_name, anonymity_mode)
+        return True
+    except Exception:
+        import logging
+        logging.getLogger("axiom.assessment").warning(
+            "assessment thank-you email failed to send (company=%s) — submit unaffected", company_id)
+        return False
+
+
 def send_lead_invite(to: str, name: str, admin_name: str, ref: str, title: str,
                      company_name: str, token: str):
     link = f"{_app_url()}/lead?invite={token}"
@@ -5009,6 +5043,40 @@ def list_participant_invites(company_id: int, cid: int,
             "roster": roster}
 
 
+@router.get("/companies/{company_id}/roster")
+def company_roster(company_id: int, member=Depends(require_company_admin),
+                   db=Depends(get_db)):
+    """Merged people roster for ONE table: viewer invitees (ax_invites) + assessment
+    participants across ALL cycles (ax_assessment_invites). ANONYMITY-SAFE:
+    participant_ref is included ONLY for identified cycles — never for an anonymous
+    cycle (so the admin can never map a person to their scores)."""
+    people = []
+    for i in (db.query(Invite).filter_by(company_id=company_id)
+                .order_by(Invite.id).all()):
+        people.append({"source": "viewer", "role": "viewer",
+                       "name": i.name or "", "email": i.email, "department": None,
+                       "cycle_id": None, "anonymity_mode": None,
+                       "invited_at": i.created_at,
+                       "redeemed": i.redeemed_at is not None,
+                       "submitted": None, "participant_ref": None})
+    cyc_mode = {c.id: c.anonymity_mode for c in
+                db.query(AssessmentCycle).filter_by(company_id=company_id).all()}
+    for a in (db.query(AssessmentInvite).filter_by(company_id=company_id)
+                .order_by(AssessmentInvite.id).all()):
+        anon = cyc_mode.get(a.cycle_id, "anonymous") == "anonymous"
+        people.append({"source": "assessor", "role": "assessor",
+                       "name": a.name or "", "email": a.email, "department": a.department,
+                       "cycle_id": a.cycle_id, "anonymity_mode": cyc_mode.get(a.cycle_id),
+                       "invited_at": a.created_at,
+                       "redeemed": a.redeemed_at is not None,
+                       "submitted": a.submitted_at is not None,
+                       "participant_ref": (None if anon else a.participant_ref)})
+    return {"company_id": company_id, "people": people,
+            "counts": {"viewers": sum(1 for p in people if p["source"] == "viewer"),
+                       "assessors": sum(1 for p in people if p["source"] == "assessor"),
+                       "cycles": sorted({p["cycle_id"] for p in people if p["cycle_id"]})}}
+
+
 def _l1_maps(db, framework_id):
     """Return (item_id -> {code,title,l1_code}, l1_code -> title) for a
     framework, walking parent_code up to the owning L1."""
@@ -5359,7 +5427,11 @@ def participant_submit(body: AssessDraftIn, session=Depends(assess_session),
     inv.submitted_at = datetime.utcnow()
     inv.draft = None
     db.commit()
-    return {**out, "submitted": True}
+    # best-effort thank-you (never blocks submit — responses are already committed)
+    email_sent = _try_send_assess_thankyou(inv.email, inv.name,
+                                           _company_name(db, cyc.company_id),
+                                           cyc.anonymity_mode, cyc.company_id)
+    return {**out, "submitted": True, "thankyou_email_sent": email_sent}
 
 
 # ---------------------------------------------------------------------- join
