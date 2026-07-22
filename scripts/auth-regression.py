@@ -54,12 +54,15 @@ EXPECTED_GROUPS = ["ANALYZE", "STRATEGIZE", "EXECUTE & MONITOR"]
 # old path -> where it should land + a content needle proving the destination.
 # VERIFY-ON-FIRST-RUN (see module docstring): dest/needle are reconstructed.
 ALIASES = {
-    "/reports":             {"dest": "/dashboard",                 "needle": "Reports"},
-    "/benchmarking":        {"dest": "/dashboard",                 "needle": "Dashboard"},
-    "/cei":                 {"dest": "/collaborative-assessment",  "needle": "Assessment"},
-    "/twin":                {"dest": "/performance-monitoring",    "needle": "Monitoring"},
-    "/data-input":          {"dest": "/dashboard",                 "needle": "Data"},
-    "/financial-forecasts": {"dest": "/business-planning",         "needle": "Forecast"},
+    # VERIFIED on first run (2026-07) against the live app via operator-mode probe.
+    # needles are page-specific H1/H2 headings, not sidebar-nav labels, so the
+    # assertion proves the destination actually rendered (not just the shell).
+    "/reports":             {"dest": "/dashboard?tab=reports",            "needle": "Dashboard & Reports"},
+    "/benchmarking":        {"dest": "/risk-analysis?section=benchmarking","needle": "Benchmark Performance Index"},
+    "/cei":                 {"dest": "/cei",                              "needle": "Collaborative Assessment"},
+    "/twin":                {"dest": "/twin",                             "needle": "Performance Monitoring"},
+    "/data-input":          {"dest": "/data-input?tab=financial",         "needle": "Data uploads"},
+    "/financial-forecasts": {"dest": "/financial-forecasts",             "needle": "FCFF"},
 }
 # sub-tab presence: route -> at least one tab-like control must render
 SUBTABS = {
@@ -85,24 +88,20 @@ def _norm_href(href):
 
 
 class Recorder:
-    """Per-page network capture: backend calls + whether Authorization was sent."""
+    """Per-page network capture: backend calls + whether Authorization was sent.
+    The auth header is read from the REQUEST at response time — reading it at the
+    'request' event proved unreliable in the sync API."""
     def __init__(self):
         self.calls = []          # (method, path, status, had_auth)
-        self._pending = {}
-
-    def on_request(self, r):
-        if BACKEND in r.url:
-            try:
-                auth = r.header_value("authorization")
-            except Exception:
-                auth = (r.headers or {}).get("authorization")
-            self._pending[r] = bool(auth)
 
     def on_response(self, r):
         if BACKEND in r.url:
-            had_auth = self._pending.pop(r.request, False)
+            try:
+                auth = r.request.header_value("authorization")
+            except Exception:
+                auth = None
             path = r.url.split(BACKEND, 1)[-1].split("?", 1)[0]
-            self.calls.append((r.request.method, path, r.status, had_auth))
+            self.calls.append((r.request.method, path, r.status, bool(auth)))
 
     def authed_2xx(self):
         return [c for c in self.calls if c[3] and 200 <= c[2] < 300]
@@ -185,7 +184,6 @@ def run_mode(browser, mode, token):
     ctx = make_context(browser, token)
     rec = Recorder()
     page = ctx.new_page()
-    page.on("request", rec.on_request)
     page.on("response", rec.on_response)
 
     authed = mode in ("operator", "member")
