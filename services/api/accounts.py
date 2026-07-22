@@ -4639,6 +4639,18 @@ def assessment_summary(company_id: int, member=Depends(require_company_member),
     actioned = _actioned_item_codes(db, company_id)     # 7g-D: "no action yet" flags
     for code, entry in rags["item_rag"].items():
         entry["has_action"] = code in actioned
+    # Enrich per-item entries with their framework title (join by item code within
+    # the cycle's own framework revision). Purely additive — existing keys unchanged;
+    # lets the client label per-item rows without a second lookup.
+    if latest is not None:
+        item_titles = dict(db.query(AssessmentItem.code, AssessmentItem.title)
+                             .filter_by(framework_id=latest.framework_id).all())
+        for _code, _entry in (safe.get("item_dispersion") or {}).items():
+            if isinstance(_entry, dict) and _code in item_titles:
+                _entry.setdefault("title", item_titles[_code])
+        for _code, _entry in (rags["item_rag"] or {}).items():
+            if isinstance(_entry, dict) and _code in item_titles:
+                _entry.setdefault("title", item_titles[_code])
     return {"revision": fw.revision,
             "current_cycle_id": latest.id if latest else None,
             "current_cycle_closed": bool(latest and latest.closed_at),
