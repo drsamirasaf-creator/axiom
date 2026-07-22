@@ -529,20 +529,9 @@ def test_swot_showcase_anonymous_carveout(client):
     the other showcase read endpoints already honor: a showcase (tenant='showcase')
     company is readable without a token; every non-showcase company keeps the exact
     require_company_member gate. Showcase-ness comes from the tenant flag, not ids."""
-    from sqlalchemy import inspect, text
-    from services.api.core.db import SessionLocal, engine
+    from services.api.core.db import SessionLocal
     from services.api.modules.enterprise_state.models import Enterprise
     from services.api.accounts import make_token, User, SHOWCASE_TENANT
-
-    # Pre-existing model/migration drift (unrelated to this change): the
-    # enterprises.logo_* columns exist on the model but no migration adds them, so
-    # a fresh migrated test DB lacks them and every Enterprise ORM op 500s. Ensure
-    # they exist so the endpoint's own db.get(Enterprise) works; harmless if present.
-    have = {c["name"] for c in inspect(engine).get_columns("enterprises")}
-    with engine.begin() as cx:
-        for col in ("logo_r2_key", "logo_content_type"):
-            if col not in have:
-                cx.execute(text(f"ALTER TABLE enterprises ADD COLUMN {col} VARCHAR"))
 
     db = SessionLocal()
     show = Enterprise(tenant=SHOWCASE_TENANT, name="Showcase Co (test)")
