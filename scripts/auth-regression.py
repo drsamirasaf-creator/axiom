@@ -80,6 +80,12 @@ SUBTABS = {
 # ARIA/anchor/tablist forms so a future restyle to those still matches.
 TAB_SELECTOR = ("[role='tab'], a[href*='tab='], a[href*='section='], "
                 "button[class*='border-b-2'][class*='-mb-px'], [role='tablist'] button")
+# The app now holds a persistent connection (bundle index-DA3rwP6P onward), so
+# 'networkidle' never settles and every goto would hit the 30s timeout. Wait for
+# 'load' instead, then settle SETTLE_MS for the async data fetches (the ones that
+# fire the backend calls we grade) to complete and be recorded.
+WAIT_UNTIL = "load"
+SETTLE_MS = 2600
 # non-sidebar routes to also crawl (anonymous-reachable + utility). UPDATE with nav.
 EXTRA_ROUTES_ANON = ["/", "/login", "/pricing"]
 
@@ -137,10 +143,10 @@ def visit(page, rec, path):
     """Navigate a route; return (ok, why, backend_nonok, body_len)."""
     before = len(rec.calls)
     try:
-        resp = page.goto(APP_BASE + path, wait_until="networkidle", timeout=30000)
+        resp = page.goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
     except Exception as e:
         return False, f"navigation error: {e}", [], 0
-    page.wait_for_timeout(700)
+    page.wait_for_timeout(SETTLE_MS)
     nonok = [c for c in rec.calls[before:] if not (200 <= c[2] < 400)]
     # silent-empty: rendered-but-empty main content
     try:
@@ -245,8 +251,8 @@ def run_mode(browser, mode, token):
     # ---- alias resolution (all modes; authed sees content) ----
     for alias, spec in ALIASES.items():
         try:
-            page.goto(APP_BASE + alias, wait_until="networkidle", timeout=30000)
-            page.wait_for_timeout(500)
+            page.goto(APP_BASE + alias, wait_until=WAIT_UNTIL, timeout=30000)
+            page.wait_for_timeout(SETTLE_MS)
             final = _norm_href(page.url)
             body = (page.inner_text("body") or "")
         except Exception as e:
@@ -261,8 +267,8 @@ def run_mode(browser, mode, token):
     if authed:
         for path, _kind in SUBTABS.items():
             try:
-                page.goto(APP_BASE + path, wait_until="networkidle", timeout=30000)
-                page.wait_for_timeout(500)
+                page.goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
+                page.wait_for_timeout(SETTLE_MS)
                 n_tabs = page.locator(TAB_SELECTOR).count()
             except Exception:
                 n_tabs = 0
