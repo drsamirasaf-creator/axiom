@@ -73,6 +73,13 @@ SUBTABS = {
     "/dashboard":     "tab",
     "/risk-analysis": "tab",
 }
+# The app's tabs are underline-style <button>s (Tailwind `border-b-2 -mb-px`,
+# active=border-brass / inactive=border-transparent) driving ?tab=/?section= —
+# NOT role='tab', anchors, or data-state. Verified live 2026-07 (dashboard 3,
+# risk-analysis 9, valuation 3, cei 7). The selector also keeps the standard
+# ARIA/anchor/tablist forms so a future restyle to those still matches.
+TAB_SELECTOR = ("[role='tab'], a[href*='tab='], a[href*='section='], "
+                "button[class*='border-b-2'][class*='-mb-px'], [role='tablist'] button")
 # non-sidebar routes to also crawl (anonymous-reachable + utility). UPDATE with nav.
 EXTRA_ROUTES_ANON = ["/", "/login", "/pricing"]
 
@@ -256,7 +263,7 @@ def run_mode(browser, mode, token):
             try:
                 page.goto(APP_BASE + path, wait_until="networkidle", timeout=30000)
                 page.wait_for_timeout(500)
-                n_tabs = page.locator("[role='tab'], [class*='tab' i] button, button[class*='tab' i]").count()
+                n_tabs = page.locator(TAB_SELECTOR).count()
             except Exception:
                 n_tabs = 0
             if n_tabs < 1:
