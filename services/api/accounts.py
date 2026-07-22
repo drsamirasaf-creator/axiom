@@ -774,9 +774,9 @@ def send_assess_thankyou(to: str, name: str, company_name: str,
                improvement priorities.</p>
             <p><b>What happens next:</b> company leadership reviews the combined
                results and turns the biggest gaps into initiatives. {privacy}</p>
-            <p style="font-size:12px;color:#8fb59e">Your answers are final. You can
-               review what you submitted any time via your original assessment link —
-               it stays valid for 30 days.</p>"""))
+            <p style="font-size:12px;color:#8fb59e">You can revise any answer until the
+               cycle closes — just use your original assessment link (valid 30 days).
+               Once the cycle closes, your responses are final.</p>"""))
 
 
 def _try_send_assess_thankyou(to, name, company_name, anonymity_mode, company_id):
@@ -4332,20 +4332,25 @@ def _resolve_responses(db, cyc, raw):
 
 def _submit_responses(db, cyc, participant_ref, responses, actor_id=None,
                       overall_comment=None, department=None):
-    """Shared response-submission logic (admin scoring + 7d-3 participants):
-    one submission per participant per cycle, immutable after. An optional
-    end-of-questionnaire overall_comment is stored per participant. item_id/score
-    tolerance + depth integrity + abstention are handled by _resolve_responses;
-    `department` (inherited from the participant) is stamped onto every row."""
-    if db.query(AssessmentResponse).filter_by(
-            cycle_id=cyc.id, participant_ref=participant_ref).first():
-        raise HTTPException(409, "This participant has already submitted for this "
-                                 "cycle — submissions are immutable.")
+    """Shared response-submission logic (admin scoring + 7d-3 participants).
+    EDITABLE-UNTIL-CLOSE: a re-submission REPLACES this participant's prior answers
+    in place (same participant_ref), so respondent counts never double. The
+    cycle-closed gate is enforced by the callers. An optional end-of-questionnaire
+    overall_comment is stored per participant. item_id/score tolerance + depth
+    integrity + abstention are handled by _resolve_responses; `department`
+    (inherited from the participant) is stamped onto every row."""
     resolved, skipped = _resolve_responses(db, cyc, responses)
     if not resolved:
         raise HTTPException(422, detail="No answerable items were submitted"
                             + (f" (only non-framework entries: "
                                f"{', '.join(str(s['item']) for s in skipped)})." if skipped else "."))
+    prior = db.query(AssessmentResponse).filter_by(
+        cycle_id=cyc.id, participant_ref=participant_ref).count()
+    if prior:                                   # revision: clear this participant's prior set
+        db.query(AssessmentResponse).filter_by(
+            cycle_id=cyc.id, participant_ref=participant_ref).delete(synchronize_session=False)
+        db.query(AssessmentOverall).filter_by(
+            cycle_id=cyc.id, participant_ref=participant_ref).delete(synchronize_session=False)
     n = 0
     for r in resolved:
         db.add(AssessmentResponse(cycle_id=cyc.id, participant_ref=participant_ref,
@@ -4357,11 +4362,13 @@ def _submit_responses(db, cyc, participant_ref, responses, actor_id=None,
         db.add(AssessmentOverall(cycle_id=cyc.id, participant_ref=participant_ref,
                                  comment=overall_comment.strip()))
     audit(db, actor_id, "assessment_scored", "company", cyc.company_id,
-          detail=f"cycle {cyc.id} participant {participant_ref} ({n} items, {len(skipped)} skipped)")
+          detail=f"cycle {cyc.id} participant {participant_ref} ({n} items, {len(skipped)} skipped, "
+                 f"{'revised' if prior else 'new'})")
     db.commit()
     abstained_n = sum(1 for r in resolved if getattr(r, "abstained", False))
     return {"ok": True, "cycle_id": cyc.id, "participant_ref": participant_ref,
-            "n_responses": n, "saved": n, "abstained": abstained_n, "skipped": skipped}
+            "n_responses": n, "saved": n, "abstained": abstained_n, "skipped": skipped,
+            "revised": bool(prior)}
 
 
 @router.get("/companies/{company_id}/assessment/framework")
@@ -5359,20 +5366,24 @@ def _framework_tree(db, framework_id):
 def participant_questionnaire(session=Depends(assess_session), db=Depends(get_db)):
     """The curated questionnaire for the participant's cycle: the SELECTED items
     (+ definitions) of the cycle's pinned framework revision, the participant's
-    own draft (resume), and — once submitted — their final, read-only answers."""
+    own draft (resume), and — once submitted — their prior answers. EDITABLE-UNTIL-
+    CLOSE: while the cycle is open, a re-clicked link loads WITH prior answers and
+    stays editable (`editable: true`); once closed the same payload is read-only."""
     inv, cyc = session
     items = _selected_items(db, cyc.framework_id)
     final = None
     if inv.submitted_at:
         by_item = {r.item_id: r for r in db.query(AssessmentResponse)
                    .filter_by(cycle_id=cyc.id, participant_ref=inv.participant_ref).all()}
-        final = {str(iid): {"score": r.score, "comment": r.comment}
+        final = {str(iid): {"score": r.score, "comment": r.comment,
+                            "abstained": bool(getattr(r, "abstained", False))}
                  for iid, r in by_item.items()}
     return {"cycle_id": cyc.id, "company_id": cyc.company_id,
             "company_name": _company_name(db, cyc.company_id),
             "anonymity_mode": cyc.anonymity_mode, "depth": cyc.depth or "standard",
             "participant_ref": inv.participant_ref, "revision": cyc.revision,
             "closed": cyc.closed_at is not None,
+            "editable": cyc.closed_at is None,
             "submitted": inv.submitted_at is not None,
             "items": [{"id": i.id, "level": i.level, "code": i.code, "title": i.title,
                        "definition": i.definition, "parent_code": i.parent_code,
@@ -5387,12 +5398,11 @@ def participant_questionnaire(session=Depends(assess_session), db=Depends(get_db
 def participant_save_draft(body: AssessDraftIn, session=Depends(assess_session),
                            db=Depends(get_db)):
     """Save-as-you-go. Merges the posted scores into the participant's draft.
-    No effect after submit (answers are final)."""
+    EDITABLE-UNTIL-CLOSE: drafts can be saved even after a first submit while the
+    cycle is OPEN; only a closed cycle refuses."""
     inv, cyc = session
-    if inv.submitted_at:
-        raise HTTPException(409, "You have already submitted — answers are final.")
     if cyc.closed_at:
-        raise HTTPException(409, "This assessment cycle is closed.")
+        raise HTTPException(409, "This cycle has closed — answers are final.")
     resolved, skipped = _resolve_responses(db, cyc, body.responses)   # id-or-code + skip meta + depth/abstain
     draft = dict(inv.draft or {})
     for r in resolved:
@@ -5406,14 +5416,14 @@ def participant_save_draft(body: AssessDraftIn, session=Depends(assess_session),
 @router.post("/assessment/submit", status_code=201)
 def participant_submit(body: AssessDraftIn, session=Depends(assess_session),
                        db=Depends(get_db)):
-    """Finalize. One submission per participant; immutable after. If the body
-    carries no responses, the accumulated draft is submitted. Re-reads via GET
-    /assessment/questionnaire remain available; a second submit is rejected."""
+    """Submit / revise. EDITABLE-UNTIL-CLOSE: while the cycle is OPEN a re-submit
+    REPLACES the participant's prior answers in place (same participant_ref, so
+    respondent counts never double) and re-stamps submitted_at. Once the cycle is
+    CLOSED the answers are final (409). If the body carries no responses, the
+    accumulated draft is submitted."""
     inv, cyc = session
-    if inv.submitted_at:
-        raise HTTPException(409, "You have already submitted — answers are final.")
     if cyc.closed_at:
-        raise HTTPException(409, "This assessment cycle is closed.")
+        raise HTTPException(409, "This cycle has closed — answers are final.")
     if body.responses:
         final = body.responses
     else:
@@ -5422,16 +5432,19 @@ def participant_submit(body: AssessDraftIn, session=Depends(assess_session),
                  for iid, v in (inv.draft or {}).items()]
     if not final:
         raise HTTPException(422, "No responses to submit.")
+    first_submit = inv.submitted_at is None
     out = _submit_responses(db, cyc, inv.participant_ref, final, actor_id=None,
                             overall_comment=body.overall_comment, department=inv.department)
-    inv.submitted_at = datetime.utcnow()
+    inv.submitted_at = datetime.utcnow()      # re-stamp on every revision
     inv.draft = None
     db.commit()
-    # best-effort thank-you (never blocks submit — responses are already committed)
-    email_sent = _try_send_assess_thankyou(inv.email, inv.name,
-                                           _company_name(db, cyc.company_id),
-                                           cyc.anonymity_mode, cyc.company_id)
-    return {**out, "submitted": True, "thankyou_email_sent": email_sent}
+    # best-effort thank-you on FIRST submit only (never blocks; no spam on revisions)
+    email_sent = (_try_send_assess_thankyou(inv.email, inv.name,
+                                            _company_name(db, cyc.company_id),
+                                            cyc.anonymity_mode, cyc.company_id)
+                  if first_submit else False)
+    return {**out, "submitted": True, "revised": out.get("revised", False),
+            "thankyou_email_sent": email_sent}
 
 
 # ---------------------------------------------------------------------- join
