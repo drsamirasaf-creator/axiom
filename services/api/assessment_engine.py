@@ -102,16 +102,17 @@ def _disp(values: list[float]) -> dict:
             "min": round(min(vals), 4), "max": round(max(vals), 4)}
 
 
-def compute_cei(items: list[dict], weights: dict, responses: list[dict]) -> dict:
-    """Composite Excellence Index across a cycle's participants.
+def _aggregate_core(items: list[dict], weights: dict, responses: list[dict]) -> dict:
+    """Single-slice CEI aggregate (company-wide OR one department subset).
 
-    items: [{level, code, title, parent_code, selected}]
-    weights: {l1_code: weight}  (over selected L1, ~sum 100)
-    responses: [{participant_ref, code, score}]
+    responses: [{participant_ref, code, score, department?}]. A response with
+    score None is an ABSTENTION: the respondent explicitly declined to score that
+    item. Abstentions are EXCLUDED from every mean (never counted as zero) but DO
+    count the person as a respondent, and feed the abstention meta-signal.
 
     L2 score = mean of scored selected L3 children (children override) else the
     direct L2 score; L1 = mean of its selected L2 scores; participant CEI =
-    weight-renormalized L1 mean; the cycle CEI/subscores are the participant
+    weight-renormalized L1 mean; the slice CEI/subscores are the participant
     means, with per-item and per-L1 dispersion across participants.
     """
     sel = [i for i in items if i.get("selected", True)]
@@ -121,18 +122,25 @@ def compute_cei(items: list[dict], weights: dict, responses: list[dict]) -> dict
     l3_by_l2 = {i["code"]: [j["code"] for j in sel if j["level"] == 3 and j["parent_code"] == i["code"]]
                 for i in sel if i["level"] == 2}
 
-    # responses grouped by participant -> {code: score}
-    parts: dict = {}
+    # group by participant, separating scored items from abstentions
+    parts: dict = {}                 # ref -> {code: float score}  (scored only)
+    abst: dict = {}                  # ref -> set(codes abstained)
     for r in responses:
-        parts.setdefault(r["participant_ref"], {})[r["code"]] = float(r["score"])
+        ref, code, sc = r["participant_ref"], r["code"], r.get("score")
+        if sc is None:
+            abst.setdefault(ref, set()).add(code)
+        else:
+            parts.setdefault(ref, {})[code] = float(sc)
+    all_refs = set(parts) | set(abst)     # everyone who submitted (incl. all-abstain)
 
     per_part_cei, per_part_l1 = [], {c: [] for c in l1}
-    for pr, sc in parts.items():
+    for ref in all_refs:
+        sc = parts.get(ref, {})
         l1_scores = {}
         for c in l1:
             l2_vals = []
             for l2 in l2_by_l1[c]:
-                kids = [k for k in l3_by_l2.get(l2, []) if k in sc]
+                kids = [k for k in l3_by_l2.get(l2, []) if k in sc]   # abstained L3s absent from sc
                 if kids:
                     l2_vals.append(statistics.mean(sc[k] for k in kids))   # children override
                 elif l2 in sc:
@@ -145,22 +153,158 @@ def compute_cei(items: list[dict], weights: dict, responses: list[dict]) -> dict
             wsum = sum(weights.get(c, 0.0) for c in l1_scores) or 1.0
             per_part_cei.append(sum(weights.get(c, 0.0) * v for c, v in l1_scores.items()) / wsum)
 
+    # per-item scored values + abstention counts across participants
+    scored_by_code: dict = {}
+    abst_by_code: dict = {}
+    for ref in all_refs:
+        for code, v in parts.get(ref, {}).items():
+            scored_by_code.setdefault(code, []).append(v)
+        for code in abst.get(ref, set()):
+            abst_by_code[code] = abst_by_code.get(code, 0) + 1
+
+    item_disp, abst_rate_item, no_signal_items = {}, {}, []
+    for code in set(scored_by_code) | set(abst_by_code):
+        vals = scored_by_code.get(code, [])
+        ab = abst_by_code.get(code, 0)
+        addressed = len(vals) + ab
+        d = {"title": title.get(code, code), **_disp(vals),
+             "abstained_n": ab, "addressed_n": addressed,
+             "no_signal": len(vals) == 0 and ab > 0}
+        item_disp[code] = d
+        abst_rate_item[code] = round(ab / addressed, 4) if addressed else None
+        if d["no_signal"]:
+            no_signal_items.append(code)
+
+    # per-axis (L1) abstention rate over the axis's L2+L3 items
+    abst_rate_axis = {}
+    for c in l1:
+        codes = set()
+        for l2 in l2_by_l1[c]:
+            codes.add(l2); codes.update(l3_by_l2.get(l2, []))
+        tot_ab = sum(abst_by_code.get(k, 0) for k in codes)
+        tot_addr = sum(len(scored_by_code.get(k, [])) + abst_by_code.get(k, 0) for k in codes)
+        abst_rate_axis[c] = round(tot_ab / tot_addr, 4) if tot_addr else None
+
     l1_out = [{"code": c, "title": title.get(c, c), "weight": round(weights.get(c, 0.0), 4),
                "score": round(statistics.mean(per_part_l1[c]), 4) if per_part_l1[c] else None,
-               "dispersion": _disp(per_part_l1[c])} for c in l1]
-
-    # per-item dispersion across participants (only items actually scored)
-    item_disp = {}
-    scored_codes = {code for sc in parts.values() for code in sc}
-    for code in scored_codes:
-        item_disp[code] = {"title": title.get(code, code),
-                           **_disp([sc[code] for sc in parts.values() if code in sc])}
+               "dispersion": _disp(per_part_l1[c]),
+               "abstention_rate": abst_rate_axis.get(c)} for c in l1]
 
     return {
         "cei": round(statistics.mean(per_part_cei), 4) if per_part_cei else None,
-        "n_participants": len(parts),
+        "n_participants": len(all_refs),
         "l1_subscores": l1_out,
         "radar": [{"axis": o["title"], "code": o["code"], "score": o["score"],
                    "weight": o["weight"]} for o in l1_out],
         "item_dispersion": item_disp,
+        "abstention_rates": {"item": abst_rate_item, "axis": abst_rate_axis},
+        "no_signal_items": no_signal_items,
     }
+
+
+def compute_cei(items: list[dict], weights: dict, responses: list[dict]) -> dict:
+    """Company-wide CEI aggregate + per-department slices (§4i-b layer 1).
+
+    A response may carry an optional `department` (inherited from the participant).
+    When any real department tag is present the aggregate gains a `departments`
+    map — each value the SAME shape as the company-wide aggregate, computed over
+    that department's respondents. Respondents with no tag form an "(unassigned)"
+    slice so the department slices remain an exact partition of respondents (this
+    is what makes the k-anonymity complement math well-defined downstream).
+    Storage-level output is RAW; k-anonymity suppression is applied at
+    serialization by `apply_kfloor`, never here.
+    """
+    agg = _aggregate_core(items, weights, responses)
+    by_dept: dict = {}
+    for r in responses:
+        by_dept.setdefault(r.get("department") or "(unassigned)", []).append(r)
+    real = [d for d in by_dept if d != "(unassigned)"]
+    agg["departments"] = ({d: _aggregate_core(items, weights, rs) for d, rs in by_dept.items()}
+                          if real else {})
+    return agg
+
+
+# ---------------------------------------------------------------- k-anonymity
+KFLOOR = 3                       # minimum respondents per serialized slice
+
+
+def _suppressed(n: int, extra: dict | None = None) -> dict:
+    out = {"suppressed": True, "n": n, "reason": "below_anonymity_floor"}
+    if extra:
+        out.update(extra)
+    return out
+
+
+def _floor_items(item_disp: dict) -> dict:
+    """Per-item display gate: an item scored by fewer than KFLOOR respondents is
+    replaced by a suppression marker (its all-abstain no-signal flag survives, as
+    that reveals no individual score)."""
+    out = {}
+    for code, d in (item_disp or {}).items():
+        if not isinstance(d, dict) or (d.get("n") or 0) < KFLOOR:
+            out[code] = _suppressed((d or {}).get("n") or 0,
+                                    {"no_signal": True} if (d or {}).get("no_signal") else None)
+        else:
+            out[code] = d
+    return out
+
+
+def _show_slice(a: dict) -> dict:
+    """A department slice that clears the floor: shown, but its own items are still
+    floored, and it carries no nested departments."""
+    out = dict(a)
+    out["item_dispersion"] = _floor_items(a.get("item_dispersion") or {})
+    out["suppression"] = None
+    out.pop("departments", None)
+    return out
+
+
+def _apply_dept_kfloor(depts: dict) -> dict:
+    """Department slices are an exact partition of respondents, so a suppressed
+    slice can be reconstructed by subtracting the shown slices from the whole.
+
+    COMPLEMENT-INFERENCE RULE (as implemented): after the primary n<KFLOOR floor
+    marks small slices for suppression, if EXACTLY ONE slice is suppressed it is
+    the unique arithmetic complement of the shown slices (total − shown) and its
+    aggregate is derivable — so we additionally suppress the smallest shown slice.
+    We repeat until the number of hidden slices is 0 or ≥2; with ≥2 unknowns
+    against the single total-equation, no individual hidden slice is derivable.
+    """
+    if not depts:
+        return {}
+    status = {d: ("suppress" if (a.get("n_participants", 0) < KFLOOR) else "show")
+              for d, a in depts.items()}
+    # complement guard: never leave exactly one hidden slice
+    while sum(1 for s in status.values() if s == "suppress") == 1:
+        shown = [d for d, s in status.items() if s == "show"]
+        if not shown:
+            break
+        status[min(shown, key=lambda d: depts[d].get("n_participants", 0))] = "suppress"
+    return {d: (_suppressed(a.get("n_participants", 0)) if status[d] == "suppress"
+                else _show_slice(a))
+            for d, a in depts.items()}
+
+
+def apply_kfloor(agg: dict) -> dict:
+    """Display-safe view of a raw aggregate (storage untouched). Company-wide n<
+    KFLOOR suppresses every value (cei, subscores, radar, dispersion, department
+    slices, abstention rates) while keeping the respondent count; above the floor,
+    per-item and per-department slices are gated individually."""
+    if not agg:
+        return {}
+    n = agg.get("n_participants", 0)
+    out = dict(agg)
+    if n < KFLOOR:
+        out["cei"] = None
+        out["l1_subscores"] = []
+        out["radar"] = []
+        out["item_dispersion"] = {}
+        out["departments"] = {}
+        out["abstention_rates"] = {"item": {}, "axis": {}}
+        out["no_signal_items"] = []
+        out["suppression"] = _suppressed(n)
+        return out
+    out["suppression"] = None
+    out["item_dispersion"] = _floor_items(agg.get("item_dispersion") or {})
+    out["departments"] = _apply_dept_kfloor(agg.get("departments") or {})
+    return out

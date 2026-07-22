@@ -289,6 +289,7 @@ class AssessmentCycle(Base):
     closed_at = Column(DateTime, nullable=True)
     cadence = Column(String(24), nullable=True)          # company cadence setting
     anonymity_mode = Column(String(16), default="anonymous", nullable=False)
+    depth = Column(String(16), default="standard", nullable=False)  # standard|deep — fixed at open (§4i-c)
     snapshot = Column(JSON, nullable=True)               # CEI snapshot at close (revision-tagged)
 
 
@@ -301,7 +302,9 @@ class AssessmentResponse(Base):
     cycle_id = Column(Integer, index=True, nullable=False)
     participant_ref = Column(String(64), index=True, nullable=False)
     item_id = Column(Integer, nullable=False)
-    score = Column(Integer, nullable=False)              # 1-10
+    score = Column(Integer, nullable=True)               # 1-10, or NULL when abstained (§4i-b)
+    abstained = Column(Boolean, default=False, nullable=False)   # explicit no-score; excluded from means
+    department = Column(String(80), nullable=True)       # inherited from participant (§4i-b layer 1)
     comment = Column(Text, nullable=True)
     submitted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -342,6 +345,7 @@ class AssessmentInvite(Base):
     company_id = Column(Integer, index=True, nullable=False)
     email = Column(String(255), nullable=False, index=True)
     name = Column(String(255), default="", nullable=False)
+    department = Column(String(80), nullable=True)          # optional org unit (§4i-b layer 1)
     jti = Column(String(64), unique=True, index=True, nullable=False)
     invited_by = Column(Integer, nullable=False)             # ax_users.id (admin)
     participant_ref = Column(String(64), nullable=True)      # minted at redemption
@@ -4111,11 +4115,17 @@ class FrameworkPut(BaseModel):
 class CycleIn(BaseModel):
     cadence: str | None = None
     anonymity_mode: str = "anonymous"
+    depth: str = "standard"       # standard|deep — fixed at open (§4i-c)
+
+
+class CyclePatch(BaseModel):
+    depth: str | None = None      # depth is immutable after open; a change here → 422
 
 
 class ScoreItem(BaseModel):
     item_id: int | str            # int id, int-string "4109", or dotted code "1.1.1"
     score: int | str | float | None = None   # coerced + bounds-checked in _resolve_responses
+    abstained: bool = False       # explicit no-score (§4i-b); score ignored/NULL when true
     comment: str | None = None
 
 
@@ -4174,10 +4184,19 @@ def _framework_out(db, fw):
                       for i in _assess_items(db, fw)]}
 
 
+def _norm_depth(d):
+    """Validate/normalize a cycle depth. None -> 'standard' (legacy default)."""
+    d = (d or "standard").strip().lower()
+    if d not in ("standard", "deep"):
+        raise HTTPException(422, "Assessment depth must be 'standard' or 'deep'.")
+    return d
+
+
 def _cycle_out(cyc):
     return {"cycle_id": cyc.id, "company_id": cyc.company_id, "revision": cyc.revision,
             "opened_at": cyc.opened_at, "closed_at": cyc.closed_at,
             "cadence": cyc.cadence, "anonymity_mode": cyc.anonymity_mode,
+            "depth": cyc.depth or "standard",
             "closed": cyc.closed_at is not None}
 
 
@@ -4195,7 +4214,10 @@ def _cycle_cei(db, cyc):
     for r in db.query(AssessmentResponse).filter_by(cycle_id=cyc.id).all():
         code = id2code.get(r.item_id)
         if code:
-            resp.append({"participant_ref": r.participant_ref, "code": code, "score": r.score})
+            # abstained rows carry score NULL -> engine excludes them from means (§4i-b)
+            score = None if (getattr(r, "abstained", False) or r.score is None) else r.score
+            resp.append({"participant_ref": r.participant_ref, "code": code,
+                         "score": score, "department": r.department})
     out = compute_cei(items, weights, resp)
     out["revision"] = cyc.revision
     return out
@@ -4211,7 +4233,9 @@ def _resolve_responses(db, cyc, raw):
     int item_id + int score."""
     items = db.query(AssessmentItem).filter_by(framework_id=cyc.framework_id).all()
     valid_ids = {i.id for i in items}
+    id_to_level = {i.id: i.level for i in items}
     code_to_id = {i.code: i.id for i in items}      # scoped to this framework revision
+    is_standard = (cyc.depth or "standard") == "standard"
 
     def _numeric_ref(v):                             # int / int-string / dotted-NUMERIC
         if isinstance(v, bool):
@@ -4220,6 +4244,12 @@ def _resolve_responses(db, cyc, raw):
             return True
         s = str(v).strip()
         return bool(s) and all(p.isdigit() for p in s.split("."))
+
+    def _is_abstention(item):
+        if getattr(item, "abstained", False):
+            return True
+        s = item.score
+        return isinstance(s, str) and s.strip().lower() in ("n/a", "na", "abstain", "abstained")
 
     resolved, skipped = [], []
     for r in raw:
@@ -4234,10 +4264,19 @@ def _resolve_responses(db, cyc, raw):
         elif isinstance(rid, str) and rid.strip() in code_to_id:
             iid = code_to_id[rid.strip()]
         if iid is not None and iid in valid_ids:
+            # DEPTH INTEGRITY (§4i-c): a Standard cycle never accepts L3 sub-item scores.
+            if is_standard and id_to_level.get(iid) == 3:
+                raise HTTPException(422, detail="This cycle is a Standard assessment — "
+                                    "sub-item scores are not accepted.")
+            # ABSTENTION (§4i-b): explicit no-score -> stored with score NULL, excluded from means.
+            if _is_abstention(r):
+                resolved.append(ScoreItem(item_id=iid, score=None, comment=r.comment, abstained=True))
+                continue
             # a REAL framework item -> score is strict (a real answer is never dropped)
             sc = r.score.strip() if isinstance(r.score, str) else (None if isinstance(r.score, bool) else r.score)
             if sc is None or sc == "":
-                raise HTTPException(422, detail=f"Score for item '{rid}' is required (a number 1-10).")
+                raise HTTPException(422, detail=f"Score for item '{rid}' is required (a number 1-10, "
+                                    "or mark it abstained).")
             try:
                 score = int(round(float(sc)))
             except (TypeError, ValueError):
@@ -4258,11 +4297,12 @@ def _resolve_responses(db, cyc, raw):
 
 
 def _submit_responses(db, cyc, participant_ref, responses, actor_id=None,
-                      overall_comment=None):
+                      overall_comment=None, department=None):
     """Shared response-submission logic (admin scoring + 7d-3 participants):
     one submission per participant per cycle, immutable after. An optional
     end-of-questionnaire overall_comment is stored per participant. item_id/score
-    tolerance is handled by _resolve_responses (id or dotted code, coerced score)."""
+    tolerance + depth integrity + abstention are handled by _resolve_responses;
+    `department` (inherited from the participant) is stamped onto every row."""
     if db.query(AssessmentResponse).filter_by(
             cycle_id=cyc.id, participant_ref=participant_ref).first():
         raise HTTPException(409, "This participant has already submitted for this "
@@ -4275,7 +4315,9 @@ def _submit_responses(db, cyc, participant_ref, responses, actor_id=None,
     n = 0
     for r in resolved:
         db.add(AssessmentResponse(cycle_id=cyc.id, participant_ref=participant_ref,
-                                  item_id=r.item_id, score=r.score, comment=r.comment))
+                                  item_id=r.item_id, score=r.score, comment=r.comment,
+                                  abstained=bool(getattr(r, "abstained", False)),
+                                  department=department))
         n += 1
     if overall_comment and overall_comment.strip():
         db.add(AssessmentOverall(cycle_id=cyc.id, participant_ref=participant_ref,
@@ -4283,8 +4325,9 @@ def _submit_responses(db, cyc, participant_ref, responses, actor_id=None,
     audit(db, actor_id, "assessment_scored", "company", cyc.company_id,
           detail=f"cycle {cyc.id} participant {participant_ref} ({n} items, {len(skipped)} skipped)")
     db.commit()
+    abstained_n = sum(1 for r in resolved if getattr(r, "abstained", False))
     return {"ok": True, "cycle_id": cyc.id, "participant_ref": participant_ref,
-            "n_responses": n, "saved": n, "skipped": skipped}
+            "n_responses": n, "saved": n, "abstained": abstained_n, "skipped": skipped}
 
 
 @router.get("/companies/{company_id}/assessment/framework")
@@ -4374,15 +4417,17 @@ def _current_open_cycle(db, company_id):
               .order_by(AssessmentCycle.id.desc()).first())
 
 
-def _ensure_open_cycle(db, company_id, user_id, anonymity_mode="anonymous"):
+def _ensure_open_cycle(db, company_id, user_id, anonymity_mode="anonymous", depth="standard"):
     """Return the company's open cycle, auto-opening one when none is open so an
-    assessor invite never orphans (lifecycle-gap fix). Returns (cycle, opened)."""
+    assessor invite never orphans (lifecycle-gap fix). `depth` applies ONLY when a
+    cycle is auto-opened here; an already-open cycle keeps its fixed depth.
+    Returns (cycle, opened)."""
     cyc = _current_open_cycle(db, company_id)
     if cyc:
         return cyc, False
     fw = _assess_ensure_framework(db, company_id)
     cyc = AssessmentCycle(company_id=company_id, framework_id=fw.id, revision=fw.revision,
-                          anonymity_mode=anonymity_mode or "anonymous")
+                          anonymity_mode=anonymity_mode or "anonymous", depth=_norm_depth(depth))
     db.add(cyc); db.flush()
     audit(db, user_id, "assessment_cycle_opened", "company", company_id,
           detail=f"cycle {cyc.id} rev {fw.revision} (auto-opened for invite)")
@@ -4396,7 +4441,8 @@ def open_assessment_cycle(company_id: int, body: CycleIn,
                           user: User = Depends(get_current_user), db=Depends(get_db)):
     fw = _assess_ensure_framework(db, company_id)
     cyc = AssessmentCycle(company_id=company_id, framework_id=fw.id, revision=fw.revision,
-                          cadence=body.cadence, anonymity_mode=body.anonymity_mode or "anonymous")
+                          cadence=body.cadence, anonymity_mode=body.anonymity_mode or "anonymous",
+                          depth=_norm_depth(body.depth))
     db.add(cyc); db.flush()
     if body.cadence:                                   # persist the company cadence
         _assess_config(db, company_id).cadence = body.cadence
@@ -4430,6 +4476,22 @@ def close_assessment_cycle(company_id: int, cid: int,
           detail=f"cycle {cid} cei {snap.get('cei')}")
     db.commit()
     return {**_cycle_out(cyc), "snapshot": snap, "next_cycle_due": due}
+
+
+@router.patch("/companies/{company_id}/assessment/cycles/{cid}")
+def patch_assessment_cycle(company_id: int, cid: int, body: CyclePatch,
+                           member=Depends(require_company_admin),
+                           user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Cycle depth is fixed at open (§4i-c). Any request to change it is refused
+    with a readable 422; a request that restates the current depth is a no-op."""
+    cyc = db.get(AssessmentCycle, cid)
+    if not cyc or cyc.company_id != company_id:
+        raise HTTPException(404, "cycle not found")
+    if body.depth is not None and _norm_depth(body.depth) != (cyc.depth or "standard"):
+        raise HTTPException(422, "A cycle's assessment depth is fixed when the cycle is "
+                                 "opened and cannot be changed. Open a new cycle to run a "
+                                 "different depth.")
+    return _cycle_out(cyc)
 
 
 @router.post("/companies/{company_id}/assessment/cycles/{cid}/score", status_code=201)
@@ -4503,7 +4565,10 @@ def assessment_summary(company_id: int, member=Depends(require_company_member),
             break
     if latest is None:
         latest = cycles[-1] if cycles else None
+    from .assessment_engine import apply_kfloor
     current = _cycle_cei(db, latest) if latest else {}
+    safe = apply_kfloor(current) if latest else {}      # k-anonymity display gate (storage untouched)
+    suppressed_all = bool(safe.get("suppression"))
     # respondent count on the live cycle = distinct participant_refs with responses
     n_resp = 0
     if latest:
@@ -4512,18 +4577,31 @@ def assessment_summary(company_id: int, member=Depends(require_company_member),
     trend = [{"cycle_id": c.id, "revision": c.revision, "opened_at": c.opened_at,
               "closed_at": c.closed_at, "cei": (c.snapshot or {}).get("cei")}
              for c in cycles if c.snapshot]
+    # RAG is a per-item/per-axis derived value — it must vanish wherever the floor suppresses.
     rags = _summary_rags(current, latest.snapshot if latest else None)
+    if suppressed_all:
+        rags = {"item_rag": {}, "l1_rag": {}, "sentiment_available": rags["sentiment_available"]}
+    else:
+        safe_disp = safe.get("item_dispersion") or {}
+        rags["item_rag"] = {c: v for c, v in rags["item_rag"].items()
+                            if not (isinstance(safe_disp.get(c), dict) and safe_disp[c].get("suppressed"))}
     actioned = _actioned_item_codes(db, company_id)     # 7g-D: "no action yet" flags
     for code, entry in rags["item_rag"].items():
         entry["has_action"] = code in actioned
     return {"revision": fw.revision,
             "current_cycle_id": latest.id if latest else None,
             "current_cycle_closed": bool(latest and latest.closed_at),
-            "cei": current.get("cei"), "n_participants": current.get("n_participants", 0),
+            "current_cycle_depth": (latest.depth or "standard") if latest else None,
+            "cei": safe.get("cei"),
+            "n_participants": current.get("n_participants", 0),
             "n_respondents": n_resp,
-            "l1_subscores": current.get("l1_subscores", []),
-            "radar": current.get("radar", []),
-            "item_dispersion": current.get("item_dispersion", {}),
+            "suppression": safe.get("suppression"),      # null unless company-wide n<3
+            "l1_subscores": safe.get("l1_subscores", []),
+            "radar": safe.get("radar", []),
+            "item_dispersion": safe.get("item_dispersion", {}),
+            "departments": safe.get("departments", {}),  # per-department slices (floored)
+            "abstention_rates": safe.get("abstention_rates", {"item": {}, "axis": {}}),
+            "no_signal_items": safe.get("no_signal_items", []),
             "item_rag": rags["item_rag"], "l1_rag": rags["l1_rag"],
             "sentiment_available": rags["sentiment_available"],
             "trend": trend, "cadence": cadence_block}
@@ -4561,11 +4639,24 @@ def assessment_item_drill(company_id: int, item_code: str,
     if not item:
         return {"has_data": False, "item_code": item_code,
                 "message": "Item not found in the latest cycle's framework."}
+    from .assessment_engine import KFLOOR
     resp = (db.query(AssessmentResponse)
               .filter_by(cycle_id=cyc.id, item_id=item.id).all())
-    scores = [r.score for r in resp]
+    scores = [r.score for r in resp if r.score is not None and not getattr(r, "abstained", False)]
     distribution = [{"score": s, "count": scores.count(s)} for s in range(1, 11)]
-    respondents_n = len({r.participant_ref for r in resp})
+    respondents_n = len({r.participant_ref for r in resp
+                         if r.score is not None and not getattr(r, "abstained", False)})
+    abstained_n = sum(1 for r in resp if getattr(r, "abstained", False))
+    # k-anonymity: fewer than KFLOOR scored respondents -> suppress the item aggregates.
+    if respondents_n < KFLOOR:
+        return {"has_data": True, "item_code": item_code, "title": item.title,
+                "definition": item.definition, "level": item.level,
+                "orientation": item.orientation, "cycle_id": cyc.id, "closed_at": cyc.closed_at,
+                "anonymity_mode": cyc.anonymity_mode, "respondents_n": respondents_n,
+                "abstained_n": abstained_n, "no_signal": respondents_n == 0 and abstained_n > 0,
+                "suppressed": True, "reason": "below_anonymity_floor",
+                "score_mean": None, "score_distribution": None, "dispersion": None,
+                "score_rag": None, "l3_children": []}
     comments_n = sum(1 for r in resp if r.comment and r.comment.strip())
     d = (snap.get("item_dispersion") or {}).get(item_code) or {}
     mean = d.get("mean")
@@ -4632,6 +4723,24 @@ def assessment_swot(company_id: int, member=Depends(require_company_member),
                                  "entries appear once the first cycle closes."),
                 "counts": {k: len(v) for k, v in buckets.items()}, **buckets}
     latest = closed[-1]
+    # k-anonymity: SWOT is derived from per-item means, so below the respondent floor
+    # the assessment-derived quadrants are suppressed (doc-derived entries still show).
+    from .assessment_engine import KFLOOR
+    latest_n = (db.query(AssessmentResponse.participant_ref)
+                  .filter(AssessmentResponse.cycle_id == latest.id,
+                          AssessmentResponse.score.isnot(None)).distinct().count())
+    if latest_n < KFLOOR:
+        buckets = {"strengths": [], "weaknesses": [], "opportunities": [],
+                   "threats": [], "watch_list": []}
+        for q, entries in doc_swot.items():
+            buckets[q].extend(entries)
+        return {"has_data": doc_swot_count > 0, "cycle_id": latest.id,
+                "closed_at": latest.closed_at, "suppressed": True,
+                "respondents_n": latest_n, "reason": "below_anonymity_floor",
+                "message": ("Assessment-derived SWOT is hidden until at least "
+                            f"{KFLOOR} people respond (currently {latest_n})."
+                            + ("" if doc_swot_count == 0 else " Document-derived entries shown.")),
+                "counts": {k: len(v) for k, v in buckets.items()}, **buckets}
     prior = closed[-2] if len(closed) > 1 else None
     snap = latest.snapshot or {}
     disp = snap.get("item_dispersion") or {}
@@ -4722,6 +4831,8 @@ def _assess_config(db, company_id):
 class AssessInviteIn(BaseModel):
     name: str = ""
     email: EmailStr
+    department: str | None = None       # optional org unit; inherited by the participant (§4i-b)
+    depth: str | None = None            # only used on the auto-open path when no cycle is open
 
 
 class AssessRedeemIn(BaseModel):
@@ -4796,12 +4907,13 @@ def invite_participant(company_id: int, cid: int, body: AssessInviteIn,
     if dup:
         raise HTTPException(409, "This person is already invited to this cycle.")
     company_name = _company_name(db, company_id)
+    dept = (body.department or "").strip() or None
     jti = secrets.token_urlsafe(16)
     token = make_token(str(cid), purpose="assess-invite", ttl=30 * 86_400,
                        jti=jti, cycle_id=cid, company_id=company_id,
                        invited_email=email, invited_name=name)
     inv = AssessmentInvite(cycle_id=cid, company_id=company_id, email=email,
-                           name=name, jti=jti, invited_by=user.id)
+                           name=name, department=dept, jti=jti, invited_by=user.id)
     db.add(inv)
     audit(db, user.id, "assessment_participant_invited", "company", company_id,
           detail=f"cycle {cid} {email}")
@@ -4818,9 +4930,10 @@ def invite_assessor(company_id: int, body: AssessInviteIn,
     """Company-level assessor invite — AUTO-OPENS a cycle when none is open so an
     invite never orphans (lifecycle-gap fix). Otherwise identical to the
     cid-scoped invite. Reports whether a cycle was auto-opened."""
-    cyc, opened = _ensure_open_cycle(db, company_id, user.id)
+    cyc, opened = _ensure_open_cycle(db, company_id, user.id, depth=body.depth or "standard")
     email = str(body.email).strip().lower()
     name = (body.name or "").strip()
+    dept = (body.department or "").strip() or None
     if db.query(AssessmentInvite).filter_by(cycle_id=cyc.id, email=email).first():
         raise HTTPException(409, "This person is already invited to the open cycle.")
     company_name = _company_name(db, company_id)
@@ -4829,7 +4942,7 @@ def invite_assessor(company_id: int, body: AssessInviteIn,
                        jti=jti, cycle_id=cyc.id, company_id=company_id,
                        invited_email=email, invited_name=name)
     inv = AssessmentInvite(cycle_id=cyc.id, company_id=company_id, email=email,
-                           name=name, jti=jti, invited_by=user.id)
+                           name=name, department=dept, jti=jti, invited_by=user.id)
     db.add(inv)
     audit(db, user.id, "assessment_participant_invited", "company", company_id,
           detail=f"cycle {cyc.id} {email}" + (" (cycle auto-opened)" if opened else ""))
@@ -5040,6 +5153,7 @@ def assessment_comments(company_id: int, cid: int,
     never presented per-participant. In an identified cycle participant_ref is
     attached."""
     import random
+    from .assessment_engine import KFLOOR
     cyc = db.get(AssessmentCycle, cid)
     if not cyc or cyc.company_id != company_id:
         raise HTTPException(404, "cycle not found")
@@ -5056,27 +5170,46 @@ def assessment_comments(company_id: int, cid: int,
         rec = {"comment": r.comment.strip()}
         if not anon:
             rec["participant_ref"] = r.participant_ref
-        by_item.setdefault(meta["code"], {"title": meta["title"], "comments": []})["comments"].append(rec)
+        gi = by_item.setdefault(meta["code"], {"title": meta["title"], "comments": [], "_refs": set()})
+        gi["comments"].append(rec); gi["_refs"].add(r.participant_ref)
         if meta["l1_code"]:
-            by_cat.setdefault(meta["l1_code"], {"title": l1_title.get(meta["l1_code"], meta["l1_code"]),
-                                                "comments": []})["comments"].append(rec)
+            gc = by_cat.setdefault(meta["l1_code"], {"title": l1_title.get(meta["l1_code"], meta["l1_code"]),
+                                                     "comments": [], "_refs": set()})
+            gc["comments"].append(rec); gc["_refs"].add(r.participant_ref)
 
-    overall = []
+    overall, overall_refs = [], set()
     for o in db.query(AssessmentOverall).filter_by(cycle_id=cid).all():
         rec = {"comment": o.comment}
         if not anon:
             rec["participant_ref"] = o.participant_ref
-        overall.append(rec)
+        overall.append(rec); overall_refs.add(o.participant_ref)
 
     if anon:                                # decouple order from participant order
         for g in list(by_item.values()) + list(by_cat.values()):
             random.shuffle(g["comments"])
         random.shuffle(overall)
 
+    # k-anonymity: a comment group backed by fewer than KFLOOR distinct participants
+    # is a de-anonymization vector -> suppress its contents (keep the count).
+    def _emit(groups, keyname):
+        out = []
+        for k, v in groups.items():
+            n = len(v["_refs"])
+            if n < KFLOOR:
+                out.append({keyname: k, "title": v["title"],
+                            "suppressed": True, "n": n, "reason": "below_anonymity_floor",
+                            "comments": []})
+            else:
+                out.append({keyname: k, "title": v["title"], "n": n, "comments": v["comments"]})
+        return out
+
+    overall_out = (overall if len(overall_refs) >= KFLOOR
+                   else {"suppressed": True, "n": len(overall_refs),
+                         "reason": "below_anonymity_floor", "comments": []})
     return {"cycle_id": cid, "anonymity_mode": cyc.anonymity_mode,
-            "by_item": [{"item_code": k, **v} for k, v in by_item.items()],
-            "by_category": [{"l1_code": k, **v} for k, v in by_cat.items()],
-            "overall": overall}
+            "by_item": _emit(by_item, "item_code"),
+            "by_category": _emit(by_cat, "l1_code"),
+            "overall": overall_out}
 
 
 @router.post("/assessment/redeem-assess-invite", status_code=201)
@@ -5154,7 +5287,7 @@ def participant_questionnaire(session=Depends(assess_session), db=Depends(get_db
                  for iid, r in by_item.items()}
     return {"cycle_id": cyc.id, "company_id": cyc.company_id,
             "company_name": _company_name(db, cyc.company_id),
-            "anonymity_mode": cyc.anonymity_mode,
+            "anonymity_mode": cyc.anonymity_mode, "depth": cyc.depth or "standard",
             "participant_ref": inv.participant_ref, "revision": cyc.revision,
             "closed": cyc.closed_at is not None,
             "submitted": inv.submitted_at is not None,
@@ -5177,10 +5310,11 @@ def participant_save_draft(body: AssessDraftIn, session=Depends(assess_session),
         raise HTTPException(409, "You have already submitted — answers are final.")
     if cyc.closed_at:
         raise HTTPException(409, "This assessment cycle is closed.")
-    resolved, skipped = _resolve_responses(db, cyc, body.responses)   # id-or-code + skip meta
+    resolved, skipped = _resolve_responses(db, cyc, body.responses)   # id-or-code + skip meta + depth/abstain
     draft = dict(inv.draft or {})
     for r in resolved:
-        draft[str(r.item_id)] = {"score": r.score, "comment": r.comment}
+        draft[str(r.item_id)] = {"score": r.score, "comment": r.comment,
+                                 "abstained": bool(getattr(r, "abstained", False))}
     inv.draft = draft
     db.commit()
     return {"ok": True, "saved": len(resolved), "draft_size": len(draft), "skipped": skipped}
@@ -5200,12 +5334,13 @@ def participant_submit(body: AssessDraftIn, session=Depends(assess_session),
     if body.responses:
         final = body.responses
     else:
-        final = [ScoreItem(item_id=int(iid), score=v["score"], comment=v.get("comment"))
+        final = [ScoreItem(item_id=int(iid), score=v["score"], comment=v.get("comment"),
+                           abstained=bool(v.get("abstained", False)))
                  for iid, v in (inv.draft or {}).items()]
     if not final:
         raise HTTPException(422, "No responses to submit.")
     out = _submit_responses(db, cyc, inv.participant_ref, final, actor_id=None,
-                            overall_comment=body.overall_comment)
+                            overall_comment=body.overall_comment, department=inv.department)
     inv.submitted_at = datetime.utcnow()
     inv.draft = None
     db.commit()
@@ -5927,6 +6062,19 @@ def _ensure_ax_columns(engine):
     # 7g-C: thread categories + anchors (+ mechanical backfill from type/linked_ref)
     _add("ax_threads", "category", "category VARCHAR(16)")
     _add("ax_threads", "anchor_ref", "anchor_ref VARCHAR(64)")
+    # Assessment upgrade (§4i-b/§4i-c): cycle depth, response abstention + department,
+    # invite department. Legacy cycles get depth 'standard' (read as standard).
+    _add("ax_assessment_cycles", "depth", "depth VARCHAR(16) NOT NULL DEFAULT 'standard'")
+    _add("ax_assessment_responses", "abstained", "abstained BOOLEAN NOT NULL DEFAULT false")
+    _add("ax_assessment_responses", "department", "department VARCHAR(80)")
+    _add("ax_assessment_invites", "department", "department VARCHAR(80)")
+    try:                                     # abstention stores score NULL — drop the NOT NULL
+        col = {c["name"]: c for c in _inspect(engine).get_columns("ax_assessment_responses")}
+        if "score" in col and not col["score"].get("nullable", True):
+            with engine.begin() as conn:
+                conn.execute(_text("ALTER TABLE ax_assessment_responses ALTER COLUMN score DROP NOT NULL"))
+    except Exception:
+        pass
     try:
         with engine.begin() as conn:
             conn.execute(_text(
