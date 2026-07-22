@@ -196,27 +196,62 @@ def sanity_gate(page, rec):
                   else f"authed 2xx confirmed ({len(authed)} calls)")
 
 
-def run_mode(browser, mode, token):
-    fails = []
-    ctx = make_context(browser, token)
-    rec = Recorder()
-    page = ctx.new_page()
-    page.on("response", rec.on_response)
+LAUNCH_ARGS = ["--disable-dev-shm-usage", "--disable-gpu", "--no-sandbox"]
 
+
+def run_mode(p, mode, token, headed=False, recycle_every=0):
+    """Crawl one mode. `recycle_every` > 0 relaunches the WHOLE browser every N
+    navigations (operator mode). The app's heavy authed pages (index-DA3rwP6P
+    onward) leak renderer memory across route changes; a single reused tab OOM-
+    crashes at ~13 heavy routes, and a fresh page per route deadlocks the browser.
+    Batch recycling — one reused page for a batch of N (< crash threshold), then
+    destroy+relaunch the browser fresh — caps accumulation without the per-page
+    session churn. Anonymous/member pass recycle_every=0 (they complete clean)."""
+    fails = []
+    rec = Recorder()
     authed = mode in ("operator", "member")
+    st = {"b": None, "ctx": None, "pg": None, "n": 0}
+
+    def launch():
+        b = p.chromium.launch(headless=not headed, args=LAUNCH_ARGS)
+        ctx = make_context(b, token)
+        pg = ctx.new_page()
+        pg.on("response", rec.on_response)
+        st.update(b=b, ctx=ctx, pg=pg, n=0)
+
+    def shutdown():
+        for k in ("pg", "ctx", "b"):
+            try:
+                if st.get(k):
+                    st[k].close()
+            except Exception:
+                pass
+
+    def tick():
+        st["n"] += 1
+        if recycle_every and st["n"] >= recycle_every:
+            shutdown(); launch()
+
+    launch()
 
     if authed:
-        ok, msg = sanity_gate(page, rec)
-        print(f"  [sanity gate] {'PASS' if ok else 'ABORT'} — {msg}")
+        ok, msg = sanity_gate(st["pg"], rec); tick()
+        print(f"  [sanity gate] {'PASS' if ok else 'ABORT'} — {msg}", flush=True)
         if not ok:
-            page.close(); ctx.close()
+            shutdown()
             return {"mode": mode, "aborted": True, "fails": [f"SANITY GATE: {msg}"], "green": 0, "total": 0}
 
     # ---- route enumeration: discover from the live sidebar (authed) + extras ----
     routes = set()
     sidebar_links, nav_text = ([], "")
     if authed:
-        sidebar_links, nav_text = read_sidebar(page)
+        # read the sidebar off the page the sanity gate already left on /dashboard
+        # (no recycle has happened yet at n=1, so it's live) — re-navigating a heavy
+        # authed page here and then walking the DOM wedged the renderer.
+        try:
+            sidebar_links, nav_text = read_sidebar(st["pg"])
+        except Exception:
+            pass
         routes.update(h for _, h in sidebar_links if h.startswith("/"))
     else:
         routes.update(EXTRA_ROUTES_ANON)
@@ -227,11 +262,12 @@ def run_mode(browser, mode, token):
     # ---- per-route render + silent-empty ----
     green = 0
     for path in sorted(routes):
-        ok, why, _nonok, _n = visit(page, rec, path)
+        ok, why, _nonok, _n = visit(st["pg"], rec, path); tick()
         if ok:
             green += 1
         else:
             fails.append(f"{mode} route {APP_BASE}{path} :: {why}")
+        print(f"    {mode} {path} -> {'ok' if ok else why[:60]}", flush=True)
 
     # ---- sidebar shape (authed modes have the app shell) ----
     if authed:
@@ -251,12 +287,13 @@ def run_mode(browser, mode, token):
     # ---- alias resolution (all modes; authed sees content) ----
     for alias, spec in ALIASES.items():
         try:
-            page.goto(APP_BASE + alias, wait_until=WAIT_UNTIL, timeout=30000)
-            page.wait_for_timeout(SETTLE_MS)
-            final = _norm_href(page.url)
-            body = (page.inner_text("body") or "")
+            st["pg"].goto(APP_BASE + alias, wait_until=WAIT_UNTIL, timeout=30000)
+            st["pg"].wait_for_timeout(SETTLE_MS)
+            final = _norm_href(st["pg"].url)
+            body = (st["pg"].inner_text("body") or "")
         except Exception as e:
-            fails.append(f"{mode} alias {alias} :: navigation error {e}"); continue
+            fails.append(f"{mode} alias {alias} :: navigation error {e}"); tick(); continue
+        tick()
         if final == alias and alias in FORBIDDEN_SIDEBAR_HREFS:
             fails.append(f"{mode} alias {alias} did NOT redirect (still {final})")
         if authed and spec["needle"] and spec["needle"].lower() not in body.lower():
@@ -267,11 +304,12 @@ def run_mode(browser, mode, token):
     if authed:
         for path, _kind in SUBTABS.items():
             try:
-                page.goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
-                page.wait_for_timeout(SETTLE_MS)
-                n_tabs = page.locator(TAB_SELECTOR).count()
+                st["pg"].goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
+                st["pg"].wait_for_timeout(SETTLE_MS)
+                n_tabs = st["pg"].locator(TAB_SELECTOR).count()
             except Exception:
                 n_tabs = 0
+            tick()
             if n_tabs < 1:
                 fails.append(f"{mode} sub-tabs MISSING on {path}")
 
@@ -282,7 +320,7 @@ def run_mode(browser, mode, token):
             fails.append(f"anonymous fired {len(leaked)} AUTHENTICATED call(s): {leaked[:5]}")
 
     total = len(routes) + (len(EXPECTED_SIDEBAR_LINKS) + len(EXPECTED_GROUPS) + len(ALIASES) + len(SUBTABS) if authed else 1)
-    page.close(); ctx.close()
+    shutdown()
     return {"mode": mode, "aborted": False, "fails": fails, "green": total - len(fails), "total": total}
 
 
@@ -299,10 +337,12 @@ def main():
         sys.exit(2)
 
     modes = ["anonymous", "operator", "member"] if args.mode == "all" else [args.mode]
+    # operator's heavy authed pages need browser recycling; the others complete on
+    # a single browser. RECYCLE_EVERY is 0 (off) except operator.
+    RECYCLE = {"operator": int(os.environ.get("OPERATOR_RECYCLE_EVERY", "8"))}
     results, skipped = [], []
     print(f"AXIOM auth-regression crawler — {APP_BASE}\n")
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=not args.headed)
         for mode in modes:
             token = None
             if mode == "operator":
@@ -314,9 +354,9 @@ def main():
                 if not token:
                     skipped.append("member (MEMBER_TOKEN not set — f4 account pending)"); continue
             print(f"=== MODE: {mode} ===")
-            results.append(run_mode(browser, mode, token))
+            results.append(run_mode(p, mode, token, headed=args.headed,
+                                    recycle_every=RECYCLE.get(mode, 0)))
             print()
-        browser.close()
 
     print("================ SUMMARY ================")
     any_fail = False
