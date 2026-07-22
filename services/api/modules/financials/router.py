@@ -298,13 +298,15 @@ def _plan_of(db, tenant: str) -> str:
 @router.get("/datasets/{dataset_id}/pro-forma")
 def pro_forma_statements(dataset_id: int, db: Session = Depends(get_db),
                          tenant: str = Depends(_tenant),
-                         scoped: int | None = Depends(_scoped)):
+                         scoped: int | None = Depends(_scoped),
+                         horizon: int | None = None):
     """Stochastic three-statement pro forma with per-line attainment
-    probabilities and cumulative multi-year odds (ADR-018)."""
+    probabilities and cumulative multi-year odds (ADR-018). Optional horizon
+    scopes the statements to the first N forecast years (matches the chart)."""
     from . import proforma
     row = _get_dataset(db, tenant, dataset_id, scoped)
     try:
-        return proforma.stochastic_statements(row.data)
+        return proforma.stochastic_statements(row.data, horizon=horizon)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
@@ -312,14 +314,15 @@ def pro_forma_statements(dataset_id: int, db: Session = Depends(get_db),
 @router.get("/datasets/{dataset_id}/comprehensive-income")
 def comprehensive_income(dataset_id: int, db: Session = Depends(get_db),
                          tenant: str = Depends(_tenant),
-                         scoped: int | None = Depends(_scoped)):
+                         scoped: int | None = Depends(_scoped),
+                         horizon: int | None = None):
     """Stochastic Statement of Comprehensive Income (net income + OCI),
     standard-aware (US GAAP vs IFRS), with FX/securities/pension/hedge OCI
-    drivers modeled where on file (ADR-019)."""
+    drivers modeled where on file (ADR-019). Optional horizon scopes to N years."""
     from . import oci as oci_mod
     row = _get_dataset(db, tenant, dataset_id, scoped)
     try:
-        return oci_mod.statement_of_comprehensive_income(row.data)
+        return oci_mod.statement_of_comprehensive_income(row.data, horizon=horizon)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 

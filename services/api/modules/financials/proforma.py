@@ -32,7 +32,8 @@ def _r(x, nd=2):
 
 
 def stochastic_statements(data, n_paths: int = 3000, seed: int = SEED,
-                          sigma_g: float = SIGMA_G, sigma_m: float = SIGMA_M):
+                          sigma_g: float = SIGMA_G, sigma_m: float = SIGMA_M,
+                          horizon: int | None = None):
     import random as _random
     from . import engines as fin
 
@@ -42,6 +43,10 @@ def stochastic_statements(data, n_paths: int = 3000, seed: int = SEED,
     fyears = plan["periods"]["forecast"]
     if not fyears:
         raise ValueError("no forecast years to project")
+    # Horizon: scope the statements to the first N forecast years so a 10-yr run
+    # yields 10-yr IS/BS/CF (capped at the years actually on file).
+    if horizon and horizon > 0:
+        fyears = fyears[:horizon]
     T = float(plan["company"]["tax_rate"])
     y0 = str(hist[-1])
     IS, BS, CF = plan["income_statement"], plan["balance_sheet"], plan["cash_flow"]

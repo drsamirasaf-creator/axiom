@@ -67,7 +67,7 @@ def _driver_present(oci: dict, key: str) -> bool:
 
 
 def statement_of_comprehensive_income(data: dict, n_paths: int = 3000,
-                                      seed: int = SEED):
+                                      seed: int = SEED, horizon: int | None = None):
     """Assemble the stochastic Statement of Comprehensive Income, standard
     aware. Net income comes from the certified pro forma; OCI is layered on
     from whatever drivers are on file (zero, honestly, where absent)."""
@@ -78,7 +78,7 @@ def statement_of_comprehensive_income(data: dict, n_paths: int = 3000,
     framework = "IFRS (IAS 1)" if standard == "ifrs" else "US GAAP (ASC 220)"
     oci_in = data.get("oci") or {}
 
-    pro = pf.stochastic_statements(data, n_paths=n_paths)
+    pro = pf.stochastic_statements(data, n_paths=n_paths, horizon=horizon)
     fyears = pro["forecast_years"]
     ni_by_year = {s["year"]: s["stochastic"]["net_income"]
                   for s in pro["statements"]}
