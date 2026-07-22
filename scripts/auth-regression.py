@@ -45,7 +45,7 @@ EXPECTED_SIDEBAR_LINKS = [
     "Dashboard & Reports", "Collaborative Assessment", "SWOT Analysis",
     "Risk Analysis", "Valuation", "Business Planning & Forecasting",
     "Enterprise Optimization", "Prescience AI", "Executive Brief",
-    "Initiative Management", "Stakeholder Engagement", "Performance Monitoring",
+    "Initiatives & Projects", "Stakeholder Engagement", "Performance Monitoring",
     "Course Workspace", "What is AXIOM?",
 ]
 FORBIDDEN_SIDEBAR_HREFS = {"/reports", "/benchmarking"}

@@ -219,6 +219,9 @@ class Initiative(Base):
     urgency = Column(String(8), nullable=False)                 # high | medium | low
     current_priority = Column(String(8), nullable=False)        # high | medium | low (free-edit)
     status = Column(String(16), default="proposed", nullable=False)
+    type = Column(String(16), default="initiative", server_default="initiative",
+                  nullable=False)                                # initiative | project
+    review_cadence = Column(String(16), nullable=True)          # e.g. quarterly (Initiative type)
     expected_impact_amount = Column(Float, nullable=True)
     impact_currency = Column(String(8), nullable=True)
     actual_impact_amount = Column(Float, nullable=True)         # set at completion
@@ -1988,6 +1991,8 @@ class InitiativeCreate(BaseModel):
     urgency: str
     current_priority: str
     status: str = "proposed"
+    type: str = "initiative"           # initiative | project
+    review_cadence: str | None = None  # e.g. quarterly (Initiative type)
     expected_impact_amount: float | None = None
     impact_currency: str | None = None
     owner_name: str | None = None
@@ -2068,6 +2073,8 @@ def _ini_out(i):
             "source_dataset_version": i.source_dataset_version,
             "importance": i.importance, "urgency": i.urgency,
             "current_priority": i.current_priority, "status": i.status,
+            "type": getattr(i, "type", "initiative") or "initiative",
+            "review_cadence": getattr(i, "review_cadence", None),
             "expected_impact_amount": i.expected_impact_amount,
             "impact_currency": i.impact_currency,
             "actual_impact_amount": i.actual_impact_amount,
@@ -2097,6 +2104,8 @@ def create_initiative(company_id: int, body: InitiativeCreate,
         source_dataset_version=body.source_dataset_version,
         importance=body.importance, urgency=body.urgency,
         current_priority=body.current_priority, status=body.status,
+        type=(body.type if body.type in ("initiative", "project") else "initiative"),
+        review_cadence=body.review_cadence,
         expected_impact_amount=body.expected_impact_amount,
         impact_currency=body.impact_currency, owner_name=body.owner_name,
         target_date=body.target_date, linked_item_code=body.linked_item_code,
@@ -6170,6 +6179,9 @@ def _ensure_ax_columns(engine):
     _add("ax_initiatives", "rag", "rag VARCHAR(8)")
     _add("ax_initiatives", "rag_updated_at", "rag_updated_at TIMESTAMP")
     _add("ax_initiatives", "rag_updated_by", "rag_updated_by INTEGER")
+    # §4r: initiative type (initiative|project) + review cadence, set at adopt/create
+    _add("ax_initiatives", "type", "type VARCHAR(16) NOT NULL DEFAULT 'initiative'")
+    _add("ax_initiatives", "review_cadence", "review_cadence VARCHAR(16)")
     # 7f rider: client company logo on the enterprise
     _add("enterprises", "logo_r2_key", "logo_r2_key VARCHAR(512)")
     _add("enterprises", "logo_content_type", "logo_content_type VARCHAR(64)")

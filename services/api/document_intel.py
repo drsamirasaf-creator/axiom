@@ -29,7 +29,8 @@ import logging
 import threading
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Body
+from pydantic import BaseModel
 from sqlalchemy import (Column, Integer, String, Text, DateTime, Boolean, JSON,
                         UniqueConstraint)
 
@@ -623,12 +624,26 @@ def list_proposals(company_id: int, member=Depends(require_company_member), db=D
                        "by_status": by_status}}
 
 
+class AdoptDetailIn(BaseModel):
+    """§4r adopt dialog — all optional so a bare POST still adopts."""
+    type: str | None = None            # initiative | project
+    review_cadence: str | None = None  # e.g. quarterly (Initiative type)
+    target_date: str | None = None     # required for Project (enforced client-side)
+    leader_name: str | None = None
+    leader_email: str | None = None
+
+
 @document_router.post("/companies/{company_id}/proposals/{fingerprint}/adopt", status_code=201)
 def adopt_proposal_endpoint(company_id: int, fingerprint: str,
+                            body: AdoptDetailIn | None = Body(None),
                             member=Depends(require_company_admin),
                             user=Depends(get_current_user), db=Depends(get_db)):
     """Sibling of adopt_recommendation. recommendation -> Initiative (same helper);
-    swot -> persist as an adopted SWOT entry (renders in the quadrants)."""
+    swot -> persist as an adopted SWOT entry (renders in the quadrants). The §4r
+    dialog may pass type/review_cadence/target_date + an optional leader, recorded
+    on the created initiative."""
+    body = body or AdoptDetailIn()
+    itype = body.type if body.type in ("initiative", "project") else "initiative"
     p = db.query(DocumentProposal).filter_by(company_id=company_id, fingerprint=fingerprint).first()
     if not p:
         raise HTTPException(404, "proposal not found")
@@ -654,13 +669,31 @@ def adopt_proposal_endpoint(company_id: int, fingerprint: str,
                      title=p.title[:300], description=p.description or "",
                      source="axiom_document", source_dataset_version=(ds.version if ds else None),
                      importance=priority, urgency=priority, current_priority=priority,
-                     status="proposed", impact_currency=currency, created_by=user.id)
+                     status="proposed", type=itype,
+                     review_cadence=(body.review_cadence if itype == "initiative" else None),
+                     target_date=(body.target_date or None),
+                     impact_currency=currency, created_by=user.id)
     db.add(ini); db.flush()
     _ini_event(db, ini, user.id, "created", None, ref,
-               f"adopted from AXIOM document proposal ({', '.join(p.citations or [])})")
+               f"adopted from AXIOM document proposal as {itype}"
+               f" ({', '.join(p.citations or [])})")
     _ensure_initiative_thread(db, company_id, ini)
     disp.status = "adopted"; disp.initiative_id = ini.id
     disp.decided_by, disp.decided_at = user.id, datetime.utcnow()
+    # Optional leader — wire to the existing 7e assignment machinery; an email
+    # failure must never 500 the adopt.
+    if body.leader_email:
+        try:
+            a, token = A._create_assignment(db, ini, company_id, body.leader_email,
+                                            body.leader_name, None, False, user.id)
+            _ini_event(db, ini, user.id, "leader_invited", None, a.invited_email, None)
+            try:
+                A.send_lead_invite(a.invited_email, a.invited_name, user.name, ini.ref_code,
+                                   ini.title, A._company_name(db, company_id), token)
+            except Exception:
+                _log.exception("adopt: lead invite email failed for %s", a.invited_email)
+        except Exception:
+            _log.exception("adopt: leader assignment failed")
     audit(db, user.id, "doc_recommendation_adopted", "company", company_id, detail=f"{ref} {fingerprint}")
     db.commit()
     return _ini_out(ini)
