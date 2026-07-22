@@ -4565,7 +4565,7 @@ def assessment_summary(company_id: int, member=Depends(require_company_member),
             break
     if latest is None:
         latest = cycles[-1] if cycles else None
-    from .assessment_engine import apply_kfloor
+    from .assessment_engine import apply_kfloor, KFLOOR
     current = _cycle_cei(db, latest) if latest else {}
     safe = apply_kfloor(current) if latest else {}      # k-anonymity display gate (storage untouched)
     suppressed_all = bool(safe.get("suppression"))
@@ -4574,9 +4574,19 @@ def assessment_summary(company_id: int, member=Depends(require_company_member),
     if latest:
         n_resp = (db.query(AssessmentResponse.participant_ref)
                     .filter_by(cycle_id=latest.id).distinct().count())
-    trend = [{"cycle_id": c.id, "revision": c.revision, "opened_at": c.opened_at,
-              "closed_at": c.closed_at, "cei": (c.snapshot or {}).get("cei")}
-             for c in cycles if c.snapshot]
+    # Trend is a serialized aggregate too: a cycle with fewer than KFLOOR respondents
+    # suppresses its CEI point (the count stays, so the timeline still shows the cycle).
+    trend = []
+    for c in cycles:
+        if not c.snapshot:
+            continue
+        npart = (c.snapshot or {}).get("n_participants") or 0
+        pt = {"cycle_id": c.id, "revision": c.revision, "opened_at": c.opened_at,
+              "closed_at": c.closed_at, "n_participants": npart,
+              "cei": (c.snapshot or {}).get("cei") if npart >= KFLOOR else None}
+        if npart < KFLOOR:
+            pt.update({"suppressed": True, "reason": "below_anonymity_floor"})
+        trend.append(pt)
     # RAG is a per-item/per-axis derived value — it must vanish wherever the floor suppresses.
     rags = _summary_rags(current, latest.snapshot if latest else None)
     if suppressed_all:
@@ -4661,9 +4671,14 @@ def assessment_item_drill(company_id: int, item_code: str,
     d = (snap.get("item_dispersion") or {}).get(item_code) or {}
     mean = d.get("mean")
     sent = (snap.get("item_sentiment") or {}).get(item_code) or {}
-    trend = [{"cycle_id": c.id, "closed_at": c.closed_at,
-              "mean": ((c.snapshot or {}).get("item_dispersion") or {}).get(item_code, {}).get("mean")}
-             for c in closed]
+    # per-cycle item mean is floored on that cycle's per-item respondent count
+    trend = []
+    for c in closed:
+        cd = ((c.snapshot or {}).get("item_dispersion") or {}).get(item_code, {})
+        cn = cd.get("n") or 0
+        trend.append({"cycle_id": c.id, "closed_at": c.closed_at,
+                      "mean": cd.get("mean") if cn >= KFLOOR else None,
+                      "n": cn, "suppressed": cn < KFLOOR})
     linked = [{"ref": i.ref_code, "status": i.status, "rag": i.rag}
               for i in db.query(Initiative)
                 .filter_by(company_id=company_id, linked_item_code=item_code).all()
