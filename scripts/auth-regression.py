@@ -63,6 +63,10 @@ ALIASES = {
     "/twin":                {"dest": "/twin",                             "needle": "Performance Monitoring"},
     "/data-input":          {"dest": "/data-input?tab=financial",         "needle": "Data uploads"},
     "/financial-forecasts": {"dest": "/financial-forecasts",             "needle": "FCFF"},
+    # Lovable route alias (reported as a bare tuple); normalized to the committed
+    # dict shape + verified live (2026-07): /discussion -> the discussion tab of
+    # Stakeholder Engagement. needle is the tab's own heading, not the page H1.
+    "/discussion":          {"dest": "/stakeholder-engagement?tab=discussion", "needle": "Discussion"},
 }
 # sub-tab presence: route -> at least one tab-like control must render
 SUBTABS = {
