@@ -4745,8 +4745,13 @@ def assessment_item_drill(company_id: int, item_code: str,
             "linked_initiatives": linked, "recommendations": recs, "l3_children": l3}
 
 
+# Read-only. Authenticated callers still go through require_company_member (member
+# role, scoped-viewer confinement, operator bypass) unchanged; the showcase demo
+# companies are additionally readable ANONYMOUSLY, mirroring the carve-out the other
+# showcase read endpoints already honor (_summary_access / require_report_read).
+# Showcase ids come from tenant='showcase', never hardcoded.
 @router.get("/companies/{company_id}/assessment/swot")
-def assessment_swot(company_id: int, member=Depends(require_company_member),
+def assessment_swot(company_id: int, _role=Depends(_summary_access),
                     db=Depends(get_db)):
     """Derive a SWOT from the latest CLOSED cycle by classifying each selected,
     scored L2 item on two axes: orientation (internal/external, from the

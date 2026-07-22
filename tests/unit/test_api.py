@@ -522,3 +522,61 @@ def test_sector_warning_on_direct_input(client):
     assert r.status_code == 201
     assert any("no curated benchmark" in w
                for w in r.json()["validation"]["warnings"])
+
+
+def test_swot_showcase_anonymous_carveout(client):
+    """GET /companies/{id}/assessment/swot extends the showcase-anonymous carve-out
+    the other showcase read endpoints already honor: a showcase (tenant='showcase')
+    company is readable without a token; every non-showcase company keeps the exact
+    require_company_member gate. Showcase-ness comes from the tenant flag, not ids."""
+    from sqlalchemy import inspect, text
+    from services.api.core.db import SessionLocal, engine
+    from services.api.modules.enterprise_state.models import Enterprise
+    from services.api.accounts import make_token, User, SHOWCASE_TENANT
+
+    # Pre-existing model/migration drift (unrelated to this change): the
+    # enterprises.logo_* columns exist on the model but no migration adds them, so
+    # a fresh migrated test DB lacks them and every Enterprise ORM op 500s. Ensure
+    # they exist so the endpoint's own db.get(Enterprise) works; harmless if present.
+    have = {c["name"] for c in inspect(engine).get_columns("enterprises")}
+    with engine.begin() as cx:
+        for col in ("logo_r2_key", "logo_content_type"):
+            if col not in have:
+                cx.execute(text(f"ALTER TABLE enterprises ADD COLUMN {col} VARCHAR"))
+
+    db = SessionLocal()
+    show = Enterprise(tenant=SHOWCASE_TENANT, name="Showcase Co (test)")
+    real = Enterprise(tenant="demo", name="Real Co (test)")
+    db.add_all([show, real]); db.commit()
+    show_id, real_id = show.id, real.id
+    op = User(email="swot-op@example.com", platform_role="super", status="active")
+    plain = User(email="swot-plain@example.com", platform_role="user", status="active")
+    db.add_all([op, plain]); db.commit()
+    op_tok, plain_tok = make_token(op.id), make_token(plain.id)
+    db.close()
+
+    S = f"/companies/{show_id}/assessment/swot"
+    R = f"/companies/{real_id}/assessment/swot"
+
+    # 1. THE FIX — anonymous read of a SHOWCASE company: 200 with an honest
+    #    has_data:false (no cycle seeded), no longer 401.
+    r = client.get(S)
+    assert r.status_code == 200, r.text
+    assert r.json()["has_data"] is False
+
+    # 2. UNCHANGED — anonymous read of a NON-showcase company: still 401.
+    assert client.get(R).status_code == 401
+
+    # 3. UNCHANGED — an authenticated operator reaches the handler on a real
+    #    company via the same require_company_member bypass as before: 200.
+    r = client.get(R, headers={"Authorization": f"Bearer {op_tok}"})
+    assert r.status_code == 200, r.text
+
+    # 4. UNCHANGED — an authenticated NON-member is still denied on a real
+    #    company (require_company_member path: 402/403/404), never a silent read.
+    assert client.get(
+        R, headers={"Authorization": f"Bearer {plain_tok}"}).status_code in (402, 403, 404)
+
+    # 5. Authenticated operator on a showcase company still 200.
+    assert client.get(
+        S, headers={"Authorization": f"Bearer {op_tok}"}).status_code == 200
