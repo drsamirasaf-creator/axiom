@@ -36,6 +36,18 @@ class FinancialDataset(Base):
         DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    # custody-13 §2 upload provenance: who uploaded which file, the template it
+    # declared, the ingest counts, and the stored original (R2) for re-download.
+    # Originals are only kept for uploads AFTER this shipped — prior rows have a
+    # null original_r2_key and the download endpoint says so honestly.
+    original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    original_r2_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    original_content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    uploaded_by_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    template_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    n_objectives: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    n_key_results: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    n_kpis: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class EnterpriseDocument(Base):

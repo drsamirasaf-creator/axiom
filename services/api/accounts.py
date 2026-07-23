@@ -17,6 +17,7 @@ Verified by the Phase 6 test battery (32 tests) + single-file smoke suite.
 # db
 # ======================================================================
 import os
+import re
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
@@ -1898,12 +1899,41 @@ def data_template(company_id: int, frequency: str = "annual",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
-def _dataset_summary(ds):
+def _dataset_summary(ds, uploader=None):
     periods = (ds.data or {}).get("periods", {}) if isinstance(ds.data, dict) else {}
+    try:
+        n_periods = len(periods) if isinstance(periods, dict) else 0
+    except Exception:
+        n_periods = 0
     return {"dataset_id": ds.id, "version": ds.version, "is_active": ds.is_active,
             "frequency": ds.frequency, "name": ds.name,
             "uploaded_at": ds.uploaded_at, "created_at": ds.created_at,
-            "periods": periods}
+            "periods": periods,
+            # §2 provenance
+            "filename": getattr(ds, "original_filename", None),
+            "template_version": getattr(ds, "template_version", None),
+            "uploaded_by_user_id": getattr(ds, "uploaded_by_user_id", None),
+            "uploaded_by": uploader,
+            "has_original": bool(getattr(ds, "original_r2_key", None)),
+            "counts": {"financials_periods": n_periods,
+                       "objectives": getattr(ds, "n_objectives", None),
+                       "key_results": getattr(ds, "n_key_results", None),
+                       "kpis": getattr(ds, "n_kpis", None)}}
+
+
+def _uploader_names(db, rows):
+    """Map {user_id: display name/email} for the uploaders of the given datasets."""
+    ids = {getattr(r, "uploaded_by_user_id", None) for r in rows}
+    ids.discard(None)
+    if not ids:
+        return {}
+    out = {}
+    try:
+        for u in db.query(User).filter(User.id.in_(ids)).all():
+            out[u.id] = (getattr(u, "name", None) or getattr(u, "email", None) or f"user #{u.id}")
+    except Exception:
+        pass
+    return out
 
 
 @router.post("/companies/{company_id}/data-upload", status_code=201)
@@ -1946,9 +1976,31 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
         standard=data["company"]["standard"], ownership=data["company"]["ownership"],
         source="upload", data=data, validation={"warnings": warnings},
         version=version, is_active=True, frequency=frequency,
-        uploaded_at=datetime.utcnow())
+        uploaded_at=datetime.utcnow(),
+        # §2 provenance
+        original_filename=(file.filename or None),
+        original_content_type=(file.content_type or None),
+        uploaded_by_user_id=user.id,
+        template_version=((meta or {}).get("template_version") or None),
+        n_objectives=len(objectives), n_key_results=len(key_results), n_kpis=len(kpis))
     db.add(ds)
     db.flush()
+    # §2: stash the ORIGINAL workbook in R2 so "download the file I uploaded" can
+    # re-serve the exact bytes. Best-effort — a storage outage never blocks the
+    # upload (the parsed dataset is already persisted); original_r2_key stays null.
+    try:
+        _client, _bucket = _r2_client()
+        if _client is not None:
+            import uuid as _uuid
+            _safe = re.sub(r"[^A-Za-z0-9._-]+", "_", (file.filename or "upload.xlsx"))[:120]
+            _okey = f"uploads/{company_id}/{ds.id}/{_uuid.uuid4().hex}_{_safe}"
+            _client.put_object(
+                Bucket=_bucket, Key=_okey, Body=content,
+                ContentType=(file.content_type or
+                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+            ds.original_r2_key = _okey
+    except Exception:
+        pass
     # §9: persist the OKR + KPI sheets as a snapshot keyed to THIS dataset version.
     # Re-upload makes a new version active → latest wins; prior rows are retained.
     now = datetime.utcnow()
@@ -1992,14 +2044,42 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
 @router.get("/companies/{company_id}/datasets")
 def company_datasets(company_id: int, member=Depends(require_company_member),
                      db=Depends(get_db)):
-    """Version history for this company's uploaded datasets (active flagged)."""
+    """Version history for this company's uploaded datasets (active flagged),
+    each carrying §2 upload provenance (filename, uploader, template version,
+    ingest counts, whether the original file is re-downloadable)."""
     from .modules.financials.models import FinancialDataset
     rows = (db.query(FinancialDataset)
               .filter_by(enterprise_id=company_id, source="upload")
               .order_by(FinancialDataset.version.desc()).all())
+    names = _uploader_names(db, rows)
     return {"company_id": company_id,
             "active_dataset_id": next((r.id for r in rows if r.is_active), None),
-            "datasets": [_dataset_summary(r) for r in rows]}
+            "datasets": [_dataset_summary(r, names.get(getattr(r, "uploaded_by_user_id", None)))
+                         for r in rows]}
+
+
+@router.get("/companies/{company_id}/datasets/{dataset_id}/original")
+def download_dataset_original(company_id: int, dataset_id: int,
+                              member=Depends(require_company_member), db=Depends(get_db)):
+    """Re-serve the EXACT workbook that was uploaded for this dataset version, via
+    a short-lived presigned URL. Honest 404 when the original wasn't kept — only
+    uploads made after §2 shipped stored their originals."""
+    from .modules.financials.models import FinancialDataset
+    ds = db.get(FinancialDataset, dataset_id)
+    if not ds or ds.enterprise_id != company_id:
+        raise HTTPException(404, "Dataset not found for this company")
+    key = getattr(ds, "original_r2_key", None)
+    if not key:
+        raise HTTPException(404, "The original file for this upload wasn't stored "
+                                 "(it predates upload-original retention). Newer uploads "
+                                 "keep their original for re-download.")
+    fname = getattr(ds, "original_filename", None) or f"upload_v{ds.version}.xlsx"
+    ctype = getattr(ds, "original_content_type", None) or \
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    url = _presign_report(key, fname, ctype, expires=300)
+    if not url:
+        raise HTTPException(503, "File storage is not configured on this server")
+    return {"download_url": url, "filename": fname, "content_type": ctype, "expires_in": 300}
 
 
 @router.post("/companies/{company_id}/datasets/{dataset_id}/restore")
@@ -2307,6 +2387,7 @@ def company_objectives(company_id: int, member=Depends(require_company_member), 
     for o in out:
         by_h.setdefault(o["horizon"] or "Short", []).append(o)
     return {"company_id": company_id, "dataset_id": ds.id, "uploaded_at": meta["uploaded_at"],
+            "filename": getattr(ds, "original_filename", None),          # §2 provenance line
             "has_data": True, "count": len(out), "legacy": meta["legacy"],
             "objectives": out, "objectives_by_horizon": by_h}
 
@@ -2465,6 +2546,7 @@ def company_kpi_variance(company_id: int, member=Depends(require_company_member)
              "variance": _kpi_variance(r.ytd_actual, r.ytd_plan)} for r in rows]
     return {"company_id": company_id, "dataset_id": ds.id,
             "uploaded_at": max((r.uploaded_at for r in rows), default=None),
+            "filename": getattr(ds, "original_filename", None),          # §2 provenance line
             "has_data": True, "count": len(kpis), "kpis": kpis}
 
 
@@ -6991,6 +7073,15 @@ def _ensure_ax_columns(engine):
     # 7f rider: client company logo on the enterprise
     _add("enterprises", "logo_r2_key", "logo_r2_key VARCHAR(512)")
     _add("enterprises", "logo_content_type", "logo_content_type VARCHAR(64)")
+    # custody-13 §2: upload provenance on the dataset
+    _add("financial_datasets", "original_filename", "original_filename VARCHAR(255)")
+    _add("financial_datasets", "original_r2_key", "original_r2_key VARCHAR(512)")
+    _add("financial_datasets", "original_content_type", "original_content_type VARCHAR(128)")
+    _add("financial_datasets", "uploaded_by_user_id", "uploaded_by_user_id INTEGER")
+    _add("financial_datasets", "template_version", "template_version VARCHAR(32)")
+    _add("financial_datasets", "n_objectives", "n_objectives INTEGER")
+    _add("financial_datasets", "n_key_results", "n_key_results INTEGER")
+    _add("financial_datasets", "n_kpis", "n_kpis INTEGER")
     # 7f revision: deck variant on the issue registry
     _add("ax_report_issues", "deck_type", "deck_type VARCHAR(16)")
     _add("ax_report_issues", "builder_version", "builder_version VARCHAR(32)")
