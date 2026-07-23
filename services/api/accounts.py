@@ -102,7 +102,7 @@ def new_cid() -> str:
 # ======================================================================
 # models
 # ======================================================================
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import (Boolean, Column, DateTime, Float, Integer, JSON, String,
                         Text, UniqueConstraint)
@@ -293,6 +293,7 @@ class AssessmentCycle(Base):
     cadence = Column(String(24), nullable=True)          # company cadence setting
     anonymity_mode = Column(String(16), default="anonymous", nullable=False)
     depth = Column(String(16), default="standard", nullable=False)  # standard|deep — fixed at open (§4i-c)
+    name = Column(String(120), nullable=True)            # optional label; default "Cycle N — <date>" derived on read
     snapshot = Column(JSON, nullable=True)               # CEI snapshot at close (revision-tagged)
 
 
@@ -356,6 +357,9 @@ class AssessmentInvite(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     redeemed_at = Column(DateTime, nullable=True)
     submitted_at = Column(DateTime, nullable=True)
+    last_reminded_at = Column(DateTime, nullable=True)          # set by the Remind action (24h cooldown)
+    revoked_at = Column(DateTime, nullable=True)                # kills the magic link (jti dead) — excluded from seat counts
+    alt_email = Column(String(255), nullable=True)              # DELIVERY-ONLY cc; NEVER an identity/dedup/join key
 
 
 class Thread(Base):
@@ -736,6 +740,39 @@ def _try_send_assess_invite(to, name, company_name, token, anonymity_mode, compa
         logging.getLogger("axiom.assessment").warning(
             "assessment invite email failed to send (company=%s) — invite still created", company_id)
         return False
+
+
+_ASSESS_INVITE_TTL = 30 * 86_400            # 30 days — one place, used by mint + expiry derivation
+
+
+def _assess_invite_token(inv):
+    """Regenerate the invite's magic-link JWT from its STORED claims, preserving
+    the jti so the link identity is unchanged (Remind and Copy-link surface the
+    SAME link — never a re-mint). Expiry is pinned to created_at + 30d so a
+    regenerated token expires exactly when the original did."""
+    now = int(time.time())
+    created = int(inv.created_at.timestamp()) if inv.created_at else now
+    ttl = max(60, created + _ASSESS_INVITE_TTL - now)   # remaining life; ≥60s so a fresh mint never lands pre-expired
+    return make_token(str(inv.cycle_id), purpose="assess-invite", ttl=ttl,
+                      jti=inv.jti, cycle_id=inv.cycle_id, company_id=inv.company_id,
+                      invited_email=inv.email, invited_name=inv.name)
+
+
+def _assess_invite_link(inv):
+    return f"{_app_url()}/assess?invite={_assess_invite_token(inv)}"
+
+
+def _send_assess_invite_all(inv, company_name, anonymity_mode, token=None):
+    """Send the invite/reminder to the primary AND (if present) the delivery-only
+    alt address, tracking success per address. `token` lets a caller reuse a
+    freshly minted token (invite/reinvite); otherwise the stable link is
+    regenerated. Returns {primary: bool, alt: bool|None}."""
+    tok = token or _assess_invite_token(inv)
+    primary = _try_send_assess_invite(inv.email, inv.name, company_name, tok, anonymity_mode, inv.company_id)
+    alt = None
+    if inv.alt_email:
+        alt = _try_send_assess_invite(inv.alt_email, inv.name, company_name, tok, anonymity_mode, inv.company_id)
+    return {"primary": primary, "alt": alt}
 
 
 def send_assess_invite(to: str, name: str, company_name: str, token: str,
@@ -2149,10 +2186,15 @@ def patch_initiative(company_id: int, iid: int, body: InitiativePatch,
     ini = db.get(Initiative, iid)
     if not ini or ini.company_id != company_id:
         raise HTTPException(404, "initiative not found")
-    for f in ("importance", "urgency", "current_priority"):
+    for f in ("importance", "urgency"):
         v = getattr(body, f)
         if v is not None and v not in _PRIORITY:
             raise HTTPException(422, f"{f} must be one of high|medium|low")
+    # current_priority also accepts 'unset' (unprioritized — back to the triage band),
+    # matching create; 'unset' is how the Reconsider door / U-band demotion round-trips.
+    if body.current_priority is not None and body.current_priority not in _PRIORITY \
+            and body.current_priority != "unset":
+        raise HTTPException(422, "current_priority must be one of high|medium|low|unset")
     old_priority, old_impact = ini.current_priority, ini.expected_impact_amount
     changed = []
     for f in ("title", "description", "importance", "urgency", "current_priority",
@@ -4163,6 +4205,7 @@ class CycleIn(BaseModel):
     cadence: str | None = None
     anonymity_mode: str = "anonymous"
     depth: str = "standard"       # standard|deep — fixed at open (§4i-c)
+    name: str | None = None       # optional label; blank → "Cycle N — <date>" derived on read
 
 
 class CyclePatch(BaseModel):
@@ -4243,7 +4286,7 @@ def _cycle_out(cyc):
     return {"cycle_id": cyc.id, "company_id": cyc.company_id, "revision": cyc.revision,
             "opened_at": cyc.opened_at, "closed_at": cyc.closed_at,
             "cadence": cyc.cadence, "anonymity_mode": cyc.anonymity_mode,
-            "depth": cyc.depth or "standard",
+            "depth": cyc.depth or "standard", "name": getattr(cyc, "name", None),
             "closed": cyc.closed_at is not None}
 
 
@@ -4496,7 +4539,8 @@ def open_assessment_cycle(company_id: int, body: CycleIn,
     fw = _assess_ensure_framework(db, company_id)
     cyc = AssessmentCycle(company_id=company_id, framework_id=fw.id, revision=fw.revision,
                           cadence=body.cadence, anonymity_mode=body.anonymity_mode or "anonymous",
-                          depth=_norm_depth(body.depth))
+                          depth=_norm_depth(body.depth),
+                          name=((body.name or "").strip()[:120] or None))
     db.add(cyc); db.flush()
     if body.cadence:                                   # persist the company cadence
         _assess_config(db, company_id).cadence = body.cadence
@@ -4630,6 +4674,12 @@ def assessment_summary(company_id: int, member=Depends(require_company_member),
                     .filter_by(cycle_id=latest.id).distinct().count())
     # Trend is a serialized aggregate too: a cycle with fewer than KFLOOR respondents
     # suppresses its CEI point (the count stays, so the timeline still shows the cycle).
+    # Stable per-company ordinal (position in opened order) → default "Cycle N" label.
+    ordinal = {c.id: i + 1 for i, c in enumerate(cycles)}
+    def _cycle_label(c):
+        n = ordinal.get(c.id, c.id)
+        when = c.opened_at.strftime("%d %b %Y") if c.opened_at else ""
+        return (c.name or "").strip() or f"Cycle {n} — {when}".strip(" —")
     trend = []
     for c in cycles:
         if not c.snapshot:
@@ -4637,6 +4687,8 @@ def assessment_summary(company_id: int, member=Depends(require_company_member),
         npart = (c.snapshot or {}).get("n_participants") or 0
         pt = {"cycle_id": c.id, "revision": c.revision, "opened_at": c.opened_at,
               "closed_at": c.closed_at, "n_participants": npart,
+              "name": _cycle_label(c), "depth": c.depth or "standard",
+              "anonymity_mode": c.anonymity_mode,
               "cei": (c.snapshot or {}).get("cei") if npart >= KFLOOR else None}
         if npart < KFLOOR:
             pt.update({"suppressed": True, "reason": "below_anonymity_floor"})
@@ -4668,6 +4720,8 @@ def assessment_summary(company_id: int, member=Depends(require_company_member),
             "current_cycle_id": latest.id if latest else None,
             "current_cycle_closed": bool(latest and latest.closed_at),
             "current_cycle_depth": (latest.depth or "standard") if latest else None,
+            "current_cycle_name": _cycle_label(latest) if latest else None,
+            "cycle_count": len(cycles),      # for the open-dialog default "Cycle N+1 — <date>"
             "cei": safe.get("cei"),
             "n_participants": current.get("n_participants", 0),
             "n_respondents": n_resp,
@@ -4917,6 +4971,7 @@ def _assess_config(db, company_id):
 class AssessInviteIn(BaseModel):
     name: str = ""
     email: EmailStr
+    alt_email: EmailStr | None = None   # DELIVERY-ONLY cc; never an identity/dedup/join key (standing law)
     department: str | None = None       # optional org unit; inherited by the participant (§4i-b)
     depth: str | None = None            # only used on the auto-open path when no cycle is open
 
@@ -4967,6 +5022,8 @@ def assess_session(authorization: str = Header(None), db=Depends(get_db)):
     inv = db.query(AssessmentInvite).filter_by(jti=payload.get("jti")).first()
     if not inv or inv.cycle_id != cid or inv.participant_ref != payload.get("participant_ref"):
         raise HTTPException(401, "This assessment session is no longer valid.")
+    if inv.revoked_at is not None:                       # revoked mid-session → session dies too
+        raise HTTPException(401, "This assessment invitation has been revoked by the company.")
     cyc = db.get(AssessmentCycle, cid)
     if not cyc:
         raise HTTPException(404, "cycle not found")
@@ -4994,19 +5051,22 @@ def invite_participant(company_id: int, cid: int, body: AssessInviteIn,
         raise HTTPException(409, "This person is already invited to this cycle.")
     company_name = _company_name(db, company_id)
     dept = (body.department or "").strip() or None
+    alt = (str(body.alt_email).strip().lower() or None) if body.alt_email else None
     jti = secrets.token_urlsafe(16)
-    token = make_token(str(cid), purpose="assess-invite", ttl=30 * 86_400,
+    token = make_token(str(cid), purpose="assess-invite", ttl=_ASSESS_INVITE_TTL,
                        jti=jti, cycle_id=cid, company_id=company_id,
                        invited_email=email, invited_name=name)
     inv = AssessmentInvite(cycle_id=cid, company_id=company_id, email=email,
-                           name=name, department=dept, jti=jti, invited_by=user.id)
+                           name=name, department=dept, alt_email=alt,
+                           jti=jti, invited_by=user.id)
     db.add(inv)
     audit(db, user.id, "assessment_participant_invited", "company", company_id,
           detail=f"cycle {cid} {email}")
     db.commit(); db.refresh(inv)
-    email_sent = _try_send_assess_invite(email, name, company_name, token, cyc.anonymity_mode, company_id)
+    sent = _send_assess_invite_all(inv, company_name, cyc.anonymity_mode, token=token)
     return {"ok": True, "cycle_id": cid, "invite_id": inv.id, "email": email,
-            "email_sent": email_sent, "anonymity_mode": cyc.anonymity_mode, "expires_in_days": 30}
+            "email_sent": sent["primary"], "email_sent_alt": sent["alt"],
+            "anonymity_mode": cyc.anonymity_mode, "expires_in_days": 30}
 
 
 @router.post("/companies/{company_id}/assessment/invites", status_code=201)
@@ -5023,20 +5083,136 @@ def invite_assessor(company_id: int, body: AssessInviteIn,
     if db.query(AssessmentInvite).filter_by(cycle_id=cyc.id, email=email).first():
         raise HTTPException(409, "This person is already invited to the open cycle.")
     company_name = _company_name(db, company_id)
+    alt = (str(body.alt_email).strip().lower() or None) if body.alt_email else None
     jti = secrets.token_urlsafe(16)
-    token = make_token(str(cyc.id), purpose="assess-invite", ttl=30 * 86_400,
+    token = make_token(str(cyc.id), purpose="assess-invite", ttl=_ASSESS_INVITE_TTL,
                        jti=jti, cycle_id=cyc.id, company_id=company_id,
                        invited_email=email, invited_name=name)
     inv = AssessmentInvite(cycle_id=cyc.id, company_id=company_id, email=email,
-                           name=name, department=dept, jti=jti, invited_by=user.id)
+                           name=name, department=dept, alt_email=alt,
+                           jti=jti, invited_by=user.id)
     db.add(inv)
     audit(db, user.id, "assessment_participant_invited", "company", company_id,
           detail=f"cycle {cyc.id} {email}" + (" (cycle auto-opened)" if opened else ""))
     db.commit(); db.refresh(inv)
-    email_sent = _try_send_assess_invite(email, name, company_name, token, cyc.anonymity_mode, company_id)
+    sent = _send_assess_invite_all(inv, company_name, cyc.anonymity_mode, token=token)
     return {"ok": True, "cycle_id": cyc.id, "cycle_auto_opened": opened,
-            "invite_id": inv.id, "email": email, "email_sent": email_sent,
+            "invite_id": inv.id, "email": email, "email_sent": sent["primary"],
+            "email_sent_alt": sent["alt"],
             "anonymity_mode": cyc.anonymity_mode, "expires_in_days": 30}
+
+
+def _get_company_assess_invite(db, company_id, invite_id):
+    inv = db.get(AssessmentInvite, invite_id)
+    if not inv or inv.company_id != company_id:
+        raise HTTPException(404, "invite not found")
+    return inv
+
+
+_REMIND_COOLDOWN = timedelta(hours=24)
+
+
+@router.post("/companies/{company_id}/assessment/invites/{invite_id}/remind")
+def remind_assess_invite(company_id: int, invite_id: int,
+                         member=Depends(require_company_admin),
+                         user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Resend the SAME magic link (no re-mint — jti preserved) to a still-open
+    invite. 24h cooldown per person; email_sent honesty so the UI can fall back
+    to the copyable link on a mail failure."""
+    inv = _get_company_assess_invite(db, company_id, invite_id)
+    if inv.revoked_at is not None:
+        raise HTTPException(409, "This invitation was revoked.")
+    if inv.submitted_at is not None:
+        raise HTTPException(409, "This person has already submitted — nothing to remind.")
+    now = datetime.utcnow()
+    link = _assess_invite_link(inv)
+    if inv.last_reminded_at and (now - inv.last_reminded_at) < _REMIND_COOLDOWN:
+        return {"ok": True, "reminded": False, "on_cooldown": True,
+                "last_reminded_at": inv.last_reminded_at,
+                "cooldown_until": inv.last_reminded_at + _REMIND_COOLDOWN, "link": link}
+    cyc = db.get(AssessmentCycle, inv.cycle_id)
+    if cyc and cyc.closed_at:
+        raise HTTPException(409, "The cycle is closed.")
+    sent = _send_assess_invite_all(inv, _company_name(db, company_id),
+                                   cyc.anonymity_mode if cyc else "anonymous")
+    inv.last_reminded_at = now
+    audit(db, user.id, "assessment_invite_reminded", "company", company_id,
+          detail=f"cycle {inv.cycle_id} invite {inv.id}")
+    db.commit(); db.refresh(inv)
+    return {"ok": True, "reminded": True, "email_sent": sent["primary"],
+            "email_sent_alt": sent["alt"], "last_reminded_at": inv.last_reminded_at,
+            "cooldown_until": now + _REMIND_COOLDOWN, "link": link}
+
+
+@router.post("/companies/{company_id}/assessment/invites/{invite_id}/revoke")
+def revoke_assess_invite(company_id: int, invite_id: int,
+                         member=Depends(require_company_admin),
+                         user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Kill an invite's link (jti dead — redeem/session now 401). Seat freed
+    (excluded from cap counts). A SUBMITTED assessor's responses REMAIN in the
+    cycle; an in-progress assessor had only an unsaved draft, so nothing is
+    removed from compute."""
+    inv = _get_company_assess_invite(db, company_id, invite_id)
+    was_submitted = inv.submitted_at is not None
+    was_redeemed = inv.redeemed_at is not None
+    if inv.revoked_at is None:
+        inv.revoked_at = datetime.utcnow()
+        audit(db, user.id, "assessment_invite_revoked", "company", company_id,
+              detail=f"cycle {inv.cycle_id} invite {inv.id} "
+                     f"({'submitted' if was_submitted else 'in-progress' if was_redeemed else 'un-redeemed'})")
+        db.commit(); db.refresh(inv)
+    return {"ok": True, "revoked_at": inv.revoked_at,
+            "was_submitted": was_submitted, "was_redeemed": was_redeemed,
+            "responses_kept": was_submitted,
+            "note": ("Their submitted responses remain in the cycle results."
+                     if was_submitted else
+                     "Their in-progress answers were an unsaved draft — nothing was in the results."
+                     if was_redeemed else
+                     "The invitation link is now dead.")}
+
+
+@router.post("/companies/{company_id}/assessment/invites/{invite_id}/reinvite")
+def reinvite_assess_invite(company_id: int, invite_id: int,
+                           member=Depends(require_company_admin),
+                           user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Re-invite an EXPIRED / un-redeemed person: mint a FRESH token (new jti
+    resets the 30-day clock), same person + same emails, same seat (same row).
+    Redeemed people use Remind instead."""
+    inv = _get_company_assess_invite(db, company_id, invite_id)
+    if inv.revoked_at is not None:
+        raise HTTPException(409, "This invitation was revoked.")
+    if inv.redeemed_at is not None:
+        raise HTTPException(409, "This person already opened their assessment — use Remind, not Re-invite.")
+    cyc = db.get(AssessmentCycle, inv.cycle_id)
+    if cyc and cyc.closed_at:
+        raise HTTPException(409, "The cycle is closed.")
+    inv.jti = secrets.token_urlsafe(16)          # new capability — old link dies
+    inv.created_at = datetime.utcnow()           # resets age + 30-day expiry
+    inv.last_reminded_at = None
+    db.flush()
+    token = make_token(str(inv.cycle_id), purpose="assess-invite", ttl=_ASSESS_INVITE_TTL,
+                       jti=inv.jti, cycle_id=inv.cycle_id, company_id=company_id,
+                       invited_email=inv.email, invited_name=inv.name)
+    sent = _send_assess_invite_all(inv, _company_name(db, company_id),
+                                   cyc.anonymity_mode if cyc else "anonymous", token=token)
+    audit(db, user.id, "assessment_invite_reissued", "company", company_id,
+          detail=f"cycle {inv.cycle_id} invite {inv.id}")
+    db.commit(); db.refresh(inv)
+    return {"ok": True, "email_sent": sent["primary"], "email_sent_alt": sent["alt"],
+            "expires_in_days": 30, "invited_at": inv.created_at}
+
+
+@router.get("/companies/{company_id}/assessment/invites/{invite_id}/link")
+def get_assess_invite_link(company_id: int, invite_id: int,
+                           member=Depends(require_company_admin), db=Depends(get_db)):
+    """Admin Copy-link fallback: the person's own magic link, for out-of-band
+    delivery when email won't do. Same link the invite/reminder carries."""
+    inv = _get_company_assess_invite(db, company_id, invite_id)
+    if inv.revoked_at is not None:
+        raise HTTPException(409, "This invitation was revoked.")
+    expires_at = (inv.created_at + timedelta(seconds=_ASSESS_INVITE_TTL)) if inv.created_at else None
+    return {"ok": True, "link": _assess_invite_link(inv), "email": inv.email,
+            "alt_email": inv.alt_email, "expires_at": expires_at}
 
 
 @router.get("/companies/{company_id}/assessment/current")
@@ -5046,7 +5222,9 @@ def current_cycle_status(company_id: int, member=Depends(require_company_member)
     cyc = _current_open_cycle(db, company_id)
     if not cyc:
         return {"company_id": company_id, "open_cycle": None, "invited": 0, "responded": 0}
-    invited = db.query(AssessmentInvite).filter_by(cycle_id=cyc.id).count()
+    # revoked invites don't consume a seat — excluded from the invited count
+    invited = (db.query(AssessmentInvite)
+                 .filter_by(cycle_id=cyc.id).filter(AssessmentInvite.revoked_at.is_(None)).count())
     responded = len({r.participant_ref for r in
                      db.query(AssessmentResponse.participant_ref).filter_by(cycle_id=cyc.id).all()})
     return {"company_id": company_id, "open_cycle": _cycle_out(cyc),
@@ -5068,15 +5246,20 @@ def list_participant_invites(company_id: int, cid: int,
               .order_by(AssessmentInvite.id).all())
     roster = []
     for i in rows:
-        entry = {"name": i.name, "email": i.email, "invited_at": i.created_at,
+        entry = {"invite_id": i.id, "name": i.name, "email": i.email,
+                 "invited_at": i.created_at,
+                 "last_reminded_at": i.last_reminded_at,
+                 "latest_sent": i.last_reminded_at or i.created_at,
+                 "revoked": i.revoked_at is not None,
                  "redeemed": i.redeemed_at is not None,
                  "responded": i.submitted_at is not None}
         if not anon:
             entry["participant_ref"] = i.participant_ref
         roster.append(entry)
+    live = [i for i in rows if i.revoked_at is None]     # revoked don't consume a seat
     return {"cycle_id": cid, "anonymity_mode": cyc.anonymity_mode,
-            "invited": len(rows),
-            "responded": sum(1 for i in rows if i.submitted_at),
+            "invited": len(live),
+            "responded": sum(1 for i in live if i.submitted_at),
             "roster": roster}
 
 
@@ -5087,30 +5270,47 @@ def company_roster(company_id: int, member=Depends(require_company_admin),
     participants across ALL cycles (ax_assessment_invites). ANONYMITY-SAFE:
     participant_ref is included ONLY for identified cycles — never for an anonymous
     cycle (so the admin can never map a person to their scores)."""
+    from datetime import timedelta
     people = []
     for i in (db.query(Invite).filter_by(company_id=company_id)
                 .order_by(Invite.id).all()):
-        people.append({"source": "viewer", "role": "viewer",
-                       "name": i.name or "", "email": i.email, "department": None,
-                       "cycle_id": None, "anonymity_mode": None,
-                       "invited_at": i.created_at,
+        people.append({"source": "viewer", "role": "viewer", "invite_id": i.id,
+                       "name": i.name or "", "email": i.email, "alt_email": None,
+                       "department": None,
+                       "cycle_id": None, "anonymity_mode": None, "cycle_closed": None,
+                       "invited_at": i.created_at, "latest_sent": i.created_at,
+                       "last_reminded_at": None, "expires_at": None, "revoked": False,
                        "redeemed": i.redeemed_at is not None,
                        "submitted": None, "participant_ref": None})
-    cyc_mode = {c.id: c.anonymity_mode for c in
-                db.query(AssessmentCycle).filter_by(company_id=company_id).all()}
+    cyc_by_id = {c.id: c for c in
+                 db.query(AssessmentCycle).filter_by(company_id=company_id).all()}
     for a in (db.query(AssessmentInvite).filter_by(company_id=company_id)
                 .order_by(AssessmentInvite.id).all()):
-        anon = cyc_mode.get(a.cycle_id, "anonymous") == "anonymous"
-        people.append({"source": "assessor", "role": "assessor",
-                       "name": a.name or "", "email": a.email, "department": a.department,
-                       "cycle_id": a.cycle_id, "anonymity_mode": cyc_mode.get(a.cycle_id),
+        cyc = cyc_by_id.get(a.cycle_id)
+        anon = (cyc.anonymity_mode if cyc else "anonymous") == "anonymous"
+        expires_at = (a.created_at + timedelta(seconds=_ASSESS_INVITE_TTL)) if a.created_at else None
+        people.append({"source": "assessor", "role": "assessor", "invite_id": a.id,
+                       "name": a.name or "", "email": a.email, "alt_email": a.alt_email,
+                       "department": a.department,
+                       "cycle_id": a.cycle_id,
+                       "anonymity_mode": (cyc.anonymity_mode if cyc else None),
+                       "cycle_closed": (cyc.closed_at is not None) if cyc else None,
                        "invited_at": a.created_at,
+                       # Latest Sent = most recent outbound (reminder if any, else the original invite)
+                       "latest_sent": a.last_reminded_at or a.created_at,
+                       "last_reminded_at": a.last_reminded_at,
+                       "expires_at": expires_at,
+                       "revoked": a.revoked_at is not None,
                        "redeemed": a.redeemed_at is not None,
                        "submitted": a.submitted_at is not None,
                        "participant_ref": (None if anon else a.participant_ref)})
+    # Seat accounting: revoked invites do NOT consume a seat (excluded from cap counts).
     return {"company_id": company_id, "people": people,
             "counts": {"viewers": sum(1 for p in people if p["source"] == "viewer"),
-                       "assessors": sum(1 for p in people if p["source"] == "assessor"),
+                       "assessors": sum(1 for p in people
+                                        if p["source"] == "assessor" and not p["revoked"]),
+                       "assessors_revoked": sum(1 for p in people
+                                                if p["source"] == "assessor" and p["revoked"]),
                        "cycles": sorted({p["cycle_id"] for p in people if p["cycle_id"]})}}
 
 
@@ -5345,6 +5545,8 @@ def redeem_assess_invite(body: AssessRedeemIn, db=Depends(get_db)):
     inv = db.query(AssessmentInvite).filter_by(jti=payload.get("jti")).first()
     if not inv:
         raise HTTPException(400, "This assessment invitation is no longer valid.")
+    if inv.revoked_at is not None:                       # revoked → the link is dead (jti killed)
+        raise HTTPException(401, "This assessment invitation has been revoked by the company.")
     cyc = db.get(AssessmentCycle, inv.cycle_id)
     if not cyc:
         raise HTTPException(404, "cycle not found")
@@ -6198,9 +6400,14 @@ def _ensure_ax_columns(engine):
     # Assessment upgrade (§4i-b/§4i-c): cycle depth, response abstention + department,
     # invite department. Legacy cycles get depth 'standard' (read as standard).
     _add("ax_assessment_cycles", "depth", "depth VARCHAR(16) NOT NULL DEFAULT 'standard'")
+    _add("ax_assessment_cycles", "name", "name VARCHAR(120)")   # custody-5 item 6: optional cycle name
     _add("ax_assessment_responses", "abstained", "abstained BOOLEAN NOT NULL DEFAULT false")
     _add("ax_assessment_responses", "department", "department VARCHAR(80)")
     _add("ax_assessment_invites", "department", "department VARCHAR(80)")
+    # custody-5 item 4: roster lifecycle — remind cooldown, revoke, delivery-only alt email
+    _add("ax_assessment_invites", "last_reminded_at", "last_reminded_at TIMESTAMP")
+    _add("ax_assessment_invites", "revoked_at", "revoked_at TIMESTAMP")
+    _add("ax_assessment_invites", "alt_email", "alt_email VARCHAR(255)")
     try:                                     # abstention stores score NULL — drop the NOT NULL
         col = {c["name"]: c for c in _inspect(engine).get_columns("ax_assessment_responses")}
         if "score" in col and not col["score"].get("nullable", True):

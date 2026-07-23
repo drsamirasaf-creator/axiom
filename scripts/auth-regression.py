@@ -85,6 +85,10 @@ SUBTABS = {
     "/stakeholder-engagement": "tab",   # Survey Feedback / Survey Design / Participants / Discussion
     "/swot":                   "tab",   # SWOT / Risk Analysis / Benchmarking
     "/initiatives":            "tab",   # Initiatives & Projects Underway / Recommendations & Proposals
+    # Team moved OFF the top-level sidebar to a tab under My AXIOM (MY_AXIOM_TABS).
+    # Both are real routes joined by one RouteTabs bar (no ?tab= param).
+    "/my-axiom":               "tab",   # My AXIOM / Team
+    "/team":                   "tab",   # My AXIOM / Team
 }
 # The app's tabs are underline-style <button>s (Tailwind `border-b-2 -mb-px`,
 # active=border-brass / inactive=border-transparent) driving ?tab=/?section= —
@@ -92,7 +96,9 @@ SUBTABS = {
 # risk-analysis 9, valuation 3, cei 7). The selector also keeps the standard
 # ARIA/anchor/tablist forms so a future restyle to those still matches.
 TAB_SELECTOR = ("[role='tab'], a[href*='tab='], a[href*='section='], "
-                "button[class*='border-b-2'][class*='-mb-px'], [role='tablist'] button")
+                "button[class*='border-b-2'][class*='-mb-px'], "
+                # RouteTabs whose tabs are plain route links (no ?tab=), e.g. My AXIOM / Team
+                "a[class*='border-b-2'][class*='-mb-px'], [role='tablist'] button")
 # The app now holds a persistent connection (bundle index-DA3rwP6P onward), so
 # 'networkidle' never settles and every goto would hit the 30s timeout. Wait for
 # 'load' instead, then settle SETTLE_MS for the async data fetches (the ones that
