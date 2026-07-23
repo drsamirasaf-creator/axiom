@@ -512,12 +512,50 @@ class OrgGoal(Base):
     uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class Objective(Base):
+    """§9 OKR Objective, parsed from the template 'Objectives' sheet (or migrated
+    from a legacy 'Organizational Goals' sheet). Snapshot-scoped by dataset_id
+    (re-upload = latest active wins, prior retained). obj_key = a stable hash of
+    the objective text, so initiative links survive re-upload."""
+    __tablename__ = "ax_objectives"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    dataset_id = Column(Integer, index=True, nullable=False)
+    row_index = Column(Integer, nullable=False)
+    objective = Column(Text, nullable=False)
+    owner = Column(String(160), nullable=True)          # CXO
+    priority = Column(String(8), nullable=True)         # High | Medium | Low
+    horizon = Column(String(8), nullable=True)          # Short | Medium | Long
+    status = Column(String(8), nullable=True)           # Red | Amber | Green
+    objective_id = Column(String(40), nullable=False)   # short code (O1…) within the dataset
+    obj_key = Column(String(64), index=True, nullable=False)
+    uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class KeyResult(Base):
+    """§9 OKR Key Result — a measurable outcome under an Objective (by objective_id
+    within the same dataset snapshot)."""
+    __tablename__ = "ax_key_results"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    dataset_id = Column(Integer, index=True, nullable=False)
+    row_index = Column(Integer, nullable=False)
+    objective_id = Column(String(40), nullable=True)
+    key_result = Column(Text, nullable=False)
+    unit = Column(String(40), nullable=True)
+    baseline = Column(Float, nullable=True)
+    target = Column(Float, nullable=True)
+    current = Column(Float, nullable=True)
+    due_date = Column(String(40), nullable=True)
+    uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class GoalInitiativeLink(Base):
-    """§9 bridge: many-to-many between an organizational goal and an initiative.
-    Goals are snapshot-scoped (re-upload mints new goal rows), so a link is keyed
-    to the goal's STABLE identity — (company_id, goal_key) — not the row id, where
-    goal_key = a normalized hash of the goal text. Re-uploading the same goal text
-    keeps its links; initiatives are stable by id."""
+    """§9 bridge: many-to-many between an objective (or legacy goal) and an
+    initiative. Objectives/goals are snapshot-scoped (re-upload mints new rows),
+    so a link is keyed to STABLE text identity — (company_id, goal_key) — where
+    goal_key = a normalized hash of the objective/goal text. Re-uploading the same
+    text keeps its links; initiatives are stable by id."""
     __tablename__ = "ax_goal_initiative_links"
     __table_args__ = (UniqueConstraint("company_id", "goal_key", "initiative_id", name="uq_goal_ini"),)
     id = Column(Integer, primary_key=True)
@@ -1886,12 +1924,14 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
         raise HTTPException(413, "file exceeds 5 MB")
     data, errors, meta, warnings = ingest.parse_and_validate(
         content, company_id, statement_units=ent.statement_units)
-    # §4o: the strategy sheets validate alongside the financials — all-or-nothing.
-    goals, kpis, gk_errors, has_goals, has_kpis = ingest.parse_goals_and_kpis(content)
-    if errors or gk_errors:
+    # §9 OKR: Objectives + Key Results + KPIs validate alongside the financials —
+    # all-or-nothing on errors; OKR warnings (≥3 KRs etc.) merge non-blocking.
+    objectives, key_results, kpis, okr_errors, okr_warnings, okr_flags = ingest.parse_okr_and_kpis(content)
+    if errors or okr_errors:
         raise HTTPException(422, detail={
             "message": "Upload validation failed — no data was saved.",
-            "errors": (errors or []) + gk_errors})
+            "errors": (errors or []) + okr_errors})
+    warnings = list(warnings or []) + list(okr_warnings or [])
 
     frequency = (meta or {}).get("frequency", "annual")
     prior = db.query(FinancialDataset).filter_by(
@@ -1909,21 +1949,28 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
         uploaded_at=datetime.utcnow())
     db.add(ds)
     db.flush()
-    # §4o: persist the strategy sheets as a snapshot keyed to THIS dataset version.
+    # §9: persist the OKR + KPI sheets as a snapshot keyed to THIS dataset version.
     # Re-upload makes a new version active → latest wins; prior rows are retained.
     now = datetime.utcnow()
-    for g in goals:
-        db.add(OrgGoal(company_id=company_id, dataset_id=ds.id, row_index=g["row_index"],
-                       goal=g["goal"], priority=g["priority"], horizon=g["horizon"],
-                       status=g.get("status"),
-                       owner=g["owner"], target_metric=g["target_metric"], uploaded_at=now))
+    for o in objectives:
+        db.add(Objective(company_id=company_id, dataset_id=ds.id, row_index=o["row_index"],
+                         objective=o["objective"], owner=o.get("owner"),
+                         priority=o.get("priority"), horizon=o.get("horizon"),
+                         status=o.get("status"), objective_id=o["objective_id"],
+                         obj_key=_goal_key(o["objective"]), uploaded_at=now))
+    for kr in key_results:
+        db.add(KeyResult(company_id=company_id, dataset_id=ds.id, row_index=kr["row_index"],
+                         objective_id=kr.get("objective_id"), key_result=kr["key_result"],
+                         unit=kr.get("unit"), baseline=kr.get("baseline"), target=kr.get("target"),
+                         current=kr.get("current"), due_date=kr.get("due_date"), uploaded_at=now))
     for k in kpis:
         db.add(KpiPlan(company_id=company_id, dataset_id=ds.id, row_index=k["row_index"],
                        kpi_name=k["kpi_name"], unit=k["unit"], ytd_plan=k["ytd_plan"],
                        ytd_actual=k["ytd_actual"], full_year_target=k["full_year_target"],
                        uploaded_at=now))
     audit(db, user.id, "data_uploaded", "company", company_id,
-          detail=f"dataset={ds.id} v{version} {frequency} goals={len(goals)} kpis={len(kpis)}")
+          detail=f"dataset={ds.id} v{version} {frequency} objectives={len(objectives)} "
+                 f"krs={len(key_results)} kpis={len(kpis)}")
     _pilot_touch(db, company_id, "Data Loaded")   # FP-1 auto lifecycle
     db.commit()
     try:                                           # 7i: recompute frontier + viability (background)
@@ -1933,8 +1980,11 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
         pass
     return {"dataset_id": ds.id, "version": version, "frequency": frequency,
             "periods_detected": data["periods"], "warnings": warnings,
-            "goals_ingested": len(goals), "kpis_ingested": len(kpis),
-            "has_goals_sheet": has_goals, "has_kpi_sheet": has_kpis,
+            "objectives_ingested": len(objectives), "krs_ingested": len(key_results),
+            "kpis_ingested": len(kpis),
+            "has_objectives_sheet": okr_flags.get("has_objectives"),
+            "has_kr_sheet": okr_flags.get("has_krs"), "has_kpi_sheet": okr_flags.get("has_kpis"),
+            "legacy_goals_migrated": okr_flags.get("legacy"),
             "active": True}
 
 
@@ -2173,6 +2223,161 @@ def set_forecast_horizon(company_id: int, dataset_id: int, body: HorizonPrefIn,
     p.value = str(h); p.updated_at = datetime.utcnow()
     db.commit()
     return {"ok": True, "company_id": company_id, "dataset_id": dataset_id, "horizon": h}
+
+
+# ------------------------------------------------- §9 OKR: Objectives + Key Results
+def _kr_progress(baseline, target, current):
+    """Ratio (current − baseline) / (target − baseline), clamped ≥0. None when not
+    computable (missing values or target == baseline)."""
+    if baseline is None or target is None or current is None or target == baseline:
+        return None
+    return max(0.0, round((current - baseline) / (target - baseline), 4))
+
+
+def _objective_rows(db, company_id):
+    """Normalized objective rows for the active dataset (+ KR groups). Falls back to
+    legacy OrgGoal rows presented as objectives with no KRs (honest migration).
+    Returns (dataset, rows, meta)."""
+    ds = _active_company_dataset(db, company_id)
+    if not ds:
+        return None, [], {"uploaded_at": None, "legacy": False}
+    objs = (db.query(Objective).filter_by(company_id=company_id, dataset_id=ds.id)
+              .order_by(Objective.row_index).all())
+    if objs:
+        by_oid = {}
+        for kr in (db.query(KeyResult).filter_by(company_id=company_id, dataset_id=ds.id)
+                     .order_by(KeyResult.row_index).all()):
+            by_oid.setdefault(kr.objective_id, []).append(kr)
+        rows = [{"objective": o.objective, "owner": o.owner, "priority": o.priority,
+                 "horizon": o.horizon, "status": o.status, "objective_id": o.objective_id,
+                 "obj_key": o.obj_key, "row_index": o.row_index,
+                 "krs": by_oid.get(o.objective_id, [])} for o in objs]
+        return ds, rows, {"uploaded_at": max((o.uploaded_at for o in objs), default=None), "legacy": False}
+    goals = (db.query(OrgGoal).filter_by(company_id=company_id, dataset_id=ds.id)
+               .order_by(OrgGoal.row_index).all())
+    if goals:
+        rows = [{"objective": g.goal, "owner": g.owner, "priority": g.priority,
+                 "horizon": g.horizon, "status": g.status, "objective_id": f"O{i}",
+                 "obj_key": _goal_key(g.goal), "row_index": g.row_index, "krs": []}
+                for i, g in enumerate(goals, start=1)]
+        return ds, rows, {"uploaded_at": max((g.uploaded_at for g in goals), default=None), "legacy": True}
+    return ds, [], {"uploaded_at": None, "legacy": False}
+
+
+def _active_objective_keys(db, company_id):
+    _, rows, _ = _objective_rows(db, company_id)
+    return {r["obj_key"] for r in rows}
+
+
+@router.get("/companies/{company_id}/objectives")
+def company_objectives(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+    """OKR objectives for the active dataset — grouped by horizon (Short→Medium→Long),
+    priority-ordered, each with nested key_results (+ derived progress), an objective
+    progress roll-up (mean of its KR progresses), and its linked-initiative summary
+    (count + rag_mix + list). Legacy 'goals' uploads surface as objectives with no
+    KRs. has_data:false when the active dataset carries no objectives."""
+    ds, rows, meta = _objective_rows(db, company_id)
+    empty = {"company_id": company_id, "dataset_id": (ds.id if ds else None), "has_data": False,
+             "objectives": [], "objectives_by_horizon": {h: [] for h in _GOAL_HORIZON_ORDER}}
+    if not ds or not rows:
+        return empty
+    links = _goal_links_index(db, company_id)     # obj_key -> [Initiative]
+
+    def kr_out(kr):
+        return {"objective_id": kr.objective_id, "key_result": kr.key_result, "unit": kr.unit,
+                "baseline": kr.baseline, "target": kr.target, "current": kr.current,
+                "due_date": kr.due_date, "progress": _kr_progress(kr.baseline, kr.target, kr.current)}
+
+    def obj_out(r):
+        krs = [kr_out(k) for k in r["krs"]]
+        progs = [k["progress"] for k in krs if k["progress"] is not None]
+        linked = links.get(r["obj_key"], [])
+        return {"objective_id": r["objective_id"], "key": r["obj_key"], "objective": r["objective"],
+                "owner": r["owner"], "priority": r["priority"], "horizon": r["horizon"], "status": r["status"],
+                "key_results": krs, "kr_count": len(krs),
+                "progress": (round(sum(progs) / len(progs), 4) if progs else None),
+                "linked_count": len(linked), "rag_mix": _rag_mix(linked),
+                "linked_initiatives": [_ini_link_summary(i) for i in linked]}
+
+    out = [obj_out(r) for r in rows]
+    out.sort(key=lambda o: (_GOAL_HORIZON_ORDER.index(o["horizon"]) if o["horizon"] in _GOAL_HORIZON_ORDER else 99,
+                            _GOAL_PRIORITY_RANK.get(o["priority"], 9)))
+    by_h = {h: [] for h in _GOAL_HORIZON_ORDER}
+    for o in out:
+        by_h.setdefault(o["horizon"] or "Short", []).append(o)
+    return {"company_id": company_id, "dataset_id": ds.id, "uploaded_at": meta["uploaded_at"],
+            "has_data": True, "count": len(out), "legacy": meta["legacy"],
+            "objectives": out, "objectives_by_horizon": by_h}
+
+
+class ObjectiveLinkIn(BaseModel):
+    initiative_ids: list[int] = []
+
+
+class InitiativeObjectivesIn(BaseModel):
+    objective_keys: list[str] = []
+
+
+@router.put("/companies/{company_id}/objectives/{obj_key}/initiatives")
+def set_objective_initiatives(company_id: int, obj_key: str, body: ObjectiveLinkIn,
+                              member=Depends(require_company_admin),
+                              user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Replace the set of initiatives serving this objective (from the objective side)."""
+    if obj_key not in _active_objective_keys(db, company_id):
+        raise HTTPException(404, "objective not found in the active dataset")
+    valid = {i.id for i in db.query(Initiative).filter_by(company_id=company_id).all()}
+    want = {iid for iid in body.initiative_ids if iid in valid}
+    have = {l.initiative_id: l for l in
+            db.query(GoalInitiativeLink).filter_by(company_id=company_id, goal_key=obj_key).all()}
+    for iid in want - set(have):
+        db.add(GoalInitiativeLink(company_id=company_id, goal_key=obj_key, initiative_id=iid, created_by=user.id))
+    for iid in set(have) - want:
+        db.delete(have[iid])
+    audit(db, user.id, "objective_links_set", "company", company_id, detail=f"obj {obj_key[:8]} -> {sorted(want)}")
+    db.commit()
+    return {"ok": True, "objective_key": obj_key, "initiative_ids": sorted(want)}
+
+
+@router.put("/companies/{company_id}/initiatives/{iid}/objectives")
+def set_initiative_objectives(company_id: int, iid: int, body: InitiativeObjectivesIn,
+                              member=Depends(require_company_admin),
+                              user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Replace the set of objectives this initiative serves (initiative side / adopt)."""
+    ini = db.get(Initiative, iid)
+    if not ini or ini.company_id != company_id:
+        raise HTTPException(404, "initiative not found")
+    keys = _active_objective_keys(db, company_id)
+    want = {k for k in body.objective_keys if k in keys}
+    have = {l.goal_key: l for l in
+            db.query(GoalInitiativeLink).filter_by(company_id=company_id, initiative_id=iid).all()}
+    for k in want - set(have):
+        db.add(GoalInitiativeLink(company_id=company_id, goal_key=k, initiative_id=iid, created_by=user.id))
+    for k in set(have) - want:
+        db.delete(have[k])
+    audit(db, user.id, "initiative_objectives_set", "company", company_id, detail=f"initiative {iid} -> {len(want)} objectives")
+    db.commit()
+    return {"ok": True, "initiative_id": iid, "objective_keys": sorted(want)}
+
+
+def _initiative_served_objectives(db, company_id, iid):
+    """Objective summaries (active dataset) that this initiative serves."""
+    keys = {l.goal_key for l in
+            db.query(GoalInitiativeLink).filter_by(company_id=company_id, initiative_id=iid).all()}
+    if not keys:
+        return []
+    _, rows, _ = _objective_rows(db, company_id)
+    return [{"key": r["obj_key"], "objective": r["objective"], "objective_id": r["objective_id"],
+             "priority": r["priority"], "horizon": r["horizon"], "status": r["status"]}
+            for r in rows if r["obj_key"] in keys]
+
+
+@router.get("/companies/{company_id}/initiatives/{iid}/objectives")
+def get_initiative_objectives(company_id: int, iid: int,
+                              member=Depends(require_company_member), db=Depends(get_db)):
+    ini = db.get(Initiative, iid)
+    if not ini or ini.company_id != company_id:
+        raise HTTPException(404, "initiative not found")
+    return {"initiative_id": iid, "serves_objectives": _initiative_served_objectives(db, company_id, iid)}
 
 
 def _kpi_variance(actual, plan):
@@ -2497,26 +2702,24 @@ def list_initiatives(company_id: int, member=Depends(require_company_member),
                 0 if i.status in _ACTIVE_STATUSES else 1,    # active before terminal
                 seq(i.ref_code))
     rows.sort(key=key)
-    # §9 bridge: attach the goals each initiative serves (built once). Active-dataset
-    # goals only; goal_key ties links to stable goal identity across re-uploads.
+    # §9 bridge: attach the objectives each initiative serves (built once). Active-
+    # dataset objectives only; obj_key ties links to stable text identity across
+    # re-uploads. Legacy goals surface here as objectives too (via _objective_rows).
     served = {}
     links = db.query(GoalInitiativeLink).filter_by(company_id=company_id).all()
     if links:
-        ds = _active_company_dataset(db, company_id)
-        key2goal = {}
-        if ds:
-            for g in db.query(OrgGoal).filter_by(company_id=company_id, dataset_id=ds.id).all():
-                key2goal[_goal_key(g.goal)] = {"key": _goal_key(g.goal), "goal": g.goal,
-                                               "priority": g.priority, "horizon": g.horizon,
-                                               "status": g.status}
+        _, orows, _ = _objective_rows(db, company_id)
+        key2obj = {r["obj_key"]: {"key": r["obj_key"], "objective": r["objective"],
+                                  "objective_id": r["objective_id"], "priority": r["priority"],
+                                  "horizon": r["horizon"], "status": r["status"]} for r in orows}
         for l in links:
-            gs = key2goal.get(l.goal_key)
-            if gs:
-                served.setdefault(l.initiative_id, []).append(gs)
+            os = key2obj.get(l.goal_key)
+            if os:
+                served.setdefault(l.initiative_id, []).append(os)
     out = []
     for i in rows:
         d = _ini_out(i)
-        d["serves_goals"] = served.get(i.id, [])
+        d["serves_objectives"] = served.get(i.id, [])
         out.append(d)
     return {"company_id": company_id, "initiatives": out}
 

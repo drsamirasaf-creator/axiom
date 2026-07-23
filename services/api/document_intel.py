@@ -632,7 +632,8 @@ class AdoptDetailIn(BaseModel):
     target_date: str | None = None     # required for Project (enforced client-side)
     leader_name: str | None = None
     leader_email: str | None = None
-    serves_goal_keys: list[str] = []   # §9: goals this adoption serves (optional)
+    serves_objective_keys: list[str] = []   # §9: objectives this adoption serves (optional)
+    serves_goal_keys: list[str] = []         # legacy alias (still honored)
 
 
 @document_router.post("/companies/{company_id}/proposals/{fingerprint}/adopt", status_code=201)
@@ -695,16 +696,17 @@ def adopt_proposal_endpoint(company_id: int, fingerprint: str,
                 _log.exception("adopt: lead invite email failed for %s", a.invited_email)
         except Exception:
             _log.exception("adopt: leader assignment failed")
-    # §9: link the new initiative to the goals it serves (validated against the
-    # active dataset's goal_keys; unknown keys are ignored, never a 500).
-    if body.serves_goal_keys:
+    # §9: link the new initiative to the objectives it serves (validated against
+    # the active dataset's objective keys; unknown keys ignored, never a 500).
+    want_keys = list(body.serves_objective_keys or []) + list(body.serves_goal_keys or [])
+    if want_keys:
         try:
-            valid_keys, _ = A._active_goal_keys(db, company_id)
-            for k in {k for k in body.serves_goal_keys if k in valid_keys}:
+            valid_keys = A._active_objective_keys(db, company_id)
+            for k in {k for k in want_keys if k in valid_keys}:
                 db.add(A.GoalInitiativeLink(company_id=company_id, goal_key=k,
                                             initiative_id=ini.id, created_by=user.id))
         except Exception:
-            _log.exception("adopt: goal linking failed")
+            _log.exception("adopt: objective linking failed")
     audit(db, user.id, "doc_recommendation_adopted", "company", company_id, detail=f"{ref} {fingerprint}")
     db.commit()
     return _ini_out(ini)
