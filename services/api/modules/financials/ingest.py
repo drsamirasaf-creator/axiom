@@ -15,20 +15,29 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from . import engines
 from .templates import LABELS, COMPANY_ROWS, BLOCK_KEYS
 
-TEMPLATE_VERSION = "7L-v4"   # §4o/v4.1: + Status column on Goals; clean canonical dropdowns
+TEMPLATE_VERSION = "7L-v5"   # §9 OKR: Objectives + Key Results sheets (was 'Organizational Goals')
 
-# §4o strategy sheets — fixed-name, standard-independent. Builder + parser share
+# §9 OKR strategy sheets — fixed-name, standard-independent. Builder + parser share
 # these so the dropdown values and the accepted enums can never drift apart.
-GOALS_SHEET = "Organizational Goals"
+OBJECTIVES_SHEET = "Objectives"
+KR_SHEET = "Key Results"
 KPI_SHEET = "KPI Plan vs Actual"
-GOAL_PRIORITIES = ("High", "Medium", "Low")
-GOAL_HORIZONS = ("Short", "Medium", "Long")          # canonical dropdown values; ranges live in the note
-GOAL_STATUSES = ("Red", "Amber", "Green")            # v4.1: optional current-health dropdown
-GOALS_HEADER_ROW = 2                                   # row 1 = guidance note; row 2 = headers; row 3+ = data
-GOALS_DATA_START = 3
+GOALS_SHEET = "Organizational Goals"                 # legacy v4 sheet name (still parsed → objectives)
+OBJ_PRIORITIES = ("High", "Medium", "Low")
+OBJ_HORIZONS = ("Short", "Medium", "Long")           # canonical dropdown values; ranges live in the note
+OBJ_STATUSES = ("Red", "Amber", "Green")             # optional current-health dropdown
+# back-compat aliases (legacy goal parser reuses these enums)
+GOAL_PRIORITIES = OBJ_PRIORITIES
+GOAL_HORIZONS = OBJ_HORIZONS
+GOAL_STATUSES = OBJ_STATUSES
+OBJ_HEADER_ROW = 2                                     # row 1 = guidance note; row 2 = headers; row 3+ = data
+OBJ_DATA_START = 3
+KR_HEADER_ROW = 2
+KR_DATA_START = 3
 KPI_HEADER_ROW = 2
 KPI_DATA_START = 3
 KPI_SEED_ROWS = ("Revenue growth %", "EBITDA margin %", "Operating margin %", "Market share %")
+MIN_KRS_PER_OBJECTIVE = 3                              # guidance — parser warns, never blocks
 # statement_units -> factor that normalizes raw figures to the canonical internal
 # unit (MILLIONS) the valuation engine + report builder assume. Honoring this is
 # how "actual / thousands / millions" flows correctly end-to-end.
@@ -291,27 +300,54 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
         ws.protection.sheet = True
         ws.protection.password = _LOCK_PWD
 
-    # ---- (§4o / v4.1) Organizational Goals ----
-    #   A Goal · B Priority · C Horizon · D Status · E Owner · F Target metric
-    ws = wb.create_sheet(GOALS_SHEET)
-    ws["A1"] = ("Your organization's goals. List 10+ where you can — Priority and Horizon are "
-                "required; Status, Owner and Target metric are optional. "
-                "Horizon: Short ≤12m · Medium ≤36m · Long >36m. Status: current health Red/Amber/Green.")
+    # ---- (§9 OKR) Objectives ----
+    #   A Objective · B Owner (CXO) · C Priority · D Horizon · E Status · F Objective ID
+    N_OBJ = 12
+    obj_ids = [f"O{i}" for i in range(1, N_OBJ + 1)]
+    ws = wb.create_sheet(OBJECTIVES_SHEET)
+    ws["A1"] = ("Your objectives (the O in OKR). Objective, Owner and Priority are recommended; "
+                "Horizon Short ≤12m · Medium ≤36m · Long >36m; Status is current health R/A/G. "
+                "The Objective ID links each row to its Key Results on the next sheet.")
     ws["A1"].font = Font(italic=True, color="446655")
-    goal_hdrs = ["Goal", "Priority", "Horizon", "Status (optional)", "Owner (optional)", "Target metric (optional)"]
-    for i, h in enumerate(goal_hdrs):
-        _hdr(ws.cell(row=GOALS_HEADER_ROW, column=1 + i), h, bg=_INK, fg=_ACCENT)
-    dv_prio = DataValidation(type="list", formula1='"%s"' % ",".join(GOAL_PRIORITIES), allow_blank=True)
-    dv_hor = DataValidation(type="list", formula1='"%s"' % ",".join(GOAL_HORIZONS), allow_blank=True)
-    dv_stat = DataValidation(type="list", formula1='"%s"' % ",".join(GOAL_STATUSES), allow_blank=True)
+    obj_hdrs = ["Objective", "Owner (CXO)", "Priority", "Horizon", "Status (optional)", "Objective ID"]
+    for i, h in enumerate(obj_hdrs):
+        _hdr(ws.cell(row=OBJ_HEADER_ROW, column=1 + i), h, bg=_INK, fg=_ACCENT)
+    dv_prio = DataValidation(type="list", formula1='"%s"' % ",".join(OBJ_PRIORITIES), allow_blank=True)
+    dv_hor = DataValidation(type="list", formula1='"%s"' % ",".join(OBJ_HORIZONS), allow_blank=True)
+    dv_stat = DataValidation(type="list", formula1='"%s"' % ",".join(OBJ_STATUSES), allow_blank=True)
     ws.add_data_validation(dv_prio); ws.add_data_validation(dv_hor); ws.add_data_validation(dv_stat)
-    for r in range(GOALS_DATA_START, GOALS_DATA_START + 12):    # 12 blank input rows (guidance: 10+)
+    for idx, r in enumerate(range(OBJ_DATA_START, OBJ_DATA_START + N_OBJ)):
         for c in range(1, 7):
             _input(ws.cell(row=r, column=c)); ws.cell(row=r, column=c).number_format = "General"
-        dv_prio.add(ws.cell(row=r, column=2))
-        dv_hor.add(ws.cell(row=r, column=3))
-        dv_stat.add(ws.cell(row=r, column=4))
-    for col, w in zip("ABCDEF", (50, 12, 12, 14, 20, 30)):
+        dv_prio.add(ws.cell(row=r, column=3))
+        dv_hor.add(ws.cell(row=r, column=4))
+        dv_stat.add(ws.cell(row=r, column=5))
+        ws.cell(row=r, column=6).value = obj_ids[idx]           # pre-seeded stable short code
+    for col, w in zip("ABCDEF", (50, 20, 12, 12, 14, 14)):
+        ws.column_dimensions[col].width = w
+    ws.protection.sheet = True; ws.protection.password = _LOCK_PWD
+
+    # ---- (§9 OKR) Key Results ----
+    #   A Objective ID · B Key Result · C Unit · D Baseline · E Target · F Current · G Due date
+    ws = wb.create_sheet(KR_SHEET)
+    ws["A1"] = ("Key Results (the KR in OKR) — measurable outcomes for each objective. Aim for "
+                "≥3 per objective. Objective ID must match a row on the Objectives sheet. "
+                "Progress = (Current − Baseline) ÷ (Target − Baseline).")
+    ws["A1"].font = Font(italic=True, color="446655")
+    kr_hdrs = ["Objective ID", "Key Result", "Unit", "Baseline", "Target", "Current", "Due date"]
+    for i, h in enumerate(kr_hdrs):
+        _hdr(ws.cell(row=KR_HEADER_ROW, column=1 + i), h, bg=_INK, fg=_ACCENT)
+    dv_objid = DataValidation(type="list", formula1='"%s"' % ",".join(obj_ids), allow_blank=True)
+    ws.add_data_validation(dv_objid)
+    for r in range(KR_DATA_START, KR_DATA_START + 24):          # room for ~2 KRs per objective + spares
+        for c in range(1, 8):
+            _input(ws.cell(row=r, column=c))
+        ws.cell(row=r, column=1).number_format = "General"
+        dv_objid.add(ws.cell(row=r, column=1))
+        for c in (4, 5, 6):
+            ws.cell(row=r, column=c).number_format = "0.00"
+        ws.cell(row=r, column=7).number_format = "General"
+    for col, w in zip("ABCDEFG", (13, 44, 12, 12, 12, 12, 14)):
         ws.column_dimensions[col].width = w
     ws.protection.sheet = True; ws.protection.password = _LOCK_PWD
 
@@ -627,64 +663,139 @@ def _norm_status(v):
     return "__invalid__"    # sentinel so the caller can flag a bad non-blank value
 
 
-def parse_goals_and_kpis(content: bytes):
-    """Parse the two §4o strategy sheets. Returns
-    (goals, kpis, errors, has_goals_sheet, has_kpi_sheet). Tolerant of blank
-    optional cells; a row is only read when its key column (Goal / KPI name) is
-    filled, so trailing blanks and the guidance note are ignored. Malformed
-    Priority/Horizon enums and non-numeric KPI figures produce readable
-    {sheet, cell, message} errors (the sentinel pattern — nothing is written
-    when errors is non-empty). Absent sheets → has_*_sheet False, no errors."""
-    errors, goals, kpis = [], [], []
+def parse_okr_and_kpis(content: bytes):
+    """Parse the §9 OKR sheets (Objectives + Key Results) + the KPI sheet. Returns
+    (objectives, key_results, kpis, errors, warnings, flags). Malformed enums /
+    non-numeric figures BLOCK (errors, sentinel pattern); the ≥3-KR guidance and
+    orphan-KR references only WARN. A legacy 'Organizational Goals' sheet is read
+    as objectives with no KRs, so v4 uploads migrate honestly. Blank key columns
+    (Objective / Key Result / KPI name) are skipped, so notes/blanks are tolerated."""
+    errors, warnings = [], []
+    objectives, key_results, kpis = [], [], []
+    flags = {"has_objectives": False, "has_krs": False, "has_kpis": False, "legacy": False}
     try:
         wb = load_workbook(io.BytesIO(content), data_only=True)
     except Exception as e:
-        return [], [], [{"sheet": None, "cell": None,
-                         "message": f"not a readable .xlsx file: {e}"}], False, False
+        return [], [], [], [{"sheet": None, "cell": None,
+                             "message": f"not a readable .xlsx file: {e}"}], [], flags
 
-    has_goals = GOALS_SHEET in wb.sheetnames
+    has_obj = OBJECTIVES_SHEET in wb.sheetnames
+    has_legacy = (not has_obj) and (GOALS_SHEET in wb.sheetnames)
+    has_krs = KR_SHEET in wb.sheetnames
     has_kpis = KPI_SHEET in wb.sheetnames
 
-    if has_goals:
+    # ---- Objectives (new sheet: A obj · B owner · C priority · D horizon · E status · F id) ----
+    if has_obj:
+        ws = wb[OBJECTIVES_SHEET]
+        seen, auto = set(), 0
+        for r in range(OBJ_DATA_START, (ws.max_row or OBJ_DATA_START) + 1):
+            obj = _cell_str(ws.cell(row=r, column=1).value)
+            if not obj:
+                continue
+            priority = _norm_priority(ws.cell(row=r, column=3).value)
+            horizon = _norm_horizon(ws.cell(row=r, column=4).value)
+            status = _norm_status(ws.cell(row=r, column=5).value)
+            oid = _cell_str(ws.cell(row=r, column=6).value)
+            if priority is None:
+                errors.append({"sheet": OBJECTIVES_SHEET, "cell": f"C{r}",
+                               "message": f"'{obj[:40]}' — Priority must be one of {', '.join(OBJ_PRIORITIES)}."})
+            if horizon is None:
+                errors.append({"sheet": OBJECTIVES_SHEET, "cell": f"D{r}",
+                               "message": f"'{obj[:40]}' — Horizon must be one of {', '.join(OBJ_HORIZONS)}."})
+            if status == "__invalid__":
+                errors.append({"sheet": OBJECTIVES_SHEET, "cell": f"E{r}",
+                               "message": f"'{obj[:40]}' — Status must be one of {', '.join(OBJ_STATUSES)} or blank."})
+                status = None
+            if not oid:
+                auto += 1; oid = f"O{auto}"
+            if oid in seen:
+                errors.append({"sheet": OBJECTIVES_SHEET, "cell": f"F{r}",
+                               "message": f"Objective ID '{oid}' is used more than once — IDs must be unique."})
+            seen.add(oid)
+            objectives.append({"row_index": r, "objective": obj,
+                               "owner": _cell_str(ws.cell(row=r, column=2).value) or None,
+                               "priority": priority, "horizon": horizon, "status": status,
+                               "objective_id": oid})
+    elif has_legacy:
+        # v4 'Organizational Goals' (A goal · B prio · C horizon · D status · E owner) → objectives, no KRs
         ws = wb[GOALS_SHEET]
-        for r in range(GOALS_DATA_START, (ws.max_row or GOALS_DATA_START) + 1):
+        auto = 0
+        for r in range(OBJ_DATA_START, (ws.max_row or OBJ_DATA_START) + 1):
             goal = _cell_str(ws.cell(row=r, column=1).value)
             if not goal:
-                continue                                       # key column blank → skip (gap/note tolerant)
-            prio_raw = ws.cell(row=r, column=2).value
-            hor_raw = ws.cell(row=r, column=3).value
-            stat_raw = ws.cell(row=r, column=4).value          # v4.1: optional Status (col D)
-            priority = _norm_priority(prio_raw)
-            horizon = _norm_horizon(hor_raw)
-            status = _norm_status(stat_raw)
+                continue
+            auto += 1
+            priority = _norm_priority(ws.cell(row=r, column=2).value)
+            horizon = _norm_horizon(ws.cell(row=r, column=3).value)
+            status = _norm_status(ws.cell(row=r, column=4).value)
+            if status == "__invalid__":
+                status = None
             if priority is None:
                 errors.append({"sheet": GOALS_SHEET, "cell": f"B{r}",
-                               "message": f"'{goal[:40]}' — Priority must be one of "
-                                          f"{', '.join(GOAL_PRIORITIES)} (got '{_cell_str(prio_raw) or 'blank'}')."})
+                               "message": f"'{goal[:40]}' — Priority must be one of {', '.join(OBJ_PRIORITIES)}."})
             if horizon is None:
                 errors.append({"sheet": GOALS_SHEET, "cell": f"C{r}",
-                               "message": f"'{goal[:40]}' — Horizon must be one of "
-                                          f"{', '.join(GOAL_HORIZONS)} (got '{_cell_str(hor_raw) or 'blank'}')."})
-            if status == "__invalid__":
-                errors.append({"sheet": GOALS_SHEET, "cell": f"D{r}",
-                               "message": f"'{goal[:40]}' — Status must be one of "
-                                          f"{', '.join(GOAL_STATUSES)} or blank (got '{_cell_str(stat_raw)}')."})
-                status = None
-            goals.append({"row_index": r, "goal": goal, "priority": priority, "horizon": horizon,
-                          "status": status,
-                          "owner": _cell_str(ws.cell(row=r, column=5).value) or None,      # col E
-                          "target_metric": _cell_str(ws.cell(row=r, column=6).value) or None})  # col F
+                               "message": f"'{goal[:40]}' — Horizon must be one of {', '.join(OBJ_HORIZONS)}."})
+            objectives.append({"row_index": r, "objective": goal,
+                               "owner": _cell_str(ws.cell(row=r, column=5).value) or None,
+                               "priority": priority, "horizon": horizon, "status": status,
+                               "objective_id": f"O{auto}"})
 
-    if has_kpis:
-        ws = wb[KPI_SHEET]
-        def _num(cell_val, col, r, label):
-            if cell_val in (None, ""):
+    obj_ids = {o["objective_id"] for o in objectives}
+
+    # ---- Key Results (A id · B kr · C unit · D baseline · E target · F current · G due) ----
+    if has_krs:
+        ws = wb[KR_SHEET]
+        def _num(v, col, r, label):
+            if v in (None, ""):
                 return None
             try:
-                return float(cell_val)
+                return float(v)
+            except (TypeError, ValueError):
+                errors.append({"sheet": KR_SHEET, "cell": f"{col}{r}",
+                               "message": f"'{label}' — must be a number (got '{v}')."})
+                return None
+        for r in range(KR_DATA_START, (ws.max_row or KR_DATA_START) + 1):
+            kr = _cell_str(ws.cell(row=r, column=2).value)
+            if not kr:
+                continue
+            oid = _cell_str(ws.cell(row=r, column=1).value)
+            if not oid:
+                errors.append({"sheet": KR_SHEET, "cell": f"A{r}",
+                               "message": f"Key Result '{kr[:40]}' needs an Objective ID."})
+            elif obj_ids and oid not in obj_ids:
+                warnings.append(f"Key Result '{kr[:40]}' references Objective ID '{oid}', "
+                                "which is not on the Objectives sheet.")
+            key_results.append({"row_index": r, "objective_id": oid or None, "key_result": kr,
+                                "unit": _cell_str(ws.cell(row=r, column=3).value) or None,
+                                "baseline": _num(ws.cell(row=r, column=4).value, "D", r, kr + " Baseline"),
+                                "target": _num(ws.cell(row=r, column=5).value, "E", r, kr + " Target"),
+                                "current": _num(ws.cell(row=r, column=6).value, "F", r, kr + " Current"),
+                                "due_date": _cell_str(ws.cell(row=r, column=7).value) or None})
+
+    # ≥3 KRs per objective — WARN only (never blocks)
+    if objectives:
+        cnt = {}
+        for kr in key_results:
+            if kr["objective_id"]:
+                cnt[kr["objective_id"]] = cnt.get(kr["objective_id"], 0) + 1
+        for o in objectives:
+            n = cnt.get(o["objective_id"], 0)
+            if n < MIN_KRS_PER_OBJECTIVE:
+                warnings.append(f"Objective '{o['objective'][:40]}' has {n} key result"
+                                f"{'' if n == 1 else 's'} (aim for ≥{MIN_KRS_PER_OBJECTIVE}).")
+
+    # ---- KPIs (unchanged) ----
+    if has_kpis:
+        ws = wb[KPI_SHEET]
+        def _knum(v, col, r, label):
+            if v in (None, ""):
+                return None
+            try:
+                return float(v)
             except (TypeError, ValueError):
                 errors.append({"sheet": KPI_SHEET, "cell": f"{col}{r}",
-                               "message": f"'{label}' — must be a number (got '{cell_val}')."})
+                               "message": f"'{label}' — must be a number (got '{v}')."})
                 return None
         for r in range(KPI_DATA_START, (ws.max_row or KPI_DATA_START) + 1):
             name = _cell_str(ws.cell(row=r, column=1).value)
@@ -692,8 +803,10 @@ def parse_goals_and_kpis(content: bytes):
                 continue
             kpis.append({"row_index": r, "kpi_name": name,
                          "unit": _cell_str(ws.cell(row=r, column=2).value) or None,
-                         "ytd_plan": _num(ws.cell(row=r, column=3).value, "C", r, name + " YTD Plan"),
-                         "ytd_actual": _num(ws.cell(row=r, column=4).value, "D", r, name + " YTD Actual"),
-                         "full_year_target": _num(ws.cell(row=r, column=5).value, "E", r, name + " Full-year Target")})
+                         "ytd_plan": _knum(ws.cell(row=r, column=3).value, "C", r, name + " YTD Plan"),
+                         "ytd_actual": _knum(ws.cell(row=r, column=4).value, "D", r, name + " YTD Actual"),
+                         "full_year_target": _knum(ws.cell(row=r, column=5).value, "E", r, name + " Full-year Target")})
 
-    return goals, kpis, errors, has_goals, has_kpis
+    flags = {"has_objectives": has_obj or has_legacy, "has_krs": has_krs,
+             "has_kpis": has_kpis, "legacy": has_legacy}
+    return objectives, key_results, kpis, errors, warnings, flags
