@@ -779,6 +779,61 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
             "total": total, "interactions": interactions, "swept_controls": swept_controls}
 
 
+def showcase_integrity_check():
+    """§17.3 standing guard against demo rot — API-level (no browser). Asserts:
+    (1) EXACTLY ONE showcase company, (2) zero ERROR (non-2xx) states across its
+    primary surfaces, (3) every primary surface POPULATED. Returns a list of failure
+    strings (empty = pass). Demo rot fails the run."""
+    import urllib.request
+    base = f"https://{BACKEND}"
+    def get(path):
+        try:
+            with urllib.request.urlopen(base + path, timeout=30) as r:
+                return r.status, json.loads(r.read())
+        except Exception as e:
+            code = getattr(e, "code", "ERR")
+            return code, None
+    fails = []
+    code, sc = get("/access/showcase-companies")
+    if code != 200 or not isinstance(sc, dict):
+        return [f"showcase-companies not reachable (HTTP {code})"]
+    companies = sc.get("companies", [])
+    if len(companies) != 1:
+        fails.append(f"expected EXACTLY ONE showcase company, found {len(companies)}: "
+                     f"{[c.get('name') for c in companies]}")
+    if not companies:
+        return fails
+    cid = companies[0].get("company_id")
+    # valuation analytics is keyed by the ACTIVE dataset id, not the company id
+    _, dsl = get(f"/companies/{cid}/datasets")
+    active_ds = (dsl or {}).get("active_dataset_id") if isinstance(dsl, dict) else None
+    # (surface, path, populated-predicate)
+    checks = [
+        ("Organizational Structure", f"/companies/{cid}/departments",
+         lambda d: len(d.get("departments", [])) > 0),
+        ("Dashboard/summary", f"/companies/{cid}", lambda d: d.get("name") is not None),
+        ("OKRs", f"/companies/{cid}/objectives", lambda d: bool(d.get("has_data"))),
+        ("KPIs", f"/companies/{cid}/kpi-variance", lambda d: bool(d.get("has_data"))),
+        ("Valuation", f"/api/v1/valuation/analytics/{active_ds}",
+         lambda d: isinstance(d, dict) and "enterprise_value" in d),
+        ("Initiatives", f"/companies/{cid}/initiatives",
+         lambda d: len(d.get("initiatives", [])) > 0),
+        ("Stakeholder Engagement (CEI)", f"/companies/{cid}/assessment/summary",
+         lambda d: d.get("cei") is not None),
+        ("SWOT", f"/companies/{cid}/assessment/swot",
+         lambda d: any(len(v) for v in (d.get("quadrants") or d).values() if isinstance(v, list))),
+        ("Readiness", f"/companies/{cid}/readiness/derived",
+         lambda d: any(not x.get("suppressed") for x in d.get("dimensions", []))),
+    ]
+    for label, path, ok in checks:
+        code, d = get(path)
+        if code != 200:
+            fails.append(f"{label}: ERROR state (HTTP {code}) on {path}")
+        elif not isinstance(d, dict) or not ok(d):
+            fails.append(f"{label}: EMPTY — demo surface not populated ({path})")
+    return fails
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", default="all", choices=["anonymous", "operator", "member", "all"])
@@ -828,6 +883,17 @@ def main():
     for s in skipped:
         print(f"  SKIPPED: {s}")
     print("========================================")
+
+    # §17.3 standing demo-integrity guard (GRADED — fails the run on demo rot)
+    print("\n=========== SHOWCASE INTEGRITY (§17.3) ===========")
+    sc_fails = showcase_integrity_check()
+    if sc_fails:
+        any_fail = True
+        for f in sc_fails:
+            print(f"      FAIL: {f}")
+    else:
+        print("  PASS — exactly one showcase company; all primary surfaces populated; zero ERROR states")
+    print("==================================================")
 
     if args.interactions:
         print("\n============ INTERACTION SWEEP (report-only) ============")
