@@ -5947,6 +5947,67 @@ def assessment_summary(company_id: int, department: int | None = None,
             "trend": trend, "cadence": cadence_block}
 
 
+# §16.3 Pass B — Transformation Readiness derived from assessment axes (ratified mapping).
+# Each dimension = a weighted blend of L1 axis means; a floor-suppressed axis (null
+# score) drops out and its weight is renormalised across survivors; if survivors carry
+# < half the dimension's weight, the dimension is suppressed (never a silent partial).
+READINESS_MAP = {
+    "leadership_quality":      {"label": "Leadership quality",      "axes": [(7, 1.00)]},
+    "strategic_alignment":     {"label": "Strategic alignment",     "axes": [(1, 0.70), (12, 0.30)]},
+    "operational_flexibility": {"label": "Operational flexibility", "axes": [(5, 0.45), (4, 0.35), (6, 0.20)]},
+    "innovation_capability":   {"label": "Innovation capability",   "axes": [(8, 0.70), (2, 0.30)]},
+    "governance_effectiveness":{"label": "Governance effectiveness","axes": [(11, 0.50), (1, 0.50)]},
+    "execution_track_record":  {"label": "Execution track record",  "axes": [(13, 0.60), (9, 0.40)]},
+}
+
+
+@router.get("/companies/{company_id}/readiness/derived")
+def readiness_derived(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+    """The six Transformation Readiness dimensions computed from the latest cycle's
+    assessment axis means (ratified §16.3 mapping), k-anonymity floor applied. Returns
+    each dimension's derived value + the contributing axes (with weights, means, and
+    renormalised effective weights) so the UI can show the derivation line, plus the
+    manual override if one is stored."""
+    summ = assessment_summary(company_id, department=None, member=member, db=db)
+    subs = summ.get("l1_subscores") or []
+    n_part = summ.get("n_respondents") or summ.get("n_participants") or 0
+    by_code = {}
+    for s in subs:
+        try:
+            code = int(float(s.get("code")))
+        except (TypeError, ValueError):
+            continue
+        by_code[code] = {"score": s.get("score"), "title": s.get("title")}
+
+    dims = []
+    for key, spec in READINESS_MAP.items():
+        contribs, surviving = [], []
+        for (code, w) in spec["axes"]:
+            ax = by_code.get(code)
+            mean = ax.get("score") if ax else None
+            title = ax.get("title") if ax else f"Axis {code}"
+            c = {"axis_code": code, "axis_label": title, "weight": w, "mean": mean}
+            contribs.append(c)
+            if isinstance(mean, (int, float)):
+                surviving.append((mean, w, c))
+        total_w = sum(w for _, w in spec["axes"])
+        surv_w = sum(w for _, w, _ in surviving)
+        if not surviving or surv_w < 0.5 * total_w:
+            dims.append({"key": key, "label": spec["label"], "derived": None,
+                         "suppressed": True,
+                         "reason": "insufficient responses — below the anonymity floor",
+                         "n": n_part, "contributions": contribs})
+            continue
+        derived = sum(m * w for m, w, _ in surviving) / surv_w
+        for m, w, c in surviving:
+            c["weight_effective"] = round(w / surv_w, 4)      # renormalised over survivors
+        dims.append({"key": key, "label": spec["label"], "derived": round(derived, 2),
+                     "suppressed": False, "n": n_part, "contributions": contribs})
+
+    return {"company_id": company_id, "n": n_part, "cei": summ.get("cei"),
+            "has_data": summ.get("cei") is not None, "dimensions": dims}
+
+
 def _actioned_item_codes(db, company_id):
     """Item codes that have an action against them — a linked (non-rejected)
     initiative or an adopted recommendation (7g-D)."""
