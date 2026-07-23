@@ -2310,6 +2310,60 @@ def company_objectives(company_id: int, member=Depends(require_company_member), 
             "objectives": out, "objectives_by_horizon": by_h}
 
 
+class KRCreateIn(BaseModel):
+    key_result: str
+    unit: str | None = None
+    baseline: float | None = None
+    target: float | None = None
+    current: float | None = None
+    due_date: str | None = None
+
+
+class ObjectiveCreateIn(BaseModel):
+    objective: str
+    owner: str | None = None
+    priority: str | None = None
+    horizon: str | None = "Short"
+    status: str | None = None
+    kr: KRCreateIn | None = None
+
+
+@router.post("/companies/{company_id}/objectives", status_code=201)
+def create_objective(company_id: int, body: ObjectiveCreateIn,
+                     member=Depends(require_company_admin),
+                     user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Create a manual objective in the ACTIVE dataset (the §9 KPI-breach → objective
+    door). Attaches an optional first key result. Note: manual objectives live on the
+    active dataset snapshot — a later re-upload replaces the snapshot, but any
+    initiative links survive (keyed on the objective text hash)."""
+    if not (body.objective or "").strip():
+        raise HTTPException(422, "objective text is required")
+    ds = _active_company_dataset(db, company_id)
+    if not ds:
+        raise HTTPException(409, "No active dataset — upload financials first.")
+    existing = db.query(Objective).filter_by(company_id=company_id, dataset_id=ds.id).all()
+    n = max([int(o.objective_id[1:]) for o in existing
+             if o.objective_id and o.objective_id[0] == "O" and o.objective_id[1:].isdigit()], default=0) + 1
+    oid = f"O{n}"
+    ri = max([o.row_index for o in existing], default=2) + 1
+    now = datetime.utcnow()
+    hor = body.horizon if body.horizon in _GOAL_HORIZON_ORDER else "Short"
+    prio = body.priority if body.priority in _GOAL_PRIORITY_RANK else None
+    obj = Objective(company_id=company_id, dataset_id=ds.id, row_index=ri,
+                    objective=body.objective.strip(), owner=(body.owner or None),
+                    priority=prio, horizon=hor, status=(body.status or None),
+                    objective_id=oid, obj_key=_goal_key(body.objective), uploaded_at=now)
+    db.add(obj)
+    if body.kr and (body.kr.key_result or "").strip():
+        db.add(KeyResult(company_id=company_id, dataset_id=ds.id, row_index=ri + 1000,
+                         objective_id=oid, key_result=body.kr.key_result.strip(),
+                         unit=body.kr.unit, baseline=body.kr.baseline, target=body.kr.target,
+                         current=body.kr.current, due_date=body.kr.due_date, uploaded_at=now))
+    audit(db, user.id, "objective_created", "company", company_id, detail=f"{oid} {body.objective[:40]}")
+    db.commit()
+    return {"ok": True, "objective_id": oid, "key": _goal_key(body.objective), "dataset_id": ds.id}
+
+
 class ObjectiveLinkIn(BaseModel):
     initiative_ids: list[int] = []
 
