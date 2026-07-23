@@ -355,6 +355,7 @@ class AssessmentInvite(Base):
     jti = Column(String(64), unique=True, index=True, nullable=False)
     invited_by = Column(Integer, nullable=False)             # ax_users.id (admin)
     participant_ref = Column(String(64), nullable=True)      # minted at redemption
+    is_demo = Column(Boolean, default=False, nullable=False)  # §17: seeded demo roster row
     draft = Column(JSON, nullable=True)                      # {item_id: {score, comment}}
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     redeemed_at = Column(DateTime, nullable=True)
@@ -1654,6 +1655,18 @@ def _summary_access(company_id: int, authorization: str = Header(None),
         raise HTTPException(401, "Missing bearer token")
     user = get_current_user(authorization, db)               # 401 on invalid token
     return require_company_member(company_id, user, db).role  # 403 on non-member
+
+
+def _roster_access(company_id: int, authorization: str = Header(None), db=Depends(get_db)):
+    """Roster gate (§17): a SHOWCASE company's roster is readable ANONYMOUSLY (the demo
+    roster of fictitious participants); every real company still requires an admin,
+    since the roster names people."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        if _is_showcase_company(db, company_id):
+            return None
+        raise HTTPException(401, "Missing bearer token")
+    user = get_current_user(authorization, db)
+    return require_company_admin(company_id, user, db).role
 
 
 def _company_summary_payload(db, company_id: int, role: str | None):
@@ -6556,8 +6569,52 @@ def list_participant_invites(company_id: int, cid: int,
             "roster": roster}
 
 
+class SeedInviteIn(BaseModel):
+    name: str
+    email: str
+    department: str | None = None
+    participant_ref: str | None = None     # link to an existing seeded response set
+    status: str = "submitted"              # submitted | in_progress | invited
+
+
+class SeedInvitesIn(BaseModel):
+    invites: list[SeedInviteIn]
+
+
+@router.post("/companies/{company_id}/assessment/cycles/{cid}/invites/seed", status_code=201)
+def seed_assessment_invites(company_id: int, cid: int, body: SeedInvitesIn,
+                            member=Depends(require_company_admin),
+                            user: User = Depends(get_current_user), db=Depends(get_db)):
+    """§17.2 — create demo roster rows (is_demo=True, no email sent) for a cycle,
+    linked to existing participant_refs. status → submitted (redeemed+submitted),
+    in_progress (redeemed only), or invited (neither). Idempotent per email."""
+    cyc = db.get(AssessmentCycle, cid)
+    if not cyc or cyc.company_id != company_id:
+        raise HTTPException(404, "cycle not found")
+    now = datetime.utcnow()
+    made = []
+    for inv in body.invites:
+        email = (inv.email or "").strip().lower()
+        if not email or db.query(AssessmentInvite).filter_by(cycle_id=cid, email=email).first():
+            continue
+        row = AssessmentInvite(cycle_id=cid, company_id=company_id, email=email,
+                               name=(inv.name or "").strip(),
+                               department=(inv.department or "").strip() or None,
+                               jti=secrets.token_urlsafe(16), invited_by=user.id,
+                               participant_ref=(inv.participant_ref or None), is_demo=True)
+        if inv.status == "submitted":
+            row.redeemed_at = now; row.submitted_at = now
+        elif inv.status == "in_progress":
+            row.redeemed_at = now
+        db.add(row); made.append(email)
+    audit(db, user.id, "assessment_roster_seeded", "company", company_id,
+          detail=f"cycle {cid} +{len(made)} demo rows")
+    db.commit()
+    return {"ok": True, "seeded": len(made), "emails": made}
+
+
 @router.get("/companies/{company_id}/roster")
-def company_roster(company_id: int, member=Depends(require_company_admin),
+def company_roster(company_id: int, member=Depends(_roster_access),
                    db=Depends(get_db)):
     """Merged people roster for ONE table: viewer invitees (ax_invites) + assessment
     participants across ALL cycles (ax_assessment_invites). ANONYMITY-SAFE:
@@ -6596,6 +6653,7 @@ def company_roster(company_id: int, member=Depends(require_company_admin),
                        "revoked": a.revoked_at is not None,
                        "redeemed": a.redeemed_at is not None,
                        "submitted": a.submitted_at is not None,
+                       "is_demo": bool(getattr(a, "is_demo", False)),   # §17 provenance
                        "participant_ref": (None if anon else a.participant_ref)})
     # Seat accounting: revoked invites do NOT consume a seat (excluded from cap counts).
     return {"company_id": company_id, "people": people,
@@ -7700,6 +7758,7 @@ def _ensure_ax_columns(engine):
     _add("ax_initiatives", "department_id", "department_id INTEGER")
     _add("ax_objectives", "owner_person_name", "owner_person_name VARCHAR(160)")
     _add("ax_document_proposals", "source", "source VARCHAR(16) NOT NULL DEFAULT 'synthesis'")
+    _add("ax_assessment_invites", "is_demo", "is_demo BOOLEAN NOT NULL DEFAULT false")
     # §16: report-share bundling (multiple formats in one email)
     _add("ax_report_shares", "group_id", "group_id VARCHAR(64)")
     _add("ax_report_shares", "token", "token TEXT")
