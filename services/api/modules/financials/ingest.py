@@ -15,13 +15,22 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from . import engines
 from .templates import LABELS, COMPANY_ROWS, BLOCK_KEYS
 
-TEMPLATE_VERSION = "7L-v5.1"   # §9 OKR v5.1: 200-row capacity, paste-safe validation, no parser cap
+TEMPLATE_VERSION = "7M-v6.0"   # §4s v6: Organization sheet + Department columns on Objectives/KPI
 
 # §9 OKR strategy sheets — fixed-name, standard-independent. Builder + parser share
 # these so the dropdown values and the accepted enums can never drift apart.
 OBJECTIVES_SHEET = "Objectives"
 KR_SHEET = "Key Results"
 KPI_SHEET = "KPI Plan vs Actual"
+# §4s organizational structure sheet + the standard department list. Free text is
+# allowed everywhere a department is entered (unknowns warn + auto-create) — the
+# dropdowns are suggestions, not hard constraints (showErrorMessage disabled).
+ORG_SHEET = "Organization"
+STD_DEPARTMENTS = ("Finance", "Operations", "Sales & Marketing", "Supply Chain", "HR",
+                   "Technology", "Legal", "R&D", "Strategy", "Executive")
+ORG_HEADER_ROW = 2
+ORG_DATA_START = 3
+ORG_CAPACITY = 60                                     # pre-formatted department rows
 GOALS_SHEET = "Organizational Goals"                 # legacy v4 sheet name (still parsed → objectives)
 OBJ_PRIORITIES = ("High", "Medium", "Low")
 OBJ_HORIZONS = ("Short", "Medium", "Long")           # canonical dropdown values; ranges live in the note
@@ -308,6 +317,36 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     obj_ids = [f"O{i}" for i in range(1, OBJ_ID_MAX + 1)]
     obj_last = OBJ_DATA_START + ROW_CAPACITY - 1
 
+    # ---- (§4s) Organization ----
+    #   A Department · B Head name · C Head title · D Head email · E Parent department
+    # Standard-list dropdown on Department + Parent (free text allowed — the dropdown
+    # is a suggestion, showErrorMessage disabled). The department range here is what
+    # the Objectives/KPI Department dropdowns point at.
+    org_last = ORG_DATA_START + ORG_CAPACITY - 1
+    ws = wb.create_sheet(ORG_SHEET)
+    ws["A1"] = ("Your organization (the §4s org chart). List each department, its head "
+                "(name / title / email), and optionally its parent department to nest the "
+                "chart. Pick from the standard list or type your own. Objectives and KPIs "
+                "reference these departments.")
+    ws["A1"].font = Font(italic=True, color="446655")
+    org_hdrs = ["Department", "Head name", "Head title", "Head email", "Parent department (optional)"]
+    for i, h in enumerate(org_hdrs):
+        _hdr(ws.cell(row=ORG_HEADER_ROW, column=1 + i), h, bg=_INK, fg=_ACCENT)
+    dv_dept = DataValidation(type="list", formula1='"%s"' % ",".join(STD_DEPARTMENTS), allow_blank=True)
+    dv_par = DataValidation(type="list", formula1='"%s"' % ",".join(STD_DEPARTMENTS), allow_blank=True)
+    dv_dept.showErrorMessage = False; dv_par.showErrorMessage = False   # free text allowed
+    ws.add_data_validation(dv_dept); ws.add_data_validation(dv_par)
+    dv_dept.add(f"A{ORG_DATA_START}:A{org_last}")
+    dv_par.add(f"E{ORG_DATA_START}:E{org_last}")
+    for r in range(ORG_DATA_START, org_last + 1):
+        for c in range(1, 6):
+            _input(ws.cell(row=r, column=c)); ws.cell(row=r, column=c).number_format = "General"
+    for col, w in zip("ABCDE", (24, 22, 22, 28, 26)):
+        ws.column_dimensions[col].width = w
+    ws.protection.sheet = True; ws.protection.password = _LOCK_PWD
+    # the department-name range the Objectives/KPI Department dropdowns source from
+    dept_ref = f"'{ORG_SHEET}'!$A${ORG_DATA_START}:$A${org_last}"
+
     # ---- (§9 OKR) Objectives ----
     #   A Objective · B Owner (CXO) · C Priority · D Horizon · E Status · F Objective ID
     ws = wb.create_sheet(OBJECTIVES_SHEET)
@@ -316,21 +355,27 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
                 "The Objective ID links each row to its Key Results on the next sheet. "
                 "Paste as many rows as you need — up to 200.")
     ws["A1"].font = Font(italic=True, color="446655")
-    obj_hdrs = ["Objective", "Owner (CXO)", "Priority", "Horizon", "Status (optional)", "Objective ID"]
+    #   …+ G Department (dropdown sourced from the Organization sheet, free text allowed)
+    obj_hdrs = ["Objective", "Owner (CXO)", "Priority", "Horizon", "Status (optional)",
+                "Objective ID", "Department (optional)"]
     for i, h in enumerate(obj_hdrs):
         _hdr(ws.cell(row=OBJ_HEADER_ROW, column=1 + i), h, bg=_INK, fg=_ACCENT)
     dv_prio = DataValidation(type="list", formula1='"%s"' % ",".join(OBJ_PRIORITIES), allow_blank=True)
     dv_hor = DataValidation(type="list", formula1='"%s"' % ",".join(OBJ_HORIZONS), allow_blank=True)
     dv_stat = DataValidation(type="list", formula1='"%s"' % ",".join(OBJ_STATUSES), allow_blank=True)
+    dv_odept = DataValidation(type="list", formula1=dept_ref, allow_blank=True)
+    dv_odept.showErrorMessage = False                          # unknown depts warn + auto-create
     ws.add_data_validation(dv_prio); ws.add_data_validation(dv_hor); ws.add_data_validation(dv_stat)
+    ws.add_data_validation(dv_odept)
     dv_prio.add(f"C{OBJ_DATA_START}:C{obj_last}")               # paste-safe: whole-column ranges
     dv_hor.add(f"D{OBJ_DATA_START}:D{obj_last}")
     dv_stat.add(f"E{OBJ_DATA_START}:E{obj_last}")
+    dv_odept.add(f"G{OBJ_DATA_START}:G{obj_last}")
     for idx, r in enumerate(range(OBJ_DATA_START, obj_last + 1)):
-        for c in range(1, 7):
+        for c in range(1, 8):
             _input(ws.cell(row=r, column=c)); ws.cell(row=r, column=c).number_format = "General"
         ws.cell(row=r, column=6).value = obj_ids[idx]           # pre-seeded stable short code O1…O200
-    for col, w in zip("ABCDEF", (50, 20, 12, 12, 14, 14)):
+    for col, w in zip("ABCDEFG", (50, 20, 12, 12, 14, 14, 22)):
         ws.column_dimensions[col].width = w
     ws.protection.sheet = True; ws.protection.password = _LOCK_PWD
 
@@ -364,19 +409,25 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     ws["A1"] = ("Plan vs actual for your headline KPIs. The four standard rows are seeded — "
                 "fill YTD Plan / YTD Actual / Full-year Target; add your own KPIs below. Up to 200 rows.")
     ws["A1"].font = Font(italic=True, color="446655")
-    kpi_hdrs = ["KPI name", "Unit", "YTD Plan", "YTD Actual", "Full-year Target"]
+    #   …+ F Department (dropdown sourced from the Organization sheet, free text allowed)
+    kpi_hdrs = ["KPI name", "Unit", "YTD Plan", "YTD Actual", "Full-year Target", "Department (optional)"]
     for i, h in enumerate(kpi_hdrs):
         _hdr(ws.cell(row=KPI_HEADER_ROW, column=1 + i), h, bg=_INK, fg=_ACCENT)
     kpi_last = KPI_DATA_START + ROW_CAPACITY - 1
+    dv_kdept = DataValidation(type="list", formula1=dept_ref, allow_blank=True)
+    dv_kdept.showErrorMessage = False
+    ws.add_data_validation(dv_kdept)
+    dv_kdept.add(f"F{KPI_DATA_START}:F{kpi_last}")
     for i, r in enumerate(range(KPI_DATA_START, kpi_last + 1)):
         for c in range(1, 3):
             _input(ws.cell(row=r, column=c)); ws.cell(row=r, column=c).number_format = "General"
         for c in (3, 4, 5):
             _input(ws.cell(row=r, column=c)); ws.cell(row=r, column=c).number_format = "0.00"
+        _input(ws.cell(row=r, column=6)); ws.cell(row=r, column=6).number_format = "General"
         if i < len(KPI_SEED_ROWS):                              # seed the four standard KPIs
             ws.cell(row=r, column=1).value = KPI_SEED_ROWS[i]
             ws.cell(row=r, column=2).value = "%"
-    for col, w in zip("ABCDE", (34, 12, 16, 16, 18)):
+    for col, w in zip("ABCDEF", (34, 12, 16, 16, 18, 22)):
         ws.column_dimensions[col].width = w
     ws.protection.sheet = True; ws.protection.password = _LOCK_PWD
 
@@ -685,6 +736,31 @@ def parse_okr_and_kpis(content: bytes):
     has_legacy = (not has_obj) and (GOALS_SHEET in wb.sheetnames)
     has_krs = KR_SHEET in wb.sheetnames
     has_kpis = KPI_SHEET in wb.sheetnames
+    has_org = ORG_SHEET in wb.sheetnames
+
+    # ---- (§4s) Organization (A dept · B head name · C head title · D head email · E parent) ----
+    departments = []            # {row_index, name, head_name, head_title, head_email, parent, source}
+    known = {}                  # normalized name -> canonical name (as first seen)
+    def _norm_dept(n):
+        return (n or "").strip().lower()
+    if has_org:
+        ws = wb[ORG_SHEET]
+        for r in range(ORG_DATA_START, (ws.max_row or ORG_DATA_START) + 1):
+            name = _cell_str(ws.cell(row=r, column=1).value)
+            if not name:
+                continue
+            key = _norm_dept(name)
+            if key in known:
+                warnings.append(f"Department '{name[:40]}' is listed more than once on the "
+                                f"{ORG_SHEET} sheet — the first entry is used.")
+                continue
+            known[key] = name
+            departments.append({"row_index": r, "name": name,
+                                "head_name": _cell_str(ws.cell(row=r, column=2).value) or None,
+                                "head_title": _cell_str(ws.cell(row=r, column=3).value) or None,
+                                "head_email": _cell_str(ws.cell(row=r, column=4).value) or None,
+                                "parent": _cell_str(ws.cell(row=r, column=5).value) or None,
+                                "source": "organization"})
 
     # ---- Objectives (new sheet: A obj · B owner · C priority · D horizon · E status · F id) ----
     if has_obj:
@@ -717,7 +793,8 @@ def parse_okr_and_kpis(content: bytes):
             objectives.append({"row_index": r, "objective": obj,
                                "owner": _cell_str(ws.cell(row=r, column=2).value) or None,
                                "priority": priority, "horizon": horizon, "status": status,
-                               "objective_id": oid})
+                               "objective_id": oid,
+                               "department": _cell_str(ws.cell(row=r, column=7).value) or None})
     elif has_legacy:
         # v4 'Organizational Goals' (A goal · B prio · C horizon · D status · E owner) → objectives, no KRs
         ws = wb[GOALS_SHEET]
@@ -741,7 +818,7 @@ def parse_okr_and_kpis(content: bytes):
             objectives.append({"row_index": r, "objective": goal,
                                "owner": _cell_str(ws.cell(row=r, column=5).value) or None,
                                "priority": priority, "horizon": horizon, "status": status,
-                               "objective_id": f"O{auto}"})
+                               "objective_id": f"O{auto}", "department": None})   # legacy sheet has no dept
 
     obj_ids = {o["objective_id"] for o in objectives}
 
@@ -807,8 +884,25 @@ def parse_okr_and_kpis(content: bytes):
                          "unit": _cell_str(ws.cell(row=r, column=2).value) or None,
                          "ytd_plan": _knum(ws.cell(row=r, column=3).value, "C", r, name + " YTD Plan"),
                          "ytd_actual": _knum(ws.cell(row=r, column=4).value, "D", r, name + " YTD Actual"),
-                         "full_year_target": _knum(ws.cell(row=r, column=5).value, "E", r, name + " Full-year Target")})
+                         "full_year_target": _knum(ws.cell(row=r, column=5).value, "E", r, name + " Full-year Target"),
+                         "department": _cell_str(ws.cell(row=r, column=6).value) or None})
+
+    # ---- (§4s) unknown departments referenced on Objectives/KPI rows: WARN + auto-create ----
+    for src_rows, label in ((objectives, "objective"), (kpis, "KPI")):
+        for row in src_rows:
+            dn = row.get("department")
+            if not dn:
+                continue
+            k = _norm_dept(dn)
+            if k not in known:
+                known[k] = dn
+                departments.append({"row_index": None, "name": dn, "head_name": None,
+                                    "head_title": None, "head_email": None, "parent": None,
+                                    "source": "auto"})
+                warnings.append(f"Department '{dn[:40]}' referenced on a {label} row wasn't on the "
+                                f"{ORG_SHEET} sheet — it was auto-created (add a head there to complete it).")
 
     flags = {"has_objectives": has_obj or has_legacy, "has_krs": has_krs,
-             "has_kpis": has_kpis, "legacy": has_legacy}
-    return objectives, key_results, kpis, errors, warnings, flags
+             "has_kpis": has_kpis, "legacy": has_legacy, "has_org": has_org,
+             "departments": len(departments)}
+    return objectives, key_results, kpis, departments, errors, warnings, flags

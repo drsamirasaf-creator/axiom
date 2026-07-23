@@ -236,6 +236,7 @@ class Initiative(Base):
     created_by = Column(Integer, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     completed_at = Column(DateTime, nullable=True)
+    department_id = Column(Integer, index=True, nullable=True)   # §4s → ax_departments.id
 
 
 class InitiativeEvent(Base):
@@ -530,6 +531,7 @@ class Objective(Base):
     status = Column(String(8), nullable=True)           # Red | Amber | Green
     objective_id = Column(String(40), nullable=False)   # short code (O1…) within the dataset
     obj_key = Column(String(64), index=True, nullable=False)
+    department_id = Column(Integer, index=True, nullable=True)   # §4s → ax_departments.id
     uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -567,6 +569,29 @@ class GoalInitiativeLink(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class Department(Base):
+    """§4s organizational unit. Company-scoped and STABLE across dataset re-uploads
+    (keyed by dept_key = a normalized hash of the name, like goal_key), so the org
+    chart and every objective/KPI/initiative assignment survive re-upload. parent_id
+    nests the chart (self-reference to ax_departments.id). The head is attribution
+    metadata (name/title/email) — the §4s authority model displays the head as the
+    accountable decision-maker; when real member accounts exist for heads this
+    hardens into permissions, so the shape is already upgrade-compatible."""
+    __tablename__ = "ax_departments"
+    __table_args__ = (UniqueConstraint("company_id", "dept_key", name="uq_department"),)
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    dept_key = Column(String(64), index=True, nullable=False)     # sha1(name.lower())[:32]
+    name = Column(String(120), nullable=False)
+    head_name = Column(String(160), nullable=True)
+    head_title = Column(String(120), nullable=True)
+    head_email = Column(String(200), nullable=True)
+    parent_id = Column(Integer, nullable=True)                    # self-ref → ax_departments.id
+    is_standard = Column(Boolean, default=False, nullable=False)  # from the standard list vs custom
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class DatasetPref(Base):
     """Small per-dataset UI preference store (§9 item 4: forecast horizon memory).
     Keyed by (company_id, dataset_id, key) so a remembered horizon is dataset-scoped."""
@@ -593,6 +618,7 @@ class KpiPlan(Base):
     ytd_plan = Column(Float, nullable=True)
     ytd_actual = Column(Float, nullable=True)
     full_year_target = Column(Float, nullable=True)
+    department_id = Column(Integer, index=True, nullable=True)   # §4s → ax_departments.id
     uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -1956,7 +1982,7 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
         content, company_id, statement_units=ent.statement_units)
     # §9 OKR: Objectives + Key Results + KPIs validate alongside the financials —
     # all-or-nothing on errors; OKR warnings (≥3 KRs etc.) merge non-blocking.
-    objectives, key_results, kpis, okr_errors, okr_warnings, okr_flags = ingest.parse_okr_and_kpis(content)
+    objectives, key_results, kpis, departments, okr_errors, okr_warnings, okr_flags = ingest.parse_okr_and_kpis(content)
     if errors or okr_errors:
         raise HTTPException(422, detail={
             "message": "Upload validation failed — no data was saved.",
@@ -2001,6 +2027,30 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
             ds.original_r2_key = _okey
     except Exception:
         pass
+    # §4s: upsert departments (company-scoped, STABLE across re-upload by dept_key)
+    # from the Organization sheet + any auto-created from objective/KPI rows, then
+    # resolve parent linkage in a second pass (all ids now exist).
+    dept_by_norm = {}
+    for d in departments:
+        dep = _ensure_department(db, company_id, d["name"],
+                                 head_name=d.get("head_name"), head_title=d.get("head_title"),
+                                 head_email=d.get("head_email"),
+                                 is_standard=(d["name"] in ingest.STD_DEPARTMENTS))
+        dept_by_norm[(d["name"] or "").strip().lower()] = dep
+    db.flush()
+    for d in departments:
+        if d.get("parent"):
+            par = dept_by_norm.get((d["parent"] or "").strip().lower())
+            dep = dept_by_norm.get((d["name"] or "").strip().lower())
+            if par is not None and dep is not None and par.id != dep.id:
+                dep.parent_id = par.id
+
+    def _dept_id_for(name):
+        if not name:
+            return None
+        dep = dept_by_norm.get(name.strip().lower())
+        return dep.id if dep else None
+
     # §9: persist the OKR + KPI sheets as a snapshot keyed to THIS dataset version.
     # Re-upload makes a new version active → latest wins; prior rows are retained.
     now = datetime.utcnow()
@@ -2009,7 +2059,8 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
                          objective=o["objective"], owner=o.get("owner"),
                          priority=o.get("priority"), horizon=o.get("horizon"),
                          status=o.get("status"), objective_id=o["objective_id"],
-                         obj_key=_goal_key(o["objective"]), uploaded_at=now))
+                         obj_key=_goal_key(o["objective"]),
+                         department_id=_dept_id_for(o.get("department")), uploaded_at=now))
     for kr in key_results:
         db.add(KeyResult(company_id=company_id, dataset_id=ds.id, row_index=kr["row_index"],
                          objective_id=kr.get("objective_id"), key_result=kr["key_result"],
@@ -2019,7 +2070,7 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
         db.add(KpiPlan(company_id=company_id, dataset_id=ds.id, row_index=k["row_index"],
                        kpi_name=k["kpi_name"], unit=k["unit"], ytd_plan=k["ytd_plan"],
                        ytd_actual=k["ytd_actual"], full_year_target=k["full_year_target"],
-                       uploaded_at=now))
+                       department_id=_dept_id_for(k.get("department")), uploaded_at=now))
     audit(db, user.id, "data_uploaded", "company", company_id,
           detail=f"dataset={ds.id} v{version} {frequency} objectives={len(objectives)} "
                  f"krs={len(key_results)} kpis={len(kpis)}")
@@ -2035,8 +2086,10 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
             "objectives_ingested": len(objectives),
             "krs_ingested": len(key_results), "key_results_ingested": len(key_results),
             "kpis_ingested": len(kpis),
+            "departments_ingested": len(departments),
             "has_objectives_sheet": okr_flags.get("has_objectives"),
             "has_kr_sheet": okr_flags.get("has_krs"), "has_kpi_sheet": okr_flags.get("has_kpis"),
+            "has_org_sheet": okr_flags.get("has_org"),
             "legacy_goals_migrated": okr_flags.get("legacy"),
             "active": True}
 
@@ -2109,6 +2162,56 @@ def _goal_key(goal_text: str) -> str:
     text. Re-uploading the same goal text keeps its initiative links."""
     import hashlib
     return hashlib.sha1((goal_text or "").strip().lower().encode("utf-8")).hexdigest()[:32]
+
+
+def _dept_key(name: str) -> str:
+    """Stable identity for a department across re-uploads — a hash of the name,
+    so the org chart + every objective/KPI/initiative assignment survive re-upload."""
+    return hashlib.sha1((name or "").strip().lower().encode("utf-8")).hexdigest()[:32]
+
+
+def _ensure_department(db, company_id, name, *, head_name=None, head_title=None,
+                       head_email=None, is_standard=False):
+    """Get-or-create a company department by stable dept_key. On an existing row,
+    fill in head fields only when the incoming upload provides them (never clobber
+    an edited head with a blank). Returns the Department."""
+    name = (name or "").strip()
+    if not name:
+        return None
+    key = _dept_key(name)
+    dep = (db.query(Department)
+             .filter_by(company_id=company_id, dept_key=key).first())
+    if dep is None:
+        dep = Department(company_id=company_id, dept_key=key, name=name,
+                         head_name=head_name, head_title=head_title, head_email=head_email,
+                         is_standard=is_standard)
+        db.add(dep)
+    else:
+        if head_name:
+            dep.head_name = head_name
+        if head_title:
+            dep.head_title = head_title
+        if head_email:
+            dep.head_email = head_email
+        dep.name = name                       # keep display casing fresh
+        dep.updated_at = datetime.utcnow()
+    return dep
+
+
+def _dept_out(dep):
+    """Compact department dict incl. the head as the §4s accountable decision-maker."""
+    if dep is None:
+        return None
+    return {"id": dep.id, "name": dep.name, "parent_id": dep.parent_id,
+            "is_standard": bool(dep.is_standard),
+            "head": {"name": dep.head_name, "title": dep.head_title, "email": dep.head_email}
+            if (dep.head_name or dep.head_title or dep.head_email) else None,
+            "head_name": dep.head_name, "head_title": dep.head_title, "head_email": dep.head_email}
+
+
+def _dept_index(db, company_id):
+    """{department_id: Department} for a company (one query)."""
+    return {d.id: d for d in db.query(Department).filter_by(company_id=company_id).all()}
 
 
 def _ini_link_summary(ini):
@@ -2332,6 +2435,7 @@ def _objective_rows(db, company_id):
         rows = [{"objective": o.objective, "owner": o.owner, "priority": o.priority,
                  "horizon": o.horizon, "status": o.status, "objective_id": o.objective_id,
                  "obj_key": o.obj_key, "row_index": o.row_index,
+                 "department_id": getattr(o, "department_id", None),
                  "krs": by_oid.get(o.objective_id, [])} for o in objs]
         return ds, rows, {"uploaded_at": max((o.uploaded_at for o in objs), default=None), "legacy": False}
     goals = (db.query(OrgGoal).filter_by(company_id=company_id, dataset_id=ds.id)
@@ -2339,7 +2443,8 @@ def _objective_rows(db, company_id):
     if goals:
         rows = [{"objective": g.goal, "owner": g.owner, "priority": g.priority,
                  "horizon": g.horizon, "status": g.status, "objective_id": f"O{i}",
-                 "obj_key": _goal_key(g.goal), "row_index": g.row_index, "krs": []}
+                 "obj_key": _goal_key(g.goal), "row_index": g.row_index,
+                 "department_id": None, "krs": []}
                 for i, g in enumerate(goals, start=1)]
         return ds, rows, {"uploaded_at": max((g.uploaded_at for g in goals), default=None), "legacy": True}
     return ds, [], {"uploaded_at": None, "legacy": False}
@@ -2351,17 +2456,22 @@ def _active_objective_keys(db, company_id):
 
 
 @router.get("/companies/{company_id}/objectives")
-def company_objectives(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+def company_objectives(company_id: int, department: int | None = None,
+                       member=Depends(require_company_member), db=Depends(get_db)):
     """OKR objectives for the active dataset — grouped by horizon (Short→Medium→Long),
     priority-ordered, each with nested key_results (+ derived progress), an objective
     progress roll-up (mean of its KR progresses), and its linked-initiative summary
     (count + rag_mix + list). Legacy 'goals' uploads surface as objectives with no
-    KRs. has_data:false when the active dataset carries no objectives."""
+    KRs. §4s: pass ?department=<id> to slice to one department. has_data:false when
+    the active dataset carries no objectives."""
     ds, rows, meta = _objective_rows(db, company_id)
     empty = {"company_id": company_id, "dataset_id": (ds.id if ds else None), "has_data": False,
              "objectives": [], "objectives_by_horizon": {h: [] for h in _GOAL_HORIZON_ORDER}}
     if not ds or not rows:
         return empty
+    if department is not None:
+        rows = [r for r in rows if r.get("department_id") == department]
+    dept_idx = _dept_index(db, company_id)
     links = _goal_links_index(db, company_id)     # obj_key -> [Initiative]
 
     def kr_out(kr):
@@ -2375,6 +2485,8 @@ def company_objectives(company_id: int, member=Depends(require_company_member), 
         linked = links.get(r["obj_key"], [])
         return {"objective_id": r["objective_id"], "key": r["obj_key"], "objective": r["objective"],
                 "owner": r["owner"], "priority": r["priority"], "horizon": r["horizon"], "status": r["status"],
+                "department_id": r.get("department_id"),
+                "department": _dept_out(dept_idx.get(r.get("department_id"))),
                 "key_results": krs, "kr_count": len(krs),
                 "progress": (round(sum(progs) / len(progs), 4) if progs else None),
                 "linked_count": len(linked), "rag_mix": _rag_mix(linked),
@@ -2529,25 +2641,208 @@ def _kpi_variance(actual, plan):
 
 
 @router.get("/companies/{company_id}/kpi-variance")
-def company_kpi_variance(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+def company_kpi_variance(company_id: int, department: int | None = None,
+                         member=Depends(require_company_member), db=Depends(get_db)):
     """KPI plan-vs-actual from the active dataset: per KPI plan, actual, target,
-    and variance (abs + %, favorable/unfavorable, actual vs plan). has_data:false
-    when no active dataset or no KPI sheet in the upload."""
+    and variance (abs + %, favorable/unfavorable, actual vs plan). §4s: pass
+    ?department=<id> to slice to one department. has_data:false when no active
+    dataset or no KPI sheet in the upload."""
     ds = _active_company_dataset(db, company_id)
     if not ds:
         return {"company_id": company_id, "dataset_id": None, "has_data": False, "kpis": []}
-    rows = (db.query(KpiPlan).filter_by(company_id=company_id, dataset_id=ds.id)
-              .order_by(KpiPlan.row_index).all())
+    q = db.query(KpiPlan).filter_by(company_id=company_id, dataset_id=ds.id)
+    if department is not None:
+        q = q.filter(KpiPlan.department_id == department)
+    rows = q.order_by(KpiPlan.row_index).all()
     if not rows:
         return {"company_id": company_id, "dataset_id": ds.id, "has_data": False, "kpis": []}
+    dept_idx = _dept_index(db, company_id)
     kpis = [{"id": r.id, "kpi_name": r.kpi_name, "unit": r.unit,
              "ytd_plan": r.ytd_plan, "ytd_actual": r.ytd_actual,
              "full_year_target": r.full_year_target,
+             "department_id": getattr(r, "department_id", None),
+             "department": _dept_out(dept_idx.get(getattr(r, "department_id", None))),
              "variance": _kpi_variance(r.ytd_actual, r.ytd_plan)} for r in rows]
     return {"company_id": company_id, "dataset_id": ds.id,
             "uploaded_at": max((r.uploaded_at for r in rows), default=None),
             "filename": getattr(ds, "original_filename", None),          # §2 provenance line
             "has_data": True, "count": len(kpis), "kpis": kpis}
+
+
+# ============================ §4s Organizational Structure ============================
+class DepartmentIn(BaseModel):
+    name: str
+    head_name: str | None = None
+    head_title: str | None = None
+    head_email: str | None = None
+    parent_id: int | None = None
+
+
+def _dept_counts(db, company_id):
+    """{department_id: {objectives, key_results, kpis, initiatives}} for the active
+    dataset (objectives/kpis are snapshot-scoped; initiatives are company-scoped)."""
+    counts = {}
+    def bump(did, field):
+        if did is None:
+            return
+        counts.setdefault(did, {"objectives": 0, "key_results": 0, "kpis": 0, "initiatives": 0})[field] += 1
+    ds = _active_company_dataset(db, company_id)
+    if ds:
+        objs = db.query(Objective).filter_by(company_id=company_id, dataset_id=ds.id).all()
+        oid_dept = {}
+        for o in objs:
+            bump(o.department_id, "objectives")
+            oid_dept[o.objective_id] = o.department_id
+        for kr in db.query(KeyResult).filter_by(company_id=company_id, dataset_id=ds.id).all():
+            bump(oid_dept.get(kr.objective_id), "key_results")   # KRs inherit their objective's department
+        for k in db.query(KpiPlan).filter_by(company_id=company_id, dataset_id=ds.id).all():
+            bump(k.department_id, "kpis")
+    for i in db.query(Initiative).filter_by(company_id=company_id).all():
+        bump(getattr(i, "department_id", None), "initiatives")
+    return counts
+
+
+@router.get("/companies/{company_id}/departments")
+def list_departments(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+    """The company org chart — flat list of departments (parent_id nests them) with
+    the head as the §4s accountable decision-maker and per-department counts of the
+    active dataset's objectives / key results / KPIs and the company's initiatives."""
+    deps = (db.query(Department).filter_by(company_id=company_id)
+              .order_by(Department.name).all())
+    counts = _dept_counts(db, company_id)
+    zero = {"objectives": 0, "key_results": 0, "kpis": 0, "initiatives": 0}
+    return {"company_id": company_id, "has_data": bool(deps),
+            "departments": [{**_dept_out(d), "counts": counts.get(d.id, zero)} for d in deps]}
+
+
+@router.post("/companies/{company_id}/departments", status_code=201)
+def create_department(company_id: int, body: DepartmentIn,
+                      member=Depends(require_company_admin),
+                      user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Create a department (get-or-create by name; editing the head of an existing
+    one is idempotent)."""
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(422, "department name is required")
+    dep = _ensure_department(db, company_id, name, head_name=body.head_name,
+                             head_title=body.head_title, head_email=body.head_email,
+                             is_standard=(name in ingest_STD_DEPARTMENTS()))
+    db.flush()
+    if body.parent_id is not None and body.parent_id != dep.id:
+        par = db.get(Department, body.parent_id)
+        if par is not None and par.company_id == company_id:
+            dep.parent_id = par.id
+    audit(db, user.id, "department_created", "company", company_id, detail=f"{name}")
+    db.commit()
+    return _dept_out(dep)
+
+
+@router.put("/companies/{company_id}/departments/{dept_id}")
+def update_department(company_id: int, dept_id: int, body: DepartmentIn,
+                      member=Depends(require_company_admin),
+                      user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Edit a department's name, head, or parent. dept_key stays stable on rename so
+    existing assignments + future re-uploads of the OLD name still resolve here."""
+    dep = db.get(Department, dept_id)
+    if not dep or dep.company_id != company_id:
+        raise HTTPException(404, "department not found")
+    if body.name and body.name.strip():
+        dep.name = body.name.strip()
+    dep.head_name = body.head_name
+    dep.head_title = body.head_title
+    dep.head_email = body.head_email
+    # parent: reject self and simple cycles (parent must not be a descendant)
+    if body.parent_id is None:
+        dep.parent_id = None
+    elif body.parent_id != dep.id:
+        par = db.get(Department, body.parent_id)
+        if par is None or par.company_id != company_id:
+            raise HTTPException(422, "parent department not found")
+        seen, cur = {dep.id}, par
+        while cur is not None:
+            if cur.id in seen:
+                raise HTTPException(422, "that parent would create a cycle in the org chart")
+            seen.add(cur.id)
+            cur = db.get(Department, cur.parent_id) if cur.parent_id else None
+        dep.parent_id = par.id
+    dep.updated_at = datetime.utcnow()
+    audit(db, user.id, "department_updated", "company", company_id, detail=f"{dep.name}")
+    db.commit()
+    return _dept_out(dep)
+
+
+@router.delete("/companies/{company_id}/departments/{dept_id}")
+def delete_department(company_id: int, dept_id: int, reassign_to: int | None = None,
+                      member=Depends(require_company_admin),
+                      user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Delete a department, reassigning its objectives / KPIs / initiatives to
+    `reassign_to` (or to unassigned when omitted). Child departments are re-parented
+    to this department's parent so the chart never dangles."""
+    dep = db.get(Department, dept_id)
+    if not dep or dep.company_id != company_id:
+        raise HTTPException(404, "department not found")
+    target = None
+    if reassign_to is not None:
+        target = db.get(Department, reassign_to)
+        if target is None or target.company_id != company_id or target.id == dep.id:
+            raise HTTPException(422, "reassign_to is not a valid department")
+    new_id = target.id if target else None
+    moved = {"objectives": 0, "kpis": 0, "initiatives": 0}
+    for o in db.query(Objective).filter_by(company_id=company_id, department_id=dep.id).all():
+        o.department_id = new_id; moved["objectives"] += 1
+    for k in db.query(KpiPlan).filter_by(company_id=company_id, department_id=dep.id).all():
+        k.department_id = new_id; moved["kpis"] += 1
+    for i in db.query(Initiative).filter_by(company_id=company_id, department_id=dep.id).all():
+        i.department_id = new_id; moved["initiatives"] += 1
+    for child in db.query(Department).filter_by(company_id=company_id, parent_id=dep.id).all():
+        child.parent_id = dep.parent_id
+    db.delete(dep)
+    audit(db, user.id, "department_deleted", "company", company_id,
+          detail=f"{dep.name} reassign_to={new_id} moved={moved}")
+    db.commit()
+    return {"ok": True, "deleted": dept_id, "reassigned_to": new_id, "moved": moved}
+
+
+@router.get("/companies/{company_id}/departments/{dept_id}/okr-map")
+def department_okr_map(company_id: int, dept_id: int,
+                       member=Depends(require_company_member), db=Depends(get_db)):
+    """One department's whole picture: its objectives (+ KRs), initiatives, and KPIs
+    for the active dataset — the clickable-node view behind the org chart."""
+    dep = db.get(Department, dept_id)
+    if not dep or dep.company_id != company_id:
+        raise HTTPException(404, "department not found")
+    objectives = company_objectives(company_id, department=dept_id, member=member, db=db)
+    kpis = company_kpi_variance(company_id, department=dept_id, member=member, db=db)
+    initiatives = list_initiatives(company_id, department=dept_id, member=member, db=db)
+    return {"company_id": company_id, "department": _dept_out(dep),
+            "objectives": objectives.get("objectives", []),
+            "kpis": kpis.get("kpis", []),
+            "initiatives": initiatives.get("initiatives", [])}
+
+
+def ingest_STD_DEPARTMENTS():
+    from .modules.financials import ingest as _ing
+    return set(_ing.STD_DEPARTMENTS)
+
+
+def _on_behalf_suffix(db, actor_user, department_id):
+    """§4s authority (v1 = attribution): when an admin acts on an item owned by a
+    department whose head is someone else, return ' (by <admin> on behalf of <head
+    title/name>)' to append to the audit/event note. Empty string otherwise —
+    never silent, but no noise when the actor IS the head or there's no department."""
+    if not department_id:
+        return ""
+    dep = db.get(Department, department_id)
+    if dep is None or not (dep.head_name or dep.head_title):
+        return ""
+    actor_name = (getattr(actor_user, "name", None) or getattr(actor_user, "email", None)
+                  or f"admin #{getattr(actor_user, 'id', '?')}")
+    head_email = (dep.head_email or "").strip().lower()
+    actor_email = (getattr(actor_user, "email", "") or "").strip().lower()
+    if head_email and actor_email and head_email == actor_email:
+        return ""                                   # the actor IS the head — no on-behalf
+    head_label = dep.head_title or dep.head_name
+    return f" (by {actor_name} on behalf of {head_label})"
 
 
 # ------------------------------------------------- documents on R2 (7b-1)
@@ -2717,6 +3012,7 @@ class InitiativePatch(BaseModel):
     source: str | None = None
     source_report_issued_at: str | None = None
     source_dataset_version: int | None = None
+    department_id: int | None = None            # §4s assign (0 → unassign)
     note: str | None = None
 
 
@@ -2784,6 +3080,7 @@ def _ini_out(i):
             "source_thread_id": i.source_thread_id,
             "rag": i.rag, "rag_updated_at": i.rag_updated_at,
             "rag_updated_by": i.rag_updated_by,
+            "department_id": getattr(i, "department_id", None),   # §4s
             "created_by": i.created_by, "created_at": i.created_at,
             "completed_at": i.completed_at}
 
@@ -2825,9 +3122,13 @@ def create_initiative(company_id: int, body: InitiativeCreate,
 
 
 @router.get("/companies/{company_id}/initiatives")
-def list_initiatives(company_id: int, member=Depends(require_company_member),
+def list_initiatives(company_id: int, department: int | None = None,
+                     member=Depends(require_company_member),
                      db=Depends(get_db)):
-    rows = db.query(Initiative).filter_by(company_id=company_id).all()
+    q = db.query(Initiative).filter_by(company_id=company_id)
+    if department is not None:                       # §4s slice
+        q = q.filter(Initiative.department_id == department)
+    rows = q.all()
     prank = {"high": 0, "medium": 1, "low": 2}
 
     def seq(rc):
@@ -2853,10 +3154,12 @@ def list_initiatives(company_id: int, member=Depends(require_company_member),
             os = key2obj.get(l.goal_key)
             if os:
                 served.setdefault(l.initiative_id, []).append(os)
+    dept_idx = _dept_index(db, company_id)
     out = []
     for i in rows:
         d = _ini_out(i)
         d["serves_objectives"] = served.get(i.id, [])
+        d["department"] = _dept_out(dept_idx.get(getattr(i, "department_id", None)))
         out.append(d)
     return {"company_id": company_id, "initiatives": out}
 
@@ -2886,21 +3189,35 @@ def patch_initiative(company_id: int, iid: int, body: InitiativePatch,
         if v is not None and getattr(ini, f) != v:
             setattr(ini, f, v)
             changed.append(f)
+    # §4s: (re)assign the owning department (0 → unassign). Validate it belongs here.
+    if body.department_id is not None:
+        new_dept = body.department_id or None
+        if new_dept is not None:
+            dep = db.get(Department, new_dept)
+            if dep is None or dep.company_id != company_id:
+                raise HTTPException(422, "department not found")
+        if getattr(ini, "department_id", None) != new_dept:
+            ini.department_id = new_dept
+            changed.append("department_id")
+    # §4s authority (v1 = attribution): an admin acting on a department-owned item
+    # records " (by <admin> on behalf of <head>)" — never silent.
+    obh = _on_behalf_suffix(db, user, getattr(ini, "department_id", None))
+    note = ((body.note or "") + obh).strip() or None
     rel = _reletter(db, ini) if "current_priority" in changed else None
     if "current_priority" in changed:
         if rel:
-            _ini_event(db, ini, user.id, "priority_changed", rel[0], rel[1], body.note)
+            _ini_event(db, ini, user.id, "priority_changed", rel[0], rel[1], note)
         else:                                    # priority moved but band stayed (e.g. rejected)
             _ini_event(db, ini, user.id, "priority_changed", old_priority,
-                       ini.current_priority, body.note)
+                       ini.current_priority, note)
     elif "expected_impact_amount" in changed:
         _ini_event(db, ini, user.id, "impact_updated", old_impact,
-                   ini.expected_impact_amount, body.note)
+                   ini.expected_impact_amount, note)
     elif changed:
-        _ini_event(db, ini, user.id, "note", None, ",".join(changed), body.note)
+        _ini_event(db, ini, user.id, "note", None, ",".join(changed), note)
     if changed:
         audit(db, user.id, "initiative_updated", "company", company_id,
-              detail=f"{ini.ref_code} {','.join(changed)}")
+              detail=f"{ini.ref_code} {','.join(changed)}{obh}")
         db.commit()
     return _ini_out(ini)
 
@@ -5311,10 +5628,14 @@ def _summary_rags(cei: dict, snapshot: dict | None) -> dict:
 
 
 @router.get("/companies/{company_id}/assessment/summary")
-def assessment_summary(company_id: int, member=Depends(require_company_member),
+def assessment_summary(company_id: int, department: int | None = None,
+                       member=Depends(require_company_member),
                        db=Depends(get_db)):
     """CEI, L1 subscores, dispersion, radar payload, and the revision-tagged
-    trend series."""
+    trend series. §4s: pass ?department=<id> to focus one department's slice — it
+    reuses the existing assessor-invite department dimension (already floored for
+    k-anonymity), echoed as `department_filter` (+ `department_slice` when present;
+    suppressed slices render the protected state as usual)."""
     cfg = db.query(AssessmentConfig).filter_by(company_id=company_id).first()
     cadence = cfg.cadence if cfg else "none"
     due = cfg.next_cycle_due if cfg else None
@@ -5412,6 +5733,14 @@ def assessment_summary(company_id: int, member=Depends(require_company_member),
             "radar": safe.get("radar", []),
             "item_dispersion": safe.get("item_dispersion", {}),
             "departments": safe.get("departments", {}),  # per-department slices (floored)
+            # §4s: echo the requested department (by id → name) and its floored slice
+            "department_filter": (lambda d: ({"id": d.id, "name": d.name} if d else None))(
+                db.get(Department, department) if department is not None else None),
+            "department_slice": ((safe.get("departments", {}) or {}).get(
+                (db.get(Department, department).name if (department is not None
+                 and db.get(Department, department)
+                 and db.get(Department, department).company_id == company_id) else None))
+                if department is not None else None),
             "abstention_rates": safe.get("abstention_rates", {"item": {}, "axis": {}}),
             "no_signal_items": safe.get("no_signal_items", []),
             "item_rag": rags["item_rag"], "l1_rag": rags["l1_rag"],
@@ -7082,6 +7411,11 @@ def _ensure_ax_columns(engine):
     _add("financial_datasets", "n_objectives", "n_objectives INTEGER")
     _add("financial_datasets", "n_key_results", "n_key_results INTEGER")
     _add("financial_datasets", "n_kpis", "n_kpis INTEGER")
+    # custody-14 §4s: department_id on objectives / kpis / initiatives (ax_departments
+    # is a NEW table and rides create_all; only these existing tables need columns)
+    _add("ax_objectives", "department_id", "department_id INTEGER")
+    _add("ax_kpi_plan", "department_id", "department_id INTEGER")
+    _add("ax_initiatives", "department_id", "department_id INTEGER")
     # 7f revision: deck variant on the issue registry
     _add("ax_report_issues", "deck_type", "deck_type VARCHAR(16)")
     _add("ax_report_issues", "builder_version", "builder_version VARCHAR(32)")
