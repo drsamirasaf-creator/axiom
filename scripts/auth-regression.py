@@ -52,6 +52,10 @@ EXPECTED_SIDEBAR_LINKS = [
     "Enterprise Optimization", "Prescience AI",
     "Initiatives & Projects", "Performance Monitoring",
     "Course Workspace", "What is AXIOM?",
+    # custody-10: the data-upload door must have a PERMANENT, app-controlled
+    # sidebar link. If this vanishes (a nav restructure drops it), the crawler
+    # FAILS — the upload path can never disappear silently again.
+    "Data Input",
 ]
 # Routes that must REDIRECT (not appear as their own sidebar link). Folded hub
 # routes (/cei, /data-input, /financial-forecasts, /risk-analysis, /brief) still
@@ -70,7 +74,8 @@ ALIASES = {
     "/benchmarking":        {"dest": "/risk-analysis?section=benchmarking","needle": "Benchmark Performance Index"},
     "/cei":                 {"dest": "/cei",                              "needle": "Collaborative Assessment"},
     "/twin":                {"dest": "/twin",                             "needle": "Performance Monitoring"},
-    "/data-input":          {"dest": "/data-input?tab=financial",         "needle": "Data uploads"},
+    # /data-input is NOT an alias — it renders its own page (the upload door). Its
+    # reachability is asserted by the dedicated DATA-UPLOAD probe + sidebar link below.
     "/financial-forecasts": {"dest": "/financial-forecasts",             "needle": "FCFF"},
     # Lovable route alias (reported as a bare tuple); normalized to the committed
     # dict shape + verified live (2026-07): /discussion -> the discussion tab of
@@ -332,13 +337,40 @@ def run_mode(p, mode, token, headed=False, recycle_every=0):
             if n_tabs < 1:
                 fails.append(f"{mode} sub-tabs MISSING on {path}")
 
+    # ---- DATA-UPLOAD door reachability (custody-10) ----
+    # The upload path has vanished twice (a Lovable redirect, then a missing nav
+    # entry). This asserts, from an authed session, that /data-input RENDERS its
+    # own upload surface (never redirects away) AND exposes an upload control /
+    # template-download / company-select prompt. FAIL = the door is broken again.
+    if authed:
+        up_ok, up_why = True, ""
+        try:
+            st["pg"].goto(APP_BASE + "/data-input", wait_until=WAIT_UNTIL, timeout=30000)
+            st["pg"].wait_for_timeout(SETTLE_MS)
+            final = _norm_href(st["pg"].url)
+            body = (st["pg"].inner_text("body") or "").lower()
+            has_file = st["pg"].locator("input[type='file']").count() > 0
+            markers = any(m in body for m in (
+                "download template", "financial data", "additional documents",
+                "select a company", "upload"))
+            if final != "/data-input":
+                up_ok, up_why = False, f"redirected away to {final}"
+            elif not (has_file or markers):
+                up_ok, up_why = False, "no upload control / data-input surface rendered"
+        except Exception as e:
+            up_ok, up_why = False, f"navigation error {e}"
+        tick()
+        if not up_ok:
+            fails.append(f"{mode} DATA-UPLOAD door UNREACHABLE on /data-input :: {up_why}")
+
     # ---- demo-safety: anonymous fires zero authenticated calls ----
     if mode == "anonymous":
         leaked = rec.any_authed()
         if leaked:
             fails.append(f"anonymous fired {len(leaked)} AUTHENTICATED call(s): {leaked[:5]}")
 
-    total = len(routes) + (len(EXPECTED_SIDEBAR_LINKS) + len(EXPECTED_GROUPS) + len(ALIASES) + len(SUBTABS) if authed else 1)
+    total = len(routes) + ((len(EXPECTED_SIDEBAR_LINKS) + len(EXPECTED_GROUPS)
+                            + len(ALIASES) + len(SUBTABS) + 1) if authed else 1)
     shutdown()
     return {"mode": mode, "aborted": False, "fails": fails, "green": total - len(fails), "total": total}
 
