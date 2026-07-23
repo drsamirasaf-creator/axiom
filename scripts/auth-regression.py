@@ -154,6 +154,209 @@ class Recorder:
         return [c for c in self.calls if not (200 <= c[2] < 400)]
 
 
+class ConsoleSink:
+    """Collects uncaught page errors + console.error output so a click that throws
+    an exception or logs an error is attributed to the control that caused it."""
+    def __init__(self):
+        self.errors = []
+
+    def clear(self):
+        self.errors = []
+
+    def on_console(self, msg):
+        try:
+            if msg.type == "error":
+                t = msg.text
+                # ignore benign noise (favicon/network 4xx logged by the browser)
+                if not any(n in t.lower() for n in ("favicon", "failed to load resource")):
+                    self.errors.append(t[:140])
+        except Exception:
+            pass
+
+    def on_pageerror(self, exc):
+        try:
+            self.errors.append("pageerror: " + str(exc)[:140])
+        except Exception:
+            pass
+
+
+# markers that mean the app's error boundary / a hard render failure is on screen
+_ERR_MARKERS = ("something went wrong", "unexpected error", "cannot read propert",
+                "is not a function", "is not defined", "application error",
+                "this page isn't working", "render error", "reference error",
+                "undefined is not")
+
+
+def _err_surface(page):
+    try:
+        low = (page.inner_text("body") or "").lower()
+    except Exception:
+        return False
+    return any(m in low for m in _ERR_MARKERS)
+
+
+# controls to exercise: buttons, tabs, sub-tabs, dropdowns, expanders
+INTERACTIVE_SEL = ("button:not([disabled]), [role='tab'], select, [aria-expanded], "
+                   "button[class*='border-b-2'][class*='-mb-px'], "
+                   "a[class*='border-b-2'][class*='-mb-px']")
+
+
+def _control_label(el):
+    try:
+        tag = el.evaluate("e => e.tagName.toLowerCase()")
+    except Exception:
+        tag = "?"
+    txt = ""
+    for getter in (lambda: el.inner_text(),
+                   lambda: el.get_attribute("aria-label"),
+                   lambda: el.get_attribute("title")):
+        try:
+            v = getter()
+            if v and v.strip():
+                txt = v.strip(); break
+        except Exception:
+            pass
+    txt = " ".join(txt.split())[:40] or f"<{tag}>"
+    return tag, txt
+
+
+def _find_control(page, tag, txt):
+    """Re-locate a fresh handle for (tag,txt) — DOM may have re-rendered since the
+    snapshot, so stored handles go stale."""
+    try:
+        base = page.locator(tag)
+        if txt and not txt.startswith("<"):
+            cand = base.filter(has_text=txt)
+            if cand.count() > 0:
+                return cand.first
+        return base.first if base.count() > 0 else None
+    except Exception:
+        return None
+
+
+def interaction_sweep(page, rec, sink, path, tick, cap=16):
+    """Click every interactive control on `path` (bounded to `cap`) in the current
+    (authed) session. Returns a list of (route, control, outcome) findings — only
+    non-OK outcomes are recorded; a clean control is silent. State is recovered by
+    re-navigating whenever an error surface or an off-route navigation is seen."""
+    findings, acted = [], 0
+    try:
+        page.goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
+        page.wait_for_timeout(SETTLE_MS)
+    except Exception as e:
+        return [(path, "(load)", f"nav error {str(e)[:50]}")], 0
+    tick()
+    if _err_surface(page):
+        return [(path, "(initial render)", "ERROR SURFACE on load")], 1
+
+    # snapshot visible, de-duped control labels first (clicking mutates the DOM)
+    labels, seen = [], set()
+    try:
+        loc = page.locator(INTERACTIVE_SEL)
+        scan = min(loc.count(), cap * 5)
+        for i in range(scan):
+            if len(labels) >= cap:
+                break
+            el = loc.nth(i)
+            try:
+                if not el.is_visible():
+                    continue
+            except Exception:
+                continue
+            tag, txt = _control_label(el)
+            key = (tag, txt.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            labels.append((tag, txt))
+    except Exception:
+        pass
+
+    prev = None                 # label of the control clicked last iteration
+    for tag, txt in labels:
+        # a late-rendering (debounced-async) crash from the PREVIOUS click surfaces
+        # here — attribute it to that control before recovering.
+        if _err_surface(page):
+            if prev is not None:
+                findings.append((path, prev, "ERROR BOUNDARY (async, after click)"))
+            try:
+                page.goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
+                page.wait_for_timeout(1200)
+            except Exception:
+                pass
+        prev = f"{tag} · {txt}"
+        sink.clear()
+        before = len(rec.calls)
+        cur = page.url
+        el = _find_control(page, tag, txt)
+        if el is None:
+            continue
+        acted += 1
+        # dropdowns: cycle each option and watch for a break
+        if tag == "select":
+            bad = None
+            try:
+                opts = el.locator("option")
+                for oi in range(min(opts.count(), 8)):
+                    el.select_option(index=oi, timeout=1500)
+                    page.wait_for_timeout(450)
+                    if _err_surface(page):
+                        try:
+                            bad = (opts.nth(oi).inner_text() or "")[:24]
+                        except Exception:
+                            bad = f"option {oi}"
+                        break
+            except Exception as e:
+                findings.append((path, f"select · {txt}", f"select failed: {str(e)[:40]}"))
+                continue
+            if bad:
+                findings.append((path, f"select · {txt}", f"ERROR on option '{bad}'"))
+                try:
+                    page.goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
+                    page.wait_for_timeout(1000)
+                except Exception:
+                    pass
+            continue
+        # buttons / tabs / expanders / links. The app re-renders continuously
+        # (persistent connection), so Playwright's actionability wait never settles
+        # → use force + a DOM dispatch fallback to actually fire the handler.
+        clicked = False
+        try:
+            el.click(timeout=1200, force=True)
+            clicked = True
+        except Exception:
+            try:
+                el.dispatch_event("click")
+                clicked = True
+            except Exception as e:
+                findings.append((path, f"{tag} · {txt}", f"click failed: {str(e).split(chr(10),1)[0][:40]}"))
+        if not clicked:
+            continue
+        page.wait_for_timeout(1200)     # allow debounced-async flows (compare, fetch, re-render) to fire
+        tick()
+        if _err_surface(page):
+            findings.append((path, f"{tag} · {txt}", "ERROR BOUNDARY"))
+            try:
+                page.goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
+                page.wait_for_timeout(1000)
+            except Exception:
+                pass
+            continue
+        five = [c for c in rec.calls[before:] if c[2] >= 500]
+        if five:
+            findings.append((path, f"{tag} · {txt}", f"backend {five[0][2]} {five[0][1]}"))
+        if sink.errors:
+            findings.append((path, f"{tag} · {txt}", f"console: {sink.errors[0][:60]}"))
+        # off-route navigation → return to keep sweeping this route's controls
+        if _norm_href(page.url) != path:
+            try:
+                page.goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
+                page.wait_for_timeout(900)
+            except Exception:
+                pass
+    return findings, acted
+
+
 def make_context(browser, token):
     ctx = browser.new_context()
     if token:
@@ -223,7 +426,7 @@ def sanity_gate(page, rec):
 LAUNCH_ARGS = ["--disable-dev-shm-usage", "--disable-gpu", "--no-sandbox"]
 
 
-def run_mode(p, mode, token, headed=False, recycle_every=0):
+def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
     """Crawl one mode. `recycle_every` > 0 relaunches the WHOLE browser every N
     navigations (operator mode). The app's heavy authed pages (index-DA3rwP6P
     onward) leak renderer memory across route changes; a single reused tab OOM-
@@ -233,6 +436,8 @@ def run_mode(p, mode, token, headed=False, recycle_every=0):
     session churn. Anonymous/member pass recycle_every=0 (they complete clean)."""
     fails = []
     rec = Recorder()
+    sink = ConsoleSink()
+    interactions = []       # (route, control, outcome) findings from the sweep
     authed = mode in ("operator", "member")
     st = {"b": None, "ctx": None, "pg": None, "n": 0}
 
@@ -241,6 +446,8 @@ def run_mode(p, mode, token, headed=False, recycle_every=0):
         ctx = make_context(b, token)
         pg = ctx.new_page()
         pg.on("response", rec.on_response)
+        pg.on("console", sink.on_console)
+        pg.on("pageerror", sink.on_pageerror)
         st.update(b=b, ctx=ctx, pg=pg, n=0)
 
     def shutdown():
@@ -363,6 +570,23 @@ def run_mode(p, mode, token, headed=False, recycle_every=0):
         if not up_ok:
             fails.append(f"{mode} DATA-UPLOAD door UNREACHABLE on /data-input :: {up_why}")
 
+    # ---- interaction-level sweep (report-only; operator/authed) ----
+    # Click every interactive control per route and record any error boundary,
+    # console error, backend 5xx, or failed click. Findings are REPORTED, not
+    # graded (they don't fail the run) — this is the standing pre-launch gate.
+    swept_controls = 0
+    if sweep and authed:
+        print("  [interaction sweep] clicking controls per route…", flush=True)
+        for path in sorted(routes):
+            try:
+                found, acted = interaction_sweep(st["pg"], rec, sink, path, tick)
+            except Exception as e:
+                found, acted = [(path, "(sweep)", f"sweep error {str(e)[:50]}")], 0
+            swept_controls += acted
+            interactions.extend(found)
+            mark = f"{len(found)} finding(s)" if found else "clean"
+            print(f"    swept {path} ({acted} controls) -> {mark}", flush=True)
+
     # ---- demo-safety: anonymous fires zero authenticated calls ----
     if mode == "anonymous":
         leaked = rec.any_authed()
@@ -372,13 +596,17 @@ def run_mode(p, mode, token, headed=False, recycle_every=0):
     total = len(routes) + ((len(EXPECTED_SIDEBAR_LINKS) + len(EXPECTED_GROUPS)
                             + len(ALIASES) + len(SUBTABS) + 1) if authed else 1)
     shutdown()
-    return {"mode": mode, "aborted": False, "fails": fails, "green": total - len(fails), "total": total}
+    return {"mode": mode, "aborted": False, "fails": fails, "green": total - len(fails),
+            "total": total, "interactions": interactions, "swept_controls": swept_controls}
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", default="all", choices=["anonymous", "operator", "member", "all"])
     ap.add_argument("--headed", action="store_true")
+    ap.add_argument("--interactions", action="store_true",
+                    help="also click every interactive control per route (authed) and "
+                         "report a route·control·outcome table — report-only, does not grade")
     args = ap.parse_args()
 
     try:
@@ -406,7 +634,8 @@ def main():
                     skipped.append("member (MEMBER_TOKEN not set — f4 account pending)"); continue
             print(f"=== MODE: {mode} ===")
             results.append(run_mode(p, mode, token, headed=args.headed,
-                                    recycle_every=RECYCLE.get(mode, 0)))
+                                    recycle_every=RECYCLE.get(mode, 0),
+                                    sweep=args.interactions))
             print()
 
     print("================ SUMMARY ================")
@@ -420,6 +649,26 @@ def main():
     for s in skipped:
         print(f"  SKIPPED: {s}")
     print("========================================")
+
+    if args.interactions:
+        print("\n============ INTERACTION SWEEP (report-only) ============")
+        for r in results:
+            inter = r.get("interactions")
+            if inter is None:
+                continue
+            swept = r.get("swept_controls", 0)
+            print(f"  mode {r['mode']}: {swept} controls exercised · {len(inter)} finding(s)")
+            if inter:
+                w1 = min(28, max((len(x[0]) for x in inter), default=6))
+                w2 = min(40, max((len(x[1]) for x in inter), default=8))
+                print(f"    {'ROUTE'.ljust(w1)}  {'CONTROL'.ljust(w2)}  OUTCOME")
+                print(f"    {'-'*w1}  {'-'*w2}  {'-'*30}")
+                for route, control, outcome in inter:
+                    print(f"    {route[:w1].ljust(w1)}  {control[:w2].ljust(w2)}  {outcome}")
+            else:
+                print("    (no error boundaries / console errors / dead clicks found)")
+        print("========================================================")
+    # interaction findings are REPORT-ONLY — they never change the exit code
     sys.exit(1 if any_fail or any(r["aborted"] for r in results) else 0)
 
 
