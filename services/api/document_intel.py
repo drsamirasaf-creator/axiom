@@ -627,6 +627,7 @@ def list_proposals(company_id: int, member=Depends(require_company_member), db=D
 class AdoptDetailIn(BaseModel):
     """§4r adopt dialog — all optional so a bare POST still adopts."""
     type: str | None = None            # initiative | project
+    priority: str | None = None        # high | medium | low (dialog-required); else unset
     review_cadence: str | None = None  # e.g. quarterly (Initiative type)
     target_date: str | None = None     # required for Project (enforced client-side)
     leader_name: str | None = None
@@ -644,6 +645,9 @@ def adopt_proposal_endpoint(company_id: int, fingerprint: str,
     on the created initiative."""
     body = body or AdoptDetailIn()
     itype = body.type if body.type in ("initiative", "project") else "initiative"
+    pr = body.priority if body.priority in ("high", "medium", "low") else None
+    cp = pr or "unset"          # unprioritized -> triage band when the dialog omits it
+    imp = pr or "medium"        # importance/urgency need a concrete value
     p = db.query(DocumentProposal).filter_by(company_id=company_id, fingerprint=fingerprint).first()
     if not p:
         raise HTTPException(404, "proposal not found")
@@ -652,30 +656,26 @@ def adopt_proposal_endpoint(company_id: int, fingerprint: str,
         ini = db.get(Initiative, disp.initiative_id)
         if ini:
             return _ini_out(ini)                         # idempotent
-    if p.kind == "swot":
-        disp.status = "adopted"
-        disp.decided_by, disp.decided_at = user.id, datetime.utcnow()
-        audit(db, user.id, "doc_swot_adopted", "company", company_id, detail=fingerprint)
-        db.commit()
-        return {"adopted": True, "kind": "swot", "quadrant": p.quadrant,
-                "renders_in_swot": True, "fingerprint": fingerprint}
-    # recommendation -> Initiative, via the same seam as adopt_recommendation
+    # Adopting ANY proposal (swot OR recommendation) now creates an initiative in
+    # the Underway register — the previous swot branch only marked the disposition
+    # and dropped the §4r dialog's type/priority, so those adoptions never surfaced.
+    # A swot proposal ALSO keeps rendering in the SWOT quadrants via its adopted
+    # disposition (swot_entries_for reads status='adopted').
     ds = _active_company_dataset(db, company_id)
     currency = ((ds.data.get("company") or {}).get("currency")
                 if ds and isinstance(ds.data, dict) else None)
-    priority = "medium"
-    ref = _next_ref(db, company_id, _band_of("proposed", priority))
+    ref = _next_ref(db, company_id, _band_of("accepted", cp))
     ini = Initiative(company_id=company_id, ref_code=ref, previous_refs=[],
                      title=p.title[:300], description=p.description or "",
                      source="axiom_document", source_dataset_version=(ds.version if ds else None),
-                     importance=priority, urgency=priority, current_priority=priority,
-                     status="proposed", type=itype,
+                     importance=imp, urgency=imp, current_priority=cp,
+                     status="accepted", type=itype,
                      review_cadence=(body.review_cadence if itype == "initiative" else None),
                      target_date=(body.target_date or None),
                      impact_currency=currency, created_by=user.id)
     db.add(ini); db.flush()
     _ini_event(db, ini, user.id, "created", None, ref,
-               f"adopted from AXIOM document proposal as {itype}"
+               f"adopted from AXIOM {p.kind} proposal as {itype}"
                f" ({', '.join(p.citations or [])})")
     _ensure_initiative_thread(db, company_id, ini)
     disp.status = "adopted"; disp.initiative_id = ini.id

@@ -1981,7 +1981,7 @@ def delete_doc(company_id: int, doc_id: int,
 _PRIORITY = ("high", "medium", "low")
 _STATUSES = ("proposed", "accepted", "in_progress", "completed", "deferred", "rejected")
 _ACTIVE_STATUSES = ("proposed", "accepted", "in_progress")
-_BAND = {"high": "A", "medium": "B", "low": "C"}
+_BAND = {"high": "A", "medium": "B", "low": "C", "unset": "U"}   # U = unprioritized (needs triage)
 
 
 class InitiativeCreate(BaseModel):
@@ -2027,10 +2027,11 @@ class InitiativeStatusIn(BaseModel):
 
 
 def _band_of(status: str, current_priority: str) -> str:
-    """The current ref band: D for rejected/not-accepted, else the priority band."""
+    """The current ref band: D for rejected/not-accepted, U for unprioritized,
+    else the priority band."""
     if status == "rejected":
         return "D"
-    return _BAND[current_priority]
+    return _BAND.get(current_priority, "U")
 
 
 def _next_ref(db, company_id: int, band: str) -> str:
@@ -2091,9 +2092,12 @@ def _ini_out(i):
 def create_initiative(company_id: int, body: InitiativeCreate,
                       member=Depends(require_company_admin),
                       user: User = Depends(get_current_user), db=Depends(get_db)):
-    for f in ("importance", "urgency", "current_priority"):
+    for f in ("importance", "urgency"):
         if getattr(body, f) not in _PRIORITY:
             raise HTTPException(422, f"{f} must be one of high|medium|low")
+    # current_priority also accepts 'unset' (unprioritized — lands in the triage band)
+    if body.current_priority not in _PRIORITY and body.current_priority != "unset":
+        raise HTTPException(422, "current_priority must be one of high|medium|low|unset")
     if body.status not in _STATUSES:
         raise HTTPException(422, "invalid status")
     ref = _next_ref(db, company_id, _band_of(body.status, body.current_priority))
