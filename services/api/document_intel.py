@@ -714,6 +714,41 @@ def dismiss_proposal_endpoint(company_id: int, fingerprint: str,
     return {"dismissed": True, "fingerprint": fingerprint}
 
 
+@document_router.post("/companies/{company_id}/proposals/{fingerprint}/reconsider")
+def reconsider_proposal_endpoint(company_id: int, fingerprint: str,
+                                 member=Depends(require_company_admin),
+                                 user=Depends(get_current_user), db=Depends(get_db)):
+    """§7m-a Reconsider door: a decided proposal (adopted/dismissed/parked) goes
+    back to Not-yet-accepted (status 'none'). For an ADOPTED proposal the
+    initiative it created REMAINS in the register — we only UNLINK it from the
+    disposition (never delete a live register item). The caller warns the admin."""
+    p = db.query(DocumentProposal).filter_by(company_id=company_id, fingerprint=fingerprint).first()
+    if not p:
+        raise HTTPException(404, "proposal not found")
+    disp = db.query(RecommendationDisposition).filter_by(company_id=company_id, fingerprint=fingerprint).first()
+    if not disp or disp.status in ("none", None):
+        return {"reconsidered": False, "status": "none",
+                "note": "This proposal is already Not-yet-accepted."}
+    prev_status = disp.status
+    kept_initiative_id = None
+    kept_initiative_ref = None
+    if disp.status == "adopted" and disp.initiative_id:
+        kept_initiative_id = disp.initiative_id
+        ini = db.get(Initiative, disp.initiative_id)
+        kept_initiative_ref = ini.ref_code if ini else None
+        disp.initiative_id = None                       # unlink; the initiative lives on
+    disp.status = "none"
+    disp.decided_by, disp.decided_at = None, None
+    audit(db, user.id, "doc_proposal_reconsidered", "company", company_id,
+          detail=f"{fingerprint} was {prev_status}"
+                 + (f" (kept initiative {kept_initiative_ref})" if kept_initiative_ref else ""))
+    db.commit()
+    return {"reconsidered": True, "fingerprint": fingerprint, "status": "none",
+            "previous_status": prev_status,
+            "kept_initiative_id": kept_initiative_id,
+            "kept_initiative_ref": kept_initiative_ref}
+
+
 @document_router.post("/internal/documents/backfill")
 def backfill_endpoint(authorization: str = Header(None), db=Depends(get_db)):
     from .core.config import admin_token
