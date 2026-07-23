@@ -2331,7 +2331,7 @@ def _goal_links_index(db, company_id):
 
 
 @router.get("/companies/{company_id}/goals")
-def company_goals(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+def company_goals(company_id: int, member=Depends(_summary_access), db=Depends(get_db)):
     """Organizational goals from the active dataset, grouped by horizon (Short →
     Medium → Long) and ordered by priority (High → Low) within each group. Each
     goal carries its optional RAG `status`, a stable `key`, and a linked-initiative
@@ -3053,7 +3053,7 @@ async def upload_doc(company_id: int, file: UploadFile = File(...),
 
 
 @router.get("/companies/{company_id}/documents")
-def list_docs(company_id: int, member=Depends(require_company_member),
+def list_docs(company_id: int, member=Depends(_summary_access),
               db=Depends(get_db)):
     """List this company's documents (enterprise-scoped by the path + member
     auth — a company:{id}:view token can only reach its own company)."""
@@ -3479,7 +3479,7 @@ def _post_out(p):
 
 
 @router.get("/companies/{company_id}/threads")
-def list_threads(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+def list_threads(company_id: int, member=Depends(_summary_access), db=Depends(get_db)):
     _ensure_general_thread(db, company_id); db.commit()
     rows = (db.query(Thread).filter_by(company_id=company_id)
               .order_by(Thread.created_at.desc()).all())
@@ -3669,7 +3669,7 @@ def _flagged_or_404(db, company_id, pid):
 
 
 @router.get("/companies/{company_id}/initiatives/proposals")
-def list_proposals(company_id: int, member=Depends(require_company_admin), db=Depends(get_db)):
+def list_proposals(company_id: int, member=Depends(_summary_access), db=Depends(get_db)):
     threads = {t.id: t for t in db.query(Thread).filter_by(company_id=company_id).all()}
     rows = [p for p in db.query(ThreadPost)
               .filter(ThreadPost.proposal_status == "flagged").all()
