@@ -474,6 +474,12 @@ class ReportShare(Base):
     shared_by = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     revoked_at = Column(DateTime, nullable=True)
+    # §16: bundle multiple formats (PDF + PPTX) into ONE email — siblings share a
+    # group_id; the token is stored so the /reports/shared metadata endpoint can
+    # hand the recipient every format's download link. format is denormalized.
+    group_id = Column(String(64), index=True, nullable=True)
+    token = Column(Text, nullable=True)
+    fmt = Column(String(8), nullable=True)
 
 
 class RecommendationDisposition(Base):
@@ -1002,21 +1008,28 @@ def send_stale_nudge(to: str, name: str, ref: str, title: str, company_name: str
 
 
 def send_report_share(to: str, name: str, admin_name: str, company_name: str,
-                      report_type: str, issued_at, token: str):
-    link = f"{_app_url()}/report?token={token}"
+                      report_type: str, issued_at, links):
+    """`links` is a list of (label, url) — one button per shared format so a
+    recipient of a multi-format share gets every download link in ONE email.
+    Each link opens the frontend landing (/report?token=) which then serves the
+    artifact; a single-format share still gets exactly one button."""
+    if isinstance(links, str):                       # back-compat: a bare token
+        links = [(report_type, f"{_app_url()}/report?token={links}")]
     greet = f"Hi {name}," if name else "Hi,"
     who = admin_name or "A company administrator"
     when = issued_at.strftime("%d %b %Y") if issued_at else ""
+    buttons = "".join(
+        f"""<p><a href="{url}" style="background:#4ade80;color:#0d1b12;padding:12px 24px;
+               border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
+               {label}</a></p>""" for (label, url) in links)
     send(to, f"{who} shared the {company_name} {report_type} with you", _wrap(
         f"{company_name} — {report_type}",
         f"""<p>{greet}</p>
             <p>{who} shared the <b>{company_name} {report_type}</b>
                (issued {when}) with you.</p>
-            <p><a href="{link}" style="background:#4ade80;color:#0d1b12;padding:12px 24px;
-               border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
-               View report</a></p>
-            <p style="font-size:13px;color:#8fb59e">This link opens just this one
-               report — it doesn't grant access to the workspace.</p>
+            {buttons}
+            <p style="font-size:13px;color:#8fb59e">{'These links open' if len(links) > 1 else 'This link opens'}
+               just this report — {'they don' if len(links) > 1 else 'it doesn'}'t grant access to the workspace.</p>
             <p style="font-size:12px;color:#8fb59e">Want the full picture? Ask
                {who} for viewer access.</p>"""))
 
@@ -4940,6 +4953,15 @@ class ShareIn(BaseModel):
     recipients: list[ShareRecipient]
     message: str | None = None
     formats: list[str] | None = None       # informational (the issue has one format)
+    # §16: bundle other selected format issues into the SAME email so the recipient
+    # gets every download link at once (e.g. the PPTX alongside the primary PDF).
+    issue_ids: list[int] | None = None
+
+
+def _report_base():
+    """Absolute base URL of THIS backend (where /report serves shared artifacts)."""
+    return os.environ.get("BACKEND_URL",
+                          "https://web-production-0e3de.up.railway.app").rstrip("/")
 
 
 def _share_out(s):
@@ -4955,26 +4977,43 @@ def share_report(company_id: int, issue_id: int, body: ShareIn,
                  user: User = Depends(get_current_user), db=Depends(get_db)):
     """Share one issued artifact with named recipients. Each gets a scoped
     report_view token (that issue only, 30-day) emailed as a 'View report' link."""
-    issue = db.get(ReportIssue, issue_id)
-    if not issue or issue.company_id != company_id:
+    # §16: bundle the primary issue with any additional selected format issues so
+    # each recipient gets every download link in ONE email (siblings share a group_id).
+    ids, seen = [], set()
+    for iid in [issue_id] + list(body.issue_ids or []):
+        if iid not in seen:
+            seen.add(iid); ids.append(iid)
+    issues = []
+    for iid in ids:
+        iss = db.get(ReportIssue, iid)
+        if iss and iss.company_id == company_id:
+            issues.append(iss)
+    if not issues:
         raise HTTPException(404, "report not found")
     if not body.recipients:
         raise HTTPException(422, "at least one recipient is required")
     company_name = _company_name(db, company_id)
     out = []
     for r in body.recipients:
-        email = _norm(str(r.email)); jti = secrets.token_urlsafe(16)
-        share = ReportShare(issue_id=issue_id, company_id=company_id, jti=jti,
-                            recipient_email=email, recipient_name=(r.name or "").strip(),
-                            message=body.message, shared_by=user.id)
-        db.add(share); db.flush()
-        token = make_token(str(issue_id), purpose="report_view", ttl=30 * 86_400,
-                           jti=jti, issue_id=issue_id, company_id=company_id)
-        send_report_share(email, share.recipient_name, user.name, company_name,
-                          issue.report_type, issue.issued_at, token)
-        out.append(_share_out(share))
+        email = _norm(str(r.email))
+        group_id = secrets.token_urlsafe(12)
+        links = []
+        for iss in issues:
+            jti = secrets.token_urlsafe(16)
+            token = make_token(str(iss.id), purpose="report_view", ttl=30 * 86_400,
+                               jti=jti, issue_id=iss.id, company_id=company_id)
+            share = ReportShare(issue_id=iss.id, company_id=company_id, jti=jti,
+                                recipient_email=email, recipient_name=(r.name or "").strip(),
+                                message=body.message, shared_by=user.id,
+                                group_id=group_id, token=token, fmt=iss.format)
+            db.add(share); db.flush()
+            label = f"Download {'PDF report' if iss.format == 'pdf' else 'PPTX presentation'}"
+            links.append((label, f"{_app_url()}/report?token={token}"))
+            out.append(_share_out(share))
+        send_report_share(email, (r.name or "").strip(), user.name, company_name,
+                          issues[0].report_type, issues[0].issued_at, links)
     audit(db, user.id, "report_shared", "company", company_id,
-          detail=f"issue={issue_id} to {len(out)}")
+          detail=f"issues={[i.id for i in issues]} to {len(body.recipients)}")
     db.commit()
     return {"issue_id": issue_id, "count": len(out), "shares": out}
 
@@ -5003,6 +5042,53 @@ def void_report_share(company_id: int, share_id: int,
         audit(db, user.id, "report_share_voided", "company", company_id, detail=f"share={share_id}")
         db.commit()
     return {"ok": True, "share_id": share_id, "revoked": True}
+
+
+def _fmt_key(fmt, deck_type=None):
+    """Backend format → the frontend's ReportFormat enum."""
+    return "pdf" if fmt == "pdf" else "pptx_comprehensive"
+
+
+@router.get("/reports/shared")
+def shared_report_meta(token: str, db=Depends(get_db)):
+    """§16: JSON metadata the recipient landing (/report?token=) needs — the format,
+    a download URL, the company + sharer, expiry, and EVERY sibling format's download
+    link (multi-format shares). This is the endpoint the frontend was calling that
+    never existed — its absence made every valid link read 'no longer active'.
+    Soft-fails to {voided|expired} flags (never a 4xx) so the page shows the honest
+    reason rather than the generic catch."""
+    try:
+        payload = read_token(token, "report_view")
+    except pyjwt.PyJWTError:
+        return {"expired": True, "voided": False}
+    share = db.query(ReportShare).filter_by(jti=payload.get("jti")).first()
+    if not share or share.revoked_at is not None:
+        return {"voided": True, "expired": False}
+    issue = db.get(ReportIssue, share.issue_id)
+    if not issue or issue.id != payload.get("issue_id"):
+        return {"voided": True, "expired": False}
+    base = _report_base()
+    sharer = db.get(User, share.shared_by) if share.shared_by else None
+    exp = payload.get("exp")
+    siblings = []
+    if share.group_id:
+        for s in (db.query(ReportShare).filter_by(group_id=share.group_id)
+                    .order_by(ReportShare.id).all()):
+            if s.revoked_at is not None:
+                continue
+            iss = db.get(ReportIssue, s.issue_id)
+            if not iss:
+                continue
+            siblings.append({"format": _fmt_key(iss.format, iss.deck_type),
+                             "download_url": f"{base}/report?token={s.token or token}",
+                             "filename": iss.filename, "report_type": iss.report_type})
+    return {"format": _fmt_key(issue.format, issue.deck_type),
+            "download_url": f"{base}/report?token={token}",
+            "company_id": share.company_id, "company_name": _company_name(db, share.company_id),
+            "issued_at": issue.issued_at, "sharer_name": (sharer.name if sharer else None),
+            "expires_at": (datetime.utcfromtimestamp(exp).isoformat() if exp else None),
+            "report_type": issue.report_type, "filename": issue.filename,
+            "voided": False, "expired": False, "siblings": siblings}
 
 
 @router.get("/report")
@@ -7416,6 +7502,10 @@ def _ensure_ax_columns(engine):
     _add("ax_objectives", "department_id", "department_id INTEGER")
     _add("ax_kpi_plan", "department_id", "department_id INTEGER")
     _add("ax_initiatives", "department_id", "department_id INTEGER")
+    # §16: report-share bundling (multiple formats in one email)
+    _add("ax_report_shares", "group_id", "group_id VARCHAR(64)")
+    _add("ax_report_shares", "token", "token TEXT")
+    _add("ax_report_shares", "fmt", "fmt VARCHAR(8)")
     # 7f revision: deck variant on the issue registry
     _add("ax_report_issues", "deck_type", "deck_type VARCHAR(16)")
     _add("ax_report_issues", "builder_version", "builder_version VARCHAR(32)")
