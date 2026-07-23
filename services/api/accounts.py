@@ -2149,10 +2149,15 @@ def patch_initiative(company_id: int, iid: int, body: InitiativePatch,
     ini = db.get(Initiative, iid)
     if not ini or ini.company_id != company_id:
         raise HTTPException(404, "initiative not found")
-    for f in ("importance", "urgency", "current_priority"):
+    for f in ("importance", "urgency"):
         v = getattr(body, f)
         if v is not None and v not in _PRIORITY:
             raise HTTPException(422, f"{f} must be one of high|medium|low")
+    # current_priority also accepts 'unset' (unprioritized — back to the triage band),
+    # matching create; 'unset' is how the Reconsider door / U-band demotion round-trips.
+    if body.current_priority is not None and body.current_priority not in _PRIORITY \
+            and body.current_priority != "unset":
+        raise HTTPException(422, "current_priority must be one of high|medium|low|unset")
     old_priority, old_impact = ini.current_priority, ini.expected_impact_amount
     changed = []
     for f in ("title", "description", "importance", "urgency", "current_priority",
