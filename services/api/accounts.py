@@ -5435,6 +5435,11 @@ class ScoreItem(BaseModel):
 class ScoreIn(BaseModel):
     responses: list[ScoreItem]
     overall_comment: str | None = None
+    # §4i facilitated entry: an admin can record responses collected offline for
+    # distinct participants (a workshop / paper survey) — each under its own ref +
+    # department, so respondent counts and departmental slices are real.
+    participant_ref: str | None = None
+    department: str | None = None
 
 
 def _assess_current_framework(db, company_id):
@@ -5815,8 +5820,10 @@ def score_assessment_cycle(company_id: int, cid: int, body: ScoreIn,
         raise HTTPException(404, "cycle not found")
     if cyc.closed_at:
         raise HTTPException(409, "cycle is closed")
-    return _submit_responses(db, cyc, f"admin:{user.id}", body.responses, user.id,
-                             overall_comment=body.overall_comment)
+    ref = (body.participant_ref or "").strip() or f"admin:{user.id}"
+    return _submit_responses(db, cyc, ref, body.responses, user.id,
+                             overall_comment=body.overall_comment,
+                             department=(body.department or "").strip() or None)
 
 
 def _summary_rags(cei: dict, snapshot: dict | None) -> dict:
