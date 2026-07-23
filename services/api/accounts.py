@@ -2011,9 +2011,13 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
     prior = db.query(FinancialDataset).filter_by(
         enterprise_id=company_id, source="upload").all()
     version = max([(p.version or 1) for p in prior], default=0) + 1
-    for p in prior:
-        if p.is_active:
-            p.is_active = False
+    # §17: an upload becomes the SINGLE active dataset — deactivate every currently
+    # active dataset for this company REGARDLESS of source (a curated source='direct'
+    # showcase dataset otherwise stayed active and shadowed the upload, so objectives/
+    # KPIs resolved to the wrong dataset).
+    for p in db.query(FinancialDataset).filter_by(
+            enterprise_id=company_id, is_active=True).all():
+        p.is_active = False
     ds = FinancialDataset(
         tenant=ent.tenant, enterprise_id=company_id,
         name=data["company"].get("name") or ent.name,
