@@ -740,6 +740,16 @@ def _app_url():
     return os.environ.get("APP_URL", "https://axiomdynamics.app").rstrip("/")
 
 
+# Mobile store listings — placeholders until the apps are live. Both default to
+# a mobile landing page (never a dead store link); override via env once listed.
+def _app_store_url():
+    return os.environ.get("APP_STORE_URL", f"{_app_url()}/mobile")
+
+
+def _play_store_url():
+    return os.environ.get("PLAY_STORE_URL", f"{_app_url()}/mobile")
+
+
 def _notify_thread_reply(db, thread, post, author):
     """Owner-scoped thread-reply notification (7e-E). No-op until initiative
     leaders exist; extended in stage E. Never raises into the request path."""
@@ -858,13 +868,20 @@ def send_invite(to: str, name: str, company_name: str, token: str):
                <b>{company_name}</b>'s report on AXIOM. Welcome aboard.</p>
             <p><a href="{link}" style="background:#4ade80;color:#0d1b12;padding:12px 24px;
                border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">
-               Access {company_name} Report</a></p>
-            <p style="font-size:13px;color:#8fb59e;margin-bottom:4px">To view it:</p>
+               Set your password &amp; open {company_name}</a></p>
+            <p style="font-size:13px;color:#8fb59e;margin-bottom:4px">To get in:</p>
             <ol style="font-size:13px;color:#8fb59e;margin-top:0">
               <li>Click the button above.</li>
-              <li>Create a login with any email or Google — it only takes a moment.</li>
+              <li>Choose your own password — for security, no password is included in this email.</li>
               <li>You'll land right on {company_name}.</li>
             </ol>
+            <p style="font-size:13px;color:#e6f2ea;margin-bottom:6px">Prefer mobile? Get the AXIOM app and
+               <b>sign in with this same email and password</b>:</p>
+            <p style="margin-top:0">
+               <a href="{_app_store_url()}" style="color:#4ade80;font-size:13px;font-weight:600">App&nbsp;Store</a>
+               &nbsp;&middot;&nbsp;
+               <a href="{_play_store_url()}" style="color:#4ade80;font-size:13px;font-weight:600">Google&nbsp;Play</a>
+            </p>
             <p style="font-size:12px;color:#8fb59e">This invitation is valid for 7 days.</p>"""))
 
 
@@ -1893,6 +1910,104 @@ def redeem_invite_anonymous(body: AcceptInviteIn, db=Depends(get_db)):
             "company_id": company_id, "company_name": company_name,
             "user": {"id": shadow.id, "email": shadow.email,
                      "link_only": shadow.link_only}}
+
+
+class SetInvitePasswordIn(BaseModel):
+    token: str
+    password: str
+    name: str | None = None
+
+
+def _invite_from_token(db, token: str):
+    """Validate an invite JWT and return (payload, Invite, email). Raises the
+    standard 400s on any failure. Shared by the info + set-password endpoints."""
+    try:
+        payload = read_token(token, "invite")
+    except pyjwt.PyJWTError:
+        raise HTTPException(400, "This invitation link is invalid or has expired.")
+    jti = payload.get("jti")
+    company_id = payload.get("company_id")
+    if not jti or company_id is None:
+        raise HTTPException(400, "Malformed invitation.")
+    inv = db.query(Invite).filter_by(jti=jti).first()
+    if not inv:
+        raise HTTPException(400, "This invitation is no longer valid.")
+    email = (payload.get("invited_email") or inv.email or "").strip().lower()
+    return payload, inv, email
+
+
+@router.get("/access/invite/info")
+def invite_info(token: str, db=Depends(get_db)):
+    """Read-only invite preview for the set-password page: the invited email
+    (shown read-only), the company, and whether a real password-backed account
+    already owns this email (in which case the page routes to log-in instead)."""
+    payload, inv, email = _invite_from_token(db, token)
+    company_id = payload.get("company_id")
+    existing = db.query(User).filter_by(email=email).first()
+    has_password = bool(existing and existing.password_hash and not existing.link_only)
+    return {"email": email, "name": inv.name or payload.get("invited_name") or "",
+            "company_id": company_id, "company_name": _company_name(db, company_id),
+            "has_password": has_password}
+
+
+@router.post("/access/invite/set-password", status_code=201)
+def invite_set_password(body: SetInvitePasswordIn, db=Depends(get_db)):
+    """Set-your-password on first click — the account is provisioned by the
+    member choosing their own password. The invited email (carried in the signed
+    JWT) is proof of ownership, so no separate email-verification step is needed.
+    Activates the viewer membership, marks the invite single-use redeemed, and
+    returns a real login session. No credentials are ever sent by email."""
+    if len(body.password) < 8:
+        raise HTTPException(422, "Password must be at least 8 characters")
+    payload, inv, email = _invite_from_token(db, body.token)
+    company_id = payload.get("company_id")
+    company_name = _company_name(db, company_id)
+
+    existing = db.query(User).filter_by(email=email).first()
+    if existing and existing.password_hash and not existing.link_only:
+        # A real account already owns this email — never overwrite its password.
+        raise HTTPException(409, "An account with this email already exists — "
+                                 "please log in to accept this invitation.")
+
+    if existing:
+        # Claim a link_only / passwordless shadow in place: keep the user id and
+        # every existing membership, just set the password and promote to real.
+        existing.password_hash = hash_password(body.password)
+        existing.name = (body.name or "").strip() or inv.name or existing.name
+        existing.link_only = False
+        existing.email_verified = True
+        existing.status = "active"
+        user = existing
+    else:
+        user = User(email=email, password_hash=hash_password(body.password),
+                    name=(body.name or "").strip() or inv.name or "",
+                    email_verified=True, status="active")
+        db.add(user)
+        db.flush()
+
+    # An explicit admin invite is authorization to be active straight away.
+    m = _membership(db, user.id, company_id)
+    if m is None:
+        db.add(Membership(user_id=user.id, company_id=company_id, role="viewer",
+                          status="active", approved_at=datetime.utcnow()))
+    else:
+        m.status = "active"
+        if not m.approved_at:
+            m.approved_at = datetime.utcnow()
+
+    if inv.redeemed_at is None:
+        inv.redeemed_at = datetime.utcnow()
+        inv.redeemed_by = user.id
+    user.last_login_at = datetime.utcnow()
+    audit(db, user.id, "invite_password_set", "company", company_id, detail=email)
+    db.commit()
+
+    ttl = 30 * 86_400
+    return {"access_token": make_token(user.id, "access", ttl=ttl),
+            "token_type": "bearer", "expires_in": ttl,
+            "company_id": company_id, "company_name": company_name,
+            "user": {"id": user.id, "email": user.email, "name": user.name,
+                     "platform_role": user.platform_role}}
 
 
 @router.get("/companies/{company_id}/invites")
