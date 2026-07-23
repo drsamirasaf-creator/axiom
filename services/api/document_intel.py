@@ -36,6 +36,7 @@ from sqlalchemy import (Column, Integer, String, Text, DateTime, Boolean, JSON,
 
 from . import accounts as A
 from .accounts import (Base, get_db, require_company_member, require_company_admin,
+                       _summary_access,
                        get_current_user, audit, Document, Initiative,
                        RecommendationDisposition, _get_or_create_disp,
                        _active_company_dataset, _next_ref, _band_of, _ini_event,
@@ -613,7 +614,7 @@ def synthesis_endpoint(company_id: int, force: bool = False,
 
 
 @document_router.get("/companies/{company_id}/proposals")
-def list_proposals(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+def list_proposals(company_id: int, member=Depends(_summary_access), db=Depends(get_db)):
     """Every doc-derived proposal JOINED with its disposition state, so ONE call
     tells the review surface what's actioned. `counts` summarizes the queue."""
     props = db.query(DocumentProposal).filter_by(company_id=company_id).all()
