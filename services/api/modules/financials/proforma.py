@@ -31,22 +31,42 @@ def _r(x, nd=2):
     return None if x is None else round(float(x), nd)
 
 
+def _historicals_only(data: dict) -> dict:
+    """A view of the dataset with any committed pro forma stripped, so a trend
+    forecast can be re-generated from the historicals (mirrors the /forecast
+    endpoint helper — kept here to avoid a router import cycle)."""
+    hist = {str(y) for y in data["periods"]["historical"]}
+    out = dict(data)
+    out["periods"] = {"historical": list(data["periods"]["historical"]), "forecast": []}
+    for block in ("income_statement", "balance_sheet", "cash_flow"):
+        blk = data.get(block)
+        if isinstance(blk, dict):
+            out[block] = {key: {y: v for y, v in (series or {}).items() if y in hist}
+                          for key, series in blk.items()}
+    return out
+
+
 def stochastic_statements(data, n_paths: int = 3000, seed: int = SEED,
                           sigma_g: float = SIGMA_G, sigma_m: float = SIGMA_M,
                           horizon: int | None = None):
     import random as _random
     from . import engines as fin
 
-    mode = "proforma" if data["periods"].get("forecast") else "auto_forecast"
-    plan = data if mode == "proforma" else fin.auto_forecast(data, {})
+    if horizon and horizon > 0:
+        # Re-project from historicals to the requested horizon — the SAME path the
+        # /forecast chart uses (strip any committed pro forma, then auto_forecast) —
+        # so a 10-yr run yields 10-yr IS/BS/CF that MATCH the chart, not the dataset's
+        # fixed committed years.
+        base = _historicals_only(data) if (data.get("periods") or {}).get("forecast") else data
+        plan = fin.auto_forecast(base, {"horizon": horizon})
+        mode = "auto_forecast"
+    else:
+        mode = "proforma" if data["periods"].get("forecast") else "auto_forecast"
+        plan = data if mode == "proforma" else fin.auto_forecast(data, {})
     hist = plan["periods"]["historical"]
     fyears = plan["periods"]["forecast"]
     if not fyears:
         raise ValueError("no forecast years to project")
-    # Horizon: scope the statements to the first N forecast years so a 10-yr run
-    # yields 10-yr IS/BS/CF (capped at the years actually on file).
-    if horizon and horizon > 0:
-        fyears = fyears[:horizon]
     T = float(plan["company"]["tax_rate"])
     y0 = str(hist[-1])
     IS, BS, CF = plan["income_statement"], plan["balance_sheet"], plan["cash_flow"]

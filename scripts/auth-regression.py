@@ -41,15 +41,24 @@ TOKEN_KEY = "axiom.auth.token"          # localStorage key the app reads on boot
 NAV_SEL = "nav a, aside a, [role='navigation'] a, [class*='sidebar'] a"
 
 # ---- assertion contract (verbatim ledger nav shape) -------------------------
+# Sidebar shape after the 2026-07 restructure (nav consolidated into hub pages):
+#  - "Collaborative Assessment" folded into Stakeholder Engagement (Survey Feedback /
+#    Survey Design tabs); standalone "SWOT Analysis" + "Risk Analysis" merged into
+#    "SWOT & Risk Analysis"; "Valuation" -> "Enterprise Valuation"; "Executive Brief"
+#    folded into "Dashboard & Reports"; "Initiative Management" -> "Initiatives & Projects".
 EXPECTED_SIDEBAR_LINKS = [
-    "Dashboard & Reports", "Collaborative Assessment", "SWOT Analysis",
-    "Risk Analysis", "Valuation", "Business Planning & Forecasting",
-    "Enterprise Optimization", "Prescience AI", "Executive Brief",
-    "Initiatives & Projects", "Stakeholder Engagement", "Performance Monitoring",
+    "Dashboard & Reports", "Stakeholder Engagement", "SWOT & Risk Analysis",
+    "Enterprise Valuation", "Business Planning & Forecasting",
+    "Enterprise Optimization", "Prescience AI",
+    "Initiatives & Projects", "Performance Monitoring",
     "Course Workspace", "What is AXIOM?",
 ]
+# Routes that must REDIRECT (not appear as their own sidebar link). Folded hub
+# routes (/cei, /data-input, /financial-forecasts, /risk-analysis, /brief) still
+# render at their own URL — they're just no longer top-level sidebar links — so
+# they are asserted via EXPECTED_SIDEBAR_LINKS' absence, not here.
 FORBIDDEN_SIDEBAR_HREFS = {"/reports", "/benchmarking"}
-EXPECTED_GROUPS = ["ANALYZE", "STRATEGIZE", "EXECUTE & MONITOR"]
+EXPECTED_GROUPS = ["ANALYZE", "STRATEGIZE", "EXECUTE & MONITOR", "UTILITY"]
 
 # old path -> where it should land + a content needle proving the destination.
 # VERIFY-ON-FIRST-RUN (see module docstring): dest/needle are reconstructed.
@@ -70,8 +79,11 @@ ALIASES = {
 }
 # sub-tab presence: route -> at least one tab-like control must render
 SUBTABS = {
-    "/dashboard":     "tab",
-    "/risk-analysis": "tab",
+    "/dashboard":              "tab",
+    "/risk-analysis":          "tab",
+    # Restructure hub pages now carry cross-route tab bars (RouteTabs).
+    "/stakeholder-engagement": "tab",   # Survey Feedback / Survey Design / Participants / Discussion
+    "/swot":                   "tab",   # SWOT / Risk Analysis / Benchmarking
 }
 # The app's tabs are underline-style <button>s (Tailwind `border-b-2 -mb-px`,
 # active=border-brass / inactive=border-transparent) driving ?tab=/?section= —
