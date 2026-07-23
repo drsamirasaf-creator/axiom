@@ -1737,12 +1737,13 @@ def update_company_summary(company_id: int, body: CompanyPatchIn,
 @router.get("/access/showcase-companies")
 def showcase_companies(db=Depends(get_db)):
     """Anonymous source of truth for the demo companies — the frontend derives
-    their ids from here instead of hardcoding. Exactly the tenant='showcase'
-    enterprises (the flag, never fixed ids), ordered by id, each with a
-    short-lived presigned logo URL."""
+    their ids from here. §17: exactly ONE demo now (Meridian, id 20); Halcyon (21)
+    and Helios (22) are RETIRED from the public set (records kept for twin/comparison
+    lineage — see RETIRED_SHOWCASE_IDS — but never surfaced anonymously)."""
     from .modules.enterprise_state.models import Enterprise
     rows = (db.query(Enterprise).filter_by(tenant=SHOWCASE_TENANT)
               .order_by(Enterprise.id).all())
+    rows = [e for e in rows if e.id not in RETIRED_SHOWCASE_IDS]
     return {"companies": [{"company_id": e.id, "name": e.name,
                            "logo_url": _presign_logo(e)} for e in rows]}
 
@@ -2115,7 +2116,7 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
 
 
 @router.get("/companies/{company_id}/datasets")
-def company_datasets(company_id: int, member=Depends(require_company_member),
+def company_datasets(company_id: int, member=Depends(_summary_access),
                      db=Depends(get_db)):
     """Version history for this company's uploaded datasets (active flagged),
     each carrying §2 upload provenance (filename, uploader, template version,
@@ -2525,7 +2526,7 @@ def _active_objective_keys(db, company_id):
 
 @router.get("/companies/{company_id}/objectives")
 def company_objectives(company_id: int, department: int | None = None,
-                       member=Depends(require_company_member), db=Depends(get_db)):
+                       member=Depends(_summary_access), db=Depends(get_db)):
     """OKR objectives for the active dataset — grouped by horizon (Short→Medium→Long),
     priority-ordered, each with nested key_results (+ derived progress), an objective
     progress roll-up (mean of its KR progresses), and its linked-initiative summary
@@ -2710,7 +2711,7 @@ def _kpi_variance(actual, plan):
 
 @router.get("/companies/{company_id}/kpi-variance")
 def company_kpi_variance(company_id: int, department: int | None = None,
-                         member=Depends(require_company_member), db=Depends(get_db)):
+                         member=Depends(_summary_access), db=Depends(get_db)):
     """KPI plan-vs-actual from the active dataset: per KPI plan, actual, target,
     and variance (abs + %, favorable/unfavorable, actual vs plan). §4s: pass
     ?department=<id> to slice to one department. has_data:false when no active
@@ -2747,19 +2748,25 @@ class DepartmentIn(BaseModel):
 
 
 def _dept_counts(db, company_id):
-    """{department_id: {objectives, key_results, kpis, initiatives}} for the active
-    dataset (objectives/kpis are snapshot-scoped; initiatives are company-scoped)."""
+    """{department_id: {objectives, key_results, kpis, initiatives, rag{green,amber,red}}}
+    for the active dataset (objectives/kpis are snapshot-scoped; initiatives are
+    company-scoped). rag is the objective-status mix, for the org-chart card tint."""
     counts = {}
+    def slot(did):
+        return counts.setdefault(did, {"objectives": 0, "key_results": 0, "kpis": 0,
+                                       "initiatives": 0, "rag": {"green": 0, "amber": 0, "red": 0}})
     def bump(did, field):
         if did is None:
             return
-        counts.setdefault(did, {"objectives": 0, "key_results": 0, "kpis": 0, "initiatives": 0})[field] += 1
+        slot(did)[field] += 1
     ds = _active_company_dataset(db, company_id)
     if ds:
         objs = db.query(Objective).filter_by(company_id=company_id, dataset_id=ds.id).all()
         oid_dept = {}
         for o in objs:
             bump(o.department_id, "objectives")
+            if o.department_id is not None and o.status in ("Green", "Amber", "Red"):
+                slot(o.department_id)["rag"][o.status.lower()] += 1
             oid_dept[o.objective_id] = o.department_id
         for kr in db.query(KeyResult).filter_by(company_id=company_id, dataset_id=ds.id).all():
             bump(oid_dept.get(kr.objective_id), "key_results")   # KRs inherit their objective's department
@@ -2771,14 +2778,15 @@ def _dept_counts(db, company_id):
 
 
 @router.get("/companies/{company_id}/departments")
-def list_departments(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+def list_departments(company_id: int, member=Depends(_summary_access), db=Depends(get_db)):
     """The company org chart — flat list of departments (parent_id nests them) with
     the head as the §4s accountable decision-maker and per-department counts of the
     active dataset's objectives / key results / KPIs and the company's initiatives."""
     deps = (db.query(Department).filter_by(company_id=company_id)
               .order_by(Department.name).all())
     counts = _dept_counts(db, company_id)
-    zero = {"objectives": 0, "key_results": 0, "kpis": 0, "initiatives": 0}
+    zero = {"objectives": 0, "key_results": 0, "kpis": 0, "initiatives": 0,
+            "rag": {"green": 0, "amber": 0, "red": 0}}
     return {"company_id": company_id, "has_data": bool(deps),
             "departments": [{**_dept_out(d), "counts": counts.get(d.id, zero)} for d in deps]}
 
@@ -2873,7 +2881,7 @@ def delete_department(company_id: int, dept_id: int, reassign_to: int | None = N
 
 @router.get("/companies/{company_id}/departments/{dept_id}/okr-map")
 def department_okr_map(company_id: int, dept_id: int,
-                       member=Depends(require_company_member), db=Depends(get_db)):
+                       member=Depends(_summary_access), db=Depends(get_db)):
     """One department's whole picture: its objectives (+ KRs), initiatives, and KPIs
     for the active dataset — the clickable-node view behind the org chart."""
     dep = db.get(Department, dept_id)
@@ -2890,7 +2898,7 @@ def department_okr_map(company_id: int, dept_id: int,
 
 @router.get("/companies/{company_id}/people/detail")
 def owner_detail(company_id: int, name: str,
-                 member=Depends(require_company_member), db=Depends(get_db)):
+                 member=Depends(_summary_access), db=Depends(get_db)):
     """§7b Pass A — the person behind an owner/head mention. Owners are free-text
     names on objectives (CXO) and initiatives (owner_name); a head is a name on a
     department. This aggregates, by normalized name: the department(s) they head
@@ -3233,7 +3241,7 @@ def create_initiative(company_id: int, body: InitiativeCreate,
 
 @router.get("/companies/{company_id}/initiatives")
 def list_initiatives(company_id: int, department: int | None = None,
-                     member=Depends(require_company_member),
+                     member=Depends(_summary_access),
                      db=Depends(get_db)):
     q = db.query(Initiative).filter_by(company_id=company_id)
     if department is not None:                       # §4s slice
@@ -4690,6 +4698,9 @@ _REPORT_CTYPE = {"pdf": "application/pdf",
 # Bump when the deck/PDF builder changes so showcase artifacts regenerate.
 REPORT_BUILDER_VERSION = "ivory-decks-2"
 SHOWCASE_TENANT = "showcase"
+# §17: retired demo companies — records kept (twin/comparison lineage) but dropped
+# from the public showcase set + anonymous surfaces. Meridian (20) is the sole demo.
+RETIRED_SHOWCASE_IDS = {21, 22}
 
 
 def _is_showcase_company(db, company_id):
@@ -5828,7 +5839,7 @@ def _summary_rags(cei: dict, snapshot: dict | None) -> dict:
 
 @router.get("/companies/{company_id}/assessment/summary")
 def assessment_summary(company_id: int, department: int | None = None,
-                       member=Depends(require_company_member),
+                       member=Depends(_summary_access),
                        db=Depends(get_db)):
     """CEI, L1 subscores, dispersion, radar payload, and the revision-tagged
     trend series. §4s: pass ?department=<id> to focus one department's slice — it
@@ -5962,7 +5973,7 @@ READINESS_MAP = {
 
 
 @router.get("/companies/{company_id}/readiness/derived")
-def readiness_derived(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+def readiness_derived(company_id: int, member=Depends(_summary_access), db=Depends(get_db)):
     """The six Transformation Readiness dimensions computed from the latest cycle's
     assessment axis means (ratified §16.3 mapping), k-anonymity floor applied. Returns
     each dimension's derived value + the contributing axes (with weights, means, and
@@ -6487,7 +6498,7 @@ def get_assess_invite_link(company_id: int, invite_id: int,
 
 
 @router.get("/companies/{company_id}/assessment/current")
-def current_cycle_status(company_id: int, member=Depends(require_company_member),
+def current_cycle_status(company_id: int, member=Depends(_summary_access),
                          db=Depends(get_db)):
     """CE surface: the open cycle (if any) with invited/responded counts."""
     cyc = _current_open_cycle(db, company_id)
