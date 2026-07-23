@@ -5062,10 +5062,26 @@ def _report_base():
 
 
 def _share_out(s):
-    return {"share_id": s.id, "issue_id": s.issue_id, "recipient_email": s.recipient_email,
-            "recipient_name": s.recipient_name, "shared_by": s.shared_by,
-            "created_at": s.created_at, "revoked": s.revoked_at is not None,
-            "revoked_at": s.revoked_at}
+    # Self-describing so the sender-side "Shared links" list + post-send confirmation
+    # never dereference a missing field (§16 sender crash: the UI read s.formats.map
+    # on the old shape). Includes the copyable landing link.
+    fmt = getattr(s, "fmt", None)
+    formats = ["pptx_comprehensive" if fmt == "pptx" else "pdf"] if fmt else []
+    exp = None
+    try:
+        if s.created_at:
+            exp = (s.created_at + timedelta(days=30)).isoformat()
+    except Exception:
+        exp = None
+    tok = getattr(s, "token", None)
+    return {"id": s.id, "share_id": s.id, "issue_id": s.issue_id,
+            "recipient_email": s.recipient_email, "recipient_name": s.recipient_name,
+            "shared_by": s.shared_by, "created_at": s.created_at, "sent_at": s.created_at,
+            "revoked": s.revoked_at is not None, "voided": s.revoked_at is not None,
+            "revoked_at": s.revoked_at, "group_id": getattr(s, "group_id", None),
+            "fmt": fmt, "format": (formats[0] if formats else None), "formats": formats,
+            "expires_at": exp,
+            "download_url": (f"{_app_url()}/report?token={tok}" if tok else None)}
 
 
 @router.post("/companies/{company_id}/reports/{issue_id}/share", status_code=201)
