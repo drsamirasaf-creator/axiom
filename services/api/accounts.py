@@ -2833,6 +2833,47 @@ def department_okr_map(company_id: int, dept_id: int,
             "initiatives": initiatives.get("initiatives", [])}
 
 
+@router.get("/companies/{company_id}/people/detail")
+def owner_detail(company_id: int, name: str,
+                 member=Depends(require_company_member), db=Depends(get_db)):
+    """§7b Pass A — the person behind an owner/head mention. Owners are free-text
+    names on objectives (CXO) and initiatives (owner_name); a head is a name on a
+    department. This aggregates, by normalized name: the department(s) they head
+    (with title/email), the active-dataset objectives they own, and the initiatives
+    they lead — so every owner mention can link to a real detail view."""
+    key = (name or "").strip().lower()
+    if not key:
+        raise HTTPException(422, "name is required")
+    # department(s) headed by this person
+    heads = [d for d in db.query(Department).filter_by(company_id=company_id).all()
+             if (d.head_name or "").strip().lower() == key]
+    title = next((d.head_title for d in heads if d.head_title), None)
+    email = next((d.head_email for d in heads if d.head_email), None)
+    # objectives owned (active dataset)
+    ds = _active_company_dataset(db, company_id)
+    dept_idx = _dept_index(db, company_id)
+    objs = []
+    if ds:
+        for o in (db.query(Objective).filter_by(company_id=company_id, dataset_id=ds.id)
+                    .order_by(Objective.row_index).all()):
+            if (o.owner or "").strip().lower() == key:
+                objs.append({"objective_id": o.objective_id, "key": o.obj_key,
+                             "objective": o.objective, "priority": o.priority,
+                             "horizon": o.horizon, "status": o.status,
+                             "department": _dept_out(dept_idx.get(o.department_id))})
+    # initiatives led
+    inis = []
+    for i in db.query(Initiative).filter_by(company_id=company_id).all():
+        if (i.owner_name or "").strip().lower() == key:
+            inis.append({"id": i.id, "ref_code": i.ref_code, "title": i.title,
+                         "status": i.status, "current_priority": i.current_priority,
+                         "department": _dept_out(dept_idx.get(getattr(i, "department_id", None)))})
+    return {"company_id": company_id, "name": name.strip(), "title": title, "email": email,
+            "heads_departments": [_dept_out(d) for d in heads],
+            "objectives_owned": objs, "initiatives_led": inis,
+            "has_data": bool(heads or objs or inis)}
+
+
 def ingest_STD_DEPARTMENTS():
     from .modules.financials import ingest as _ing
     return set(_ing.STD_DEPARTMENTS)
