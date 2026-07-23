@@ -15,15 +15,15 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from . import engines
 from .templates import LABELS, COMPANY_ROWS, BLOCK_KEYS
 
-TEMPLATE_VERSION = "7L-v3"   # §4o: + Organizational Goals & KPI Plan-vs-Actual sheets
+TEMPLATE_VERSION = "7L-v4"   # §4o/v4.1: + Status column on Goals; clean canonical dropdowns
 
 # §4o strategy sheets — fixed-name, standard-independent. Builder + parser share
 # these so the dropdown values and the accepted enums can never drift apart.
 GOALS_SHEET = "Organizational Goals"
 KPI_SHEET = "KPI Plan vs Actual"
 GOAL_PRIORITIES = ("High", "Medium", "Low")
-GOAL_HORIZONS = ("Short", "Medium", "Long")          # canonical; labels carry the ≤/> guidance
-GOAL_HORIZON_LABELS = {"Short": "Short (≤12m)", "Medium": "Medium (≤36m)", "Long": "Long (>36m)"}
+GOAL_HORIZONS = ("Short", "Medium", "Long")          # canonical dropdown values; ranges live in the note
+GOAL_STATUSES = ("Red", "Amber", "Green")            # v4.1: optional current-health dropdown
 GOALS_HEADER_ROW = 2                                   # row 1 = guidance note; row 2 = headers; row 3+ = data
 GOALS_DATA_START = 3
 KPI_HEADER_ROW = 2
@@ -291,25 +291,27 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
         ws.protection.sheet = True
         ws.protection.password = _LOCK_PWD
 
-    # ---- (§4o) Organizational Goals ----
+    # ---- (§4o / v4.1) Organizational Goals ----
+    #   A Goal · B Priority · C Horizon · D Status · E Owner · F Target metric
     ws = wb.create_sheet(GOALS_SHEET)
-    ws["A1"] = ("Your organization's goals. List 10+ where you can — Priority and Horizon "
-                "are required; Owner and Target metric are optional.")
+    ws["A1"] = ("Your organization's goals. List 10+ where you can — Priority and Horizon are "
+                "required; Status, Owner and Target metric are optional. "
+                "Horizon: Short ≤12m · Medium ≤36m · Long >36m. Status: current health Red/Amber/Green.")
     ws["A1"].font = Font(italic=True, color="446655")
-    goal_hdrs = ["Goal", "Priority", "Horizon", "Owner (optional)", "Target metric (optional)"]
+    goal_hdrs = ["Goal", "Priority", "Horizon", "Status (optional)", "Owner (optional)", "Target metric (optional)"]
     for i, h in enumerate(goal_hdrs):
         _hdr(ws.cell(row=GOALS_HEADER_ROW, column=1 + i), h, bg=_INK, fg=_ACCENT)
     dv_prio = DataValidation(type="list", formula1='"%s"' % ",".join(GOAL_PRIORITIES), allow_blank=True)
-    dv_hor = DataValidation(type="list",
-                            formula1='"%s"' % ",".join(GOAL_HORIZON_LABELS[h] for h in GOAL_HORIZONS),
-                            allow_blank=True)
-    ws.add_data_validation(dv_prio); ws.add_data_validation(dv_hor)
+    dv_hor = DataValidation(type="list", formula1='"%s"' % ",".join(GOAL_HORIZONS), allow_blank=True)
+    dv_stat = DataValidation(type="list", formula1='"%s"' % ",".join(GOAL_STATUSES), allow_blank=True)
+    ws.add_data_validation(dv_prio); ws.add_data_validation(dv_hor); ws.add_data_validation(dv_stat)
     for r in range(GOALS_DATA_START, GOALS_DATA_START + 12):    # 12 blank input rows (guidance: 10+)
-        for c in range(1, 6):
+        for c in range(1, 7):
             _input(ws.cell(row=r, column=c)); ws.cell(row=r, column=c).number_format = "General"
         dv_prio.add(ws.cell(row=r, column=2))
         dv_hor.add(ws.cell(row=r, column=3))
-    for col, w in zip("ABCDE", (52, 14, 16, 22, 34)):
+        dv_stat.add(ws.cell(row=r, column=4))
+    for col, w in zip("ABCDEF", (50, 12, 12, 14, 20, 30)):
         ws.column_dimensions[col].width = w
     ws.protection.sheet = True; ws.protection.password = _LOCK_PWD
 
@@ -605,13 +607,24 @@ def _norm_priority(v):
 
 
 def _norm_horizon(v):
-    """Accept the dropdown label ('Short (≤12m)') or a bare word ('short')."""
+    """Accept the canonical word ('Short') or a legacy label ('Short (≤12m)')."""
     s = _cell_str(v).lower()
     first = s.split("(")[0].split()[0] if s else ""
     for h in GOAL_HORIZONS:
         if first == h.lower():
             return h
     return None
+
+
+def _norm_status(v):
+    """Optional RAG health — blank is allowed (returns None, no error)."""
+    s = _cell_str(v).lower()
+    if not s:
+        return None
+    for st in GOAL_STATUSES:
+        if s == st.lower():
+            return st
+    return "__invalid__"    # sentinel so the caller can flag a bad non-blank value
 
 
 def parse_goals_and_kpis(content: bytes):
@@ -640,8 +653,10 @@ def parse_goals_and_kpis(content: bytes):
                 continue                                       # key column blank → skip (gap/note tolerant)
             prio_raw = ws.cell(row=r, column=2).value
             hor_raw = ws.cell(row=r, column=3).value
+            stat_raw = ws.cell(row=r, column=4).value          # v4.1: optional Status (col D)
             priority = _norm_priority(prio_raw)
             horizon = _norm_horizon(hor_raw)
+            status = _norm_status(stat_raw)
             if priority is None:
                 errors.append({"sheet": GOALS_SHEET, "cell": f"B{r}",
                                "message": f"'{goal[:40]}' — Priority must be one of "
@@ -649,11 +664,16 @@ def parse_goals_and_kpis(content: bytes):
             if horizon is None:
                 errors.append({"sheet": GOALS_SHEET, "cell": f"C{r}",
                                "message": f"'{goal[:40]}' — Horizon must be one of "
-                                          f"Short (≤12m), Medium (≤36m), Long (>36m) "
-                                          f"(got '{_cell_str(hor_raw) or 'blank'}')."})
+                                          f"{', '.join(GOAL_HORIZONS)} (got '{_cell_str(hor_raw) or 'blank'}')."})
+            if status == "__invalid__":
+                errors.append({"sheet": GOALS_SHEET, "cell": f"D{r}",
+                               "message": f"'{goal[:40]}' — Status must be one of "
+                                          f"{', '.join(GOAL_STATUSES)} or blank (got '{_cell_str(stat_raw)}')."})
+                status = None
             goals.append({"row_index": r, "goal": goal, "priority": priority, "horizon": horizon,
-                          "owner": _cell_str(ws.cell(row=r, column=4).value) or None,
-                          "target_metric": _cell_str(ws.cell(row=r, column=5).value) or None})
+                          "status": status,
+                          "owner": _cell_str(ws.cell(row=r, column=5).value) or None,      # col E
+                          "target_metric": _cell_str(ws.cell(row=r, column=6).value) or None})  # col F
 
     if has_kpis:
         ws = wb[KPI_SHEET]

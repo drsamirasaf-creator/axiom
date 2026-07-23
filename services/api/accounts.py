@@ -506,9 +506,39 @@ class OrgGoal(Base):
     goal = Column(Text, nullable=False)
     priority = Column(String(8), nullable=False)       # High | Medium | Low
     horizon = Column(String(8), nullable=False)        # Short | Medium | Long
+    status = Column(String(8), nullable=True)          # v4.1: Red | Amber | Green (optional)
     owner = Column(String(160), nullable=True)
     target_metric = Column(Text, nullable=True)
     uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class GoalInitiativeLink(Base):
+    """§9 bridge: many-to-many between an organizational goal and an initiative.
+    Goals are snapshot-scoped (re-upload mints new goal rows), so a link is keyed
+    to the goal's STABLE identity — (company_id, goal_key) — not the row id, where
+    goal_key = a normalized hash of the goal text. Re-uploading the same goal text
+    keeps its links; initiatives are stable by id."""
+    __tablename__ = "ax_goal_initiative_links"
+    __table_args__ = (UniqueConstraint("company_id", "goal_key", "initiative_id", name="uq_goal_ini"),)
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    goal_key = Column(String(64), index=True, nullable=False)
+    initiative_id = Column(Integer, index=True, nullable=False)
+    created_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class DatasetPref(Base):
+    """Small per-dataset UI preference store (§9 item 4: forecast horizon memory).
+    Keyed by (company_id, dataset_id, key) so a remembered horizon is dataset-scoped."""
+    __tablename__ = "ax_dataset_prefs"
+    __table_args__ = (UniqueConstraint("company_id", "dataset_id", "key", name="uq_dataset_pref"),)
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    dataset_id = Column(Integer, index=True, nullable=False)
+    key = Column(String(40), nullable=False)
+    value = Column(String(120), nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 class KpiPlan(Base):
@@ -1885,6 +1915,7 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
     for g in goals:
         db.add(OrgGoal(company_id=company_id, dataset_id=ds.id, row_index=g["row_index"],
                        goal=g["goal"], priority=g["priority"], horizon=g["horizon"],
+                       status=g.get("status"),
                        owner=g["owner"], target_metric=g["target_metric"], uploaded_at=now))
     for k in kpis:
         db.add(KpiPlan(company_id=company_id, dataset_id=ds.id, row_index=k["row_index"],
@@ -1942,13 +1973,50 @@ _GOAL_PRIORITY_RANK = {"High": 0, "Medium": 1, "Low": 2}
 _GOAL_HORIZON_ORDER = ("Short", "Medium", "Long")
 
 
+def _goal_key(goal_text: str) -> str:
+    """Stable identity for a goal across dataset snapshots — a hash of the goal
+    text. Re-uploading the same goal text keeps its initiative links."""
+    import hashlib
+    return hashlib.sha1((goal_text or "").strip().lower().encode("utf-8")).hexdigest()[:32]
+
+
+def _ini_link_summary(ini):
+    ref = getattr(ini, "ref_code", None)
+    return {"id": ini.id, "ref": ref, "title": ini.title,
+            "status": ini.status, "rag": ini.rag, "type": getattr(ini, "type", "initiative"),
+            "current_priority": ini.current_priority}
+
+
+def _rag_mix(inis):
+    mix = {"green": 0, "amber": 0, "red": 0, "none": 0}
+    for i in inis:
+        r = (i.rag or "").lower()
+        mix[r if r in ("green", "amber", "red") else "none"] += 1
+    return mix
+
+
+def _goal_links_index(db, company_id):
+    """Map goal_key -> [Initiative] for this company's active links (one query pair)."""
+    links = db.query(GoalInitiativeLink).filter_by(company_id=company_id).all()
+    if not links:
+        return {}
+    ini_ids = {l.initiative_id for l in links}
+    inis = {i.id: i for i in db.query(Initiative).filter(Initiative.id.in_(ini_ids)).all()}
+    out = {}
+    for l in links:
+        ini = inis.get(l.initiative_id)
+        if ini and ini.company_id == company_id:
+            out.setdefault(l.goal_key, []).append(ini)
+    return out
+
+
 @router.get("/companies/{company_id}/goals")
 def company_goals(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
     """Organizational goals from the active dataset, grouped by horizon (Short →
-    Medium → Long) and ordered by priority (High → Low) within each group.
-    has_data:false when no active dataset or the upload had no Goals sheet
-    (older templates degrade honestly)."""
-    from .modules.financials.models import FinancialDataset
+    Medium → Long) and ordered by priority (High → Low) within each group. Each
+    goal carries its optional RAG `status`, a stable `key`, and a linked-initiative
+    summary (count + rag_mix + list). has_data:false when no active dataset or the
+    upload had no Goals sheet (older templates degrade honestly)."""
     ds = _active_company_dataset(db, company_id)
     empty = {"company_id": company_id, "dataset_id": (ds.id if ds else None),
              "has_data": False, "goals": [], "goals_by_horizon": {h: [] for h in _GOAL_HORIZON_ORDER}}
@@ -1959,16 +2027,152 @@ def company_goals(company_id: int, member=Depends(require_company_member), db=De
         return empty
     rows.sort(key=lambda g: (_GOAL_HORIZON_ORDER.index(g.horizon) if g.horizon in _GOAL_HORIZON_ORDER else 99,
                              _GOAL_PRIORITY_RANK.get(g.priority, 9), g.row_index))
+    links = _goal_links_index(db, company_id)
     def _out(g):
-        return {"id": g.id, "goal": g.goal, "priority": g.priority, "horizon": g.horizon,
-                "owner": g.owner, "target_metric": g.target_metric}
+        key = _goal_key(g.goal)
+        linked = links.get(key, [])
+        return {"id": g.id, "key": key, "goal": g.goal, "priority": g.priority,
+                "horizon": g.horizon, "status": g.status,
+                "owner": g.owner, "target_metric": g.target_metric,
+                "linked_count": len(linked), "rag_mix": _rag_mix(linked),
+                "linked_initiatives": [_ini_link_summary(i) for i in linked]}
     by_h = {h: [] for h in _GOAL_HORIZON_ORDER}
-    for g in rows:
-        by_h.setdefault(g.horizon or "Short", []).append(_out(g))
+    out_rows = [_out(g) for g in rows]
+    for o in out_rows:
+        by_h.setdefault(o["horizon"] or "Short", []).append(o)
     return {"company_id": company_id, "dataset_id": ds.id,
             "uploaded_at": max((g.uploaded_at for g in rows), default=None),
             "has_data": True, "count": len(rows),
-            "goals": [_out(g) for g in rows], "goals_by_horizon": by_h}
+            "goals": out_rows, "goals_by_horizon": by_h}
+
+
+class GoalLinkIn(BaseModel):
+    initiative_ids: list[int] = []
+
+
+class InitiativeGoalsIn(BaseModel):
+    goal_keys: list[str] = []
+
+
+def _active_goal_keys(db, company_id):
+    """The set of goal_keys present in the company's ACTIVE dataset (link targets
+    must reference a real current goal)."""
+    ds = _active_company_dataset(db, company_id)
+    if not ds:
+        return set(), None
+    keys = {_goal_key(g.goal) for g in
+            db.query(OrgGoal).filter_by(company_id=company_id, dataset_id=ds.id).all()}
+    return keys, ds
+
+
+@router.put("/companies/{company_id}/goals/{goal_key}/initiatives")
+def set_goal_initiatives(company_id: int, goal_key: str, body: GoalLinkIn,
+                         member=Depends(require_company_admin),
+                         user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Replace the set of initiatives that serve this goal (multi-select from the
+    goal side). Validates the goal exists in the active dataset and each initiative
+    belongs to the company."""
+    keys, _ = _active_goal_keys(db, company_id)
+    if goal_key not in keys:
+        raise HTTPException(404, "goal not found in the active dataset")
+    valid = {i.id for i in db.query(Initiative).filter_by(company_id=company_id).all()}
+    want = {iid for iid in body.initiative_ids if iid in valid}
+    have = {l.initiative_id: l for l in
+            db.query(GoalInitiativeLink).filter_by(company_id=company_id, goal_key=goal_key).all()}
+    for iid in want - set(have):
+        db.add(GoalInitiativeLink(company_id=company_id, goal_key=goal_key,
+                                  initiative_id=iid, created_by=user.id))
+    for iid in set(have) - want:
+        db.delete(have[iid])
+    audit(db, user.id, "goal_links_set", "company", company_id,
+          detail=f"goal {goal_key[:8]} -> {sorted(want)}")
+    db.commit()
+    return {"ok": True, "goal_key": goal_key, "initiative_ids": sorted(want)}
+
+
+@router.put("/companies/{company_id}/initiatives/{iid}/goals")
+def set_initiative_goals(company_id: int, iid: int, body: InitiativeGoalsIn,
+                         member=Depends(require_company_admin),
+                         user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Replace the set of goals this initiative serves (multi-select from the
+    initiative side / adopt dialog)."""
+    ini = db.get(Initiative, iid)
+    if not ini or ini.company_id != company_id:
+        raise HTTPException(404, "initiative not found")
+    keys, _ = _active_goal_keys(db, company_id)
+    want = {k for k in body.goal_keys if k in keys}
+    have = {l.goal_key: l for l in
+            db.query(GoalInitiativeLink).filter_by(company_id=company_id, initiative_id=iid).all()}
+    for k in want - set(have):
+        db.add(GoalInitiativeLink(company_id=company_id, goal_key=k,
+                                  initiative_id=iid, created_by=user.id))
+    for k in set(have) - want:
+        db.delete(have[k])
+    audit(db, user.id, "initiative_goals_set", "company", company_id,
+          detail=f"initiative {iid} -> {len(want)} goals")
+    db.commit()
+    return {"ok": True, "initiative_id": iid, "goal_keys": sorted(want)}
+
+
+def _initiative_served_goals(db, company_id, iid):
+    """Goal summaries (from the active dataset) that this initiative serves."""
+    keys = {l.goal_key for l in
+            db.query(GoalInitiativeLink).filter_by(company_id=company_id, initiative_id=iid).all()}
+    if not keys:
+        return []
+    ds = _active_company_dataset(db, company_id)
+    if not ds:
+        return []
+    out = []
+    for g in db.query(OrgGoal).filter_by(company_id=company_id, dataset_id=ds.id).all():
+        k = _goal_key(g.goal)
+        if k in keys:
+            out.append({"key": k, "goal": g.goal, "priority": g.priority,
+                        "horizon": g.horizon, "status": g.status})
+    return out
+
+
+@router.get("/companies/{company_id}/initiatives/{iid}/goals")
+def get_initiative_goals(company_id: int, iid: int,
+                         member=Depends(require_company_member), db=Depends(get_db)):
+    ini = db.get(Initiative, iid)
+    if not ini or ini.company_id != company_id:
+        raise HTTPException(404, "initiative not found")
+    return {"initiative_id": iid, "serves_goals": _initiative_served_goals(db, company_id, iid)}
+
+
+class HorizonPrefIn(BaseModel):
+    horizon: int
+
+
+@router.get("/companies/{company_id}/datasets/{dataset_id}/forecast-horizon")
+def get_forecast_horizon(company_id: int, dataset_id: int,
+                         member=Depends(require_company_member), db=Depends(get_db)):
+    """§9 item 4: the last-used forecast horizon for this dataset (null if unset)."""
+    p = (db.query(DatasetPref)
+           .filter_by(company_id=company_id, dataset_id=dataset_id, key="forecast_horizon").first())
+    val = None
+    if p and p.value is not None:
+        try:
+            val = int(p.value)
+        except (TypeError, ValueError):
+            val = None
+    return {"company_id": company_id, "dataset_id": dataset_id, "horizon": val}
+
+
+@router.put("/companies/{company_id}/datasets/{dataset_id}/forecast-horizon")
+def set_forecast_horizon(company_id: int, dataset_id: int, body: HorizonPrefIn,
+                         member=Depends(require_company_member),
+                         user: User = Depends(get_current_user), db=Depends(get_db)):
+    h = max(1, min(50, int(body.horizon)))
+    p = (db.query(DatasetPref)
+           .filter_by(company_id=company_id, dataset_id=dataset_id, key="forecast_horizon").first())
+    if not p:
+        p = DatasetPref(company_id=company_id, dataset_id=dataset_id, key="forecast_horizon")
+        db.add(p)
+    p.value = str(h); p.updated_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "company_id": company_id, "dataset_id": dataset_id, "horizon": h}
 
 
 def _kpi_variance(actual, plan):
@@ -2293,7 +2497,28 @@ def list_initiatives(company_id: int, member=Depends(require_company_member),
                 0 if i.status in _ACTIVE_STATUSES else 1,    # active before terminal
                 seq(i.ref_code))
     rows.sort(key=key)
-    return {"company_id": company_id, "initiatives": [_ini_out(i) for i in rows]}
+    # §9 bridge: attach the goals each initiative serves (built once). Active-dataset
+    # goals only; goal_key ties links to stable goal identity across re-uploads.
+    served = {}
+    links = db.query(GoalInitiativeLink).filter_by(company_id=company_id).all()
+    if links:
+        ds = _active_company_dataset(db, company_id)
+        key2goal = {}
+        if ds:
+            for g in db.query(OrgGoal).filter_by(company_id=company_id, dataset_id=ds.id).all():
+                key2goal[_goal_key(g.goal)] = {"key": _goal_key(g.goal), "goal": g.goal,
+                                               "priority": g.priority, "horizon": g.horizon,
+                                               "status": g.status}
+        for l in links:
+            gs = key2goal.get(l.goal_key)
+            if gs:
+                served.setdefault(l.initiative_id, []).append(gs)
+    out = []
+    for i in rows:
+        d = _ini_out(i)
+        d["serves_goals"] = served.get(i.id, [])
+        out.append(d)
+    return {"company_id": company_id, "initiatives": out}
 
 
 @router.patch("/companies/{company_id}/initiatives/{iid}")
@@ -6518,6 +6743,7 @@ def _ensure_ax_columns(engine):
     # invite department. Legacy cycles get depth 'standard' (read as standard).
     _add("ax_assessment_cycles", "depth", "depth VARCHAR(16) NOT NULL DEFAULT 'standard'")
     _add("ax_assessment_cycles", "name", "name VARCHAR(120)")   # custody-5 item 6: optional cycle name
+    _add("ax_org_goals", "status", "status VARCHAR(8)")         # §9 v4.1: optional goal RAG status
     _add("ax_assessment_responses", "abstained", "abstained BOOLEAN NOT NULL DEFAULT false")
     _add("ax_assessment_responses", "department", "department VARCHAR(80)")
     _add("ax_assessment_invites", "department", "department VARCHAR(80)")
