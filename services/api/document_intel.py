@@ -108,6 +108,9 @@ class DocumentProposal(Base):
     description = Column(Text, nullable=True)
     citations = Column(JSON, nullable=True)              # list of [doc.slug.pN] tags
     docset_sig = Column(String(64), nullable=True)
+    # §17.2 provenance: 'synthesis' (live AI output) vs 'seed' (seeded demo content).
+    # Seeded rows are honestly flagged so they're never mistaken for live synthesis.
+    source = Column(String(16), default="synthesis", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -557,6 +560,7 @@ def _proposal_out(db, company_id, p):
     return {"fingerprint": p.fingerprint, "kind": p.kind, "quadrant": p.quadrant,
             "title": p.title, "description": p.description, "citations": p.citations or [],
             "created_at": p.created_at,
+            "source": getattr(p, "source", "synthesis"),   # §17.2 provenance
             "status": status,
             "actioned": bool(disp and status not in ("none", None)),
             "initiative_id": disp.initiative_id if disp else None,
@@ -622,6 +626,47 @@ def list_proposals(company_id: int, member=Depends(require_company_member), db=D
                        "actioned": sum(1 for o in out if o["actioned"]),
                        "pending": sum(1 for o in out if not o["actioned"]),
                        "by_status": by_status}}
+
+
+class SeedProposalIn(BaseModel):
+    kind: str                          # swot | recommendation
+    quadrant: str | None = None        # strengths|weaknesses|opportunities|threats (swot)
+    title: str
+    description: str = ""
+    pages: list[int] = []              # real document pages to cite → doc.<slug>.pN
+
+
+class SeedProposalsIn(BaseModel):
+    proposals: list[SeedProposalIn]
+
+
+@document_router.post("/companies/{company_id}/documents/{doc_id}/proposals/seed", status_code=201)
+def seed_document_proposals(company_id: int, doc_id: int, body: SeedProposalsIn,
+                            member=Depends(require_company_admin),
+                            user=Depends(get_current_user), db=Depends(get_db)):
+    """§17.2 — insert doc-derived proposals against a REAL extracted document, with
+    citations pointing at real pages (doc.<slug>.pN) and source='seed' so they are
+    never mistaken for live synthesis. They adopt through the normal fingerprint door."""
+    dt = db.query(DocumentText).filter_by(company_id=company_id, document_id=doc_id).first()
+    if not dt or not dt.extracted:
+        raise HTTPException(409, "document not extracted — upload + extract first")
+    _, valid_tags, _ = _assemble_docset(db, company_id)
+    slug = dt.slug
+    made = []
+    for pr in body.proposals:
+        cites = _valid_citations([f"doc.{slug}.p{p}" for p in (pr.pages or [1])], valid_tags)
+        fp = _fingerprint(company_id, pr.kind, pr.quadrant, pr.title)
+        p = db.query(DocumentProposal).filter_by(company_id=company_id, fingerprint=fp).first()
+        if p is None:
+            p = DocumentProposal(company_id=company_id, fingerprint=fp, kind=pr.kind,
+                                 quadrant=pr.quadrant, title=pr.title[:300],
+                                 description=pr.description, citations=cites, source="seed")
+            db.add(p)
+        else:
+            p.citations, p.source = cites, "seed"
+        made.append({"fingerprint": fp, "kind": pr.kind, "citations": cites})
+    db.commit()
+    return {"ok": True, "seeded": len(made), "proposals": made}
 
 
 class AdoptDetailIn(BaseModel):

@@ -7699,6 +7699,7 @@ def _ensure_ax_columns(engine):
     _add("ax_kpi_plan", "department_id", "department_id INTEGER")
     _add("ax_initiatives", "department_id", "department_id INTEGER")
     _add("ax_objectives", "owner_person_name", "owner_person_name VARCHAR(160)")
+    _add("ax_document_proposals", "source", "source VARCHAR(16) NOT NULL DEFAULT 'synthesis'")
     # §16: report-share bundling (multiple formats in one email)
     _add("ax_report_shares", "group_id", "group_id VARCHAR(64)")
     _add("ax_report_shares", "token", "token TEXT")
