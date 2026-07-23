@@ -84,6 +84,7 @@ SUBTABS = {
     # Restructure hub pages now carry cross-route tab bars (RouteTabs).
     "/stakeholder-engagement": "tab",   # Survey Feedback / Survey Design / Participants / Discussion
     "/swot":                   "tab",   # SWOT / Risk Analysis / Benchmarking
+    "/initiatives":            "tab",   # Initiatives & Projects Underway / Recommendations & Proposals
 }
 # The app's tabs are underline-style <button>s (Tailwind `border-b-2 -mb-px`,
 # active=border-brass / inactive=border-transparent) driving ?tab=/?section= —
