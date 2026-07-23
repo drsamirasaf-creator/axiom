@@ -37,7 +37,7 @@ KR_DATA_START = 3
 KPI_HEADER_ROW = 2
 KPI_DATA_START = 3
 KPI_SEED_ROWS = ("Revenue growth %", "EBITDA margin %", "Operating margin %", "Market share %")
-MIN_KRS_PER_OBJECTIVE = 3                              # guidance — parser warns, never blocks
+MIN_KRS_PER_OBJECTIVE = 1                              # hard rule: ≥1 KR per objective (guidance — warns, never blocks)
 ROW_CAPACITY = 200                                    # v5.1: pre-formatted input rows per strategy sheet
 OBJ_ID_MAX = 200                                      # Objective IDs pre-seeded O1…O200
 # statement_units -> factor that normalizes raw figures to the canonical internal
@@ -338,7 +338,7 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     #   A Objective ID · B Key Result · C Unit · D Baseline · E Target · F Current · G Due date
     ws = wb.create_sheet(KR_SHEET)
     ws["A1"] = ("Key Results (the KR in OKR) — measurable outcomes for each objective. Aim for "
-                "≥3 per objective. Objective ID must match a row on the Objectives sheet. "
+                "At least 1 Key Result per objective (more is better). Objective ID must match a row on the Objectives sheet. "
                 "Progress = (Current − Baseline) ÷ (Target − Baseline). Up to 200 rows.")
     ws["A1"].font = Font(italic=True, color="446655")
     kr_hdrs = ["Objective ID", "Key Result", "Unit", "Baseline", "Target", "Current", "Due date"]
@@ -775,7 +775,7 @@ def parse_okr_and_kpis(content: bytes):
                                 "current": _num(ws.cell(row=r, column=6).value, "F", r, kr + " Current"),
                                 "due_date": _cell_str(ws.cell(row=r, column=7).value) or None})
 
-    # ≥3 KRs per objective — WARN only (never blocks)
+    # ≥1 KR per objective (hard rule) — WARN only, never blocks
     if objectives:
         cnt = {}
         for kr in key_results:
