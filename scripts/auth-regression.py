@@ -234,28 +234,37 @@ def _find_control(page, tag, txt):
         return None
 
 
-def interaction_sweep(page, rec, sink, path, tick, cap=16):
-    """Click every interactive control on `path` (bounded to `cap`) in the current
-    (authed) session. Returns a list of (route, control, outcome) findings — only
-    non-OK outcomes are recorded; a clean control is silent. State is recovered by
-    re-navigating whenever an error surface or an off-route navigation is seen."""
-    findings, acted = [], 0
+def _scroll_stabilize(page, max_rounds=6, step_ms=350):
+    """Improvements 2 & 3: scroll the page down in steps so lazily-rendered and
+    below-the-fold controls materialize, waiting until the interactive-control count
+    stops growing, then return to the top so enumeration order is deterministic.
+    Without this the snapshot only ever saw the above-fold controls."""
+    prev = -1
     try:
-        page.goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
-        page.wait_for_timeout(SETTLE_MS)
-    except Exception as e:
-        return [(path, "(load)", f"nav error {str(e)[:50]}")], 0
-    tick()
-    if _err_surface(page):
-        return [(path, "(initial render)", "ERROR SURFACE on load")], 1
+        for _ in range(max_rounds):
+            cnt = page.locator(INTERACTIVE_SEL).count()
+            if cnt == prev:
+                break
+            prev = cnt
+            page.evaluate("window.scrollBy(0, Math.max(700, document.body.scrollHeight))")
+            page.wait_for_timeout(step_ms)
+        page.evaluate("window.scrollTo(0, 0)")
+        page.wait_for_timeout(150)
+    except Exception:
+        pass
 
-    # snapshot visible, de-duped control labels first (clicking mutates the DOM)
-    labels, seen = [], set()
+
+def _enumerate(page, cap, seen):
+    """Snapshot de-duped VISIBLE control labels (including the below-fold ones that
+    _scroll_stabilize has just materialized) whose (tag, label) key is not already
+    in `seen`. Mutates `seen`; returns a list of (tag, txt)."""
+    _scroll_stabilize(page)
+    out = []
     try:
         loc = page.locator(INTERACTIVE_SEL)
-        scan = min(loc.count(), cap * 5)
+        scan = min(loc.count(), cap * 6)
         for i in range(scan):
-            if len(labels) >= cap:
+            if len(out) >= cap:
                 break
             el = loc.nth(i)
             try:
@@ -268,12 +277,56 @@ def interaction_sweep(page, rec, sink, path, tick, cap=16):
             if key in seen:
                 continue
             seen.add(key)
-            labels.append((tag, txt))
+            out.append((tag, txt))
     except Exception:
         pass
+    return out
 
-    prev = None                 # label of the control clicked last iteration
-    for tag, txt in labels:
+
+def _fire(page, el):
+    """Force-click with a DOM-dispatch fallback — the app re-renders continuously
+    (persistent connection) so Playwright's actionability wait never settles.
+    Returns (clicked: bool, err: str|None)."""
+    try:
+        el.click(timeout=1200, force=True)
+        return True, None
+    except Exception:
+        try:
+            el.dispatch_event("click")
+            return True, None
+        except Exception as e:
+            return False, str(e).split(chr(10), 1)[0][:40]
+
+
+def interaction_sweep(page, rec, sink, path, cap=16):
+    """Click every interactive control on `path` (bounded to `cap` clicks) in the
+    current (authed) session. Returns (findings, acted). Only non-OK outcomes are
+    recorded; a clean control is silent. State is recovered by re-navigating when an
+    error surface or an off-route navigation is seen.
+
+    Improvement 1: after any click that GROWS the control count (a tab / sub-tab /
+    expander revealing new controls), re-enumerate — scroll-stabilized — and queue
+    the novel controls so route-specific controls behind tabs are actually reached.
+
+    NOTE: this no longer recycles the browser mid-sweep. The old version called
+    tick() after every click; tick() relaunches the whole browser every N navs,
+    which CLOSED the page underneath the sweep after ~6 clicks (that was the
+    undersampling). Recycling now happens only at route boundaries in run_mode."""
+    findings, acted = [], 0
+    try:
+        page.goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
+        page.wait_for_timeout(SETTLE_MS)
+    except Exception as e:
+        return [(path, "(load)", f"nav error {str(e)[:50]}")], 0
+    if _err_surface(page):
+        return [(path, "(initial render)", "ERROR SURFACE on load")], 1
+
+    seen = set()
+    queue = _enumerate(page, cap, seen)     # improvement 2/3: scroll-stabilized snapshot
+    prev = None                             # label of the control clicked last iteration
+    idx = 0
+    while idx < len(queue) and acted < cap:
+        tag, txt = queue[idx]; idx += 1
         # a late-rendering (debounced-async) crash from the PREVIOUS click surfaces
         # here — attribute it to that control before recovering.
         if _err_surface(page):
@@ -287,7 +340,6 @@ def interaction_sweep(page, rec, sink, path, tick, cap=16):
         prev = f"{tag} · {txt}"
         sink.clear()
         before = len(rec.calls)
-        cur = page.url
         el = _find_control(page, tag, txt)
         if el is None:
             continue
@@ -317,23 +369,13 @@ def interaction_sweep(page, rec, sink, path, tick, cap=16):
                 except Exception:
                     pass
             continue
-        # buttons / tabs / expanders / links. The app re-renders continuously
-        # (persistent connection), so Playwright's actionability wait never settles
-        # → use force + a DOM dispatch fallback to actually fire the handler.
-        clicked = False
-        try:
-            el.click(timeout=1200, force=True)
-            clicked = True
-        except Exception:
-            try:
-                el.dispatch_event("click")
-                clicked = True
-            except Exception as e:
-                findings.append((path, f"{tag} · {txt}", f"click failed: {str(e).split(chr(10),1)[0][:40]}"))
+        # buttons / tabs / expanders / links
+        n_before = page.locator(INTERACTIVE_SEL).count()
+        clicked, cerr = _fire(page, el)
         if not clicked:
+            findings.append((path, f"{tag} · {txt}", f"click failed: {cerr}"))
             continue
         page.wait_for_timeout(1200)     # allow debounced-async flows (compare, fetch, re-render) to fire
-        tick()
         if _err_surface(page):
             findings.append((path, f"{tag} · {txt}", "ERROR BOUNDARY"))
             try:
@@ -354,6 +396,115 @@ def interaction_sweep(page, rec, sink, path, tick, cap=16):
                 page.wait_for_timeout(900)
             except Exception:
                 pass
+        else:
+            # improvement 1: a tab / sub-tab / expander revealed new controls —
+            # re-enumerate (scroll-stabilized) and queue the novel ones.
+            try:
+                if page.locator(INTERACTIVE_SEL).count() > n_before and len(queue) < cap * 4:
+                    queue.extend(_enumerate(page, cap, seen))
+            except Exception:
+                pass
+    return findings, acted
+
+
+# ---- explicit multi-step flows (improvement 4) ------------------------------
+# Single clicks miss crashes that only appear after a SEQUENCE (select a mode, then
+# the auto-recompute renders a null-fed gauge). Each flow navigates to its page and
+# drives an ordered sequence of "find a control by any of these labels → fire it →
+# settle → check for an error surface / 5xx / console error". A non-optional step
+# whose control is not found is itself a finding (the flow could not be driven).
+# The FIRST flow is the success criterion: benchmarking → Custom peer set, which on
+# a pre-fix bundle renders BpiGauge over a null benchmark_performance_index → crash.
+FLOWS = [
+    {"name": "benchmarking → Custom peer set",
+     "path": "/risk-analysis?section=benchmarking", "settle": 2400,
+     "steps": [
+         {"any_text": ["Custom peer set", "Custom peer", "Custom"],
+          "note": "select Custom peer set (empty peers → null BPI → BpiGauge)"},
+     ]},
+    {"name": "valuation → Run",
+     "path": "/valuation", "settle": 2600,
+     "steps": [
+         {"any_text": ["Run valuation", "Re-run valuation", "Run the valuation"],
+          "note": "primary Run"},
+     ]},
+    {"name": "initiatives → adopt dialog open/cancel",
+     "path": "/initiatives", "settle": 1600,
+     "steps": [
+         {"any_text": ["Adopt"], "note": "open adopt dialog"},
+         {"any_text": ["Cancel", "Close", "Dismiss"], "note": "cancel adopt dialog", "optional": True},
+     ]},
+    {"name": "assess → item + Save & Exit",
+     "path": "/cei", "settle": 1800,
+     "steps": [
+         {"any_text": ["Start assessment", "Take assessment", "Continue", "Resume", "Start"],
+          "note": "enter assessment take flow", "optional": True},
+         {"any_text": ["Save & Exit", "Save and Exit", "Save & exit", "Save"],
+          "note": "Save & Exit", "optional": True},
+     ]},
+]
+
+
+def _find_by_texts(page, texts):
+    """Return (locator, matched_text) for the first VISIBLE button/role=button/link
+    whose text contains any of `texts`, else (None, None)."""
+    for t in texts:
+        for sel in (f"button:has-text({json.dumps(t)})",
+                    f"[role='button']:has-text({json.dumps(t)})",
+                    f"a:has-text({json.dumps(t)})"):
+            try:
+                loc = page.locator(sel)
+                for i in range(min(loc.count(), 6)):
+                    c = loc.nth(i)
+                    try:
+                        if c.is_visible():
+                            return c, t
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+    return None, None
+
+
+def flow_sweep(page, rec, sink):
+    """Drive the explicit FLOWS end-to-end (improvement 4). Report-only; returns
+    (findings, acted). Does not recycle — call at a route boundary in run_mode."""
+    findings, acted = [], 0
+    for flow in FLOWS:
+        name, path = flow["name"], flow["path"]
+        settle = flow.get("settle", SETTLE_MS)
+        label = f"flow: {name}"
+        try:
+            page.goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
+            page.wait_for_timeout(settle)
+        except Exception as e:
+            findings.append((label, "(load)", f"nav error {str(e)[:40]}"))
+            continue
+        if _err_surface(page):
+            findings.append((label, "(initial render)", "ERROR SURFACE on load"))
+            continue
+        for step in flow["steps"]:
+            sink.clear()
+            before = len(rec.calls)
+            el, hit = _find_by_texts(page, step["any_text"])
+            if el is None:
+                if not step.get("optional"):
+                    findings.append((label, step["note"], "control NOT FOUND (flow could not proceed)"))
+                continue
+            acted += 1
+            clicked, cerr = _fire(page, el)
+            if not clicked:
+                findings.append((label, f"{step['note']} · {hit}", f"click failed: {cerr}"))
+                continue
+            page.wait_for_timeout(settle)   # let the auto-recompute / dialog / re-render land
+            if _err_surface(page):
+                findings.append((label, f"{step['note']} · {hit}", "ERROR BOUNDARY"))
+                break                       # flow crashed — stop driving it
+            five = [c for c in rec.calls[before:] if c[2] >= 500]
+            if five:
+                findings.append((label, f"{step['note']} · {hit}", f"backend {five[0][2]} {five[0][1]}"))
+            if sink.errors:
+                findings.append((label, f"{step['note']} · {hit}", f"console: {sink.errors[0][:50]}"))
     return findings, acted
 
 
@@ -462,6 +613,14 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
         st["n"] += 1
         if recycle_every and st["n"] >= recycle_every:
             shutdown(); launch()
+
+    def recycle_now():
+        """Force a fresh browser at a SAFE boundary (between sweep routes/flows).
+        The interaction sweep re-navigates a heavy authed route many times, so it
+        accumulates renderer memory fast — recycle between routes, never mid-sweep
+        (mid-sweep recycling closes the page the sweep is driving)."""
+        if recycle_every:
+            shutdown(); launch(); st["n"] = 0
 
     launch()
 
@@ -576,16 +735,36 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
     # graded (they don't fail the run) — this is the standing pre-launch gate.
     swept_controls = 0
     if sweep and authed:
-        print("  [interaction sweep] clicking controls per route…", flush=True)
-        for path in sorted(routes):
+        print("  [interaction sweep] clicking controls per route (re-enumerating "
+              "after tabs/expanders, below-fold included)…", flush=True)
+        for i, path in enumerate(sorted(routes)):
+            # recycle at the route boundary (never mid-sweep) — the sweep re-navigates
+            # heavy authed pages repeatedly and would otherwise OOM the renderer.
+            if recycle_every and i % 3 == 0 and i > 0:
+                recycle_now()
             try:
-                found, acted = interaction_sweep(st["pg"], rec, sink, path, tick)
+                found, acted = interaction_sweep(st["pg"], rec, sink, path)
             except Exception as e:
                 found, acted = [(path, "(sweep)", f"sweep error {str(e)[:50]}")], 0
             swept_controls += acted
             interactions.extend(found)
             mark = f"{len(found)} finding(s)" if found else "clean"
             print(f"    swept {path} ({acted} controls) -> {mark}", flush=True)
+
+        # explicit multi-step flows (improvement 4) — includes the Custom Peer Set
+        # success criterion. Recycle first so the flows start on a fresh browser.
+        recycle_now()
+        print("  [flows] driving explicit multi-step flows…", flush=True)
+        try:
+            ffound, facted = flow_sweep(st["pg"], rec, sink)
+        except Exception as e:
+            ffound, facted = [("flows", "(engine)", f"flow error {str(e)[:50]}")], 0
+        swept_controls += facted
+        interactions.extend(ffound)
+        for flow in FLOWS:
+            hits = [x for x in ffound if x[0] == f"flow: {flow['name']}"]
+            mark = f"{len(hits)} finding(s)" if hits else "clean"
+            print(f"    flow {flow['name']} -> {mark}", flush=True)
 
     # ---- demo-safety: anonymous fires zero authenticated calls ----
     if mode == "anonymous":
