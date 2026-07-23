@@ -11,11 +11,12 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Protection, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.workbook.defined_name import DefinedName
 
 from . import engines
 from .templates import LABELS, COMPANY_ROWS, BLOCK_KEYS
 
-TEMPLATE_VERSION = "7M-v6.0"   # §4s v6: Organization sheet + Department columns on Objectives/KPI
+TEMPLATE_VERSION = "7M-v6.1"   # §4s v6.1: dropdowns via defined names (v6.0 corrupted Excel)
 
 # §9 OKR strategy sheets — fixed-name, standard-independent. Builder + parser share
 # these so the dropdown values and the accepted enums can never drift apart.
@@ -31,6 +32,7 @@ STD_DEPARTMENTS = ("Finance", "Operations", "Sales & Marketing", "Supply Chain",
 ORG_HEADER_ROW = 2
 ORG_DATA_START = 3
 ORG_CAPACITY = 60                                     # pre-formatted department rows
+LISTS_SHEET = "_LISTS"                                # hidden lookup sheet backing every dropdown (defined names)
 GOALS_SHEET = "Organizational Goals"                 # legacy v4 sheet name (still parsed → objectives)
 OBJ_PRIORITIES = ("High", "Medium", "Low")
 OBJ_HORIZONS = ("Short", "Medium", "Long")           # canonical dropdown values; ranges live in the note
@@ -316,13 +318,44 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     # so a pasted block of 100+ rows stays constrained by validation.
     obj_ids = [f"O{i}" for i in range(1, OBJ_ID_MAX + 1)]
     obj_last = OBJ_DATA_START + ROW_CAPACITY - 1
+    org_last = ORG_DATA_START + ORG_CAPACITY - 1
+
+    # ---- (v6 fix) hidden _LISTS sheet + WORKBOOK DEFINED NAMES for every dropdown ----
+    # Excel repairs ("we found a problem…") a list DataValidation whose formula1 is
+    # either a sheet-qualified range (cross-sheet Department dropdowns) or longer than
+    # 255 chars (the O1…O200 inline list = 893 chars). The compliant pattern is: put
+    # each list in a hidden sheet, define a workbook name for its range, and have every
+    # dropdown reference the NAME. Names may point across sheets — that is legal; only
+    # a raw cross-sheet reference inside formula1 is not.
+    lists = wb.create_sheet(LISTS_SHEET)
+    for i, v in enumerate(STD_DEPARTMENTS, start=1):
+        lists.cell(row=i, column=1, value=v)                    # A: standard departments
+    for i, v in enumerate(obj_ids, start=1):
+        lists.cell(row=i, column=2, value=v)                    # B: O1…O200
+    for i, v in enumerate(OBJ_PRIORITIES, start=1):
+        lists.cell(row=i, column=3, value=v)                    # C: priorities
+    for i, v in enumerate(OBJ_HORIZONS, start=1):
+        lists.cell(row=i, column=4, value=v)                    # D: horizons
+    for i, v in enumerate(OBJ_STATUSES, start=1):
+        lists.cell(row=i, column=5, value=v)                    # E: statuses
+    lists.sheet_state = "hidden"
+    lists.protection.sheet = True; lists.protection.password = _LOCK_PWD
+
+    def _name(nm, ref):
+        wb.defined_names[nm] = DefinedName(nm, attr_text=ref)
+    _name("AX_Depts", f"'{LISTS_SHEET}'!$A$1:$A${len(STD_DEPARTMENTS)}")
+    _name("AX_ObjIDs", f"'{LISTS_SHEET}'!$B$1:$B${OBJ_ID_MAX}")
+    _name("AX_Prio", f"'{LISTS_SHEET}'!$C$1:$C${len(OBJ_PRIORITIES)}")
+    _name("AX_Hor", f"'{LISTS_SHEET}'!$D$1:$D${len(OBJ_HORIZONS)}")
+    _name("AX_Stat", f"'{LISTS_SHEET}'!$E$1:$E${len(OBJ_STATUSES)}")
+    # the department-name range the Objectives/KPI Department dropdowns source from —
+    # wrapped in a defined name so it is a legal cross-sheet dropdown source.
+    _name("AX_OrgDepts", f"'{ORG_SHEET}'!$A${ORG_DATA_START}:$A${org_last}")
 
     # ---- (§4s) Organization ----
     #   A Department · B Head name · C Head title · D Head email · E Parent department
     # Standard-list dropdown on Department + Parent (free text allowed — the dropdown
-    # is a suggestion, showErrorMessage disabled). The department range here is what
-    # the Objectives/KPI Department dropdowns point at.
-    org_last = ORG_DATA_START + ORG_CAPACITY - 1
+    # is a suggestion, showErrorMessage disabled), sourced from the AX_Depts name.
     ws = wb.create_sheet(ORG_SHEET)
     ws["A1"] = ("Your organization (the §4s org chart). List each department, its head "
                 "(name / title / email), and optionally its parent department to nest the "
@@ -332,8 +365,8 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     org_hdrs = ["Department", "Head name", "Head title", "Head email", "Parent department (optional)"]
     for i, h in enumerate(org_hdrs):
         _hdr(ws.cell(row=ORG_HEADER_ROW, column=1 + i), h, bg=_INK, fg=_ACCENT)
-    dv_dept = DataValidation(type="list", formula1='"%s"' % ",".join(STD_DEPARTMENTS), allow_blank=True)
-    dv_par = DataValidation(type="list", formula1='"%s"' % ",".join(STD_DEPARTMENTS), allow_blank=True)
+    dv_dept = DataValidation(type="list", formula1="AX_Depts", allow_blank=True)
+    dv_par = DataValidation(type="list", formula1="AX_Depts", allow_blank=True)
     dv_dept.showErrorMessage = False; dv_par.showErrorMessage = False   # free text allowed
     ws.add_data_validation(dv_dept); ws.add_data_validation(dv_par)
     dv_dept.add(f"A{ORG_DATA_START}:A{org_last}")
@@ -344,8 +377,6 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     for col, w in zip("ABCDE", (24, 22, 22, 28, 26)):
         ws.column_dimensions[col].width = w
     ws.protection.sheet = True; ws.protection.password = _LOCK_PWD
-    # the department-name range the Objectives/KPI Department dropdowns source from
-    dept_ref = f"'{ORG_SHEET}'!$A${ORG_DATA_START}:$A${org_last}"
 
     # ---- (§9 OKR) Objectives ----
     #   A Objective · B Owner (CXO) · C Priority · D Horizon · E Status · F Objective ID
@@ -360,10 +391,10 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
                 "Objective ID", "Department (optional)"]
     for i, h in enumerate(obj_hdrs):
         _hdr(ws.cell(row=OBJ_HEADER_ROW, column=1 + i), h, bg=_INK, fg=_ACCENT)
-    dv_prio = DataValidation(type="list", formula1='"%s"' % ",".join(OBJ_PRIORITIES), allow_blank=True)
-    dv_hor = DataValidation(type="list", formula1='"%s"' % ",".join(OBJ_HORIZONS), allow_blank=True)
-    dv_stat = DataValidation(type="list", formula1='"%s"' % ",".join(OBJ_STATUSES), allow_blank=True)
-    dv_odept = DataValidation(type="list", formula1=dept_ref, allow_blank=True)
+    dv_prio = DataValidation(type="list", formula1="AX_Prio", allow_blank=True)
+    dv_hor = DataValidation(type="list", formula1="AX_Hor", allow_blank=True)
+    dv_stat = DataValidation(type="list", formula1="AX_Stat", allow_blank=True)
+    dv_odept = DataValidation(type="list", formula1="AX_OrgDepts", allow_blank=True)
     dv_odept.showErrorMessage = False                          # unknown depts warn + auto-create
     ws.add_data_validation(dv_prio); ws.add_data_validation(dv_hor); ws.add_data_validation(dv_stat)
     ws.add_data_validation(dv_odept)
@@ -390,9 +421,9 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     for i, h in enumerate(kr_hdrs):
         _hdr(ws.cell(row=KR_HEADER_ROW, column=1 + i), h, bg=_INK, fg=_ACCENT)
     kr_last = KR_DATA_START + ROW_CAPACITY - 1
-    dv_objid = DataValidation(type="list", formula1='"%s"' % ",".join(obj_ids), allow_blank=True)
+    dv_objid = DataValidation(type="list", formula1="AX_ObjIDs", allow_blank=True)
     ws.add_data_validation(dv_objid)
-    dv_objid.add(f"A{KR_DATA_START}:A{kr_last}")                # O1…O200 dropdown over the whole column
+    dv_objid.add(f"A{KR_DATA_START}:A{kr_last}")                # O1…O200 via the AX_ObjIDs defined name
     for r in range(KR_DATA_START, kr_last + 1):
         for c in range(1, 8):
             _input(ws.cell(row=r, column=c))
@@ -414,7 +445,7 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     for i, h in enumerate(kpi_hdrs):
         _hdr(ws.cell(row=KPI_HEADER_ROW, column=1 + i), h, bg=_INK, fg=_ACCENT)
     kpi_last = KPI_DATA_START + ROW_CAPACITY - 1
-    dv_kdept = DataValidation(type="list", formula1=dept_ref, allow_blank=True)
+    dv_kdept = DataValidation(type="list", formula1="AX_OrgDepts", allow_blank=True)
     dv_kdept.showErrorMessage = False
     ws.add_data_validation(dv_kdept)
     dv_kdept.add(f"F{KPI_DATA_START}:F{kpi_last}")
