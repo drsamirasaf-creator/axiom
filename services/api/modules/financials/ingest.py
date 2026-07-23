@@ -15,7 +15,20 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from . import engines
 from .templates import LABELS, COMPANY_ROWS, BLOCK_KEYS
 
-TEMPLATE_VERSION = "7k-v2"
+TEMPLATE_VERSION = "7L-v3"   # §4o: + Organizational Goals & KPI Plan-vs-Actual sheets
+
+# §4o strategy sheets — fixed-name, standard-independent. Builder + parser share
+# these so the dropdown values and the accepted enums can never drift apart.
+GOALS_SHEET = "Organizational Goals"
+KPI_SHEET = "KPI Plan vs Actual"
+GOAL_PRIORITIES = ("High", "Medium", "Low")
+GOAL_HORIZONS = ("Short", "Medium", "Long")          # canonical; labels carry the ≤/> guidance
+GOAL_HORIZON_LABELS = {"Short": "Short (≤12m)", "Medium": "Medium (≤36m)", "Long": "Long (>36m)"}
+GOALS_HEADER_ROW = 2                                   # row 1 = guidance note; row 2 = headers; row 3+ = data
+GOALS_DATA_START = 3
+KPI_HEADER_ROW = 2
+KPI_DATA_START = 3
+KPI_SEED_ROWS = ("Revenue growth %", "EBITDA margin %", "Operating margin %", "Market share %")
 # statement_units -> factor that normalizes raw figures to the canonical internal
 # unit (MILLIONS) the valuation engine + report builder assume. Honoring this is
 # how "actual / thousands / millions" flows correctly end-to-end.
@@ -278,6 +291,55 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
         ws.protection.sheet = True
         ws.protection.password = _LOCK_PWD
 
+    # ---- (§4o) Organizational Goals ----
+    ws = wb.create_sheet(GOALS_SHEET)
+    ws["A1"] = ("Your organization's goals. List 10+ where you can — Priority and Horizon "
+                "are required; Owner and Target metric are optional.")
+    ws["A1"].font = Font(italic=True, color="446655")
+    goal_hdrs = ["Goal", "Priority", "Horizon", "Owner (optional)", "Target metric (optional)"]
+    for i, h in enumerate(goal_hdrs):
+        _hdr(ws.cell(row=GOALS_HEADER_ROW, column=1 + i), h, bg=_INK, fg=_ACCENT)
+    dv_prio = DataValidation(type="list", formula1='"%s"' % ",".join(GOAL_PRIORITIES), allow_blank=True)
+    dv_hor = DataValidation(type="list",
+                            formula1='"%s"' % ",".join(GOAL_HORIZON_LABELS[h] for h in GOAL_HORIZONS),
+                            allow_blank=True)
+    ws.add_data_validation(dv_prio); ws.add_data_validation(dv_hor)
+    for r in range(GOALS_DATA_START, GOALS_DATA_START + 12):    # 12 blank input rows (guidance: 10+)
+        for c in range(1, 6):
+            _input(ws.cell(row=r, column=c)); ws.cell(row=r, column=c).number_format = "General"
+        dv_prio.add(ws.cell(row=r, column=2))
+        dv_hor.add(ws.cell(row=r, column=3))
+    for col, w in zip("ABCDE", (52, 14, 16, 22, 34)):
+        ws.column_dimensions[col].width = w
+    ws.protection.sheet = True; ws.protection.password = _LOCK_PWD
+
+    # ---- (§4o) KPI Plan vs Actual ----
+    ws = wb.create_sheet(KPI_SHEET)
+    ws["A1"] = ("Plan vs actual for your headline KPIs. The four standard rows are seeded — "
+                "fill YTD Plan / YTD Actual / Full-year Target; add your own KPIs below.")
+    ws["A1"].font = Font(italic=True, color="446655")
+    kpi_hdrs = ["KPI name", "Unit", "YTD Plan", "YTD Actual", "Full-year Target"]
+    for i, h in enumerate(kpi_hdrs):
+        _hdr(ws.cell(row=KPI_HEADER_ROW, column=1 + i), h, bg=_INK, fg=_ACCENT)
+    r = KPI_DATA_START
+    for name in KPI_SEED_ROWS:                                  # seeded standard KPIs (name + unit)
+        _input(ws.cell(row=r, column=1)); ws.cell(row=r, column=1).value = name
+        ws.cell(row=r, column=1).number_format = "General"
+        _input(ws.cell(row=r, column=2)); ws.cell(row=r, column=2).value = "%"
+        ws.cell(row=r, column=2).number_format = "General"
+        for c in (3, 4, 5):
+            _input(ws.cell(row=r, column=c)); ws.cell(row=r, column=c).number_format = "0.00"
+        r += 1
+    for _ in range(6):                                          # blank rows for self-defined KPIs
+        for c in range(1, 3):
+            _input(ws.cell(row=r, column=c)); ws.cell(row=r, column=c).number_format = "General"
+        for c in (3, 4, 5):
+            _input(ws.cell(row=r, column=c)); ws.cell(row=r, column=c).number_format = "0.00"
+        r += 1
+    for col, w in zip("ABCDE", (34, 12, 16, 16, 18)):
+        ws.column_dimensions[col].width = w
+    ws.protection.sheet = True; ws.protection.password = _LOCK_PWD
+
     # ---- hidden metadata sheet (self-identifying upload) ----
     ws = wb.create_sheet("_AXIOM")
     ws["A1"] = META_SIG
@@ -526,3 +588,92 @@ def parse_and_validate(content: bytes, expected_company_id: int,
                 for ys in list(row):
                     row[ys] = row[ys] * factor
     return data, [], meta, warnings
+
+
+def _cell_str(v):
+    if v is None:
+        return ""
+    return str(v).strip()
+
+
+def _norm_priority(v):
+    s = _cell_str(v).lower()
+    for p in GOAL_PRIORITIES:
+        if s == p.lower():
+            return p
+    return None
+
+
+def _norm_horizon(v):
+    """Accept the dropdown label ('Short (≤12m)') or a bare word ('short')."""
+    s = _cell_str(v).lower()
+    first = s.split("(")[0].split()[0] if s else ""
+    for h in GOAL_HORIZONS:
+        if first == h.lower():
+            return h
+    return None
+
+
+def parse_goals_and_kpis(content: bytes):
+    """Parse the two §4o strategy sheets. Returns
+    (goals, kpis, errors, has_goals_sheet, has_kpi_sheet). Tolerant of blank
+    optional cells; a row is only read when its key column (Goal / KPI name) is
+    filled, so trailing blanks and the guidance note are ignored. Malformed
+    Priority/Horizon enums and non-numeric KPI figures produce readable
+    {sheet, cell, message} errors (the sentinel pattern — nothing is written
+    when errors is non-empty). Absent sheets → has_*_sheet False, no errors."""
+    errors, goals, kpis = [], [], []
+    try:
+        wb = load_workbook(io.BytesIO(content), data_only=True)
+    except Exception as e:
+        return [], [], [{"sheet": None, "cell": None,
+                         "message": f"not a readable .xlsx file: {e}"}], False, False
+
+    has_goals = GOALS_SHEET in wb.sheetnames
+    has_kpis = KPI_SHEET in wb.sheetnames
+
+    if has_goals:
+        ws = wb[GOALS_SHEET]
+        for r in range(GOALS_DATA_START, (ws.max_row or GOALS_DATA_START) + 1):
+            goal = _cell_str(ws.cell(row=r, column=1).value)
+            if not goal:
+                continue                                       # key column blank → skip (gap/note tolerant)
+            prio_raw = ws.cell(row=r, column=2).value
+            hor_raw = ws.cell(row=r, column=3).value
+            priority = _norm_priority(prio_raw)
+            horizon = _norm_horizon(hor_raw)
+            if priority is None:
+                errors.append({"sheet": GOALS_SHEET, "cell": f"B{r}",
+                               "message": f"'{goal[:40]}' — Priority must be one of "
+                                          f"{', '.join(GOAL_PRIORITIES)} (got '{_cell_str(prio_raw) or 'blank'}')."})
+            if horizon is None:
+                errors.append({"sheet": GOALS_SHEET, "cell": f"C{r}",
+                               "message": f"'{goal[:40]}' — Horizon must be one of "
+                                          f"Short (≤12m), Medium (≤36m), Long (>36m) "
+                                          f"(got '{_cell_str(hor_raw) or 'blank'}')."})
+            goals.append({"row_index": r, "goal": goal, "priority": priority, "horizon": horizon,
+                          "owner": _cell_str(ws.cell(row=r, column=4).value) or None,
+                          "target_metric": _cell_str(ws.cell(row=r, column=5).value) or None})
+
+    if has_kpis:
+        ws = wb[KPI_SHEET]
+        def _num(cell_val, col, r, label):
+            if cell_val in (None, ""):
+                return None
+            try:
+                return float(cell_val)
+            except (TypeError, ValueError):
+                errors.append({"sheet": KPI_SHEET, "cell": f"{col}{r}",
+                               "message": f"'{label}' — must be a number (got '{cell_val}')."})
+                return None
+        for r in range(KPI_DATA_START, (ws.max_row or KPI_DATA_START) + 1):
+            name = _cell_str(ws.cell(row=r, column=1).value)
+            if not name:
+                continue
+            kpis.append({"row_index": r, "kpi_name": name,
+                         "unit": _cell_str(ws.cell(row=r, column=2).value) or None,
+                         "ytd_plan": _num(ws.cell(row=r, column=3).value, "C", r, name + " YTD Plan"),
+                         "ytd_actual": _num(ws.cell(row=r, column=4).value, "D", r, name + " YTD Actual"),
+                         "full_year_target": _num(ws.cell(row=r, column=5).value, "E", r, name + " Full-year Target")})
+
+    return goals, kpis, errors, has_goals, has_kpis

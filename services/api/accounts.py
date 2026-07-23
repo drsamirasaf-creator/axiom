@@ -493,6 +493,40 @@ class RecommendationDisposition(Base):
     times_reissued = Column(Integer, default=0, nullable=False)
 
 
+class OrgGoal(Base):
+    """§4o Organizational Goal, parsed from the client template's 'Organizational
+    Goals' sheet. Keyed to the FinancialDataset snapshot (dataset_id) so each
+    upload is its own version — re-upload writes a new snapshot; the ACTIVE
+    dataset's goals are what the GETs serve (latest wins, prior retained)."""
+    __tablename__ = "ax_org_goals"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    dataset_id = Column(Integer, index=True, nullable=False)
+    row_index = Column(Integer, nullable=False)
+    goal = Column(Text, nullable=False)
+    priority = Column(String(8), nullable=False)       # High | Medium | Low
+    horizon = Column(String(8), nullable=False)        # Short | Medium | Long
+    owner = Column(String(160), nullable=True)
+    target_metric = Column(Text, nullable=True)
+    uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class KpiPlan(Base):
+    """§4o KPI Plan-vs-Actual row, parsed from the 'KPI Plan vs Actual' sheet.
+    Snapshot-keyed to dataset_id exactly like OrgGoal."""
+    __tablename__ = "ax_kpi_plan"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    dataset_id = Column(Integer, index=True, nullable=False)
+    row_index = Column(Integer, nullable=False)
+    kpi_name = Column(String(160), nullable=False)
+    unit = Column(String(40), nullable=True)
+    ytd_plan = Column(Float, nullable=True)
+    ytd_actual = Column(Float, nullable=True)
+    full_year_target = Column(Float, nullable=True)
+    uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class ActionToken(Base):
     """Single-use, initiative-scoped signed-action ledger (7e-E). Backs the
     one-click RAG-update links in stale-nudge emails. Using any link in a batch
@@ -1822,10 +1856,12 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
         raise HTTPException(413, "file exceeds 5 MB")
     data, errors, meta, warnings = ingest.parse_and_validate(
         content, company_id, statement_units=ent.statement_units)
-    if errors:
+    # §4o: the strategy sheets validate alongside the financials — all-or-nothing.
+    goals, kpis, gk_errors, has_goals, has_kpis = ingest.parse_goals_and_kpis(content)
+    if errors or gk_errors:
         raise HTTPException(422, detail={
             "message": "Upload validation failed — no data was saved.",
-            "errors": errors})
+            "errors": (errors or []) + gk_errors})
 
     frequency = (meta or {}).get("frequency", "annual")
     prior = db.query(FinancialDataset).filter_by(
@@ -1843,8 +1879,20 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
         uploaded_at=datetime.utcnow())
     db.add(ds)
     db.flush()
+    # §4o: persist the strategy sheets as a snapshot keyed to THIS dataset version.
+    # Re-upload makes a new version active → latest wins; prior rows are retained.
+    now = datetime.utcnow()
+    for g in goals:
+        db.add(OrgGoal(company_id=company_id, dataset_id=ds.id, row_index=g["row_index"],
+                       goal=g["goal"], priority=g["priority"], horizon=g["horizon"],
+                       owner=g["owner"], target_metric=g["target_metric"], uploaded_at=now))
+    for k in kpis:
+        db.add(KpiPlan(company_id=company_id, dataset_id=ds.id, row_index=k["row_index"],
+                       kpi_name=k["kpi_name"], unit=k["unit"], ytd_plan=k["ytd_plan"],
+                       ytd_actual=k["ytd_actual"], full_year_target=k["full_year_target"],
+                       uploaded_at=now))
     audit(db, user.id, "data_uploaded", "company", company_id,
-          detail=f"dataset={ds.id} v{version} {frequency}")
+          detail=f"dataset={ds.id} v{version} {frequency} goals={len(goals)} kpis={len(kpis)}")
     _pilot_touch(db, company_id, "Data Loaded")   # FP-1 auto lifecycle
     db.commit()
     try:                                           # 7i: recompute frontier + viability (background)
@@ -1854,6 +1902,8 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
         pass
     return {"dataset_id": ds.id, "version": version, "frequency": frequency,
             "periods_detected": data["periods"], "warnings": warnings,
+            "goals_ingested": len(goals), "kpis_ingested": len(kpis),
+            "has_goals_sheet": has_goals, "has_kpi_sheet": has_kpis,
             "active": True}
 
 
@@ -1885,6 +1935,73 @@ def restore_dataset(company_id: int, dataset_id: int,
           "dataset_restored", "company", company_id, detail=f"dataset={dataset_id}")
     db.commit()
     return {"ok": True, "active_dataset_id": dataset_id, "version": target.version}
+
+
+# ------------------------------------------------- §4o strategy sheets (goals + KPIs)
+_GOAL_PRIORITY_RANK = {"High": 0, "Medium": 1, "Low": 2}
+_GOAL_HORIZON_ORDER = ("Short", "Medium", "Long")
+
+
+@router.get("/companies/{company_id}/goals")
+def company_goals(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+    """Organizational goals from the active dataset, grouped by horizon (Short →
+    Medium → Long) and ordered by priority (High → Low) within each group.
+    has_data:false when no active dataset or the upload had no Goals sheet
+    (older templates degrade honestly)."""
+    from .modules.financials.models import FinancialDataset
+    ds = _active_company_dataset(db, company_id)
+    empty = {"company_id": company_id, "dataset_id": (ds.id if ds else None),
+             "has_data": False, "goals": [], "goals_by_horizon": {h: [] for h in _GOAL_HORIZON_ORDER}}
+    if not ds:
+        return empty
+    rows = db.query(OrgGoal).filter_by(company_id=company_id, dataset_id=ds.id).all()
+    if not rows:
+        return empty
+    rows.sort(key=lambda g: (_GOAL_HORIZON_ORDER.index(g.horizon) if g.horizon in _GOAL_HORIZON_ORDER else 99,
+                             _GOAL_PRIORITY_RANK.get(g.priority, 9), g.row_index))
+    def _out(g):
+        return {"id": g.id, "goal": g.goal, "priority": g.priority, "horizon": g.horizon,
+                "owner": g.owner, "target_metric": g.target_metric}
+    by_h = {h: [] for h in _GOAL_HORIZON_ORDER}
+    for g in rows:
+        by_h.setdefault(g.horizon or "Short", []).append(_out(g))
+    return {"company_id": company_id, "dataset_id": ds.id,
+            "uploaded_at": max((g.uploaded_at for g in rows), default=None),
+            "has_data": True, "count": len(rows),
+            "goals": [_out(g) for g in rows], "goals_by_horizon": by_h}
+
+
+def _kpi_variance(actual, plan):
+    """Actual vs Plan, higher-is-better (all seeded KPIs are growth/margin/share).
+    Mirrors the 7L variance semantics: abs = actual - plan, pct = abs/|plan|,
+    status favorable when actual >= plan."""
+    if actual is None or plan is None:
+        return {"abs": None, "pct": None, "status": None}
+    ab = actual - plan
+    pct = (ab / abs(plan)) if plan else None
+    return {"abs": round(ab, 4), "pct": (round(pct, 4) if pct is not None else None),
+            "status": "favorable" if actual >= plan else "unfavorable"}
+
+
+@router.get("/companies/{company_id}/kpi-variance")
+def company_kpi_variance(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+    """KPI plan-vs-actual from the active dataset: per KPI plan, actual, target,
+    and variance (abs + %, favorable/unfavorable, actual vs plan). has_data:false
+    when no active dataset or no KPI sheet in the upload."""
+    ds = _active_company_dataset(db, company_id)
+    if not ds:
+        return {"company_id": company_id, "dataset_id": None, "has_data": False, "kpis": []}
+    rows = (db.query(KpiPlan).filter_by(company_id=company_id, dataset_id=ds.id)
+              .order_by(KpiPlan.row_index).all())
+    if not rows:
+        return {"company_id": company_id, "dataset_id": ds.id, "has_data": False, "kpis": []}
+    kpis = [{"id": r.id, "kpi_name": r.kpi_name, "unit": r.unit,
+             "ytd_plan": r.ytd_plan, "ytd_actual": r.ytd_actual,
+             "full_year_target": r.full_year_target,
+             "variance": _kpi_variance(r.ytd_actual, r.ytd_plan)} for r in rows]
+    return {"company_id": company_id, "dataset_id": ds.id,
+            "uploaded_at": max((r.uploaded_at for r in rows), default=None),
+            "has_data": True, "count": len(kpis), "kpis": kpis}
 
 
 # ------------------------------------------------- documents on R2 (7b-1)
