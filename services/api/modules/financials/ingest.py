@@ -15,7 +15,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from . import engines
 from .templates import LABELS, COMPANY_ROWS, BLOCK_KEYS
 
-TEMPLATE_VERSION = "7L-v5"   # §9 OKR: Objectives + Key Results sheets (was 'Organizational Goals')
+TEMPLATE_VERSION = "7L-v5.1"   # §9 OKR v5.1: 200-row capacity, paste-safe validation, no parser cap
 
 # §9 OKR strategy sheets — fixed-name, standard-independent. Builder + parser share
 # these so the dropdown values and the accepted enums can never drift apart.
@@ -38,6 +38,8 @@ KPI_HEADER_ROW = 2
 KPI_DATA_START = 3
 KPI_SEED_ROWS = ("Revenue growth %", "EBITDA margin %", "Operating margin %", "Market share %")
 MIN_KRS_PER_OBJECTIVE = 3                              # guidance — parser warns, never blocks
+ROW_CAPACITY = 200                                    # v5.1: pre-formatted input rows per strategy sheet
+OBJ_ID_MAX = 200                                      # Objective IDs pre-seeded O1…O200
 # statement_units -> factor that normalizes raw figures to the canonical internal
 # unit (MILLIONS) the valuation engine + report builder assume. Honoring this is
 # how "actual / thousands / millions" flows correctly end-to-end.
@@ -300,14 +302,19 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
         ws.protection.sheet = True
         ws.protection.password = _LOCK_PWD
 
+    # v5.1: every strategy sheet carries ROW_CAPACITY (200) pre-formatted input
+    # rows; dropdowns are attached to the FULL column RANGE (not per seeded cell)
+    # so a pasted block of 100+ rows stays constrained by validation.
+    obj_ids = [f"O{i}" for i in range(1, OBJ_ID_MAX + 1)]
+    obj_last = OBJ_DATA_START + ROW_CAPACITY - 1
+
     # ---- (§9 OKR) Objectives ----
     #   A Objective · B Owner (CXO) · C Priority · D Horizon · E Status · F Objective ID
-    N_OBJ = 12
-    obj_ids = [f"O{i}" for i in range(1, N_OBJ + 1)]
     ws = wb.create_sheet(OBJECTIVES_SHEET)
     ws["A1"] = ("Your objectives (the O in OKR). Objective, Owner and Priority are recommended; "
                 "Horizon Short ≤12m · Medium ≤36m · Long >36m; Status is current health R/A/G. "
-                "The Objective ID links each row to its Key Results on the next sheet.")
+                "The Objective ID links each row to its Key Results on the next sheet. "
+                "Paste as many rows as you need — up to 200.")
     ws["A1"].font = Font(italic=True, color="446655")
     obj_hdrs = ["Objective", "Owner (CXO)", "Priority", "Horizon", "Status (optional)", "Objective ID"]
     for i, h in enumerate(obj_hdrs):
@@ -316,13 +323,13 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     dv_hor = DataValidation(type="list", formula1='"%s"' % ",".join(OBJ_HORIZONS), allow_blank=True)
     dv_stat = DataValidation(type="list", formula1='"%s"' % ",".join(OBJ_STATUSES), allow_blank=True)
     ws.add_data_validation(dv_prio); ws.add_data_validation(dv_hor); ws.add_data_validation(dv_stat)
-    for idx, r in enumerate(range(OBJ_DATA_START, OBJ_DATA_START + N_OBJ)):
+    dv_prio.add(f"C{OBJ_DATA_START}:C{obj_last}")               # paste-safe: whole-column ranges
+    dv_hor.add(f"D{OBJ_DATA_START}:D{obj_last}")
+    dv_stat.add(f"E{OBJ_DATA_START}:E{obj_last}")
+    for idx, r in enumerate(range(OBJ_DATA_START, obj_last + 1)):
         for c in range(1, 7):
             _input(ws.cell(row=r, column=c)); ws.cell(row=r, column=c).number_format = "General"
-        dv_prio.add(ws.cell(row=r, column=3))
-        dv_hor.add(ws.cell(row=r, column=4))
-        dv_stat.add(ws.cell(row=r, column=5))
-        ws.cell(row=r, column=6).value = obj_ids[idx]           # pre-seeded stable short code
+        ws.cell(row=r, column=6).value = obj_ids[idx]           # pre-seeded stable short code O1…O200
     for col, w in zip("ABCDEF", (50, 20, 12, 12, 14, 14)):
         ws.column_dimensions[col].width = w
     ws.protection.sheet = True; ws.protection.password = _LOCK_PWD
@@ -332,18 +339,19 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     ws = wb.create_sheet(KR_SHEET)
     ws["A1"] = ("Key Results (the KR in OKR) — measurable outcomes for each objective. Aim for "
                 "≥3 per objective. Objective ID must match a row on the Objectives sheet. "
-                "Progress = (Current − Baseline) ÷ (Target − Baseline).")
+                "Progress = (Current − Baseline) ÷ (Target − Baseline). Up to 200 rows.")
     ws["A1"].font = Font(italic=True, color="446655")
     kr_hdrs = ["Objective ID", "Key Result", "Unit", "Baseline", "Target", "Current", "Due date"]
     for i, h in enumerate(kr_hdrs):
         _hdr(ws.cell(row=KR_HEADER_ROW, column=1 + i), h, bg=_INK, fg=_ACCENT)
+    kr_last = KR_DATA_START + ROW_CAPACITY - 1
     dv_objid = DataValidation(type="list", formula1='"%s"' % ",".join(obj_ids), allow_blank=True)
     ws.add_data_validation(dv_objid)
-    for r in range(KR_DATA_START, KR_DATA_START + 24):          # room for ~2 KRs per objective + spares
+    dv_objid.add(f"A{KR_DATA_START}:A{kr_last}")                # O1…O200 dropdown over the whole column
+    for r in range(KR_DATA_START, kr_last + 1):
         for c in range(1, 8):
             _input(ws.cell(row=r, column=c))
         ws.cell(row=r, column=1).number_format = "General"
-        dv_objid.add(ws.cell(row=r, column=1))
         for c in (4, 5, 6):
             ws.cell(row=r, column=c).number_format = "0.00"
         ws.cell(row=r, column=7).number_format = "General"
@@ -354,26 +362,20 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     # ---- (§4o) KPI Plan vs Actual ----
     ws = wb.create_sheet(KPI_SHEET)
     ws["A1"] = ("Plan vs actual for your headline KPIs. The four standard rows are seeded — "
-                "fill YTD Plan / YTD Actual / Full-year Target; add your own KPIs below.")
+                "fill YTD Plan / YTD Actual / Full-year Target; add your own KPIs below. Up to 200 rows.")
     ws["A1"].font = Font(italic=True, color="446655")
     kpi_hdrs = ["KPI name", "Unit", "YTD Plan", "YTD Actual", "Full-year Target"]
     for i, h in enumerate(kpi_hdrs):
         _hdr(ws.cell(row=KPI_HEADER_ROW, column=1 + i), h, bg=_INK, fg=_ACCENT)
-    r = KPI_DATA_START
-    for name in KPI_SEED_ROWS:                                  # seeded standard KPIs (name + unit)
-        _input(ws.cell(row=r, column=1)); ws.cell(row=r, column=1).value = name
-        ws.cell(row=r, column=1).number_format = "General"
-        _input(ws.cell(row=r, column=2)); ws.cell(row=r, column=2).value = "%"
-        ws.cell(row=r, column=2).number_format = "General"
-        for c in (3, 4, 5):
-            _input(ws.cell(row=r, column=c)); ws.cell(row=r, column=c).number_format = "0.00"
-        r += 1
-    for _ in range(6):                                          # blank rows for self-defined KPIs
+    kpi_last = KPI_DATA_START + ROW_CAPACITY - 1
+    for i, r in enumerate(range(KPI_DATA_START, kpi_last + 1)):
         for c in range(1, 3):
             _input(ws.cell(row=r, column=c)); ws.cell(row=r, column=c).number_format = "General"
         for c in (3, 4, 5):
             _input(ws.cell(row=r, column=c)); ws.cell(row=r, column=c).number_format = "0.00"
-        r += 1
+        if i < len(KPI_SEED_ROWS):                              # seed the four standard KPIs
+            ws.cell(row=r, column=1).value = KPI_SEED_ROWS[i]
+            ws.cell(row=r, column=2).value = "%"
     for col, w in zip("ABCDE", (34, 12, 16, 16, 18)):
         ws.column_dimensions[col].width = w
     ws.protection.sheet = True; ws.protection.password = _LOCK_PWD
