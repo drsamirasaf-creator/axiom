@@ -293,6 +293,7 @@ class AssessmentCycle(Base):
     cadence = Column(String(24), nullable=True)          # company cadence setting
     anonymity_mode = Column(String(16), default="anonymous", nullable=False)
     depth = Column(String(16), default="standard", nullable=False)  # standard|deep — fixed at open (§4i-c)
+    name = Column(String(120), nullable=True)            # optional label; default "Cycle N — <date>" derived on read
     snapshot = Column(JSON, nullable=True)               # CEI snapshot at close (revision-tagged)
 
 
@@ -4204,6 +4205,7 @@ class CycleIn(BaseModel):
     cadence: str | None = None
     anonymity_mode: str = "anonymous"
     depth: str = "standard"       # standard|deep — fixed at open (§4i-c)
+    name: str | None = None       # optional label; blank → "Cycle N — <date>" derived on read
 
 
 class CyclePatch(BaseModel):
@@ -4284,7 +4286,7 @@ def _cycle_out(cyc):
     return {"cycle_id": cyc.id, "company_id": cyc.company_id, "revision": cyc.revision,
             "opened_at": cyc.opened_at, "closed_at": cyc.closed_at,
             "cadence": cyc.cadence, "anonymity_mode": cyc.anonymity_mode,
-            "depth": cyc.depth or "standard",
+            "depth": cyc.depth or "standard", "name": getattr(cyc, "name", None),
             "closed": cyc.closed_at is not None}
 
 
@@ -4537,7 +4539,8 @@ def open_assessment_cycle(company_id: int, body: CycleIn,
     fw = _assess_ensure_framework(db, company_id)
     cyc = AssessmentCycle(company_id=company_id, framework_id=fw.id, revision=fw.revision,
                           cadence=body.cadence, anonymity_mode=body.anonymity_mode or "anonymous",
-                          depth=_norm_depth(body.depth))
+                          depth=_norm_depth(body.depth),
+                          name=((body.name or "").strip()[:120] or None))
     db.add(cyc); db.flush()
     if body.cadence:                                   # persist the company cadence
         _assess_config(db, company_id).cadence = body.cadence
@@ -4671,6 +4674,12 @@ def assessment_summary(company_id: int, member=Depends(require_company_member),
                     .filter_by(cycle_id=latest.id).distinct().count())
     # Trend is a serialized aggregate too: a cycle with fewer than KFLOOR respondents
     # suppresses its CEI point (the count stays, so the timeline still shows the cycle).
+    # Stable per-company ordinal (position in opened order) → default "Cycle N" label.
+    ordinal = {c.id: i + 1 for i, c in enumerate(cycles)}
+    def _cycle_label(c):
+        n = ordinal.get(c.id, c.id)
+        when = c.opened_at.strftime("%d %b %Y") if c.opened_at else ""
+        return (c.name or "").strip() or f"Cycle {n} — {when}".strip(" —")
     trend = []
     for c in cycles:
         if not c.snapshot:
@@ -4678,6 +4687,8 @@ def assessment_summary(company_id: int, member=Depends(require_company_member),
         npart = (c.snapshot or {}).get("n_participants") or 0
         pt = {"cycle_id": c.id, "revision": c.revision, "opened_at": c.opened_at,
               "closed_at": c.closed_at, "n_participants": npart,
+              "name": _cycle_label(c), "depth": c.depth or "standard",
+              "anonymity_mode": c.anonymity_mode,
               "cei": (c.snapshot or {}).get("cei") if npart >= KFLOOR else None}
         if npart < KFLOOR:
             pt.update({"suppressed": True, "reason": "below_anonymity_floor"})
@@ -4709,6 +4720,8 @@ def assessment_summary(company_id: int, member=Depends(require_company_member),
             "current_cycle_id": latest.id if latest else None,
             "current_cycle_closed": bool(latest and latest.closed_at),
             "current_cycle_depth": (latest.depth or "standard") if latest else None,
+            "current_cycle_name": _cycle_label(latest) if latest else None,
+            "cycle_count": len(cycles),      # for the open-dialog default "Cycle N+1 — <date>"
             "cei": safe.get("cei"),
             "n_participants": current.get("n_participants", 0),
             "n_respondents": n_resp,
@@ -6387,6 +6400,7 @@ def _ensure_ax_columns(engine):
     # Assessment upgrade (§4i-b/§4i-c): cycle depth, response abstention + department,
     # invite department. Legacy cycles get depth 'standard' (read as standard).
     _add("ax_assessment_cycles", "depth", "depth VARCHAR(16) NOT NULL DEFAULT 'standard'")
+    _add("ax_assessment_cycles", "name", "name VARCHAR(120)")   # custody-5 item 6: optional cycle name
     _add("ax_assessment_responses", "abstained", "abstained BOOLEAN NOT NULL DEFAULT false")
     _add("ax_assessment_responses", "department", "department VARCHAR(80)")
     _add("ax_assessment_invites", "department", "department VARCHAR(80)")
