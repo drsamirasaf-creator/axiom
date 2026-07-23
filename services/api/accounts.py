@@ -538,6 +538,10 @@ class Objective(Base):
     objective_id = Column(String(40), nullable=False)   # short code (O1…) within the dataset
     obj_key = Column(String(64), index=True, nullable=False)
     department_id = Column(Integer, index=True, nullable=True)   # §4s → ax_departments.id
+    # §16.2 owner join: `owner` is free-text (a name OR a title). When it matches the
+    # objective's department head (by title or name), this stores the resolved head
+    # PERSON name so owner→objectives joins work regardless of which form was entered.
+    owner_person_name = Column(String(160), index=True, nullable=True)
     uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -2068,12 +2072,15 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
     # Re-upload makes a new version active → latest wins; prior rows are retained.
     now = datetime.utcnow()
     for o in objectives:
+        _dep = dept_by_norm.get((o.get("department") or "").strip().lower())
         db.add(Objective(company_id=company_id, dataset_id=ds.id, row_index=o["row_index"],
                          objective=o["objective"], owner=o.get("owner"),
                          priority=o.get("priority"), horizon=o.get("horizon"),
                          status=o.get("status"), objective_id=o["objective_id"],
                          obj_key=_goal_key(o["objective"]),
-                         department_id=_dept_id_for(o.get("department")), uploaded_at=now))
+                         department_id=_dept_id_for(o.get("department")),
+                         owner_person_name=_resolve_owner_person(o.get("owner"), _dep),  # §16.2
+                         uploaded_at=now))
     for kr in key_results:
         db.add(KeyResult(company_id=company_id, dataset_id=ds.id, row_index=kr["row_index"],
                          objective_id=kr.get("objective_id"), key_result=kr["key_result"],
@@ -2225,6 +2232,54 @@ def _dept_out(dep):
 def _dept_index(db, company_id):
     """{department_id: Department} for a company (one query)."""
     return {d.id: d for d in db.query(Department).filter_by(company_id=company_id).all()}
+
+
+def _norm_person(s):
+    return " ".join((s or "").strip().lower().split())
+
+
+def _resolve_owner_person(owner, dep):
+    """§16.2 owner join: an objective's `owner` is free text — a NAME or a TITLE. If it
+    matches the objective's department head by name or by title, return the head's
+    PERSON name so owner→objectives joins regardless of which form was entered
+    (e.g. owner "Chief Financial Officer" in Finance → "Farhan Ahmed"). Else None."""
+    if not owner or dep is None:
+        return None
+    o = _norm_person(owner)
+    if dep.head_name and _norm_person(dep.head_name) == o:
+        return dep.head_name                     # owner entered as the person's name
+    if dep.head_title and _norm_person(dep.head_title) == o:
+        return dep.head_name                     # owner entered as the head's title → the person
+    return None
+
+
+def _backfill_owner_persons():
+    """One-time (self-healing) backfill: resolve owner_person_name for existing
+    objectives that predate the owner join. Cheap after first run (WHERE IS NULL)."""
+    db = SessionLocal()
+    try:
+        rows = (db.query(Objective)
+                  .filter(Objective.owner_person_name.is_(None),
+                          Objective.owner.isnot(None),
+                          Objective.department_id.isnot(None)).all())
+        if not rows:
+            return
+        deps = {d.id: d for d in db.query(Department).all()}
+        n = 0
+        for o in rows:
+            resolved = _resolve_owner_person(o.owner, deps.get(o.department_id))
+            if resolved:
+                o.owner_person_name = resolved
+                n += 1
+        if n:
+            db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    finally:
+        db.close()
 
 
 def _ini_link_summary(ini):
@@ -2856,7 +2911,8 @@ def owner_detail(company_id: int, name: str,
     if ds:
         for o in (db.query(Objective).filter_by(company_id=company_id, dataset_id=ds.id)
                     .order_by(Objective.row_index).all()):
-            if (o.owner or "").strip().lower() == key:
+            # match the owner as entered (name/title) OR the resolved head person (§16.2)
+            if _norm_person(o.owner) == key or _norm_person(getattr(o, "owner_person_name", None)) == key:
                 objs.append({"objective_id": o.objective_id, "key": o.obj_key,
                              "objective": o.objective, "priority": o.priority,
                              "horizon": o.horizon, "status": o.status,
@@ -7543,6 +7599,7 @@ def _ensure_ax_columns(engine):
     _add("ax_objectives", "department_id", "department_id INTEGER")
     _add("ax_kpi_plan", "department_id", "department_id INTEGER")
     _add("ax_initiatives", "department_id", "department_id INTEGER")
+    _add("ax_objectives", "owner_person_name", "owner_person_name VARCHAR(160)")
     # §16: report-share bundling (multiple formats in one email)
     _add("ax_report_shares", "group_id", "group_id VARCHAR(64)")
     _add("ax_report_shares", "token", "token TEXT")
@@ -7614,6 +7671,7 @@ def include_accounts(app, create_tables: bool = True):
     if create_tables:
         Base.metadata.create_all(engine)
         _ensure_ax_columns(engine)
+        _backfill_owner_persons()      # §16.2: resolve owner→head person for existing objectives
     for r in (auth_router, oauth_router, company_router, profile_router,
               superadmin_router, stripe_router, prescience_router, decision_router,
               sentinel_router, document_router, forecast_router, planning_router):

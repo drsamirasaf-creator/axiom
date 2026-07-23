@@ -16,7 +16,7 @@ from openpyxl.workbook.defined_name import DefinedName
 from . import engines
 from .templates import LABELS, COMPANY_ROWS, BLOCK_KEYS
 
-TEMPLATE_VERSION = "7M-v6.1"   # §4s v6.1: dropdowns via defined names (v6.0 corrupted Excel)
+TEMPLATE_VERSION = "7M-v6.2"   # §16.2: Owner accepts name OR title (resolves to the dept head person)
 
 # §9 OKR strategy sheets — fixed-name, standard-independent. Builder + parser share
 # these so the dropdown values and the accepted enums can never drift apart.
@@ -382,6 +382,8 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     #   A Objective · B Owner (CXO) · C Priority · D Horizon · E Status · F Objective ID
     ws = wb.create_sheet(OBJECTIVES_SHEET)
     ws["A1"] = ("Your objectives (the O in OKR). Objective, Owner and Priority are recommended; "
+                "Owner can be a person's NAME or a TITLE — a title that matches the owning "
+                "department's head (e.g. 'Chief Financial Officer' in Finance) resolves to that person. "
                 "Horizon Short ≤12m · Medium ≤36m · Long >36m; Status is current health R/A/G. "
                 "The Objective ID links each row to its Key Results on the next sheet. "
                 "Paste as many rows as you need — up to 200.")
