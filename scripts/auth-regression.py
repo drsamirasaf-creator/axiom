@@ -854,6 +854,25 @@ def showcase_integrity_check():
                     "Scenario 'Maximize EV': DEAD control on the demo — the solve "
                     f"is degenerate (value_gap_pct={opt['ev'].get('value_gap_pct')}); "
                     "clicking it produces no visible change for prospects.")
+
+    # §17.3c — Plan vs Forecast must DEMONSTRATE on the demo. Without a client plan
+    # the tab renders the honest-empty download prompt — one of the most
+    # differentiated views showing as a template door on the sales surface. The
+    # active dataset must carry a client plan whose forecast years are ordered and
+    # contiguous (a gap would misalign the comparison).
+    if active_ds:
+        code, pvm = get(f"/api/v1/financials/datasets/{active_ds}/plan-vs-methods")
+        if code != 200 or not isinstance(pvm, dict):
+            fails.append(f"Plan vs Forecast: ERROR state (HTTP {code}) on the demo dataset")
+        elif not pvm.get("has_client_plan"):
+            fails.append("Plan vs Forecast: NO client plan on the demo — the tab renders the "
+                         "honest-empty download prompt instead of the plan-vs-methods comparison.")
+        else:
+            fy = pvm.get("forecast_years") or []
+            if not fy:
+                fails.append("Plan vs Forecast: client plan present but no forecast years.")
+            elif any(fy[i + 1] - fy[i] != 1 for i in range(len(fy) - 1)):
+                fails.append(f"Plan vs Forecast: forecast years are not contiguous: {fy}")
     return fails
 
 
