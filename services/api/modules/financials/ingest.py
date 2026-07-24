@@ -16,12 +16,14 @@ from openpyxl.workbook.defined_name import DefinedName
 from . import engines
 from .templates import LABELS, COMPANY_ROWS, BLOCK_KEYS
 
-TEMPLATE_VERSION = "7M-v7.1"   # v7.1: + optional Employees column on the Organization sheet
+TEMPLATE_VERSION = "7M-v7.2"   # v7.2: shading = input-only (unshade locked/computed cells)
 # Both stamps are accepted (v7.0 files are already in the wild; the parser never rejects
 # on version — it records the stamp). On a v7.0 file the Employees column is simply absent
 # and parses to null (_cell_int of a missing cell), so v7.0 and v7.1 parse identically
 # apart from headcount.
-ACCEPTED_TEMPLATE_VERSIONS = frozenset({"7M-v7.0", "7M-v7.1"})
+ACCEPTED_TEMPLATE_VERSIONS = frozenset({"7M-v7.0", "7M-v7.1", "7M-v7.2"})
+# v7.2 is a PRESENTATION-ONLY change (shading convention); v7.0/v7.1 files parse
+# identically — same data shape, same defined names — so all three are accepted.
 
 # §9 OKR strategy sheets — fixed-name, standard-independent. Builder + parser share
 # these so the dropdown values and the accepted enums can never drift apart.
@@ -193,9 +195,11 @@ def _input(cell):
 
 
 def _locked_formula(cell, formula):
+    # Shading means "input here", so a locked/computed cell is UNSHADED (no fill) and
+    # stays locked — the italic font + the lock, not a tint, mark it as calculated.
     cell.value = formula
     cell.protection = Protection(locked=True)
-    cell.fill = PatternFill("solid", fgColor=_SUBTOTAL)
+    cell.fill = PatternFill(fill_type=None)
     cell.number_format = "#,##0.00"
     cell.font = Font(italic=True)
     cell.border = _border
@@ -312,7 +316,9 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
             _input(ws[f"{letter}3"]); ws[f"{letter}3"].number_format = "General"
             _input(ws[f"{letter}4"]); ws[f"{letter}4"].number_format = "0"
             ws[f"{letter}3"] = "Forecast"
-            ws[f"{letter}3"].fill = PatternFill("solid", fgColor=_SUBTOTAL)
+            # row 3 is the Historical/Forecast DROPDOWN — an unlocked input, so it keeps
+            # the _INPUT tint (from _input above). It is NOT shaded like a computed cell;
+            # the row-2 "CLIENT PLAN (optional)" banner is what marks the forecast block.
             # v7: pre-fill the forecast YEAR continuing from the last historical
             # year when the generator knows it (per-company template); an all-blank
             # forecast column is still optional — the parser drops it. Values stay
@@ -328,7 +334,9 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
             note = ws[f"{fcst_letters[0]}2"]
             note.value = "▶ CLIENT PLAN (optional) — " + FORECAST_NOTE
             note.font = Font(bold=True, italic=True, color="1F6F43")
-            note.fill = PatternFill("solid", fgColor=_INPUT)
+            # a locked guidance banner is NOT an input cell → it must not wear the
+            # _INPUT tint (shading = input-only). The bold italic green text carries it.
+            note.fill = PatternFill(fill_type=None)
             note.alignment = Alignment(wrap_text=True, vertical="center")
         rowmap = {}
         all_letters = letters + fcst_letters
