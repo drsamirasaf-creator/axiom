@@ -10,6 +10,27 @@ from . import engines, models, schemas
 router = APIRouter(prefix="/api/v1/valuation", tags=["valuation"])
 
 
+def _apply_forecast_override(data: dict, override: dict) -> dict:
+    """Return a TRANSIENT copy of `data` whose historicals are kept but whose
+    forecast is replaced by `override` (a full forecast: periods.forecast + the
+    three statements). Nothing is written back — used to value an extended client
+    plan as its own basis without persisting a projection as supplied intent."""
+    hist = list(data["periods"]["historical"])
+    keep = {str(y) for y in hist}
+    ov_years = [int(y) for y in ((override.get("periods") or {}).get("forecast") or [])]
+    out = {"company": dict(data["company"]),
+           "periods": {"historical": hist, "forecast": ov_years},
+           "income_statement": {}, "balance_sheet": {}, "cash_flow": {}}
+    if data.get("oci"):
+        out["oci"] = data["oci"]
+    for block in ("income_statement", "balance_sheet", "cash_flow"):
+        for k, series in (data.get(block) or {}).items():
+            hv = {y: v for y, v in series.items() if y in keep}
+            ov = (override.get(block) or {}).get(k, {})
+            out[block][k] = {**hv, **ov}
+    return out
+
+
 def _data_for_mode(data: dict, mode: str) -> dict:
     """The Plan-vs-Forecast valuation toggle. mode='proforma' values the CLIENT's
     own numbers (data.periods.forecast, as supplied). mode='auto_forecast' values
@@ -62,12 +83,21 @@ def run_valuation(body: schemas.ValuationRequest, db: Session = Depends(get_db),
     ds = db.get(fin_models.FinancialDataset, body.dataset_id)
     if not ds or ds.tenant != tenant:
         raise HTTPException(status_code=404, detail="dataset not found")
+    # forecast_override → value an extended plan (transient); forced to proforma
+    # since the override IS the forecast being valued. Never persisted to ds.data.
+    if body.forecast_override:
+        eff_data = _apply_forecast_override(ds.data, body.forecast_override)
+        eff_mode = "proforma"
+    else:
+        eff_data = _data_for_mode(ds.data, body.mode)
+        eff_mode = body.mode
     try:
-        result = engines.run(_data_for_mode(ds.data, body.mode), body.mode,
-                             body.assumptions, body.monte_carlo)
+        result = engines.run(eff_data, eff_mode, body.assumptions, body.monte_carlo)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    params = {"assumptions": body.assumptions, "monte_carlo": body.monte_carlo}
+    params = {"assumptions": body.assumptions, "monte_carlo": body.monte_carlo,
+              "basis_label": body.basis_label,
+              "extended": bool(body.forecast_override)}
     from ...core.config import require_auth
     if not authed and require_auth():
         return _transient(body.dataset_id, body.mode, params, result)

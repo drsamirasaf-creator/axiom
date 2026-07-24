@@ -415,9 +415,17 @@ def plan_vs_methods(dataset_id: int, db: Session = Depends(get_db),
         summary = {"line": "revenue", "terminal_year": term["year"],
                    "plan": term["plan"], "ensemble": term["methods"].get("ensemble"),
                    "variance": v, "plan_more_optimistic": bool(v and v["abs"] > 0)}
+    # the full extended-plan forecast (supplied years + AXIOM tail) — ready to pass
+    # to POST /valuation/run as forecast_override to value it as its own basis.
+    extended_plan = None
+    if extension is not None:
+        extended_plan = {"periods": {"forecast": [int(y) for y in plan_fyears]},
+                         "income_statement": plan_forecast["income_statement"],
+                         "balance_sheet": plan_forecast["balance_sheet"],
+                         "cash_flow": plan_forecast["cash_flow"]}
     return {**base_resp, "horizon": hz, "method_horizon": method_hz,
             "forecast_years": fc_years, "extended_years": ext_years, "all_years": all_years,
-            "extension": extension, "line_items": line_items,
+            "extension": extension, "extended_plan": extended_plan, "line_items": line_items,
             "method_params": method_params, "summary": summary}
 
 
