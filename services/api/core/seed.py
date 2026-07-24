@@ -221,6 +221,50 @@ def _backfill_showcase_helios(db):
         logging.getLogger("axiom.seed").exception("Helios backfill failed")
 
 
+def _backfill_showcase_management_plan(db):
+    """Reproducibility (captured prod dataset 45): make the Meridian showcase's ACTIVE
+    dataset the aggressive management-plan variant, so a FRESH environment rebuilds the
+    same 6 forecast-divergence cards (I4/I5 on revenue/EBITDA/FCFF) the live demo shows.
+
+    Idempotent + no-clobber, matched on the STRUCTURAL marker data._demo_plan.kind ==
+    'management_plan' (NOT the display name, which _backfill_showcase_names may refresh):
+      • prod (dataset 45 already present) → recognized → NO-OP, never duplicated or
+        overwritten;
+      • fresh env → creates the dataset from meridian_with_management_plan() (captured
+        verbatim from live), links it to the Meridian enterprise, gives it the highest
+        version and is_active=True (deactivating siblings) so _active_company_dataset
+        resolves to it even if the name/logo backfill re-activates the direct row.
+    Runs AFTER _backfill_showcase_names/_logos in the loop, so the enterprise exists."""
+    from ..modules.financials import models as fin_models
+    from .refcompanies import meridian_with_management_plan
+    # the Meridian enterprise is linked onto the DIRECT dataset by names/logos.
+    direct = (db.query(fin_models.FinancialDataset).filter(
+                fin_models.FinancialDataset.tenant == SHOWCASE_TENANT,
+                fin_models.FinancialDataset.source == "direct",
+                fin_models.FinancialDataset.name.like("Meridian%")).first())
+    if not direct or not direct.enterprise_id:
+        return                                  # enterprise not linked yet — next pass
+    ent_id = direct.enterprise_id
+    siblings = db.query(fin_models.FinancialDataset).filter_by(
+        tenant=SHOWCASE_TENANT, enterprise_id=ent_id).all()
+    # no-clobber: recognize an already-present management-plan dataset by its marker.
+    for s in siblings:
+        dp = s.data.get("_demo_plan") if isinstance(s.data, dict) else None
+        if isinstance(dp, dict) and dp.get("kind") == "management_plan":
+            return                              # already seeded (incl. prod ds 45) → no-op
+    data = meridian_with_management_plan()
+    next_ver = max([s.version or 1 for s in siblings], default=1) + 1
+    for s in siblings:                          # unambiguous single active dataset
+        s.is_active = False
+    db.add(fin_models.FinancialDataset(
+        tenant=SHOWCASE_TENANT, enterprise_id=ent_id,
+        name="Meridian Industries, Inc. — with management plan (demo)",
+        standard=data["company"]["standard"], ownership=data["company"]["ownership"],
+        source="upload", data=data, validation={"warnings": []},
+        version=next_ver, is_active=True))
+    db.commit()
+
+
 def seed_showcase():
     if os.environ.get("AXIOM_SEED_SHOWCASE", "true").strip().lower() in (
             "0", "false", "no", "off"):
@@ -242,7 +286,8 @@ def seed_showcase():
             # _backfill_showcase_shares call previously NameError'd here and
             # silently blocked every showcase backfill).
             for _fn in (_backfill_showcase_oci, _backfill_showcase_helios,
-                        _backfill_showcase_names, _backfill_showcase_logos):
+                        _backfill_showcase_names, _backfill_showcase_logos,
+                        _backfill_showcase_management_plan):
                 try:
                     _fn(db)
                 except Exception:
