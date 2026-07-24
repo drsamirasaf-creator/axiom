@@ -7093,6 +7093,164 @@ def assessment_seniority_gap(company_id: int, member=Depends(_summary_access),
             "suppression": summ.get("suppression"), "has_seniority_data": bool(bands)}
 
 
+_SENT_SCORE = {"positive": 1.0, "neutral": 0.0, "mixed": -0.25, "negative": -1.0}
+_SENT_RAG = {"positive": "green", "neutral": "amber", "mixed": "amber", "negative": "red"}
+
+
+def _sentiment_label(score):
+    if score is None:
+        return None
+    return "positive" if score >= 0.33 else "negative" if score <= -0.33 else "mixed"
+
+
+def _axis_comment_counts(db, cyc, dept_name=None, seniority=None):
+    """Comment-bearing responses per L1 axis for a cycle, optionally sliced by
+    department name / seniority band. Returns ({l1_code: n}, total)."""
+    id_map, _ = _l1_maps(db, cyc.framework_id)
+    q = db.query(AssessmentResponse).filter_by(cycle_id=cyc.id)
+    if dept_name is not None:
+        q = q.filter(AssessmentResponse.department == dept_name)
+    if seniority is not None:
+        q = q.filter(AssessmentResponse.seniority == seniority)
+    counts, total = {}, 0
+    for r in q.all():
+        if r.comment and r.comment.strip():
+            l1 = (id_map.get(r.item_id) or {}).get("l1_code")
+            if l1:
+                counts[l1] = counts.get(l1, 0) + 1
+                total += 1
+    return counts, total
+
+
+def _cycle_overall_sentiment(db, cyc):
+    """Comment-weighted overall tone for a cycle (unsliced, cohort) from its snapshot's
+    per-axis sentiment. Only axes with ≥KFLOOR comments contribute. Returns
+    {score, label, n} or None when nothing clears the floor."""
+    from .assessment_engine import KFLOOR
+    snap = cyc.snapshot or {}
+    l1_sent = snap.get("l1_sentiment") or {}
+    counts, _ = _axis_comment_counts(db, cyc)
+    num = den = 0.0
+    for code, s in l1_sent.items():
+        lbl = (s or {}).get("sentiment")
+        n = counts.get(code, 0)
+        if lbl in _SENT_SCORE and n >= KFLOOR:
+            num += _SENT_SCORE[lbl] * n
+            den += n
+    if den == 0:
+        return None
+    return {"score": round(num / den, 3), "label": _sentiment_label(num / den), "n": int(den)}
+
+
+@router.get("/companies/{company_id}/assessment/sentiment")
+def assessment_sentiment(company_id: int, department: int | None = None,
+                         seniority: str | None = None,
+                         member=Depends(_summary_access), db=Depends(get_db)):
+    """Aggregate comment TONE (never verbatim text) for the latest closed cycle:
+    headline overall sentiment + per-axis breakdown (sentiment RAG · n comments ·
+    avg effectiveness score · divergence flag where tone and score materially
+    disagree). Sliceable by ?department=<id> / ?seniority=<band>; comment counts per
+    slice obey the k-anonymity floor (a thin slice → protected). Tone is computed
+    across ALL respondents (Haiku ran on the whole cohort at close); the slice filters
+    the comment COUNTS, echoed as `tone_basis`. Haiku-absent → has_data False (never a
+    default-neutral)."""
+    from .assessment_engine import KFLOOR
+    cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
+                .order_by(AssessmentCycle.opened_at).all())
+    closed = [c for c in cycles if c.closed_at and (c.snapshot or {}).get("l1_subscores")]
+    latest = closed[-1] if closed else None
+    prior = closed[-2] if len(closed) > 1 else None
+    empty = {"company_id": company_id, "has_data": False, "cycle_id": None,
+             "overall": None, "axes": [], "n": 0,
+             "department_filter": None, "seniority_filter": None}
+    if latest is None:
+        return {**empty, "message": "No closed assessment cycle yet."}
+    snap = latest.snapshot or {}
+    if not snap.get("sentiment_available"):
+        return {**empty, "cycle_id": latest.id,
+                "message": "No comment sentiment yet — sentiment appears once respondents "
+                           "leave written comments (analysed at cycle close)."}
+    # slice resolution
+    _dept_obj = db.get(Department, department) if department is not None else None
+    _dept = ({"id": _dept_obj.id, "name": _dept_obj.name}
+             if (_dept_obj and _dept_obj.company_id == company_id) else None)
+    try:
+        _sen = _norm_seniority(seniority)
+    except HTTPException:
+        _sen = None
+    sliced = bool(_dept or _sen)
+    # Tone is cohort-level (Haiku ran on all comments at close); a slice filters only
+    # the comment COUNTS shown. cohort_counts gate whether an axis's tone is shown at
+    # all; slice_counts are what the n column displays.
+    cohort_counts, _cohort_total = _axis_comment_counts(db, latest)
+    slice_counts, total = (_axis_comment_counts(db, latest, _dept["name"] if _dept else None, _sen)
+                           if sliced else (cohort_counts, _cohort_total))
+
+    if sliced and total < KFLOOR:
+        return {**empty, "cycle_id": latest.id, "has_data": True, "suppressed": True,
+                "n": total, "department_filter": _dept, "seniority_filter": _sen,
+                "message": "This slice has too few comments to show without risking "
+                           "anonymity (below the floor)."}
+
+    l1_sent = snap.get("l1_sentiment") or {}
+    l1_div = snap.get("l1_divergence") or {}
+    subs = {str(o.get("code")): o for o in (snap.get("l1_subscores") or [])}
+    id_map, l1_title = _l1_maps(db, latest.framework_id)
+    axis_codes = sorted(set(list(l1_sent.keys()) + list(subs.keys())),
+                        key=lambda c: (float(c) if str(c).replace(".", "").isdigit() else 99))
+    axes = []
+    for code in axis_codes:
+        cohort_n = cohort_counts.get(code, 0)
+        disp_n = slice_counts.get(code, 0)
+        s = l1_sent.get(code) or {}
+        lbl = s.get("sentiment") if s.get("sentiment") in _SENT_SCORE else None
+        o = subs.get(code) or {}
+        # tone available only where the COHORT axis cleared the floor (never inferred
+        # from < KFLOOR comments). The slice's thin per-axis count is protected in the
+        # n column but the cohort tone still shows.
+        tone_ok = cohort_n >= KFLOOR and lbl is not None
+        n_protected = sliced and 0 < disp_n < KFLOOR
+        axes.append({
+            "code": code, "title": o.get("title") or l1_title.get(code) or code,
+            "n": (None if n_protected else disp_n),
+            "n_protected": n_protected,
+            "score": o.get("score"),
+            "sentiment": (lbl if tone_ok else None),
+            "sentiment_rag": (_SENT_RAG.get(lbl) if tone_ok else None),
+            "theme": ((s.get("theme") or None) if tone_ok else None),
+            "divergence": (bool(l1_div.get(code)) if tone_ok else False),
+        })
+    # divergence-first default ordering (then by comment volume)
+    axes.sort(key=lambda a: (not a["divergence"], -(cohort_counts.get(a["code"], 0))))
+
+    # headline overall — cohort-weighted (stable across slices); the slice only reframes
+    # the per-axis counts. Weighted by cohort comment volume over axes with tone.
+    num = den = 0.0
+    for a in axes:
+        if a["sentiment"]:
+            cn = cohort_counts.get(a["code"], 0)
+            num += _SENT_SCORE[a["sentiment"]] * cn
+            den += cn
+    overall = ({"score": round(num / den, 3), "label": _sentiment_label(num / den), "n": int(den)}
+               if den else None)
+    # trend vs prior cycle (cohort-level, unsliced) when available
+    trend = None
+    if overall and prior is not None:
+        po = _cycle_overall_sentiment(db, prior)
+        if po:
+            trend = {"prior_score": po["score"], "prior_label": po["label"],
+                     "delta": round(overall["score"] - po["score"], 3),
+                     "prior_cycle_id": prior.id}
+    return {"company_id": company_id, "has_data": overall is not None,
+            "cycle_id": latest.id, "cycle_closed_at": latest.closed_at,
+            "overall": overall, "trend": trend, "axes": axes, "n": total,
+            "tone_basis": ("this slice's comment counts; tone is measured across all "
+                           "respondents" if sliced else "all respondents"),
+            "department_filter": _dept, "seniority_filter": _sen,
+            "message": (None if overall else
+                        "Comments exist but none cleared the anonymity floor per axis.")}
+
+
 # §16.3 Pass B — Transformation Readiness derived from assessment axes (ratified mapping).
 # Each dimension = a weighted blend of L1 axis means; a floor-suppressed axis (null
 # score) drops out and its weight is renormalised across survivors; if survivors carry
