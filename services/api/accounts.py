@@ -2052,13 +2052,24 @@ def data_template(company_id: int, frequency: str = "annual",
     ent = db.get(Enterprise, company_id)
     if not ent:
         raise HTTPException(404, "Company not found")
+    # v7: pre-fill the forecast YEARS continuing from this company's last historical
+    # year, so the client plan columns arrive ready to fill (no placeholder years to
+    # correct). None when no dataset exists yet — then the year cells stay blank.
+    last_hist = None
+    try:
+        ds = _active_company_dataset(db, company_id)
+        h = ((ds.data.get("periods") or {}).get("historical") or []) if ds and isinstance(ds.data, dict) else []
+        last_hist = max(int(y) for y in h) if h else None
+    except Exception:
+        last_hist = None
     try:
         content = ingest.build_company_template(
             company_id=company_id, company_name=ent.name,
             currency=ent.reporting_currency or "USD",
             statement_units=ent.statement_units or "actual",
             ownership=ent.ownership or "private",
-            frequency=(frequency or "annual").lower())
+            frequency=(frequency or "annual").lower(),
+            last_historical_year=last_hist)
     except ValueError as e:
         raise HTTPException(422, str(e))
     from fastapi import Response

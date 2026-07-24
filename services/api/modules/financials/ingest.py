@@ -199,7 +199,8 @@ def _locked_formula(cell, formula):
 def build_company_template(*, company_id: int, company_name: str, currency: str,
                            statement_units: str, ownership: str,
                            standard: str = "us_gaap",
-                           frequency: str = "annual") -> bytes:
+                           frequency: str = "annual",
+                           last_historical_year: int | None = None) -> bytes:
     """Themed, pre-filled input workbook for one company."""
     frequency = (frequency or "annual").lower()
     if frequency not in ("annual", "quarterly"):
@@ -307,6 +308,12 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
             _input(ws[f"{letter}4"]); ws[f"{letter}4"].number_format = "0"
             ws[f"{letter}3"] = "Forecast"
             ws[f"{letter}3"].fill = PatternFill("solid", fgColor=_SUBTOTAL)
+            # v7: pre-fill the forecast YEAR continuing from the last historical
+            # year when the generator knows it (per-company template); an all-blank
+            # forecast column is still optional — the parser drops it. Values stay
+            # blank so history-only uploads are unaffected.
+            if last_historical_year and frequency == "annual":
+                ws[f"{letter}4"] = int(last_historical_year) + 1 + i
             dv.add(ws[f"{letter}3"])
             ws.column_dimensions[letter].width = 14
         # guidance banner spanning the forecast columns (row 2, above the input range)
@@ -631,7 +638,9 @@ def parse_and_validate(content: bytes, expected_company_id: int,
             cols.append((letter, y, kind))
         return cols
 
-    blocks, ref_cols = {}, None
+    # read every statement sheet's period columns; the income statement defines
+    # the reference sequence the others must match.
+    sheet_meta = {}     # block -> (ws, cols, keys)
     for block, keys in BLOCK_KEYS.items():
         name = lab["sheets"][block]
         if name not in wb.sheetnames:
@@ -639,17 +648,36 @@ def parse_and_validate(content: bytes, expected_company_id: int,
                            "message": f"missing sheet '{name}'"})
             continue
         ws = wb[name]
-        cols = read_cols(ws)
-        if ref_cols is None:
-            ref_cols = cols
-        elif [(y, k) for _, y, k in cols] != [(y, k) for _, y, k in ref_cols]:
+        sheet_meta[block] = (ws, read_cols(ws), keys)
+    ref_cols = sheet_meta.get("income_statement", (None, [], None))[1]
+
+    # v7: a pre-labelled FORECAST column whose value cells are ALL blank (on every
+    # statement sheet) is an unused guidance column — drop it so history-only
+    # uploads parse exactly as before, even though the template pre-fills the
+    # forecast YEARS. Any forecast column the client actually filled is kept and
+    # fully validated (all lines required + the year-sequence check below).
+    def _col_has_data(letter):
+        for ws, _cols, keys in sheet_meta.values():
+            for r in range(5, 5 + len(keys)):
+                if ws[f"{letter}{r}"].value not in (None, ""):
+                    return True
+        return False
+    ref_cols = [(l, y, k) for (l, y, k) in ref_cols
+                if not (k == "forecast" and not _col_has_data(l))]
+    kept_letters = {l for l, _, _ in ref_cols}
+
+    blocks = {}
+    for block, (ws, cols, keys) in sheet_meta.items():
+        name = lab["sheets"][block]
+        cols_k = [(l, y, k) for (l, y, k) in cols if l in kept_letters]
+        if [(y, k) for _, y, k in cols_k] != [(y, k) for _, y, k in ref_cols]:
             errors.append({"sheet": name, "cell": None,
                            "message": "period columns must match the "
                                       f"'{lab['sheets']['income_statement']}' sheet"})
         bd = {}
         for r, key in enumerate(keys, start=5):
             row = {}
-            for letter, y, kind in cols:
+            for letter, y, kind in cols_k:
                 v = ws[f"{letter}{r}"].value
                 if v in (None, ""):
                     errors.append({"sheet": name, "cell": f"{letter}{r}",
@@ -663,9 +691,35 @@ def parse_and_validate(content: bytes, expected_company_id: int,
             bd[key] = row
         blocks[block] = bd
 
-    ref_cols = ref_cols or []
     hist = [y for _, y, k in ref_cols if k == "historical"]
     fcst = [y for _, y, k in ref_cols if k == "forecast"]
+
+    # v7: the client plan must strictly CONTINUE the history — every forecast year
+    # greater than the last historical, running consecutively with no gap, overlap,
+    # or duplicate. Silent acceptance would misalign every plan-vs-forecast
+    # comparison downstream, so these are hard errors naming the exact cell.
+    if fcst and hist:
+        is_name = lab["sheets"]["income_statement"]
+        last_hist = max(hist)
+        seen = set(hist)
+        expected = last_hist + 1
+        for letter, y, k in [c for c in ref_cols if c[2] == "forecast"]:
+            cell = f"{letter}4"
+            if y in seen:
+                errors.append({"sheet": is_name, "cell": cell,
+                               "message": f"period {y} is duplicated — each forecast "
+                                          "column needs its own distinct year"})
+            elif y <= last_hist:
+                errors.append({"sheet": is_name, "cell": cell,
+                               "message": f"forecast year {y} must be AFTER the last "
+                                          f"historical year ({last_hist})"})
+            elif y != expected:
+                errors.append({"sheet": is_name, "cell": cell,
+                               "message": "forecast years must run consecutively from the "
+                                          f"last historical year with no gaps — expected "
+                                          f"{expected}, found {y}"})
+            seen.add(y)
+            expected = y + 1
     data = {"company": company,
             "periods": {"historical": hist, "forecast": fcst},
             "income_statement": blocks.get("income_statement", {}),
