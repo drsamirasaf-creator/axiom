@@ -2125,6 +2125,24 @@ SCENARIO_LEVERS = {
 }
 
 
+def _ensure_forecast(data: dict) -> tuple:
+    """Scenario levers act on explicit forecast years. A dataset supplied as
+    historicals-only (the auto_forecast basis) has none — and `_apply_levers`
+    then falls back to `hist[-1:]`, so a lever mutates the LAST HISTORICAL year,
+    corrupting the very anchor the trend forecast is rebuilt from (revenue-growth
+    lever → EV collapses to nonsense → the optimizer refuses every move and
+    returns "no change from plan"). So materialize the trend forecast into real
+    forecast periods first and solve/apply on those, in proforma mode. Datasets
+    that already carry a forecast pass through untouched.
+
+    Returns (proforma_data, "proforma")."""
+    if data["periods"].get("forecast"):
+        return data, "proforma"
+    from ..financials import engines as fin
+    w = fin.auto_forecast(data, {})
+    return {k: v for k, v in w.items() if k != "_forecast_provenance"}, "proforma"
+
+
 def _apply_levers(data: dict, levers: dict) -> dict:
     """Apply a set of simultaneous scenario levers, returning a shifted copy.
     Levers compose in one pass so their effects are consistent."""
@@ -2232,7 +2250,7 @@ def scenario(data: dict, levers: dict, n_paths: int = 1500) -> dict:
         spec = SCENARIO_LEVERS[k]
         clean[k] = max(spec["min"], min(spec["max"], float(v)))
 
-    mode = "proforma" if data["periods"].get("forecast") else "auto_forecast"
+    data, mode = _ensure_forecast(data)   # levers need real forecast years
     shifted = _apply_levers(data, clean)
 
     def picture(dd):
@@ -2369,7 +2387,7 @@ def scenario_pro(data: dict, levers: dict, n_paths: int = 1200) -> dict:
         clean[k] = max(spec["min"], min(spec["max"], float(v)))
     active = {k: v for k, v in clean.items() if abs(v) > 1e-12}
 
-    mode = "proforma" if data["periods"].get("forecast") else "auto_forecast"
+    data, mode = _ensure_forecast(data)   # levers need real forecast years
     shifted = _apply_levers(data, clean)
 
     base_ev = val_e.run(data, mode)["deterministic"]["enterprise_value"]
@@ -2605,7 +2623,7 @@ def optimal_levers(data: dict, objective: str = "ev") -> dict:
     if objective not in ("ev", "raev"):
         raise ValueError("objective must be 'ev' or 'raev'")
     from ..valuation import engines as val_e
-    mode = "proforma" if data["periods"].get("forecast") else "auto_forecast"
+    data, mode = _ensure_forecast(data)   # levers need real forecast years
     base_ev = val_e.run(data, mode)["deterministic"]["enterprise_value"]
 
     # each lever's search grid (coarser than the slider step, for speed)
@@ -2695,7 +2713,7 @@ def unified_optimization(data: dict) -> dict:
     arranged as an actionable->theoretical ladder."""
     from ..valuation import engines as val_e
 
-    mode = "proforma" if data["periods"].get("forecast") else "auto_forecast"
+    data, mode = _ensure_forecast(data)   # levers need real forecast years
 
     # -- baseline: the certified current plan (DCF basis) ------------------
     base_run = val_e.run(data, mode)

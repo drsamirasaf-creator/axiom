@@ -831,6 +831,29 @@ def showcase_integrity_check():
             fails.append(f"{label}: ERROR state (HTTP {code}) on {path}")
         elif not isinstance(d, dict) or not ok(d):
             fails.append(f"{label}: EMPTY — demo surface not populated ({path})")
+
+    # §17.3b — LIVE-CONTROL guard: the Scenario Analysis "Maximize EV / Maximize
+    # RAEV" buttons must actually SOLVE on the demo dataset (the prospect path).
+    # Both objectives must return 200, and Max-EV must show a material uplift —
+    # a degenerate all-zeros solve is a DEAD control (was: scenario levers fell
+    # back to the last historical year in auto_forecast mode and corrupted the
+    # anchor, collapsing every levered valuation so the optimizer never moved).
+    if active_ds:
+        opt = {}
+        for obj in ("ev", "raev"):
+            code, d = get(f"/api/v1/intelligence/scenario/optimal"
+                          f"?dataset_id={active_ds}&objective={obj}")
+            if code != 200 or not isinstance(d, dict):
+                fails.append(f"Scenario optimizer ({obj.upper()}): ERROR state (HTTP {code})")
+            else:
+                opt[obj] = d
+        if "ev" in opt:
+            gap = abs(opt["ev"].get("value_gap_pct") or 0.0)
+            if gap <= 0.005:
+                fails.append(
+                    "Scenario 'Maximize EV': DEAD control on the demo — the solve "
+                    f"is degenerate (value_gap_pct={opt['ev'].get('value_gap_pct')}); "
+                    "clicking it produces no visible change for prospects.")
     return fails
 
 
