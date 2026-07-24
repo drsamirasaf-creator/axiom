@@ -107,15 +107,24 @@ def run(data: dict, mode: str, assumptions: dict | None = None,
         "dlom": _r(dlom), "equity_value_post_dlom": _r(equity_post),
         "value_per_share": _r(per_share),
         "value_per_share_indicative": per_share_indicative,
+        # EV→EQUITY bridge only (no DLOM — the marketability discount is an
+        # ownership-interest adjustment surfaced in its own block, not a bridge
+        # step). Net debt is split into total debt (subtracted) and cash (added
+        # back) so the sign of each line is unambiguous even for a net-cash company.
         "bridge": [
             {"step": "PV of explicit FCFF", "value": _r(pv_e)},
             {"step": "PV of terminal value", "value": _r(pv_t)},
             {"step": "Enterprise value", "value": _r(ev)},
-            {"step": "Less net debt", "value": _r(-net_debt)},
-            {"step": "Less preferred & minority", "value": _r(-(pref + mino))},
-            {"step": "Equity value", "value": _r(equity)},
-            {"step": f"DLOM ({dlom:.0%})", "value": _r(-equity * dlom)},
-            {"step": "Equity value (post-DLOM)", "value": _r(equity_post)}]}
+            {"step": "Less total debt", "value": _r(-company["_debt_book"])},
+            {"step": "Add cash & equivalents", "value": _r(bs["cash"][ys])},
+            {"step": "Less preferred equity", "value": _r(-pref)},
+            {"step": "Less minority interest", "value": _r(-mino)},
+            {"step": "Equity value", "value": _r(equity)}],
+        # ownership-interest (DLOM) adjustment — separate from the bridge
+        "ownership_adjustment": {
+            "equity_value": _r(equity), "dlom": _r(dlom),
+            "dlom_amount": _r(-equity * dlom),
+            "nonmarketable_equity_value": _r(equity_post)}}
 
     # Sensitivity grid (Product §8.13): WACC x terminal growth
     wacc_grid = [_r(wacc_value + d) for d in (-0.02, -0.01, 0.0, 0.01, 0.02)]
