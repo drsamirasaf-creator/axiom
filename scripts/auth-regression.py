@@ -715,6 +715,8 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
              "Sentiment Analysis tab"),
             ("/initiatives?tab=cockpit", "text=Needs attention",
              "Portfolio Cockpit"),
+            ("/data-input?tab=participants", "text=Participant List",
+             "Participant List bulk-upload tab"),
         ]
         for path, sel, label in DEMO_ELEMENTS:
             try:
