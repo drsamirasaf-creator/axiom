@@ -884,15 +884,17 @@ def plan_vs_forecast_render_check(p):
     prime a stale persisted dataset in localStorage, load the Plan vs Forecast tab,
     and assert the page resolves to the ACTIVE dataset and renders the plan — not the
     template door. This is the check the API-only guard cannot make."""
-    import urllib.request
+    import urllib.request, time as _time
     base = f"https://{BACKEND}"
     def apiget(path):
-        try:
-            req = urllib.request.Request(base + path, headers={"X-AXIOM-Tenant": "showcase"})
-            with urllib.request.urlopen(req, timeout=30) as r:
-                return json.loads(r.read())
-        except Exception:
-            return None
+        for _ in range(3):     # retry: a transient failure must not silently skip the guard
+            try:
+                req = urllib.request.Request(base + path, headers={"X-AXIOM-Tenant": "showcase"})
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    return json.loads(r.read())
+            except Exception:
+                _time.sleep(2)
+        return None
     sc = apiget("/access/showcase-companies")
     companies = (sc or {}).get("companies", []) if isinstance(sc, dict) else []
     if not companies:
