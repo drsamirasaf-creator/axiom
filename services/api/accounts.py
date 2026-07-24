@@ -243,6 +243,7 @@ class Initiative(Base):
     completed_at = Column(DateTime, nullable=True)
     department_id = Column(Integer, index=True, nullable=True)   # §4s → ax_departments.id
     is_demo = Column(Boolean, default=False, server_default="false", nullable=False)  # PES: seeded demo project
+    rank = Column(Integer, nullable=True)                        # within-band rank (1..N); null = unranked
 
 
 class InitiativeEvent(Base):
@@ -496,6 +497,32 @@ class InitiativeBlocker(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class InitiativeCadenceUpdate(Base):
+    """A periodic review update on an initiative (Part 2 cadence ritual): RAG + a
+    one-line 'what moved this period' note, dated. Latest update date drives the
+    'update overdue' flag against the initiative's review_cadence."""
+    __tablename__ = "ax_initiative_cadence_updates"
+    id = Column(Integer, primary_key=True)
+    initiative_id = Column(Integer, index=True, nullable=False)
+    rag = Column(String(8), nullable=False)                          # green|amber|red
+    note = Column(Text, default="", nullable=False)
+    created_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class InitiativeRating(Base):
+    """A 1-5 star rating of an initiative by one member (§7m-a). One row per rater
+    (upsert); the surface shows avg (n) with an n>=3 display floor."""
+    __tablename__ = "ax_initiative_ratings"
+    __table_args__ = (UniqueConstraint("initiative_id", "rater", name="uq_initiative_rating"),)
+    id = Column(Integer, primary_key=True)
+    initiative_id = Column(Integer, index=True, nullable=False)
+    rater = Column(String(120), nullable=False)                      # user id or pseudonymous ref
+    stars = Column(Integer, nullable=False)                          # 1..5
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class ReportIssue(Base):
     """The issue registry (7f-A): one row per generated report/deck. The
     forum's per-report threads and future review-diffs key on this."""
@@ -664,6 +691,7 @@ class Department(Base):
     head_email = Column(String(200), nullable=True)
     parent_id = Column(Integer, nullable=True)                    # self-ref → ax_departments.id
     is_standard = Column(Boolean, default=False, nullable=False)  # from the standard list vs custom
+    employees = Column(Integer, nullable=True)                    # headcount (optional; null ≠ 0) — coverage
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -2424,6 +2452,8 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
                                  head_name=d.get("head_name"), head_title=d.get("head_title"),
                                  head_email=d.get("head_email"),
                                  is_standard=(d["name"] in ingest.STD_DEPARTMENTS))
+        if d.get("employees") is not None:      # blank cell → leave existing/null (never 0)
+            dep.employees = d["employees"]
         dept_by_norm[(d["name"] or "").strip().lower()] = dep
     db.flush()
     for d in departments:
@@ -2604,6 +2634,7 @@ def _dept_out(dep):
         return None
     return {"id": dep.id, "name": dep.name, "parent_id": dep.parent_id,
             "is_standard": bool(dep.is_standard),
+            "employees": getattr(dep, "employees", None),   # headcount (null ≠ 0)
             "head": {"name": dep.head_name, "title": dep.head_title, "email": dep.head_email}
             if (dep.head_name or dep.head_title or dep.head_email) else None,
             "head_name": dep.head_name, "head_title": dep.head_title, "head_email": dep.head_email}
@@ -3383,6 +3414,30 @@ class DepartmentIn(BaseModel):
     head_title: str | None = None
     head_email: str | None = None
     parent_id: int | None = None
+    employees: int | None = None      # headcount (optional; blank → null, never 0)
+
+
+def _dept_coverage(db, company_id):
+    """Per-department assessment coverage for the NEWEST cycle: {dept_name: {respondents,
+    invited}}. respondents = distinct participant_refs whose responses carry that dept;
+    invited = non-revoked assessor invites tagged with that dept. Both keyed by dept
+    NAME (responses/invites store the name string)."""
+    newest = (db.query(AssessmentCycle).filter_by(company_id=company_id)
+                .order_by(AssessmentCycle.id.desc()).first())
+    resp, inv = {}, {}
+    if newest:
+        seen = {}
+        for r in (db.query(AssessmentResponse.participant_ref, AssessmentResponse.department)
+                    .filter_by(cycle_id=newest.id).distinct().all()):
+            if r[1]:
+                seen.setdefault(r[1], set()).add(r[0])
+        resp = {k: len(v) for k, v in seen.items()}
+        for a in (db.query(AssessmentInvite)
+                    .filter(AssessmentInvite.cycle_id == newest.id,
+                            AssessmentInvite.revoked_at.is_(None)).all()):
+            if a.department:
+                inv[a.department] = inv.get(a.department, 0) + 1
+    return {"cycle_id": (newest.id if newest else None), "respondents": resp, "invited": inv}
 
 
 def _dept_counts(db, company_id):
@@ -3423,10 +3478,22 @@ def list_departments(company_id: int, member=Depends(_summary_access), db=Depend
     deps = (db.query(Department).filter_by(company_id=company_id)
               .order_by(Department.name).all())
     counts = _dept_counts(db, company_id)
+    cov = _dept_coverage(db, company_id)
+    sent = _department_sentiment_map(db, company_id)      # shared with the Sentiment tab
     zero = {"objectives": 0, "key_results": 0, "kpis": 0, "initiatives": 0,
             "rag": {"green": 0, "amber": 0, "red": 0}}
+
+    def coverage(d):
+        respondents = cov["respondents"].get(d.name, 0)
+        invited = cov["invited"].get(d.name, 0)
+        emp = getattr(d, "employees", None)
+        return {"respondents": respondents, "invited": invited, "employees": emp,
+                "participation_pct": (round(100 * respondents / emp) if emp else None),
+                "cycle_id": cov["cycle_id"]}
     return {"company_id": company_id, "has_data": bool(deps),
-            "departments": [{**_dept_out(d), "counts": counts.get(d.id, zero)} for d in deps]}
+            "departments": [{**_dept_out(d), "counts": counts.get(d.id, zero),
+                             "coverage": coverage(d),
+                             "sentiment": sent.get(d.id)} for d in deps]}
 
 
 @router.post("/companies/{company_id}/departments", status_code=201)
@@ -3442,6 +3509,8 @@ def create_department(company_id: int, body: DepartmentIn,
                              head_title=body.head_title, head_email=body.head_email,
                              is_standard=(name in ingest_STD_DEPARTMENTS()))
     db.flush()
+    if body.employees is not None:
+        dep.employees = max(0, int(body.employees))
     if body.parent_id is not None and body.parent_id != dep.id:
         par = db.get(Department, body.parent_id)
         if par is not None and par.company_id == company_id:
@@ -3465,6 +3534,7 @@ def update_department(company_id: int, dept_id: int, body: DepartmentIn,
     dep.head_name = body.head_name
     dep.head_title = body.head_title
     dep.head_email = body.head_email
+    dep.employees = (max(0, int(body.employees)) if body.employees is not None else None)
     # parent: reject self and simple cycles (parent must not be a descendant)
     if body.parent_id is None:
         dep.parent_id = None
@@ -3818,8 +3888,17 @@ def _ini_event(db, ini, actor, etype, frm, to, note):
         to_value=(str(to) if to is not None else None), note=note))
 
 
+def _display_code(i):
+    """Within-band display code = band letter + rank ("A1", "B3"); unranked → band
+    letter alone ("A"). The band comes from the CURRENT priority/status."""
+    band = _band_of(i.status, i.current_priority)
+    rank = getattr(i, "rank", None)
+    return f"{band}{rank}" if rank else band
+
+
 def _ini_out(i):
     return {"id": i.id, "company_id": i.company_id, "ref_code": i.ref_code,
+            "rank": getattr(i, "rank", None), "display_code": _display_code(i),
             "previous_refs": list(i.previous_refs or []), "title": i.title,
             "description": i.description, "source": i.source,
             "source_report_issued_at": i.source_report_issued_at,
@@ -3891,10 +3970,13 @@ def list_initiatives(company_id: int, department: int | None = None,
         return int(rc[1:]) if rc and rc[1:].isdigit() else 0
 
     def key(i):
+        r = getattr(i, "rank", None)
         return (1 if i.status == "rejected" else 0,          # D-band last
                 prank.get(i.current_priority, 3),            # high → low
                 0 if i.status in _ACTIVE_STATUSES else 1,    # active before terminal
-                seq(i.ref_code))
+                0 if r is not None else 1,                   # ranked before unranked
+                r if r is not None else 0,                   # by rank within band
+                (i.created_at or datetime.min), seq(i.ref_code))  # unranked → by created
     rows.sort(key=key)
     # §9 bridge: attach the objectives each initiative serves (built once). Active-
     # dataset objectives only; obj_key ties links to stable text identity across
@@ -3969,6 +4051,14 @@ def patch_initiative(company_id: int, iid: int, body: InitiativePatch,
         else:                                    # priority moved but band stayed (e.g. rejected)
             _ini_event(db, ini, user.id, "priority_changed", old_priority,
                        ini.current_priority, note)
+        # within-band rank: a band move re-slots the item at the END of the target band
+        # (rank=None → after the ranked pool) and renumbers the source band to close the
+        # gap. A rank is a decision — the target band is not auto-renumbered here.
+        old_band = _band_of(ini.status, old_priority)
+        new_band = _band_of(ini.status, ini.current_priority)
+        if old_band != new_band:
+            ini.rank = None
+            _renumber_band(db, company_id, old_band)
     elif "expected_impact_amount" in changed:
         _ini_event(db, ini, user.id, "impact_updated", old_impact,
                    ini.expected_impact_amount, note)
@@ -4535,10 +4625,50 @@ def _csf_rollup_rag(csfs):
     return "green"
 
 
+_CADENCE_DAYS = {"weekly": 7, "biweekly": 14, "monthly": 30, "quarterly": 90,
+                 "semiannual": 182, "annual": 365}
+
+
+def _cadence_status(db, ini):
+    """{cadence, last_update_at, due_date, overdue}. Overdue = now past (last update
+    date, else creation) + the cadence period. No cadence → never overdue."""
+    cad = getattr(ini, "review_cadence", None)
+    days = _CADENCE_DAYS.get((cad or "").lower())
+    last = (db.query(InitiativeCadenceUpdate)
+              .filter_by(initiative_id=ini.id)
+              .order_by(InitiativeCadenceUpdate.created_at.desc()).first())
+    last_at = last.created_at if last else ini.created_at
+    due = (last_at + timedelta(days=days)) if (days and last_at) else None
+    overdue = bool(due and datetime.utcnow() >= due
+                   and ini.status in _ACTIVE_STATUSES)
+    return {"cadence": cad, "last_update_at": (last.created_at if last else None),
+            "due_date": due, "overdue": overdue}
+
+
+def _rating_summary(db, iid, floor=3):
+    """Avg + n with an n>=floor DISPLAY floor: below the floor → awaiting (avg hidden)."""
+    rows = db.query(InitiativeRating).filter_by(initiative_id=iid).all()
+    n = len(rows)
+    if n < floor:
+        return {"avg": None, "n": n, "display": "awaiting ratings", "floored": True}
+    avg = round(sum(r.stars for r in rows) / n, 1)
+    return {"avg": avg, "n": n, "display": f"{avg} ({n})", "floored": False}
+
+
+def _renumber_band(db, company_id, band):
+    """Reassign contiguous ranks 1..N to the RANKED initiatives in one band, preserving
+    their current rank order (closes gaps). Unranked rows are left untouched."""
+    rows = [i for i in db.query(Initiative).filter_by(company_id=company_id).all()
+            if _band_of(i.status, i.current_priority) == band and i.rank is not None]
+    rows.sort(key=lambda i: (i.rank, i.id))
+    for pos, i in enumerate(rows, start=1):
+        i.rank = pos
+
+
 def _initiative_rollups(db, ini):
     """The execution roll-ups for one initiative: derived progress, CSF-derived RAG,
-    the effective RAG (manual override wins, labelled), open-blocker count, and the
-    next upcoming milestone date."""
+    the effective RAG (manual override wins, labelled), open-blocker count, the next
+    upcoming milestone date, the cadence-update status, and the member rating."""
     csfs = db.query(InitiativeCSF).filter_by(initiative_id=ini.id).all()
     csf_rag = _csf_rollup_rag(csfs)
     manual = ini.rag
@@ -4551,13 +4681,19 @@ def _initiative_rollups(db, ini):
                     InitiativeMilestone.status != "done").all())
     dated = sorted([m for m in ms if m.target_date], key=lambda m: m.target_date)
     nxt = dated[0] if dated else None
+    # count slipped milestones (surfaced by the cockpit)
+    slipped = sum(1 for m in db.query(InitiativeMilestone)
+                    .filter_by(initiative_id=ini.id).all() if m.status == "slipped")
     return {"progress": _initiative_progress(db, ini.id),
             "csf_rag": csf_rag, "rag_source": ("manual" if manual else
                                                ("derived" if csf_rag else "none")),
             "effective_rag": effective,
             "open_blocker_count": open_blockers,
+            "slipped_milestone_count": slipped,
             "next_milestone": ({"title": nxt.title, "target_date": nxt.target_date}
-                               if nxt else None)}
+                               if nxt else None),
+            "cadence": _cadence_status(db, ini),
+            "rating": _rating_summary(db, ini.id)}
 
 
 def _create_assignment(db, ini, company_id, email, name, note, grant, actor_id):
@@ -5128,11 +5264,175 @@ def initiative_detail(company_id: int, iid: int, member=Depends(_summary_access)
     d["department"] = _dept_out(dept_idx.get(getattr(ini, "department_id", None)))
     d["serves_objectives"] = _initiative_served_objectives(db, company_id, iid)
     d.update(_initiative_rollups(db, ini))
+    cad = (db.query(InitiativeCadenceUpdate).filter_by(initiative_id=iid)
+             .order_by(InitiativeCadenceUpdate.created_at.desc()).all())
     return {"initiative": d,
             "csfs": [_csf_out(x) for x in csfs],
             "milestones": [_milestone_out(m) for m in ms],
             "actions": [_action_out(a) for a in acts],
-            "blockers": [_blocker_out(b) for b in bs]}
+            "blockers": [_blocker_out(b) for b in bs],
+            "cadence_updates": [_cadence_out(u) for u in cad]}
+
+
+def _cadence_out(u):
+    return {"id": u.id, "initiative_id": u.initiative_id, "rag": u.rag,
+            "note": u.note, "created_by": u.created_by, "created_at": u.created_at}
+
+
+class CadenceUpdateIn(BaseModel):
+    rag: str
+    note: str = ""
+
+
+@router.post("/companies/{company_id}/initiatives/{iid}/cadence-update", status_code=201)
+def post_cadence_update(company_id: int, iid: int, body: CadenceUpdateIn,
+                        user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Leader (7e) or admin posts a periodic review update: RAG + one-line note. The
+    ritual must be nearly free — one field + one click. The update ALSO sets the
+    initiative's effective RAG (manual override, labelled) and resets the cadence clock."""
+    ini, role = _leader_or_admin(company_id, iid, user, db)
+    if body.rag not in ("green", "amber", "red"):
+        raise HTTPException(422, "rag must be green|amber|red")
+    u = InitiativeCadenceUpdate(initiative_id=iid, rag=body.rag,
+                                note=(body.note or "").strip()[:280], created_by=user.id)
+    db.add(u)
+    old = ini.rag
+    ini.rag = body.rag; ini.rag_updated_at = datetime.utcnow(); ini.rag_updated_by = user.id
+    _ini_event(db, ini, user.id, "cadence_update", old, body.rag, u.note)
+    if body.rag == "red":
+        _notify_admin_alert(db, company_id, f"{ini.ref_code} update: RED",
+                            f"{_display_code(ini)} — {ini.title}: {u.note or 'set to RED'}")
+    audit(db, user.id, "cadence_update", "company", company_id, detail=f"{ini.ref_code} {body.rag}")
+    db.commit(); db.refresh(u)
+    return _cadence_out(u)
+
+
+@router.get("/companies/{company_id}/initiatives/{iid}/cadence-updates")
+def list_cadence_updates(company_id: int, iid: int, member=Depends(_summary_access), db=Depends(get_db)):
+    _get_company_initiative(db, company_id, iid)
+    rows = (db.query(InitiativeCadenceUpdate).filter_by(initiative_id=iid)
+              .order_by(InitiativeCadenceUpdate.created_at.desc()).all())
+    return {"initiative_id": iid, "cadence_updates": [_cadence_out(u) for u in rows],
+            "cadence": _cadence_status(db, _get_company_initiative(db, company_id, iid))}
+
+
+class RatingIn(BaseModel):
+    stars: int
+
+
+@router.post("/companies/{company_id}/initiatives/{iid}/rating", status_code=201)
+def rate_initiative(company_id: int, iid: int, body: RatingIn,
+                    member=Depends(require_company_member),
+                    user: User = Depends(get_current_user), db=Depends(get_db)):
+    """A member rates this initiative 1-5 (§7m-a), via their existing access. One
+    rating per rater (upsert). Display floors at n>=3."""
+    _get_company_initiative(db, company_id, iid)
+    if not (1 <= int(body.stars) <= 5):
+        raise HTTPException(422, "stars must be 1..5")
+    rater = str(user.id)
+    row = db.query(InitiativeRating).filter_by(initiative_id=iid, rater=rater).first()
+    if row:
+        row.stars = int(body.stars); row.updated_at = datetime.utcnow()
+    else:
+        db.add(InitiativeRating(initiative_id=iid, rater=rater, stars=int(body.stars)))
+    audit(db, user.id, "initiative_rated", "company", company_id, detail=f"iid {iid} {body.stars}★")
+    db.commit()
+    return {"initiative_id": iid, "your_rating": int(body.stars), "rating": _rating_summary(db, iid)}
+
+
+class ReorderIn(BaseModel):
+    ordered_ids: list[int]      # initiative ids in the intended within-band order
+
+
+@router.post("/companies/{company_id}/initiatives/reorder")
+def reorder_initiatives(company_id: int, body: ReorderIn,
+                        member=Depends(require_company_admin),
+                        user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Renumber a band contiguously (1..N) from an explicit id order. All ids must be
+    in the SAME band; others are ignored. A rank is a decision — this is how it's made."""
+    inis = {i.id: i for i in db.query(Initiative).filter_by(company_id=company_id).all()}
+    picked = [inis[i] for i in body.ordered_ids if i in inis]
+    if not picked:
+        raise HTTPException(422, "no matching initiatives")
+    bands = {_band_of(i.status, i.current_priority) for i in picked}
+    if len(bands) > 1:
+        raise HTTPException(422, "all initiatives must be in the same band to reorder")
+    for pos, i in enumerate(picked, start=1):
+        i.rank = pos
+    audit(db, user.id, "initiatives_reordered", "company", company_id,
+          detail=f"band {bands.pop()} ({len(picked)})")
+    db.commit()
+    return {"ok": True, "ordered": [{"id": i.id, "rank": i.rank, "display_code": _display_code(i)}
+                                    for i in picked]}
+
+
+@router.get("/companies/{company_id}/initiatives/cockpit")
+def initiatives_cockpit(company_id: int, member=Depends(_summary_access), db=Depends(get_db)):
+    """Portfolio cockpit — the ATTENTION view (not a list). Needs-attention rows (each
+    says WHY + links through), a portfolio summary (RAG mix · open blockers · avg
+    progress · next 5 milestones), and a by-department RAG/progress mix (§4s click-
+    through). Anonymous-readable for showcase. Honest-empty where thin."""
+    inis = db.query(Initiative).filter_by(company_id=company_id).all()
+    active = [i for i in inis if i.status in _ACTIVE_STATUSES]
+    dept_idx = _dept_index(db, company_id)
+    needs, all_ms = [], []
+    rag_counts = {"green": 0, "amber": 0, "red": 0, "none": 0}
+    open_blk = prog_sum = prog_n = 0
+    by_dept = {}
+    for i in active:
+        r = _initiative_rollups(db, i)
+        eff = r["effective_rag"]
+        rag_counts[eff if eff in rag_counts else "none"] += 1
+        open_blk += r["open_blocker_count"]
+        if r["progress"]["pct"] is not None:
+            prog_sum += r["progress"]["pct"]; prog_n += 1
+        crit = (db.query(InitiativeBlocker)
+                  .filter(InitiativeBlocker.initiative_id == i.id,
+                          InitiativeBlocker.resolved_at.is_(None),
+                          InitiativeBlocker.severity.in_(("high", "critical"))).count())
+        reasons = []
+        if crit:
+            reasons.append(f"{crit} open critical/high blocker{'s' if crit > 1 else ''}")
+        if eff == "red":
+            reasons.append("effective RAG is red")
+        if r["cadence"]["overdue"]:
+            reasons.append("cadence update overdue")
+        if r["slipped_milestone_count"]:
+            reasons.append(f"{r['slipped_milestone_count']} slipped milestone"
+                           + ("s" if r["slipped_milestone_count"] > 1 else ""))
+        if reasons:
+            needs.append({"id": i.id, "display_code": _display_code(i), "ref_code": i.ref_code,
+                          "title": i.title, "type": getattr(i, "type", "initiative"),
+                          "effective_rag": eff, "progress": r["progress"]["pct"],
+                          "reasons": reasons,
+                          "department": _dept_out(dept_idx.get(i.department_id))})
+        did = i.department_id
+        s = by_dept.setdefault(did, {"green": 0, "amber": 0, "red": 0, "none": 0,
+                                     "prog_sum": 0, "prog_n": 0, "count": 0})
+        s[eff if eff in s else "none"] += 1; s["count"] += 1
+        if r["progress"]["pct"] is not None:
+            s["prog_sum"] += r["progress"]["pct"]; s["prog_n"] += 1
+        for m in db.query(InitiativeMilestone).filter_by(initiative_id=i.id).all():
+            if m.status != "done" and m.target_date:
+                all_ms.append({"initiative_id": i.id, "display_code": _display_code(i),
+                               "milestone": m.title, "target_date": m.target_date, "status": m.status})
+    needs.sort(key=lambda row: (row["effective_rag"] != "red", -len(row["reasons"])))
+    all_ms.sort(key=lambda m: m["target_date"])
+    departments = []
+    for did, s in by_dept.items():
+        dep = dept_idx.get(did)
+        departments.append({"department_id": did, "department": _dept_out(dep),
+                            "rag": {k: s[k] for k in ("green", "amber", "red", "none")},
+                            "count": s["count"],
+                            "avg_progress": (round(s["prog_sum"] / s["prog_n"]) if s["prog_n"] else None)})
+    departments.sort(key=lambda d: (d["rag"]["red"] == 0, -d["rag"]["red"],
+                                    (d["department"]["name"] if d["department"] else "zzz")))
+    return {"company_id": company_id, "has_data": bool(active),
+            "needs_attention": needs,
+            "summary": {"rag": rag_counts, "open_blockers": open_blk,
+                        "avg_progress": (round(prog_sum / prog_n) if prog_n else None),
+                        "active_count": len(active), "next_milestones": all_ms[:5]},
+            "by_department": departments}
 
 
 # ====================================================================
@@ -7096,6 +7396,68 @@ def assessment_seniority_gap(company_id: int, member=Depends(_summary_access),
 _SENT_SCORE = {"positive": 1.0, "neutral": 0.0, "mixed": -0.25, "negative": -1.0}
 _SENT_RAG = {"positive": "green", "neutral": "amber", "mixed": "amber", "negative": "red"}
 
+# Department sentiment-chip banding (absolute 0–100 ledger thresholds; one place).
+SENTIMENT_GREEN_MIN = 70      # score >= 70 → green
+SENTIMENT_AMBER_MIN = 40      # 40 <= score < 70 → amber ; < 40 → red
+
+
+def _sentiment_score_rag(score):
+    if score is None:
+        return None
+    return "green" if score >= SENTIMENT_GREEN_MIN else "amber" if score >= SENTIMENT_AMBER_MIN else "red"
+
+
+def _department_sentiment_map(db, company_id):
+    """THE per-department sentiment composite — one aggregation, two consumers (the
+    Sentiment tab and the org-chart chip both read this). For each department: a 0–100
+    composite (axis tones weighted by that department's per-axis comment volume, mapped
+    from [-1,1]), its R/A/G band (absolute thresholds), the comment n, a below-floor
+    flag (reusing the k-anonymity KFLOOR — a below-floor department NEVER shows a colour),
+    and a divergence flag (the department commented on a score-vs-tone divergent axis).
+    Keyed by department id; every department gets an entry (n=0 → below floor)."""
+    from .assessment_engine import KFLOOR
+    out = {}
+    deps = db.query(Department).filter_by(company_id=company_id).all()
+    cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
+                .order_by(AssessmentCycle.opened_at).all())
+    closed = [c for c in cycles if c.closed_at and (c.snapshot or {}).get("l1_subscores")]
+    latest = closed[-1] if closed else None
+    if latest is None or not (latest.snapshot or {}).get("sentiment_available"):
+        return {d.id: {"score": None, "rag": None, "n": 0, "below_floor": True,
+                       "divergence": False} for d in deps}
+    snap = latest.snapshot or {}
+    l1_sent = snap.get("l1_sentiment") or {}
+    l1_div = snap.get("l1_divergence") or {}
+    cohort_counts, _ = _axis_comment_counts(db, latest)      # which axes have cohort tone
+    id_map, _ = _l1_maps(db, latest.framework_id)
+    # per-department per-axis comment counts
+    dept_axis, dept_total = {}, {}
+    for r in db.query(AssessmentResponse).filter_by(cycle_id=latest.id).all():
+        if r.comment and r.comment.strip() and r.department:
+            ax = (id_map.get(r.item_id) or {}).get("l1_code")
+            if ax:
+                dept_axis.setdefault(r.department, {}).setdefault(ax, 0)
+                dept_axis[r.department][ax] += 1
+                dept_total[r.department] = dept_total.get(r.department, 0) + 1
+    for d in deps:
+        n = dept_total.get(d.name, 0)
+        below = n < KFLOOR
+        num = den = 0.0
+        div = False
+        for ax, cnt in (dept_axis.get(d.name) or {}).items():
+            lbl = (l1_sent.get(ax) or {}).get("sentiment")
+            if lbl in _SENT_SCORE and cohort_counts.get(ax, 0) >= KFLOOR:
+                num += _SENT_SCORE[lbl] * cnt
+                den += cnt
+                if l1_div.get(ax):
+                    div = True
+        score = round((num / den + 1) / 2 * 100) if den else None
+        out[d.id] = {"score": (None if below else score),
+                     "rag": (None if below else _sentiment_score_rag(score)),
+                     "n": n, "below_floor": below,
+                     "divergence": bool(div and not below)}
+    return out
+
 
 def _sentiment_label(score):
     if score is None:
@@ -7241,9 +7603,17 @@ def assessment_sentiment(company_id: int, department: int | None = None,
             trend = {"prior_score": po["score"], "prior_label": po["label"],
                      "delta": round(overall["score"] - po["score"], 3),
                      "prior_cycle_id": prior.id}
+    # per-department composites — the SAME helper the org-chart chip reads, so the two
+    # can never disagree. Attached to the department name for easy client join.
+    dsent = _department_sentiment_map(db, company_id)
+    dname = {d.id: d.name for d in db.query(Department).filter_by(company_id=company_id).all()}
+    departments = [{"department_id": did, "name": dname.get(did), **v}
+                   for did, v in dsent.items()]
     return {"company_id": company_id, "has_data": overall is not None,
             "cycle_id": latest.id, "cycle_closed_at": latest.closed_at,
             "overall": overall, "trend": trend, "axes": axes, "n": total,
+            "departments": departments,
+            "sentiment_bands": {"green_min": SENTIMENT_GREEN_MIN, "amber_min": SENTIMENT_AMBER_MIN},
             "tone_basis": ("this slice's comment counts; tone is measured across all "
                            "respondents" if sliced else "all respondents"),
             "department_filter": _dept, "seniority_filter": _sen,
@@ -9180,6 +9550,9 @@ def _ensure_ax_columns(engine):
     # Project Execution Suite — CSF owner + demo provenance on projects
     _add("ax_initiative_csfs", "owner_name", "owner_name VARCHAR(200)")
     _add("ax_initiatives", "is_demo", "is_demo BOOLEAN NOT NULL DEFAULT false")
+    # Part 2 — within-band rank + department headcount
+    _add("ax_initiatives", "rank", "rank INTEGER")
+    _add("ax_departments", "employees", "employees INTEGER")
     # custody-5 item 4: roster lifecycle — remind cooldown, revoke, delivery-only alt email
     _add("ax_assessment_invites", "last_reminded_at", "last_reminded_at TIMESTAMP")
     _add("ax_assessment_invites", "revoked_at", "revoked_at TIMESTAMP")

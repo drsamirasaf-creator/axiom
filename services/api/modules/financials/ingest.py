@@ -408,7 +408,8 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
                 "chart. Pick from the standard list or type your own. Objectives and KPIs "
                 "reference these departments.")
     ws["A1"].font = Font(italic=True, color="446655")
-    org_hdrs = ["Department", "Head name", "Head title", "Head email", "Parent department (optional)"]
+    org_hdrs = ["Department", "Head name", "Head title", "Head email",
+                "Parent department (optional)", "Employees (optional)"]
     for i, h in enumerate(org_hdrs):
         _hdr(ws.cell(row=ORG_HEADER_ROW, column=1 + i), h, bg=_INK, fg=_ACCENT)
     dv_dept = DataValidation(type="list", formula1="AX_Depts", allow_blank=True)
@@ -418,9 +419,10 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     dv_dept.add(f"A{ORG_DATA_START}:A{org_last}")
     dv_par.add(f"E{ORG_DATA_START}:E{org_last}")
     for r in range(ORG_DATA_START, org_last + 1):
-        for c in range(1, 6):
+        for c in range(1, 7):
             _input(ws.cell(row=r, column=c)); ws.cell(row=r, column=c).number_format = "General"
-    for col, w in zip("ABCDE", (24, 22, 22, 28, 26)):
+        ws.cell(row=r, column=6).number_format = "0"          # employees: integer
+    for col, w in zip("ABCDEF", (24, 22, 22, 28, 26, 16)):
         ws.column_dimensions[col].width = w
     ws.protection.sheet = True; ws.protection.password = _LOCK_PWD
 
@@ -864,8 +866,18 @@ def parse_okr_and_kpis(content: bytes):
     has_kpis = KPI_SHEET in wb.sheetnames
     has_org = ORG_SHEET in wb.sheetnames
 
-    # ---- (§4s) Organization (A dept · B head name · C head title · D head email · E parent) ----
-    departments = []            # {row_index, name, head_name, head_title, head_email, parent, source}
+    # ---- (§4s) Organization (A dept · B head name · C head title · D head email · E parent · F employees) ----
+    departments = []            # {row_index, name, head_name, head_title, head_email, parent, employees, source}
+
+    def _cell_int(v):
+        """Optional integer cell → int or None. Blank stays None (never coerced to 0)."""
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        try:
+            n = int(float(v))
+            return n if n >= 0 else None
+        except (TypeError, ValueError):
+            return None
     known = {}                  # normalized name -> canonical name (as first seen)
     def _norm_dept(n):
         return (n or "").strip().lower()
@@ -886,6 +898,7 @@ def parse_okr_and_kpis(content: bytes):
                                 "head_title": _cell_str(ws.cell(row=r, column=3).value) or None,
                                 "head_email": _cell_str(ws.cell(row=r, column=4).value) or None,
                                 "parent": _cell_str(ws.cell(row=r, column=5).value) or None,
+                                "employees": _cell_int(ws.cell(row=r, column=6).value),  # F headcount (blank→null)
                                 "source": "organization"})
 
     # ---- Objectives (new sheet: A obj · B owner · C priority · D horizon · E status · F id) ----
