@@ -242,6 +242,7 @@ class Initiative(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     completed_at = Column(DateTime, nullable=True)
     department_id = Column(Integer, index=True, nullable=True)   # §4s → ax_departments.id
+    is_demo = Column(Boolean, default=False, server_default="false", nullable=False)  # PES: seeded demo project
 
 
 class InitiativeEvent(Base):
@@ -431,6 +432,7 @@ class InitiativeCSF(Base):
     id = Column(Integer, primary_key=True)
     initiative_id = Column(Integer, index=True, nullable=False)
     text = Column(Text, nullable=False)
+    owner_name = Column(String(200), nullable=True)                  # optional CSF owner (PES)
     position = Column(Integer, default=0, nullable=False)
     status = Column(String(16), default="holding", nullable=False)   # holding|at_risk|broken
     updated_by = Column(Integer, nullable=True)
@@ -449,6 +451,49 @@ class CSFProposal(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     resolved_by = Column(Integer, nullable=True)
     resolved_at = Column(DateTime, nullable=True)
+
+
+class InitiativeMilestone(Base):
+    """A dated delivery checkpoint on an initiative/project (Project Execution Suite).
+    Drives the auto-Gantt timeline and (done/total) the derived %-complete."""
+    __tablename__ = "ax_initiative_milestones"
+    id = Column(Integer, primary_key=True)
+    initiative_id = Column(Integer, index=True, nullable=False)
+    title = Column(String(300), nullable=False)
+    target_date = Column(String(40), nullable=True)                   # ISO date
+    status = Column(String(16), default="pending", nullable=False)    # pending|done|slipped
+    owner_name = Column(String(200), nullable=True)
+    position = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class InitiativeAction(Base):
+    """A lightweight action item (no dependencies, no time-tracking — locked PM scope)."""
+    __tablename__ = "ax_initiative_actions"
+    id = Column(Integer, primary_key=True)
+    initiative_id = Column(Integer, index=True, nullable=False)
+    title = Column(String(300), nullable=False)
+    owner_name = Column(String(200), nullable=True)
+    due_date = Column(String(40), nullable=True)                      # ISO date
+    status = Column(String(16), default="open", nullable=False)       # open|done|blocked
+    position = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class InitiativeBlocker(Base):
+    """An impediment on an initiative/project; open blockers surface prominently."""
+    __tablename__ = "ax_initiative_blockers"
+    id = Column(Integer, primary_key=True)
+    initiative_id = Column(Integer, index=True, nullable=False)
+    title = Column(String(300), nullable=False)
+    description = Column(Text, default="", nullable=False)
+    severity = Column(String(16), default="medium", nullable=False)   # low|medium|high|critical
+    raised_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    resolved_at = Column(DateTime, nullable=True)                     # null → still open
+    position = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 class ReportIssue(Base):
@@ -3871,6 +3916,9 @@ def list_initiatives(company_id: int, department: int | None = None,
         d = _ini_out(i)
         d["serves_objectives"] = served.get(i.id, [])
         d["department"] = _dept_out(dept_idx.get(getattr(i, "department_id", None)))
+        # Project Execution Suite roll-ups on each row: derived %, effective RAG
+        # (manual override wins), open-blocker count, next milestone date.
+        d.update(_initiative_rollups(db, i))
         out.append(d)
     return {"company_id": company_id, "initiatives": out}
 
@@ -4349,6 +4397,7 @@ class LeaderStatusIn(BaseModel):
 class CSFItem(BaseModel):
     id: int | None = None
     text: str
+    owner_name: str | None = None      # Project Execution Suite: optional CSF owner
 
 
 class CSFPut(BaseModel):
@@ -4431,8 +4480,84 @@ def _assignment_out(a):
 
 def _csf_out(x):
     return {"id": x.id, "initiative_id": x.initiative_id, "text": x.text,
+            "owner_name": getattr(x, "owner_name", None),
             "position": x.position, "status": x.status,
             "updated_by": x.updated_by, "updated_at": x.updated_at}
+
+
+# ── Project Execution Suite: child payloads, derived progress + CSF→RAG rollup ──
+def _milestone_out(m):
+    return {"id": m.id, "initiative_id": m.initiative_id, "title": m.title,
+            "target_date": m.target_date, "status": m.status,
+            "owner_name": m.owner_name, "position": m.position,
+            "created_at": m.created_at}
+
+
+def _action_out(a):
+    return {"id": a.id, "initiative_id": a.initiative_id, "title": a.title,
+            "owner_name": a.owner_name, "due_date": a.due_date, "status": a.status,
+            "position": a.position, "created_at": a.created_at}
+
+
+def _blocker_out(b):
+    return {"id": b.id, "initiative_id": b.initiative_id, "title": b.title,
+            "description": b.description, "severity": b.severity,
+            "raised_at": b.raised_at, "resolved_at": b.resolved_at,
+            "resolved": b.resolved_at is not None, "position": b.position}
+
+
+def _initiative_progress(db, iid):
+    """Derived %-complete: milestones done/total; fallback to actions done/total when
+    there are no milestones. Never self-reported alone — `basis` names the source."""
+    ms = db.query(InitiativeMilestone).filter_by(initiative_id=iid).all()
+    if ms:
+        done = sum(1 for m in ms if m.status == "done")
+        return {"pct": round(100 * done / len(ms)), "basis": "milestones",
+                "done": done, "total": len(ms)}
+    acts = db.query(InitiativeAction).filter_by(initiative_id=iid).all()
+    if acts:
+        done = sum(1 for a in acts if a.status == "done")
+        return {"pct": round(100 * done / len(acts)), "basis": "actions",
+                "done": done, "total": len(acts)}
+    return {"pct": None, "basis": "none", "done": 0, "total": 0}
+
+
+def _csf_rollup_rag(csfs):
+    """CSF statuses → RAG: any broken(not-met)→red, any at_risk→amber, else green.
+    None when there are no CSFs. (Vocab holding/at_risk/broken == met/at-risk/not-met.)"""
+    if not csfs:
+        return None
+    st = {c.status for c in csfs}
+    if "broken" in st:
+        return "red"
+    if "at_risk" in st:
+        return "amber"
+    return "green"
+
+
+def _initiative_rollups(db, ini):
+    """The execution roll-ups for one initiative: derived progress, CSF-derived RAG,
+    the effective RAG (manual override wins, labelled), open-blocker count, and the
+    next upcoming milestone date."""
+    csfs = db.query(InitiativeCSF).filter_by(initiative_id=ini.id).all()
+    csf_rag = _csf_rollup_rag(csfs)
+    manual = ini.rag
+    effective = manual or csf_rag
+    open_blockers = (db.query(InitiativeBlocker)
+                       .filter(InitiativeBlocker.initiative_id == ini.id,
+                               InitiativeBlocker.resolved_at.is_(None)).count())
+    ms = (db.query(InitiativeMilestone)
+            .filter(InitiativeMilestone.initiative_id == ini.id,
+                    InitiativeMilestone.status != "done").all())
+    dated = sorted([m for m in ms if m.target_date], key=lambda m: m.target_date)
+    nxt = dated[0] if dated else None
+    return {"progress": _initiative_progress(db, ini.id),
+            "csf_rag": csf_rag, "rag_source": ("manual" if manual else
+                                               ("derived" if csf_rag else "none")),
+            "effective_rag": effective,
+            "open_blocker_count": open_blockers,
+            "next_milestone": ({"title": nxt.title, "target_date": nxt.target_date}
+                               if nxt else None)}
 
 
 def _create_assignment(db, ini, company_id, email, name, note, grant, actor_id):
@@ -4669,21 +4794,24 @@ def put_csfs(company_id: int, iid: int, body: CSFPut,
     ini = db.get(Initiative, iid)
     if not ini or ini.company_id != company_id:
         raise HTTPException(404, "initiative not found")
-    if not (2 <= len(body.csfs) <= 5):
-        raise HTTPException(422, "an initiative must have between 2 and 5 CSFs")
+    # §PES: target ≥3 CSFs is GUIDANCE (surfaced client-side), not blocking — only an
+    # upper sane bound is enforced here.
+    if len(body.csfs) > 10:
+        raise HTTPException(422, "an initiative may have at most 10 CSFs")
     existing = {x.id: x for x in db.query(InitiativeCSF).filter_by(initiative_id=iid).all()}
     keep = set()
     for pos, item in enumerate(body.csfs):
         text = (item.text or "").strip()
         if not text:
             raise HTTPException(422, "CSF text is required")
+        owner = (item.owner_name or "").strip() or None
         if item.id and item.id in existing:
             x = existing[item.id]
-            x.text = text; x.position = pos
+            x.text = text; x.position = pos; x.owner_name = owner
             keep.add(item.id)
         else:
             db.add(InitiativeCSF(initiative_id=iid, text=text, position=pos,
-                                 status="holding", updated_by=user.id))
+                                 status="holding", owner_name=owner, updated_by=user.id))
     for cid, x in existing.items():
         if cid not in keep:
             db.delete(x)
@@ -4789,6 +4917,222 @@ def reject_csf_proposal(company_id: int, ppid: int, member=Depends(require_compa
     audit(db, user.id, "csf_text_rejected", "company", company_id, detail=f"{ini.ref_code} csf {pr.csf_id}")
     db.commit()
     return {"ok": True, "proposal_id": ppid, "status": "rejected"}
+
+
+# ====================================================================
+# Project Execution Suite — milestones · action items · blockers · detail
+# ====================================================================
+class MilestoneItem(BaseModel):
+    id: int | None = None
+    title: str
+    target_date: str | None = None
+    status: str = "pending"            # pending|done|slipped
+    owner_name: str | None = None
+
+
+class MilestonesPut(BaseModel):
+    milestones: list[MilestoneItem]
+
+
+class ActionItemIn(BaseModel):
+    id: int | None = None
+    title: str
+    owner_name: str | None = None
+    due_date: str | None = None
+    status: str = "open"               # open|done|blocked
+
+
+class ActionsPut(BaseModel):
+    actions: list[ActionItemIn]
+
+
+class BlockerItem(BaseModel):
+    id: int | None = None
+    title: str
+    description: str = ""
+    severity: str = "medium"           # low|medium|high|critical
+    resolved: bool = False
+
+
+class BlockersPut(BaseModel):
+    blockers: list[BlockerItem]
+
+
+def _get_company_initiative(db, company_id, iid):
+    ini = db.get(Initiative, iid)
+    if not ini or ini.company_id != company_id:
+        raise HTTPException(404, "initiative not found")
+    return ini
+
+
+@router.get("/companies/{company_id}/initiatives/{iid}/milestones")
+def list_milestones(company_id: int, iid: int, member=Depends(_summary_access), db=Depends(get_db)):
+    _get_company_initiative(db, company_id, iid)
+    ms = (db.query(InitiativeMilestone).filter_by(initiative_id=iid)
+            .order_by(InitiativeMilestone.position, InitiativeMilestone.id).all())
+    return {"initiative_id": iid, "milestones": [_milestone_out(m) for m in ms]}
+
+
+@router.put("/companies/{company_id}/initiatives/{iid}/milestones")
+def put_milestones(company_id: int, iid: int, body: MilestonesPut,
+                   member=Depends(require_company_admin),
+                   user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Admin bulk-reconcile milestones by id (update kept, add new, delete omitted)."""
+    ini = _get_company_initiative(db, company_id, iid)
+    if len(body.milestones) > 40:
+        raise HTTPException(422, "at most 40 milestones")
+    existing = {m.id: m for m in db.query(InitiativeMilestone).filter_by(initiative_id=iid).all()}
+    keep = set()
+    for pos, item in enumerate(body.milestones):
+        title = (item.title or "").strip()
+        if not title:
+            raise HTTPException(422, "milestone title is required")
+        if item.status not in ("pending", "done", "slipped"):
+            raise HTTPException(422, "milestone status must be pending|done|slipped")
+        td = (item.target_date or "").strip() or None
+        own = (item.owner_name or "").strip() or None
+        if item.id and item.id in existing:
+            m = existing[item.id]
+            m.title, m.target_date, m.status, m.owner_name, m.position = title, td, item.status, own, pos
+            m.updated_at = datetime.utcnow()
+            keep.add(item.id)
+        else:
+            db.add(InitiativeMilestone(initiative_id=iid, title=title, target_date=td,
+                                       status=item.status, owner_name=own, position=pos))
+    for mid, m in existing.items():
+        if mid not in keep:
+            db.delete(m)
+    audit(db, user.id, "milestones_updated", "company", company_id,
+          detail=f"{ini.ref_code} ({len(body.milestones)})")
+    db.commit()
+    rows = (db.query(InitiativeMilestone).filter_by(initiative_id=iid)
+              .order_by(InitiativeMilestone.position, InitiativeMilestone.id).all())
+    return {"initiative_id": iid, "milestones": [_milestone_out(m) for m in rows],
+            "progress": _initiative_progress(db, iid)}
+
+
+@router.get("/companies/{company_id}/initiatives/{iid}/actions")
+def list_actions(company_id: int, iid: int, member=Depends(_summary_access), db=Depends(get_db)):
+    _get_company_initiative(db, company_id, iid)
+    acts = (db.query(InitiativeAction).filter_by(initiative_id=iid)
+              .order_by(InitiativeAction.position, InitiativeAction.id).all())
+    return {"initiative_id": iid, "actions": [_action_out(a) for a in acts]}
+
+
+@router.put("/companies/{company_id}/initiatives/{iid}/actions")
+def put_actions(company_id: int, iid: int, body: ActionsPut,
+                member=Depends(require_company_admin),
+                user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Admin bulk-reconcile action items by id (lightweight — no deps, no time tracking)."""
+    ini = _get_company_initiative(db, company_id, iid)
+    if len(body.actions) > 100:
+        raise HTTPException(422, "at most 100 action items")
+    existing = {a.id: a for a in db.query(InitiativeAction).filter_by(initiative_id=iid).all()}
+    keep = set()
+    for pos, item in enumerate(body.actions):
+        title = (item.title or "").strip()
+        if not title:
+            raise HTTPException(422, "action title is required")
+        if item.status not in ("open", "done", "blocked"):
+            raise HTTPException(422, "action status must be open|done|blocked")
+        due = (item.due_date or "").strip() or None
+        own = (item.owner_name or "").strip() or None
+        if item.id and item.id in existing:
+            a = existing[item.id]
+            a.title, a.owner_name, a.due_date, a.status, a.position = title, own, due, item.status, pos
+            a.updated_at = datetime.utcnow()
+            keep.add(item.id)
+        else:
+            db.add(InitiativeAction(initiative_id=iid, title=title, owner_name=own,
+                                    due_date=due, status=item.status, position=pos))
+    for aid, a in existing.items():
+        if aid not in keep:
+            db.delete(a)
+    audit(db, user.id, "actions_updated", "company", company_id,
+          detail=f"{ini.ref_code} ({len(body.actions)})")
+    db.commit()
+    rows = (db.query(InitiativeAction).filter_by(initiative_id=iid)
+              .order_by(InitiativeAction.position, InitiativeAction.id).all())
+    return {"initiative_id": iid, "actions": [_action_out(a) for a in rows],
+            "progress": _initiative_progress(db, iid)}
+
+
+@router.get("/companies/{company_id}/initiatives/{iid}/blockers")
+def list_blockers(company_id: int, iid: int, member=Depends(_summary_access), db=Depends(get_db)):
+    _get_company_initiative(db, company_id, iid)
+    bs = (db.query(InitiativeBlocker).filter_by(initiative_id=iid)
+            .order_by(InitiativeBlocker.resolved_at.isnot(None), InitiativeBlocker.position,
+                      InitiativeBlocker.id).all())
+    return {"initiative_id": iid, "blockers": [_blocker_out(b) for b in bs]}
+
+
+@router.put("/companies/{company_id}/initiatives/{iid}/blockers")
+def put_blockers(company_id: int, iid: int, body: BlockersPut,
+                 member=Depends(require_company_admin),
+                 user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Admin bulk-reconcile blockers. `resolved` toggles the resolved_at stamp; a
+    freshly-resolved blocker stamps now, a re-opened one clears it."""
+    ini = _get_company_initiative(db, company_id, iid)
+    if len(body.blockers) > 50:
+        raise HTTPException(422, "at most 50 blockers")
+    existing = {b.id: b for b in db.query(InitiativeBlocker).filter_by(initiative_id=iid).all()}
+    keep = set()
+    now = datetime.utcnow()
+    for pos, item in enumerate(body.blockers):
+        title = (item.title or "").strip()
+        if not title:
+            raise HTTPException(422, "blocker title is required")
+        if item.severity not in ("low", "medium", "high", "critical"):
+            raise HTTPException(422, "severity must be low|medium|high|critical")
+        if item.id and item.id in existing:
+            b = existing[item.id]
+            b.title, b.description, b.severity, b.position = title, item.description or "", item.severity, pos
+            if item.resolved and b.resolved_at is None:
+                b.resolved_at = now
+            elif not item.resolved:
+                b.resolved_at = None
+            keep.add(item.id)
+        else:
+            db.add(InitiativeBlocker(initiative_id=iid, title=title,
+                                     description=item.description or "", severity=item.severity,
+                                     position=pos, resolved_at=(now if item.resolved else None)))
+    for bid, b in existing.items():
+        if bid not in keep:
+            db.delete(b)
+    audit(db, user.id, "blockers_updated", "company", company_id,
+          detail=f"{ini.ref_code} ({len(body.blockers)})")
+    db.commit()
+    rows = (db.query(InitiativeBlocker).filter_by(initiative_id=iid)
+              .order_by(InitiativeBlocker.resolved_at.isnot(None), InitiativeBlocker.position,
+                        InitiativeBlocker.id).all())
+    return {"initiative_id": iid, "blockers": [_blocker_out(b) for b in rows]}
+
+
+@router.get("/companies/{company_id}/initiatives/{iid}/detail")
+def initiative_detail(company_id: int, iid: int, member=Depends(_summary_access), db=Depends(get_db)):
+    """The whole per-project execution surface in one read (anonymous-readable for
+    showcase, mirroring list_initiatives). Part 2's cockpit consumes this verbatim."""
+    ini = _get_company_initiative(db, company_id, iid)
+    csfs = (db.query(InitiativeCSF).filter_by(initiative_id=iid)
+              .order_by(InitiativeCSF.position, InitiativeCSF.id).all())
+    ms = (db.query(InitiativeMilestone).filter_by(initiative_id=iid)
+            .order_by(InitiativeMilestone.position, InitiativeMilestone.id).all())
+    acts = (db.query(InitiativeAction).filter_by(initiative_id=iid)
+              .order_by(InitiativeAction.position, InitiativeAction.id).all())
+    bs = (db.query(InitiativeBlocker).filter_by(initiative_id=iid)
+            .order_by(InitiativeBlocker.resolved_at.isnot(None), InitiativeBlocker.position,
+                      InitiativeBlocker.id).all())
+    dept_idx = _dept_index(db, company_id)
+    d = _ini_out(ini)
+    d["is_demo"] = bool(getattr(ini, "is_demo", False))
+    d["department"] = _dept_out(dept_idx.get(getattr(ini, "department_id", None)))
+    d["serves_objectives"] = _initiative_served_objectives(db, company_id, iid)
+    d.update(_initiative_rollups(db, ini))
+    return {"initiative": d,
+            "csfs": [_csf_out(x) for x in csfs],
+            "milestones": [_milestone_out(m) for m in ms],
+            "actions": [_action_out(a) for a in acts],
+            "blockers": [_blocker_out(b) for b in bs]}
 
 
 # ====================================================================
@@ -8675,6 +9019,9 @@ def _ensure_ax_columns(engine):
     # §4d assessor seat entitlement
     _add("ax_accounts", "assessor_cap", "assessor_cap INTEGER NOT NULL DEFAULT 50")
     _add("ax_accounts", "assessor_overage", "assessor_overage INTEGER NOT NULL DEFAULT 0")
+    # Project Execution Suite — CSF owner + demo provenance on projects
+    _add("ax_initiative_csfs", "owner_name", "owner_name VARCHAR(200)")
+    _add("ax_initiatives", "is_demo", "is_demo BOOLEAN NOT NULL DEFAULT false")
     # custody-5 item 4: roster lifecycle — remind cooldown, revoke, delivery-only alt email
     _add("ax_assessment_invites", "last_reminded_at", "last_reminded_at TIMESTAMP")
     _add("ax_assessment_invites", "revoked_at", "revoked_at TIMESTAMP")
