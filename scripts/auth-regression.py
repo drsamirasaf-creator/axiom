@@ -87,7 +87,7 @@ SUBTABS = {
     "/dashboard":              "tab",
     "/risk-analysis":          "tab",
     # Restructure hub pages now carry cross-route tab bars (RouteTabs).
-    "/stakeholder-engagement": "tab",   # Survey Feedback / Survey Design / Participants / Discussion
+    "/stakeholder-engagement": "tab",   # Survey Feedback / Survey Design / Participants / Seniority Gap / Sentiment / Discussion
     "/swot":                   "tab",   # SWOT / Risk Analysis / Benchmarking
     "/initiatives":            "tab",   # Initiatives & Projects Underway / Recommendations & Proposals
     # Team moved OFF the top-level sidebar to a tab under My AXIOM (MY_AXIOM_TABS).
@@ -702,6 +702,32 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
             tick()
             if n_tabs < 1:
                 fails.append(f"{mode} sub-tabs MISSING on {path}")
+
+    # ---- demo-surface element presence (anonymous Meridian IS the showcase) ----
+    # Sidebar-presence discipline for the Part-2 surfaces: a silent-empty chip/tab is
+    # a FAILURE, not a pass. These assert the actual DOM elements render for the
+    # anonymous visitor (the demo path), not just a 2xx.
+    if mode == "anonymous":
+        DEMO_ELEMENTS = [
+            ("/org-structure", "[aria-label^='Sentiment']",
+             "org-chart department sentiment chip"),
+            ("/stakeholder-engagement?tab=sentiment", "text=Per-axis sentiment",
+             "Sentiment Analysis tab"),
+            ("/initiatives?tab=cockpit", "text=Needs attention",
+             "Portfolio Cockpit"),
+        ]
+        for path, sel, label in DEMO_ELEMENTS:
+            try:
+                st["pg"].goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
+                st["pg"].wait_for_timeout(SETTLE_MS)
+                present = st["pg"].locator(sel).count() > 0
+            except Exception:
+                present = False
+            tick()
+            if not present:
+                fails.append(f"{mode} demo-surface MISSING: {label} at {path} "
+                             f"(needs a Lovable Publish of the Part-2 frontend)")
+            print(f"    {mode} demo-element {label} -> {'ok' if present else 'MISSING'}", flush=True)
 
     # ---- DATA-UPLOAD door reachability (custody-10) ----
     # The upload path has vanished twice (a Lovable redirect, then a missing nav
