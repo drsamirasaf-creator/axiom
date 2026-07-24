@@ -36,7 +36,7 @@ from sqlalchemy import (Column, Integer, String, Text, DateTime, Boolean, JSON,
 
 from . import accounts as A
 from .accounts import (Base, get_db, require_company_member, require_company_admin,
-                       _summary_access,
+                       require_capability, _summary_access,
                        get_current_user, audit, Document, Initiative,
                        RecommendationDisposition, _get_or_create_disp,
                        _active_company_dataset, _next_ref, _band_of, _ini_event,
@@ -685,7 +685,7 @@ class AdoptDetailIn(BaseModel):
 @document_router.post("/companies/{company_id}/proposals/{fingerprint}/adopt", status_code=201)
 def adopt_proposal_endpoint(company_id: int, fingerprint: str,
                             body: AdoptDetailIn | None = Body(None),
-                            member=Depends(require_company_admin),
+                            perm=Depends(require_capability("dispose_recommendations")),
                             user=Depends(get_current_user), db=Depends(get_db)):
     """Sibling of adopt_recommendation. recommendation -> Initiative (same helper);
     swot -> persist as an adopted SWOT entry (renders in the quadrants). The §4r
@@ -760,7 +760,7 @@ def adopt_proposal_endpoint(company_id: int, fingerprint: str,
 
 @document_router.post("/companies/{company_id}/proposals/{fingerprint}/dismiss")
 def dismiss_proposal_endpoint(company_id: int, fingerprint: str,
-                              member=Depends(require_company_admin),
+                              perm=Depends(require_capability("dispose_recommendations")),
                               user=Depends(get_current_user), db=Depends(get_db)):
     p = db.query(DocumentProposal).filter_by(company_id=company_id, fingerprint=fingerprint).first()
     if not p:
@@ -775,7 +775,7 @@ def dismiss_proposal_endpoint(company_id: int, fingerprint: str,
 
 @document_router.post("/companies/{company_id}/proposals/{fingerprint}/reconsider")
 def reconsider_proposal_endpoint(company_id: int, fingerprint: str,
-                                 member=Depends(require_company_admin),
+                                 perm=Depends(require_capability("dispose_recommendations")),
                                  user=Depends(get_current_user), db=Depends(get_db)):
     """§7m-a Reconsider door: a decided proposal (adopted/dismissed/parked) goes
     back to Not-yet-accepted (status 'none'). For an ADOPTED proposal the
