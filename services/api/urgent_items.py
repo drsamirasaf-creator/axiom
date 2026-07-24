@@ -15,6 +15,11 @@ LOOKBACK_DAYS = 90           # recognition look-back for completed milestones/in
 RATING_RED_MAX = 2.5         # member star rating at/below this → red flag (I7)
 PROGRESS_AHEAD_MIN = 70      # green initiative at/above this progress → "ahead" (R4)
 
+# I5 tracked line set — the client-plan lines compared against AXIOM's PRIMARY
+# (ensemble) forecast. Keys are the model's own line keys (fcff = free cash flow,
+# the "cash" line). |plan − ensemble| / ensemble beyond FORECAST_GAP_RED_PCT → red.
+FORECAST_TRACKED_LINES = ("revenue", "ebitda", "fcff")
+
 SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "NOTABLE": 2}
 
 # signal_id → (category, default severity, human label). category ∈ intervention|recognition
@@ -22,6 +27,7 @@ SIGNALS = {
     "I1": ("intervention", "CRITICAL", "Sentinel band"),
     "I2": ("intervention", "HIGH", "KPI vs target"),
     "I3": ("intervention", "HIGH", "Objective/KR red"),
+    "I5": ("intervention", "HIGH", "Forecast vs plan"),
     "I6": ("intervention", "NOTABLE", "Undispositioned proposal"),
     "I7": ("intervention", "HIGH", "Initiative execution"),
     "I8": ("intervention", "HIGH", "Department sentiment"),

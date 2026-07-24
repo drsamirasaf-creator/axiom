@@ -294,12 +294,8 @@ def _pvm_forecast_only(data: dict, years: list) -> dict:
                                 ("cash_flow", engines.CF_KEYS))}
 
 
-@router.get("/datasets/{dataset_id}/plan-vs-methods")
-def plan_vs_methods(dataset_id: int, db: Session = Depends(get_db),
-                    tenant: str = Depends(_tenant),
-                    scoped: int | None = Depends(_scoped),
-                    horizon: int | None = None,
-                    extend_method: str | None = None):
+def compute_plan_vs_methods(data: dict, horizon: int | None = None,
+                            extend_method: str | None = None) -> dict:
     """Business Planning & Forecasting — the CLIENT PLAN laid against each of AXIOM's
     five forecasting methodologies + ensemble, per line item and per year, with
     variance (plan − ensemble, abs and %). The `horizon` governs how far the AXIOM
@@ -307,19 +303,20 @@ def plan_vs_methods(dataset_id: int, db: Session = Depends(get_db),
     continues the client plan beyond its supplied years, ANCHORED ON THE PLAN'S
     ENDPOINT (level + trajectory continue from the plan, never re-anchored to
     history); extended years are flagged is_extension=true. Honest-empty when no
-    client plan. method_params carries the ACTUAL fitted parameters for the drawers."""
+    client plan. method_params carries the ACTUAL fitted parameters for the drawers.
+
+    Pure over `data` (an active dataset's .data dict) — no DB / tenant scoping — so
+    the /plan-vs-methods route AND cross-domain aggregators (Urgent Items I5) share
+    ONE computation. The caller merges dataset_id/dataset_version onto the result."""
     from ...forecast_studio import (compute_method, METHODS as FS_METHODS, _LABELS,
                                     DAMP_PHI, DAMP_ALPHA, DAMP_BETA, MC_PATHS, MC_SEED,
                                     DIVERGENCE_CV, HORIZON_MAX)
-    row = _get_dataset(db, tenant, dataset_id, scoped)
-    data = row.data
     periods = data.get("periods") or {}
     hist = [int(y) for y in periods.get("historical") or []]
     fc_years = [int(y) for y in periods.get("forecast") or []]
     std = (data.get("company") or {}).get("standard", "us_gaap")
     method_labels = {m: _LABELS.get(m, m) for m in FS_METHODS}
-    base_resp = {"dataset_id": row.id, "dataset_version": row.version,
-                 "standard": std, "has_client_plan": bool(fc_years),
+    base_resp = {"standard": std, "has_client_plan": bool(fc_years),
                  "historical_years": hist, "forecast_years": fc_years,
                  "methods": list(FS_METHODS), "method_labels": method_labels,
                  "ensemble_method": "ensemble"}
@@ -427,6 +424,17 @@ def plan_vs_methods(dataset_id: int, db: Session = Depends(get_db),
             "forecast_years": fc_years, "extended_years": ext_years, "all_years": all_years,
             "extension": extension, "extended_plan": extended_plan, "line_items": line_items,
             "method_params": method_params, "summary": summary}
+
+
+@router.get("/datasets/{dataset_id}/plan-vs-methods")
+def plan_vs_methods(dataset_id: int, db: Session = Depends(get_db),
+                    tenant: str = Depends(_tenant),
+                    scoped: int | None = Depends(_scoped),
+                    horizon: int | None = None,
+                    extend_method: str | None = None):
+    row = _get_dataset(db, tenant, dataset_id, scoped)
+    return {"dataset_id": row.id, "dataset_version": row.version,
+            **compute_plan_vs_methods(row.data, horizon, extend_method)}
 
 
 @router.post("/documents", response_model=schemas.DocumentOut, status_code=201)
