@@ -143,6 +143,11 @@ class Account(Base):
     price_id = Column(String(64), nullable=True)
     status = Column(String(16), default="active", nullable=False)
     company_slots = Column(Integer, default=1, nullable=False)
+    # §4d assessor entitlement — max assessor invitations per cycle. Base cap by plan
+    # (Business 50, Prescience 150); `assessor_overage` adds seats bought at +$495/50/cycle
+    # (real purchase lands in Commercial Architecture — the in-app door is a quote stub).
+    assessor_cap = Column(Integer, default=50, nullable=False)
+    assessor_overage = Column(Integer, default=0, nullable=False)
     current_period_end = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -311,6 +316,7 @@ class AssessmentResponse(Base):
     score = Column(Integer, nullable=True)               # 1-10, or NULL when abstained (§4i-b)
     abstained = Column(Boolean, default=False, nullable=False)   # explicit no-score; excluded from means
     department = Column(String(80), nullable=True)       # inherited from participant (§4i-b layer 1)
+    seniority = Column(String(40), nullable=True)        # inherited from participant (§4u seniority dimension)
     comment = Column(Text, nullable=True)
     submitted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -352,6 +358,7 @@ class AssessmentInvite(Base):
     email = Column(String(255), nullable=False, index=True)
     name = Column(String(255), default="", nullable=False)
     department = Column(String(80), nullable=True)          # optional org unit (§4i-b layer 1)
+    seniority = Column(String(40), nullable=True)           # optional seniority band (§4u); inherited by the participant
     jti = Column(String(64), unique=True, index=True, nullable=False)
     invited_by = Column(Integer, nullable=False)             # ax_users.id (admin)
     participant_ref = Column(String(64), nullable=True)      # minted at redemption
@@ -6014,6 +6021,84 @@ class ScoreItem(BaseModel):
     comment: str | None = None
 
 
+# §4u seniority dimension — a small fixed vocabulary, ordered senior→junior so the
+# gap view can render bands in a stable rank. Optional on every invite (prompted, not
+# required). Stored as the canonical display string; matched case-insensitively.
+SENIORITY_BANDS = ["Executive", "Senior management", "Mid-level", "Junior", "External partner"]
+_SENIORITY_LOOKUP = {s.lower(): s for s in SENIORITY_BANDS}
+_SENIORITY_RANK = {s: i for i, s in enumerate(SENIORITY_BANDS)}
+
+
+def _norm_seniority(v):
+    """None/blank → None; otherwise canonicalise to a known band or 422."""
+    if v is None:
+        return None
+    s = str(v).strip()
+    if not s:
+        return None
+    hit = _SENIORITY_LOOKUP.get(s.lower())
+    if hit is None:
+        raise HTTPException(422, f"seniority must be one of: {', '.join(SENIORITY_BANDS)}")
+    return hit
+
+
+# §4d assessor seat entitlement --------------------------------------------------
+# Base plan caps per cycle. There is NO stored plan/tier today (entitlements today are
+# ONLY Account.company_slots — company licenses); this maps price_id → assessor cap and
+# defaults to Business. Overage seats (Account.assessor_overage) add on top.
+ASSESSOR_PLAN_CAPS = {"business": 50, "prescience": 150}
+ASSESSOR_CAP_DEFAULT = 50               # Business, and the showcase/no-account fallback
+ASSESSOR_OVERAGE_BLOCK = 50             # seats per overage unit
+ASSESSOR_OVERAGE_PRICE = 495           # USD per block per cycle (§4d)
+
+
+def _company_account(db, company_id):
+    """Resolve a company → its paying Account (via CompanyAccess), or None (showcase/demo)."""
+    ca = db.query(CompanyAccess).filter_by(company_id=company_id).first()
+    return db.get(Account, ca.account_id) if ca else None
+
+
+def _assessor_cap(db, company_id):
+    """Effective assessor cap for a company this cycle = base plan cap + purchased overage.
+    Read from the Account (default Business 50 when no account is attached)."""
+    acct = _company_account(db, company_id)
+    if acct is None:
+        return ASSESSOR_CAP_DEFAULT
+    base = acct.assessor_cap or ASSESSOR_CAP_DEFAULT
+    return base + (acct.assessor_overage or 0)
+
+
+def _assessor_seats_used(db, cycle_id):
+    """Assessor seats consumed in ONE cycle = non-revoked assessor invites. Revoked
+    invites free their seat (never counted)."""
+    return (db.query(AssessmentInvite)
+              .filter(AssessmentInvite.cycle_id == cycle_id,
+                      AssessmentInvite.revoked_at.is_(None)).count())
+
+
+def _seat_status(db, company_id, cycle_id):
+    """{cap, used, remaining, at_cap, overage_price, overage_block} for the live counter."""
+    cap = _assessor_cap(db, company_id)
+    used = _assessor_seats_used(db, cycle_id) if cycle_id else 0
+    remaining = max(0, cap - used)
+    return {"cap": cap, "used": used, "remaining": remaining, "at_cap": used >= cap,
+            "overage_block": ASSESSOR_OVERAGE_BLOCK, "overage_price": ASSESSOR_OVERAGE_PRICE}
+
+
+def _enforce_seat_cap(db, company_id, cycle_id):
+    """Block an assessor invite when the cycle is at cap. 402 (payment required) with a
+    human message + the overage terms so the client can open the 'Add assessors' door."""
+    st = _seat_status(db, company_id, cycle_id)
+    if st["at_cap"]:
+        raise HTTPException(402, detail={
+            "error": "assessor_cap_reached",
+            "message": (f"You've used all {st['cap']} assessor invitations for this cycle. "
+                        f"Add more assessors at ${ASSESSOR_OVERAGE_PRICE} per "
+                        f"{ASSESSOR_OVERAGE_BLOCK} assessors per cycle."),
+            **st})
+    return st
+
+
 class ScoreIn(BaseModel):
     responses: list[ScoreItem]
     overall_comment: str | None = None
@@ -6022,6 +6107,7 @@ class ScoreIn(BaseModel):
     # department, so respondent counts and departmental slices are real.
     participant_ref: str | None = None
     department: str | None = None
+    seniority: str | None = None      # §4u one of SENIORITY_BANDS (validated server-side)
 
 
 def _assess_current_framework(db, company_id):
@@ -6064,14 +6150,61 @@ def _assess_weights(db, fw):
             for w in db.query(AssessmentWeight).filter_by(framework_id=fw.id).all()}
 
 
+def _framework_advisory(items):
+    """§4i honest guidance (WARN, never block): per-L1-category selected-item counts,
+    an estimated completion time, and soft warnings — a category with NO selected
+    items (that axis contributes nothing), and a survey long enough to fatigue
+    respondents (well beyond ~20 min). `items` is the list of _framework_out item
+    dicts."""
+    by_code = {i["code"]: i for i in items}
+
+    def l1_of(it):
+        cur, seen = it, 0
+        while cur is not None and cur["level"] != 1 and seen < 5:
+            cur = by_code.get(cur["parent_code"]); seen += 1
+        return cur["code"] if (cur is not None and cur["level"] == 1) else None
+
+    cats = {i["code"]: {"code": i["code"], "title": i["title"],
+                        "selected_items": 0, "custom_items": 0}
+            for i in items if i["level"] == 1}
+    selected_scored = 0
+    for i in items:
+        if i["level"] == 1:
+            continue
+        l1 = l1_of(i)
+        if l1 not in cats:
+            continue
+        if i["selected"]:
+            cats[l1]["selected_items"] += 1
+            if i["level"] == 2:                 # standard cycle scores L2 items
+                selected_scored += 1
+            if i["custom"]:
+                cats[l1]["custom_items"] += 1
+    # ~30s per scored item is our working estimate; ~20 min ≈ ~40 items.
+    est_minutes = round(selected_scored * 0.5)
+    warnings = []
+    empty = [c["title"] for c in cats.values() if c["selected_items"] == 0]
+    for title in empty:
+        warnings.append({"kind": "empty_category", "category": title,
+                         "message": f"“{title}” has no items in scope — that axis will not be "
+                                    f"scored and drops out of the CEI and SWOT."})
+    if est_minutes > 20:
+        warnings.append({"kind": "long_survey", "est_minutes": est_minutes,
+                         "message": f"About {est_minutes} min to complete — beyond the ~20 min "
+                                    f"comfort zone. Long surveys lower completion rates."})
+    return {"categories": list(cats.values()), "selected_scored_items": selected_scored,
+            "est_minutes": est_minutes, "warnings": warnings}
+
+
 def _framework_out(db, fw):
+    items = [{"id": i.id, "level": i.level, "code": i.code, "title": i.title,
+              "definition": i.definition, "parent_code": i.parent_code,
+              "selected": i.selected, "custom": i.custom,
+              "orientation": i.orientation}
+             for i in _assess_items(db, fw)]
     return {"revision": fw.revision, "framework_id": fw.id, "created_at": fw.created_at,
-            "weights": _assess_weights(db, fw),
-            "items": [{"id": i.id, "level": i.level, "code": i.code, "title": i.title,
-                       "definition": i.definition, "parent_code": i.parent_code,
-                       "selected": i.selected, "custom": i.custom,
-                       "orientation": i.orientation}
-                      for i in _assess_items(db, fw)]}
+            "weights": _assess_weights(db, fw), "items": items,
+            "advisory": _framework_advisory(items)}
 
 
 def _norm_depth(d):
@@ -6107,7 +6240,8 @@ def _cycle_cei(db, cyc):
             # abstained rows carry score NULL -> engine excludes them from means (§4i-b)
             score = None if (getattr(r, "abstained", False) or r.score is None) else r.score
             resp.append({"participant_ref": r.participant_ref, "code": code,
-                         "score": score, "department": r.department})
+                         "score": score, "department": r.department,
+                         "seniority": getattr(r, "seniority", None)})
     out = compute_cei(items, weights, resp)
     out["revision"] = cyc.revision
     return out
@@ -6187,7 +6321,7 @@ def _resolve_responses(db, cyc, raw):
 
 
 def _submit_responses(db, cyc, participant_ref, responses, actor_id=None,
-                      overall_comment=None, department=None):
+                      overall_comment=None, department=None, seniority=None):
     """Shared response-submission logic (admin scoring + 7d-3 participants).
     EDITABLE-UNTIL-CLOSE: a re-submission REPLACES this participant's prior answers
     in place (same participant_ref), so respondent counts never double. The
@@ -6212,7 +6346,7 @@ def _submit_responses(db, cyc, participant_ref, responses, actor_id=None,
         db.add(AssessmentResponse(cycle_id=cyc.id, participant_ref=participant_ref,
                                   item_id=r.item_id, score=r.score, comment=r.comment,
                                   abstained=bool(getattr(r, "abstained", False)),
-                                  department=department))
+                                  department=department, seniority=seniority))
         n += 1
     if overall_comment and overall_comment.strip():
         db.add(AssessmentOverall(cycle_id=cyc.id, participant_ref=participant_ref,
@@ -6405,7 +6539,8 @@ def score_assessment_cycle(company_id: int, cid: int, body: ScoreIn,
     ref = (body.participant_ref or "").strip() or f"admin:{user.id}"
     return _submit_responses(db, cyc, ref, body.responses, user.id,
                              overall_comment=body.overall_comment,
-                             department=(body.department or "").strip() or None)
+                             department=(body.department or "").strip() or None,
+                             seniority=_norm_seniority(body.seniority))
 
 
 def _summary_rags(cei: dict, snapshot: dict | None) -> dict:
@@ -6432,13 +6567,19 @@ def _summary_rags(cei: dict, snapshot: dict | None) -> dict:
 
 @router.get("/companies/{company_id}/assessment/summary")
 def assessment_summary(company_id: int, department: int | None = None,
+                       seniority: str | None = None,
                        member=Depends(_summary_access),
                        db=Depends(get_db)):
     """CEI, L1 subscores, dispersion, radar payload, and the revision-tagged
     trend series. §4s: pass ?department=<id> to focus one department's slice — it
     reuses the existing assessor-invite department dimension (already floored for
     k-anonymity), echoed as `department_filter` (+ `department_slice` when present;
-    suppressed slices render the protected state as usual)."""
+    suppressed slices render the protected state as usual).
+
+    §4u: pass ?seniority=<band> for the seniority slice (`seniority_slice`). Passing
+    BOTH ?department= and ?seniority= adds `intersection_slice` — the Department ×
+    Seniority CELL, floored on the INTERSECTION n (not either dimension alone), so a
+    thin cell suppresses even when its department clears the floor on its own."""
     cfg = db.query(AssessmentConfig).filter_by(company_id=company_id).first()
     cadence = cfg.cadence if cfg else "none"
     due = cfg.next_cycle_due if cfg else None
@@ -6522,6 +6663,15 @@ def assessment_summary(company_id: int, department: int | None = None,
         for _code, _entry in (rags["item_rag"] or {}).items():
             if isinstance(_entry, dict) and _code in item_titles:
                 _entry.setdefault("title", item_titles[_code])
+    # §4s/§4u slice-filter resolution (dept id→name, seniority band, intersection key)
+    from .assessment_engine import _cross_key as _x_cross_key
+    _dept_obj = db.get(Department, department) if department is not None else None
+    _dept_name = ({"id": _dept_obj.id, "name": _dept_obj.name}
+                  if (_dept_obj and _dept_obj.company_id == company_id) else None)
+    try:
+        _sen_band = _norm_seniority(seniority)
+    except HTTPException:
+        _sen_band = None
     return {"revision": fw.revision,
             "current_cycle_id": latest.id if latest else None,
             "current_cycle_closed": bool(latest and latest.closed_at),
@@ -6536,19 +6686,67 @@ def assessment_summary(company_id: int, department: int | None = None,
             "radar": safe.get("radar", []),
             "item_dispersion": safe.get("item_dispersion", {}),
             "departments": safe.get("departments", {}),  # per-department slices (floored)
+            "seniorities": safe.get("seniorities", {}),   # §4u per-seniority slices (floored)
+            "cross": safe.get("cross", {}),               # §4u dept×seniority cells (floored on the intersection)
             # §4s: echo the requested department (by id → name) and its floored slice
-            "department_filter": (lambda d: ({"id": d.id, "name": d.name} if d else None))(
-                db.get(Department, department) if department is not None else None),
-            "department_slice": ((safe.get("departments", {}) or {}).get(
-                (db.get(Department, department).name if (department is not None
-                 and db.get(Department, department)
-                 and db.get(Department, department).company_id == company_id) else None))
-                if department is not None else None),
+            "department_filter": _dept_name,
+            "department_slice": ((safe.get("departments", {}) or {}).get(_dept_name["name"])
+                                 if _dept_name else None),
+            # §4u: seniority slice + the department×seniority intersection cell
+            "seniority_filter": _sen_band,
+            "seniority_slice": ((safe.get("seniorities", {}) or {}).get(_sen_band)
+                                if _sen_band else None),
+            "intersection_slice": ((safe.get("cross", {}) or {}).get(
+                                    _x_cross_key(_dept_name["name"], _sen_band))
+                                   if (_dept_name and _sen_band) else None),
             "abstention_rates": safe.get("abstention_rates", {"item": {}, "axis": {}}),
             "no_signal_items": safe.get("no_signal_items", []),
             "item_rag": rags["item_rag"], "l1_rag": rags["l1_rag"],
             "sentiment_available": rags["sentiment_available"],
             "trend": trend, "cadence": cadence_block}
+
+
+@router.get("/companies/{company_id}/assessment/seniority-gap")
+def assessment_seniority_gap(company_id: int, member=Depends(_summary_access),
+                             db=Depends(get_db)):
+    """§4u marquee — per L1 axis, the score by seniority band with the divergence
+    (max − min across SHOWN bands) surfaced, axes ordered biggest-gap-first (e.g.
+    Executive 8.1 vs Mid-level 4.9 on Strategy). Bands below the k-anonymity floor
+    render as protected (shown=False) and drop out of the divergence math — never a
+    silent partial. Reuses the summary's already-floored seniority slices."""
+    summ = assessment_summary(company_id, member=member, db=db)
+    seniorities = summ.get("seniorities") or {}
+    present = [b for b in seniorities.keys() if b != "(unassigned)"]
+    bands = sorted(present, key=lambda b: _SENIORITY_RANK.get(b, 99))
+    band_status, band_subs = {}, {}
+    for b in bands:
+        sl = seniorities.get(b) or {}
+        if sl.get("suppressed"):
+            band_status[b] = {"shown": False, "suppressed": True, "n": sl.get("n", 0)}
+            continue
+        band_status[b] = {"shown": True, "n": sl.get("n_participants", 0)}
+        band_subs[b] = {str(o.get("code")): {"score": o["score"], "title": o.get("title")}
+                        for o in (sl.get("l1_subscores") or [])
+                        if isinstance(o.get("score"), (int, float))}
+    axes = []
+    for o in (summ.get("l1_subscores") or []):
+        code = str(o.get("code"))
+        scores = {b: round(band_subs[b][code]["score"], 2)
+                  for b in bands if code in band_subs.get(b, {})}
+        if len(scores) >= 2:
+            hi = max(scores, key=lambda b: scores[b])
+            lo = min(scores, key=lambda b: scores[b])
+            div = round(scores[hi] - scores[lo], 2)
+        else:
+            hi = lo = div = None
+        axes.append({"code": code, "title": o.get("title"), "overall": o.get("score"),
+                     "scores": scores, "divergence": div, "high_band": hi, "low_band": lo,
+                     "high": scores.get(hi) if hi else None,
+                     "low": scores.get(lo) if lo else None})
+    axes.sort(key=lambda a: (a["divergence"] is None, -(a["divergence"] or 0)))
+    return {"company_id": company_id, "bands": bands, "band_status": band_status,
+            "axes": axes, "n_respondents": summ.get("n_respondents"),
+            "suppression": summ.get("suppression"), "has_seniority_data": bool(bands)}
 
 
 # §16.3 Pass B — Transformation Readiness derived from assessment axes (ratified mapping).
@@ -6705,13 +6903,24 @@ def assessment_item_drill(company_id: int, item_code: str,
 # showcase read endpoints already honor (_summary_access / require_report_read).
 # Showcase ids come from tenant='showcase', never hardcoded.
 @router.get("/companies/{company_id}/assessment/swot")
-def assessment_swot(company_id: int, _role=Depends(_summary_access),
-                    db=Depends(get_db)):
+def assessment_swot(company_id: int, department: int | None = None,
+                    seniority: str | None = None,
+                    _role=Depends(_summary_access), db=Depends(get_db)):
     """Derive a SWOT from the latest CLOSED cycle by classifying each selected,
     scored L2 item on two axes: orientation (internal/external, from the
     taxonomy) x strength (score RAG, adjusted down by a red text-sentiment
     divergence). Mid-band items with no negative signal fall to a watch list.
-    Each entry carries trend vs the prior cycle and any linked initiatives."""
+    Each entry carries trend vs the prior cycle and any linked initiatives.
+
+    §4s/§4u: pass ?department=<id> and/or ?seniority=<band> to derive the SWOT for
+    that slice (or their intersection). Sliced views derive from the live k-anonymity
+    floored slice dispersion — a slice below the floor is suppressed exactly like the
+    summary. Slice-level text sentiment / cross-cycle trend are not computed, so those
+    per-entry fields are null on a sliced view (never fabricated)."""
+    _sen_band = _norm_seniority(seniority)
+    _dept_obj = db.get(Department, department) if department is not None else None
+    _dept_name = (_dept_obj.name if (_dept_obj and _dept_obj.company_id == company_id) else None)
+    sliced = bool(_sen_band or (_dept_name is not None))
     from .assessment_engine import score_rag
     # 7k: adopted document-derived SWOT entries render in the quadrants alongside
     # assessment-derived ones, each source-tagged with its doc citations (decision 3).
@@ -6758,10 +6967,35 @@ def assessment_swot(company_id: int, _role=Depends(_summary_access),
                 "counts": {k: len(v) for k, v in buckets.items()}, **buckets}
     prior = closed[-2] if len(closed) > 1 else None
     snap = latest.snapshot or {}
-    disp = snap.get("item_dispersion") or {}
-    item_sent = snap.get("item_sentiment") or {}
-    item_div = snap.get("item_divergence") or {}
-    prior_disp = (prior.snapshot or {}).get("item_dispersion") if prior else None
+    # §4s/§4u sliced derivation: pull the floored slice dispersion from the LIVE
+    # aggregate (storage untouched). A suppressed slice returns the protected state.
+    if sliced:
+        from .assessment_engine import apply_kfloor, _cross_key
+        safe = apply_kfloor(_cycle_cei(db, latest))
+        if _sen_band and _dept_name is not None:
+            slice_agg = (safe.get("cross") or {}).get(_cross_key(_dept_name, _sen_band))
+        elif _sen_band:
+            slice_agg = (safe.get("seniorities") or {}).get(_sen_band)
+        else:
+            slice_agg = (safe.get("departments") or {}).get(_dept_name)
+        slice_label = " × ".join([x for x in (_dept_name, _sen_band) if x])
+        if not slice_agg or slice_agg.get("suppressed"):
+            buckets = {"strengths": [], "weaknesses": [], "opportunities": [],
+                       "threats": [], "watch_list": []}
+            return {"has_data": False, "cycle_id": latest.id, "closed_at": latest.closed_at,
+                    "suppressed": True, "sliced": True, "slice": slice_label,
+                    "respondents_n": (slice_agg or {}).get("n", 0),
+                    "reason": "below_anonymity_floor",
+                    "message": (f"The “{slice_label}” slice is protected — fewer than "
+                                f"the anonymity floor of responses."),
+                    "counts": {k: 0 for k in buckets}, **buckets}
+        disp = slice_agg.get("item_dispersion") or {}
+        item_sent, item_div, prior_disp = {}, {}, None   # not computed per-slice
+    else:
+        disp = snap.get("item_dispersion") or {}
+        item_sent = snap.get("item_sentiment") or {}
+        item_div = snap.get("item_divergence") or {}
+        prior_disp = (prior.snapshot or {}).get("item_dispersion") if prior else None
 
     links = {}
     for ini in db.query(Initiative).filter_by(company_id=company_id).all():
@@ -6805,12 +7039,15 @@ def assessment_swot(company_id: int, _role=Depends(_summary_access),
         buckets[b].sort(key=lambda e: -e["mean"])
     for b in ("weaknesses", "threats", "watch_list"):
         buckets[b].sort(key=lambda e: e["mean"])
-    for q, entries in doc_swot.items():                # 7k: fold in document-derived entries
-        buckets[q].extend(entries)
+    if not sliced:                                      # doc entries are company-wide, not per-slice
+        for q, entries in doc_swot.items():             # 7k: fold in document-derived entries
+            buckets[q].extend(entries)
 
     return {"has_data": True, "cycle_id": latest.id, "revision": latest.revision,
             "closed_at": latest.closed_at, "prior_cycle_id": prior.id if prior else None,
-            "sentiment_available": snap.get("sentiment_available", False),
+            "sentiment_available": (False if sliced else snap.get("sentiment_available", False)),
+            "sliced": sliced,
+            "slice": (" × ".join([x for x in (_dept_name, _sen_band) if x]) if sliced else None),
             "counts": {k: len(v) for k, v in buckets.items()}, **buckets}
 
 
@@ -6848,6 +7085,7 @@ class AssessInviteIn(BaseModel):
     email: EmailStr
     alt_email: EmailStr | None = None   # DELIVERY-ONLY cc; never an identity/dedup/join key (standing law)
     department: str | None = None       # optional org unit; inherited by the participant (§4i-b)
+    seniority: str | None = None        # §4u optional seniority band; inherited by the participant
     depth: str | None = None            # only used on the auto-open path when no cycle is open
 
 
@@ -6924,15 +7162,17 @@ def invite_participant(company_id: int, cid: int, body: AssessInviteIn,
              .filter_by(cycle_id=cid, email=email).first())
     if dup:
         raise HTTPException(409, "This person is already invited to this cycle.")
+    _enforce_seat_cap(db, company_id, cid)          # §4d assessor cap (per cycle)
     company_name = _company_name(db, company_id)
     dept = (body.department or "").strip() or None
+    sen = _norm_seniority(body.seniority)
     alt = (str(body.alt_email).strip().lower() or None) if body.alt_email else None
     jti = secrets.token_urlsafe(16)
     token = make_token(str(cid), purpose="assess-invite", ttl=_ASSESS_INVITE_TTL,
                        jti=jti, cycle_id=cid, company_id=company_id,
                        invited_email=email, invited_name=name)
     inv = AssessmentInvite(cycle_id=cid, company_id=company_id, email=email,
-                           name=name, department=dept, alt_email=alt,
+                           name=name, department=dept, seniority=sen, alt_email=alt,
                            jti=jti, invited_by=user.id)
     db.add(inv)
     audit(db, user.id, "assessment_participant_invited", "company", company_id,
@@ -6941,7 +7181,8 @@ def invite_participant(company_id: int, cid: int, body: AssessInviteIn,
     sent = _send_assess_invite_all(inv, company_name, cyc.anonymity_mode, token=token)
     return {"ok": True, "cycle_id": cid, "invite_id": inv.id, "email": email,
             "email_sent": sent["primary"], "email_sent_alt": sent["alt"],
-            "anonymity_mode": cyc.anonymity_mode, "expires_in_days": 30}
+            "anonymity_mode": cyc.anonymity_mode, "expires_in_days": 30,
+            "seats": _seat_status(db, company_id, cid)}
 
 
 @router.post("/companies/{company_id}/assessment/invites", status_code=201)
@@ -6952,9 +7193,11 @@ def invite_assessor(company_id: int, body: AssessInviteIn,
     invite never orphans (lifecycle-gap fix). Otherwise identical to the
     cid-scoped invite. Reports whether a cycle was auto-opened."""
     cyc, opened = _ensure_open_cycle(db, company_id, user.id, depth=body.depth or "standard")
+    _enforce_seat_cap(db, company_id, cyc.id)       # §4d assessor cap (per cycle)
     email = str(body.email).strip().lower()
     name = (body.name or "").strip()
     dept = (body.department or "").strip() or None
+    sen = _norm_seniority(body.seniority)
     if db.query(AssessmentInvite).filter_by(cycle_id=cyc.id, email=email).first():
         raise HTTPException(409, "This person is already invited to the open cycle.")
     company_name = _company_name(db, company_id)
@@ -6964,7 +7207,7 @@ def invite_assessor(company_id: int, body: AssessInviteIn,
                        jti=jti, cycle_id=cyc.id, company_id=company_id,
                        invited_email=email, invited_name=name)
     inv = AssessmentInvite(cycle_id=cyc.id, company_id=company_id, email=email,
-                           name=name, department=dept, alt_email=alt,
+                           name=name, department=dept, seniority=sen, alt_email=alt,
                            jti=jti, invited_by=user.id)
     db.add(inv)
     audit(db, user.id, "assessment_participant_invited", "company", company_id,
@@ -6974,7 +7217,8 @@ def invite_assessor(company_id: int, body: AssessInviteIn,
     return {"ok": True, "cycle_id": cyc.id, "cycle_auto_opened": opened,
             "invite_id": inv.id, "email": email, "email_sent": sent["primary"],
             "email_sent_alt": sent["alt"],
-            "anonymity_mode": cyc.anonymity_mode, "expires_in_days": 30}
+            "anonymity_mode": cyc.anonymity_mode, "expires_in_days": 30,
+            "seats": _seat_status(db, company_id, cyc.id)}
 
 
 def _get_company_assess_invite(db, company_id, invite_id):
@@ -7142,6 +7386,7 @@ class SeedInviteIn(BaseModel):
     name: str
     email: str
     department: str | None = None
+    seniority: str | None = None           # §4u optional seniority band (seed demo rosters)
     participant_ref: str | None = None     # link to an existing seeded response set
     status: str = "submitted"              # submitted | in_progress | invited
 
@@ -7169,6 +7414,7 @@ def seed_assessment_invites(company_id: int, cid: int, body: SeedInvitesIn,
         row = AssessmentInvite(cycle_id=cid, company_id=company_id, email=email,
                                name=(inv.name or "").strip(),
                                department=(inv.department or "").strip() or None,
+                               seniority=_norm_seniority(inv.seniority),
                                jti=secrets.token_urlsafe(16), invited_by=user.id,
                                participant_ref=(inv.participant_ref or None), is_demo=True)
         if inv.status == "submitted":
@@ -7195,7 +7441,7 @@ def company_roster(company_id: int, member=Depends(_roster_access),
                 .order_by(Invite.id).all()):
         people.append({"source": "viewer", "role": "viewer", "invite_id": i.id,
                        "name": i.name or "", "email": i.email, "alt_email": None,
-                       "department": None,
+                       "department": None, "seniority": None,
                        "cycle_id": None, "anonymity_mode": None, "cycle_closed": None,
                        "invited_at": i.created_at, "latest_sent": i.created_at,
                        "last_reminded_at": None, "expires_at": None, "revoked": False,
@@ -7211,6 +7457,7 @@ def company_roster(company_id: int, member=Depends(_roster_access),
         people.append({"source": "assessor", "role": "assessor", "invite_id": a.id,
                        "name": a.name or "", "email": a.email, "alt_email": a.alt_email,
                        "department": a.department,
+                       "seniority": getattr(a, "seniority", None),   # §4u
                        "cycle_id": a.cycle_id,
                        "anonymity_mode": (cyc.anonymity_mode if cyc else None),
                        "cycle_closed": (cyc.closed_at is not None) if cyc else None,
@@ -7225,13 +7472,68 @@ def company_roster(company_id: int, member=Depends(_roster_access),
                        "is_demo": bool(getattr(a, "is_demo", False)),   # §17 provenance
                        "participant_ref": (None if anon else a.participant_ref)})
     # Seat accounting: revoked invites do NOT consume a seat (excluded from cap counts).
-    return {"company_id": company_id, "people": people,
+    # §4d live counter is per-cycle — report against the current open cycle (the one an
+    # assessor invite would land in / auto-open), else the newest cycle.
+    _open = _current_open_cycle(db, company_id)
+    _seat_cycle = _open or (max(cyc_by_id.values(), key=lambda c: c.id) if cyc_by_id else None)
+    seats = _seat_status(db, company_id, _seat_cycle.id if _seat_cycle else None)
+    seats["cycle_id"] = _seat_cycle.id if _seat_cycle else None
+    return {"company_id": company_id, "people": people, "seats": seats,
             "counts": {"viewers": sum(1 for p in people if p["source"] == "viewer"),
                        "assessors": sum(1 for p in people
                                         if p["source"] == "assessor" and not p["revoked"]),
                        "assessors_revoked": sum(1 for p in people
                                                 if p["source"] == "assessor" and p["revoked"]),
                        "cycles": sorted({p["cycle_id"] for p in people if p["cycle_id"]})}}
+
+
+@router.get("/companies/{company_id}/assessment/seats")
+def assessment_seats(company_id: int, member=Depends(require_company_admin), db=Depends(get_db)):
+    """§4d live assessor-seat counter for the cycle an invite would land in (the open
+    cycle, else the newest). {cap, used, remaining, at_cap, overage_block, overage_price}.
+    ENTITLEMENT SOURCE: base cap from the company's Account (plan → 50 Business /
+    150 Prescience; no account → Business 50), plus Account.assessor_overage."""
+    open_cyc = _current_open_cycle(db, company_id)
+    if open_cyc is None:
+        newest = (db.query(AssessmentCycle).filter_by(company_id=company_id)
+                    .order_by(AssessmentCycle.id.desc()).first())
+        cyc = newest
+    else:
+        cyc = open_cyc
+    st = _seat_status(db, company_id, cyc.id if cyc else None)
+    st["cycle_id"] = cyc.id if cyc else None
+    acct = _company_account(db, company_id)
+    st["has_account"] = acct is not None
+    return st
+
+
+class AssessorSeatQuoteIn(BaseModel):
+    additional: int = ASSESSOR_OVERAGE_BLOCK   # seats requested (rounded up to whole blocks)
+
+
+@router.post("/companies/{company_id}/assessment/seats/quote", status_code=201)
+def request_assessor_seats(company_id: int, body: AssessorSeatQuoteIn,
+                           member=Depends(require_company_admin),
+                           user: User = Depends(get_current_user), db=Depends(get_db)):
+    """§4d 'Add assessors' door — a CHECKOUT STUB, not a charge. Real Stripe billing
+    lands in Commercial Architecture; here we record the intent (audit) and return a
+    quote (blocks × $495/50/cycle) + the contact address so the client can render the
+    contact/quote dialog. Never mutates entitlement — seats are unchanged until a real
+    purchase settles."""
+    want = max(1, int(body.additional or ASSESSOR_OVERAGE_BLOCK))
+    blocks = -(-want // ASSESSOR_OVERAGE_BLOCK)                  # ceil to whole blocks
+    seats = blocks * ASSESSOR_OVERAGE_BLOCK
+    price = blocks * ASSESSOR_OVERAGE_PRICE
+    audit(db, user.id, "assessor_seats_quote_requested", "company", company_id,
+          detail=f"requested +{want} → {seats} seats ({blocks} block(s)), ${price}/cycle")
+    db.commit()
+    return {"ok": True, "stub": True, "requested": want, "blocks": blocks,
+            "additional_seats": seats, "price_usd": price, "period": "per cycle",
+            "unit": f"${ASSESSOR_OVERAGE_PRICE} per {ASSESSOR_OVERAGE_BLOCK} assessors per cycle",
+            "contact_email": SUPPORT,
+            "message": (f"Request received. Adding {seats} assessor seats is "
+                        f"${price} for this cycle. Our team will confirm and enable them — "
+                        f"in-app purchase is coming with billing. Questions? {SUPPORT}")}
 
 
 def _l1_maps(db, framework_id):
@@ -7586,7 +7888,8 @@ def participant_submit(body: AssessDraftIn, session=Depends(assess_session),
         raise HTTPException(422, "No responses to submit.")
     first_submit = inv.submitted_at is None
     out = _submit_responses(db, cyc, inv.participant_ref, final, actor_id=None,
-                            overall_comment=body.overall_comment, department=inv.department)
+                            overall_comment=body.overall_comment, department=inv.department,
+                            seniority=getattr(inv, "seniority", None))
     inv.submitted_at = datetime.utcnow()      # re-stamp on every revision
     inv.draft = None
     db.commit()
@@ -8194,7 +8497,12 @@ async def stripe_webhook(request: Request, db=Depends(get_db)):
                 action="stripe_checkout_completed",
                 detail=f"session={session_id}").first():
             return {"ok": True, "ignored": "duplicate delivery"}
-        slots = int((obj.get("metadata") or {}).get("company_slots", 1))
+        meta = obj.get("metadata") or {}
+        slots = int(meta.get("company_slots", 1))
+        # §4d assessor entitlement (forward-compatible): a plan-tier line sets the base
+        # cap (business 50 / prescience 150); an overage line adds seats (+50/$495/cycle).
+        plan_cap = ASSESSOR_PLAN_CAPS.get(str(meta.get("assessor_plan", "")).lower())
+        overage_seats = int(meta.get("assessor_overage", 0) or 0)
         customer = obj.get("customer")
         account = db.query(Account).filter_by(owner_user_id=int(user_id)).first()
         if account:  # additional license purchase on an existing account
@@ -8202,12 +8510,18 @@ async def stripe_webhook(request: Request, db=Depends(get_db)):
             account.stripe_subscription_id = obj.get("subscription") \
                 or account.stripe_subscription_id
             account.company_slots += slots
+            if plan_cap is not None:
+                account.assessor_cap = plan_cap
+            if overage_seats:
+                account.assessor_overage = (account.assessor_overage or 0) + overage_seats
             account.status = "active"
         else:
             account = Account(owner_user_id=int(user_id),
                               stripe_customer_id=customer,
                               stripe_subscription_id=obj.get("subscription"),
-                              company_slots=slots, status="active")
+                              company_slots=slots, status="active",
+                              assessor_cap=(plan_cap or ASSESSOR_CAP_DEFAULT),
+                              assessor_overage=overage_seats)
             db.add(account)
         db.flush()
         audit(db, None, "stripe_checkout_completed", "account", user_id,
@@ -8355,6 +8669,12 @@ def _ensure_ax_columns(engine):
     _add("ax_assessment_responses", "abstained", "abstained BOOLEAN NOT NULL DEFAULT false")
     _add("ax_assessment_responses", "department", "department VARCHAR(80)")
     _add("ax_assessment_invites", "department", "department VARCHAR(80)")
+    # §4u seniority dimension — invite carries it, responses inherit it
+    _add("ax_assessment_responses", "seniority", "seniority VARCHAR(40)")
+    _add("ax_assessment_invites", "seniority", "seniority VARCHAR(40)")
+    # §4d assessor seat entitlement
+    _add("ax_accounts", "assessor_cap", "assessor_cap INTEGER NOT NULL DEFAULT 50")
+    _add("ax_accounts", "assessor_overage", "assessor_overage INTEGER NOT NULL DEFAULT 0")
     # custody-5 item 4: roster lifecycle — remind cooldown, revoke, delivery-only alt email
     _add("ax_assessment_invites", "last_reminded_at", "last_reminded_at TIMESTAMP")
     _add("ax_assessment_invites", "revoked_at", "revoked_at TIMESTAMP")

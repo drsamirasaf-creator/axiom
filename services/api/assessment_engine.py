@@ -215,13 +215,48 @@ def compute_cei(items: list[dict], weights: dict, responses: list[dict]) -> dict
     serialization by `apply_kfloor`, never here.
     """
     agg = _aggregate_core(items, weights, responses)
-    by_dept: dict = {}
-    for r in responses:
-        by_dept.setdefault(r.get("department") or "(unassigned)", []).append(r)
-    real = [d for d in by_dept if d != "(unassigned)"]
+
+    def _partition(keyfn):
+        buckets: dict = {}
+        for r in responses:
+            buckets.setdefault(keyfn(r) or "(unassigned)", []).append(r)
+        real = [k for k in buckets if k != "(unassigned)"]
+        return buckets, bool(real)
+
+    # Department slices (§4i-b) and Seniority slices (§4u) — each an exact partition
+    # of respondents, so the k-anonymity complement math stays well-defined.
+    by_dept, has_dept = _partition(lambda r: r.get("department"))
     agg["departments"] = ({d: _aggregate_core(items, weights, rs) for d, rs in by_dept.items()}
-                          if real else {})
+                          if has_dept else {})
+    by_sen, has_sen = _partition(lambda r: r.get("seniority"))
+    agg["seniorities"] = ({s: _aggregate_core(items, weights, rs) for s, rs in by_sen.items()}
+                          if has_sen else {})
+
+    # Cross-tab: Department × Seniority. Still an EXACT partition of respondents (every
+    # respondent lands in exactly one (dept, seniority) cell, unassigned buckets
+    # included) — so the SAME complement guard applies to the intersection. The floor
+    # here is enforced on the CELL (the intersection), NOT on either dimension alone:
+    # "Finance × Executive" with n=1 suppresses even when Finance overall has n=10.
+    agg["cross"] = {}
+    if has_dept and has_sen:
+        by_cross: dict = {}
+        for r in responses:
+            d = r.get("department") or "(unassigned)"
+            s = r.get("seniority") or "(unassigned)"
+            by_cross.setdefault((d, s), []).append(r)
+        for (d, s), rs in by_cross.items():
+            a = _aggregate_core(items, weights, rs)
+            a["department"] = None if d == "(unassigned)" else d
+            a["seniority"] = None if s == "(unassigned)" else s
+            agg["cross"][_cross_key(d, s)] = a
     return agg
+
+
+_CROSS_SEP = "␟"                     # visible-safe unit separator for composite keys
+
+
+def _cross_key(dept, seniority) -> str:
+    return f"{dept}{_CROSS_SEP}{seniority}"
 
 
 # ---------------------------------------------------------------- k-anonymity
@@ -256,33 +291,61 @@ def _show_slice(a: dict) -> dict:
     out["item_dispersion"] = _floor_items(a.get("item_dispersion") or {})
     out["suppression"] = None
     out.pop("departments", None)
+    out.pop("seniorities", None)
+    out.pop("cross", None)
     return out
 
 
-def _apply_dept_kfloor(depts: dict) -> dict:
-    """Department slices are an exact partition of respondents, so a suppressed
-    slice can be reconstructed by subtracting the shown slices from the whole.
-
-    COMPLEMENT-INFERENCE RULE (as implemented): after the primary n<KFLOOR floor
-    marks small slices for suppression, if EXACTLY ONE slice is suppressed it is
-    the unique arithmetic complement of the shown slices (total − shown) and its
-    aggregate is derivable — so we additionally suppress the smallest shown slice.
-    We repeat until the number of hidden slices is 0 or ≥2; with ≥2 unknowns
-    against the single total-equation, no individual hidden slice is derivable.
-    """
-    if not depts:
-        return {}
-    status = {d: ("suppress" if (a.get("n_participants", 0) < KFLOOR) else "show")
-              for d, a in depts.items()}
-    # complement guard: never leave exactly one hidden slice
+def _partition_status(parts: dict) -> dict:
+    """COMPLEMENT-INFERENCE RULE (as implemented): after the primary n<KFLOOR floor
+    marks small slices for suppression, if EXACTLY ONE slice is suppressed it is the
+    unique arithmetic complement of the shown slices (total − shown) and its aggregate
+    is derivable — so we additionally suppress the smallest shown slice. Repeat until
+    the number of hidden slices is 0 or ≥2; with ≥2 unknowns against the single
+    total-equation, no individual hidden slice is derivable. Any exact partition of
+    respondents (departments, seniorities, or the department×seniority cross-tab)
+    obeys the same math."""
+    status = {k: ("suppress" if (a.get("n_participants", 0) < KFLOOR) else "show")
+              for k, a in parts.items()}
     while sum(1 for s in status.values() if s == "suppress") == 1:
-        shown = [d for d, s in status.items() if s == "show"]
+        shown = [k for k, s in status.items() if s == "show"]
         if not shown:
             break
-        status[min(shown, key=lambda d: depts[d].get("n_participants", 0))] = "suppress"
+        status[min(shown, key=lambda k: parts[k].get("n_participants", 0))] = "suppress"
+    return status
+
+
+def _apply_dept_kfloor(depts: dict) -> dict:
+    """Department slices are an exact partition of respondents, so a suppressed slice
+    can be reconstructed by subtracting the shown slices from the whole. See
+    `_partition_status` for the complement-inference guard."""
+    if not depts:
+        return {}
+    status = _partition_status(depts)
     return {d: (_suppressed(a.get("n_participants", 0)) if status[d] == "suppress"
                 else _show_slice(a))
             for d, a in depts.items()}
+
+
+def _apply_cross_kfloor(cross: dict) -> dict:
+    """Department×Seniority cross-tab floor. The floor is on the CELL n (the
+    intersection), never on either dimension separately — a cell below KFLOOR is
+    suppressed even when its department (or its seniority band) clears the floor on
+    its own. Same complement guard. The (department, seniority) labels survive
+    suppression so the client can render 'Finance × Executive — protected'."""
+    if not cross:
+        return {}
+    status = _partition_status(cross)
+    out = {}
+    for k, a in cross.items():
+        lbl = {"department": a.get("department"), "seniority": a.get("seniority")}
+        if status[k] == "suppress":
+            out[k] = _suppressed(a.get("n_participants", 0), lbl)
+        else:
+            shown = _show_slice(a)
+            shown.update(lbl)
+            out[k] = shown
+    return out
 
 
 def apply_kfloor(agg: dict) -> dict:
@@ -300,6 +363,8 @@ def apply_kfloor(agg: dict) -> dict:
         out["radar"] = []
         out["item_dispersion"] = {}
         out["departments"] = {}
+        out["seniorities"] = {}
+        out["cross"] = {}
         out["abstention_rates"] = {"item": {}, "axis": {}}
         out["no_signal_items"] = []
         out["suppression"] = _suppressed(n)
@@ -307,4 +372,6 @@ def apply_kfloor(agg: dict) -> dict:
     out["suppression"] = None
     out["item_dispersion"] = _floor_items(agg.get("item_dispersion") or {})
     out["departments"] = _apply_dept_kfloor(agg.get("departments") or {})
+    out["seniorities"] = _apply_dept_kfloor(agg.get("seniorities") or {})
+    out["cross"] = _apply_cross_kfloor(agg.get("cross") or {})
     return out
