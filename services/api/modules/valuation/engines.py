@@ -456,15 +456,22 @@ def multiples(data: dict, sector: str | None = None,
     bs = data["balance_sheet"]
     net_debt = (bs["short_term_debt"][ys] + bs["long_term_debt"][ys]
                 - bs["cash"][ys])
-    bridge = net_debt + bs["preferred_equity"][ys] + bs["minority_interest"][ys]
+    pref = bs["preferred_equity"][ys]
+    mino = bs["minority_interest"][ys]
+    bridge = net_debt + pref + mino
+    # three-number rule everywhere: multiples carry pre- and post-DLOM equity too,
+    # so the ownership-interest adjustment shows on the comparables side as well.
+    dlom = float(company.get("dlom") or 0.0) if company.get("ownership") == "private" else 0.0
     methods = []
     for name, mult, base in (("EV/EBITDA", ev_ebitda, ebitda),
                              ("EV/EBIT", ev_ebit, ebit)):
         ev = mult * base
+        eq = ev - bridge
         methods.append({"method": name, "multiple": mult,
                         "metric_value": round(base, 2),
                         "enterprise_value": round(ev, 2),
-                        "equity_value": round(ev - bridge, 2)})
+                        "equity_value": round(eq, 2),
+                        "equity_value_post_dlom": round(eq * (1.0 - dlom), 2)})
     evs = [m["enterprise_value"] for m in methods]
     dcf = run(data, "proforma" if data["periods"].get("forecast")
               else "auto_forecast")
@@ -487,6 +494,9 @@ def multiples(data: dict, sector: str | None = None,
            else ", a reassuring triangulation") + ".")]
     return {"subject": company["name"], "ebitda": round(ebitda, 2),
             "ebit": round(ebit, 2), "bridge_to_equity": round(bridge, 2),
+            "net_debt": round(net_debt, 2), "preferred_equity": round(pref, 2),
+            "minority_interest": round(mino, 2), "dlom": dlom,
+            "trailing_year": int(ys),
             "sector": sector, "methods": methods,
             "implied_ev_range": {"low": round(lo, 2), "high": round(hi, 2),
                                  "midpoint": round((lo + hi) / 2, 2)},
