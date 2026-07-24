@@ -544,6 +544,13 @@ class Objective(Base):
     # PERSON name so owner→objectives joins work regardless of which form was entered.
     owner_person_name = Column(String(160), index=True, nullable=True)
     uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # in-app CRUD provenance + reconciliation (all additive, boot-migrated)
+    source = Column(String(16), default="template", nullable=False)   # template | in_app
+    created_by_user_id = Column(Integer, nullable=True)
+    created_by_name = Column(String(160), nullable=True)
+    created_at = Column(DateTime, nullable=True)
+    archived = Column(Boolean, default=False, nullable=False)
+    flagged_absent = Column(Boolean, default=False, nullable=False)   # template row missing from a later upload
 
 
 class KeyResult(Base):
@@ -562,6 +569,12 @@ class KeyResult(Base):
     current = Column(Float, nullable=True)
     due_date = Column(String(40), nullable=True)
     uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    source = Column(String(16), default="template", nullable=False)
+    created_by_user_id = Column(Integer, nullable=True)
+    created_by_name = Column(String(160), nullable=True)
+    created_at = Column(DateTime, nullable=True)
+    archived = Column(Boolean, default=False, nullable=False)
+    flagged_absent = Column(Boolean, default=False, nullable=False)
 
 
 class GoalInitiativeLink(Base):
@@ -631,6 +644,12 @@ class KpiPlan(Base):
     full_year_target = Column(Float, nullable=True)
     department_id = Column(Integer, index=True, nullable=True)   # §4s → ax_departments.id
     uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    source = Column(String(16), default="template", nullable=False)
+    created_by_user_id = Column(Integer, nullable=True)
+    created_by_name = Column(String(160), nullable=True)
+    created_at = Column(DateTime, nullable=True)
+    archived = Column(Boolean, default=False, nullable=False)
+    flagged_absent = Column(Boolean, default=False, nullable=False)
 
 
 class ActionToken(Base):
@@ -2119,6 +2138,159 @@ def _uploader_names(db, rows):
     return out
 
 
+def _norm_kpi_key(s: str) -> str:
+    return " ".join((s or "").strip().lower().split())
+
+
+def _reconcile_okr_upload(db, company_id, new_ds, prior, objectives, key_results, kpis, now):
+    """RECONCILIATION RULE. After the upload's TEMPLATE rows are inserted into the new
+    dataset snapshot, fold in the prior active dataset's rows so a quarterly upload
+    NEVER silently drops in-app additions:
+      · rows matching by key         → UPDATED (the new template row is the update);
+      · in-app-only rows             → carried forward intact;
+      · template rows absent from the
+        new upload                   → carried forward FLAGGED (flagged_absent), not deleted;
+      · same key, divergent content  → SURFACED as a conflict (in-app row kept, the
+                                       template's diverging content recorded) — never
+                                       resolved silently.
+    Keys: objective = obj_key (stable text hash); KPI = normalized name; KR =
+    (parent obj_key, normalized text)."""
+    res = {"carried_in_app": {"objectives": 0, "key_results": 0, "kpis": 0},
+           "flagged_absent": {"objectives": 0, "kpis": 0}, "conflicts": []}
+    if prior is None or prior.id == new_ds.id:
+        return res
+
+    up_obj = {_goal_key(o["objective"]) for o in objectives}
+    oid2key = {o["objective_id"]: _goal_key(o["objective"]) for o in objectives}
+    up_kr = {(oid2key.get(kr.get("objective_id")), _norm_kpi_key(kr["key_result"])) for kr in key_results}
+    up_kpi = {_norm_kpi_key(k["kpi_name"]) for k in kpis}
+
+    def q_new_obj():
+        return db.query(Objective).filter_by(company_id=company_id, dataset_id=new_ds.id).all()
+
+    def q_new_kpi():
+        return db.query(KpiPlan).filter_by(company_id=company_id, dataset_id=new_ds.id).all()
+
+    def next_oid():
+        ex = q_new_obj()
+        n = max([int(o.objective_id[1:]) for o in ex
+                 if o.objective_id and o.objective_id[1:].isdigit()], default=0) + 1
+        return f"O{n}"
+
+    def next_ri(rows, base):
+        return max([r.row_index for r in rows], default=base) + 1
+
+    prior_objs = [o for o in db.query(Objective).filter_by(company_id=company_id, dataset_id=prior.id).all()
+                  if not getattr(o, "archived", False)]
+    prior_krs = [kr for kr in db.query(KeyResult).filter_by(company_id=company_id, dataset_id=prior.id).all()
+                 if not getattr(kr, "archived", False)]
+    prior_kr_by_oid, prior_obj_by_oid = {}, {o.objective_id: o for o in prior_objs}
+    for kr in prior_krs:
+        prior_kr_by_oid.setdefault(kr.objective_id, []).append(kr)
+
+    def obj_content(o):
+        return {"objective": o.objective, "owner": o.owner, "priority": o.priority,
+                "horizon": o.horizon, "status": o.status}
+
+    def carry_obj(o, flagged=False, keep_source=None):
+        oid = next_oid()
+        nobj = Objective(company_id=company_id, dataset_id=new_ds.id,
+                         row_index=next_ri(q_new_obj(), 2), objective=o.objective, owner=o.owner,
+                         priority=o.priority, horizon=o.horizon, status=o.status, objective_id=oid,
+                         obj_key=o.obj_key, department_id=o.department_id,
+                         owner_person_name=o.owner_person_name, uploaded_at=now,
+                         source=(keep_source or o.source or "in_app"),
+                         created_at=(o.created_at or now), created_by_user_id=o.created_by_user_id,
+                         created_by_name=o.created_by_name, flagged_absent=flagged)
+        db.add(nobj); db.flush()
+        for kr in prior_kr_by_oid.get(o.objective_id, []):
+            db.add(KeyResult(company_id=company_id, dataset_id=new_ds.id,
+                             row_index=next_ri(db.query(KeyResult).filter_by(company_id=company_id, dataset_id=new_ds.id).all(), 1000),
+                             objective_id=oid, key_result=kr.key_result, unit=kr.unit,
+                             baseline=kr.baseline, target=kr.target, current=kr.current,
+                             due_date=kr.due_date, uploaded_at=now, source=(kr.source or "in_app"),
+                             created_at=(kr.created_at or now), created_by_user_id=kr.created_by_user_id,
+                             created_by_name=kr.created_by_name))
+            db.flush()
+            res["carried_in_app"]["key_results"] += 1
+        return nobj
+
+    for o in prior_objs:
+        if (o.source or "template") == "in_app":
+            if o.obj_key in up_obj:
+                tmpl = next((t for t in q_new_obj() if t.obj_key == o.obj_key and t.source != "in_app"), None)
+                if tmpl and obj_content(tmpl) != obj_content(o):
+                    res["conflicts"].append({"kind": "objective", "key": o.obj_key,
+                                             "label": o.objective[:80],
+                                             "in_app": obj_content(o), "template": obj_content(tmpl)})
+                if tmpl:                       # in-app row keeps the key; drop the template dup
+                    db.delete(tmpl); db.flush()
+                carry_obj(o); res["carried_in_app"]["objectives"] += 1
+            else:
+                carry_obj(o); res["carried_in_app"]["objectives"] += 1
+        else:                                  # a template row from the prior snapshot
+            if o.obj_key not in up_obj:
+                carry_obj(o, flagged=True, keep_source="template")
+                res["flagged_absent"]["objectives"] += 1
+            # else: matched by key → the new upload's template row IS the update
+
+    # in-app KRs added under a TEMPLATE objective that still matches → attach to the
+    # new template objective (they'd otherwise be lost when the snapshot is replaced).
+    new_obj_by_key = {o.obj_key: o for o in q_new_obj()}
+    for kr in prior_krs:
+        parent = prior_obj_by_oid.get(kr.objective_id)
+        if (not parent or (kr.source or "template") != "in_app"
+                or (parent.source or "template") != "template" or parent.obj_key not in up_obj):
+            continue
+        if (parent.obj_key, _norm_kpi_key(kr.key_result)) in up_kr:
+            continue
+        newp = new_obj_by_key.get(parent.obj_key)
+        if not newp:
+            continue
+        db.add(KeyResult(company_id=company_id, dataset_id=new_ds.id,
+                         row_index=next_ri(db.query(KeyResult).filter_by(company_id=company_id, dataset_id=new_ds.id).all(), 1000),
+                         objective_id=newp.objective_id, key_result=kr.key_result, unit=kr.unit,
+                         baseline=kr.baseline, target=kr.target, current=kr.current, due_date=kr.due_date,
+                         uploaded_at=now, source="in_app", created_at=(kr.created_at or now),
+                         created_by_user_id=kr.created_by_user_id, created_by_name=kr.created_by_name))
+        db.flush()
+        res["carried_in_app"]["key_results"] += 1
+
+    def kpi_content(k):
+        return {"kpi_name": k.kpi_name, "unit": k.unit, "ytd_plan": k.ytd_plan,
+                "ytd_actual": k.ytd_actual, "full_year_target": k.full_year_target}
+
+    def carry_kpi(k, flagged=False, keep_source=None):
+        db.add(KpiPlan(company_id=company_id, dataset_id=new_ds.id,
+                       row_index=next_ri(q_new_kpi(), 2), kpi_name=k.kpi_name, unit=k.unit,
+                       ytd_plan=k.ytd_plan, ytd_actual=k.ytd_actual, full_year_target=k.full_year_target,
+                       department_id=k.department_id, uploaded_at=now,
+                       source=(keep_source or k.source or "in_app"), created_at=(k.created_at or now),
+                       created_by_user_id=k.created_by_user_id, created_by_name=k.created_by_name,
+                       flagged_absent=flagged))
+        db.flush()
+
+    for k in [x for x in db.query(KpiPlan).filter_by(company_id=company_id, dataset_id=prior.id).all()
+              if not getattr(x, "archived", False)]:
+        kk = _norm_kpi_key(k.kpi_name)
+        if (k.source or "template") == "in_app":
+            if kk in up_kpi:
+                tmpl = next((t for t in q_new_kpi() if _norm_kpi_key(t.kpi_name) == kk and t.source != "in_app"), None)
+                if tmpl and kpi_content(tmpl) != kpi_content(k):
+                    res["conflicts"].append({"kind": "kpi", "key": kk, "label": k.kpi_name[:80],
+                                             "in_app": kpi_content(k), "template": kpi_content(tmpl)})
+                if tmpl:
+                    db.delete(tmpl); db.flush()
+                carry_kpi(k); res["carried_in_app"]["kpis"] += 1
+            else:
+                carry_kpi(k); res["carried_in_app"]["kpis"] += 1
+        else:
+            if kk not in up_kpi:
+                carry_kpi(k, flagged=True, keep_source="template")
+                res["flagged_absent"]["kpis"] += 1
+    return res
+
+
 @router.post("/companies/{company_id}/data-upload", status_code=201)
 async def data_upload(company_id: int, file: UploadFile = File(...),
                       member=Depends(require_company_admin),
@@ -2150,6 +2322,9 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
     prior = db.query(FinancialDataset).filter_by(
         enterprise_id=company_id, source="upload").all()
     version = max([(p.version or 1) for p in prior], default=0) + 1
+    # capture the CURRENT active dataset BEFORE deactivation — its OKR rows (incl. any
+    # in-app additions) are reconciled into the new snapshot below (§ reconciliation).
+    prior_active = _active_company_dataset(db, company_id)
     # §17: an upload becomes the SINGLE active dataset — deactivate every currently
     # active dataset for this company REGARDLESS of source (a curated source='direct'
     # showcase dataset otherwise stayed active and shadowed the upload, so objectives/
@@ -2234,10 +2409,18 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
         db.add(KpiPlan(company_id=company_id, dataset_id=ds.id, row_index=k["row_index"],
                        kpi_name=k["kpi_name"], unit=k["unit"], ytd_plan=k["ytd_plan"],
                        ytd_actual=k["ytd_actual"], full_year_target=k["full_year_target"],
-                       department_id=_dept_id_for(k.get("department")), uploaded_at=now))
+                       department_id=_dept_id_for(k.get("department")), uploaded_at=now,
+                       source="template"))
+    db.flush()
+    # RECONCILIATION — carry forward in-app additions, flag absent template rows, and
+    # surface (never silently resolve) key collisions with divergent content.
+    reconciliation = _reconcile_okr_upload(db, company_id, ds, prior_active,
+                                           objectives, key_results, kpis, now)
     audit(db, user.id, "data_uploaded", "company", company_id,
           detail=f"dataset={ds.id} v{version} {frequency} objectives={len(objectives)} "
-                 f"krs={len(key_results)} kpis={len(kpis)}")
+                 f"krs={len(key_results)} kpis={len(kpis)} "
+                 f"carried_in_app={reconciliation['carried_in_app']} "
+                 f"conflicts={len(reconciliation['conflicts'])}")
     _pilot_touch(db, company_id, "Data Loaded")   # FP-1 auto lifecycle
     db.commit()
     try:                                           # 7i: recompute frontier + viability (background)
@@ -2255,6 +2438,7 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
             "has_kr_sheet": okr_flags.get("has_krs"), "has_kpi_sheet": okr_flags.get("has_kpis"),
             "has_org_sheet": okr_flags.get("has_org"),
             "legacy_goals_migrated": okr_flags.get("legacy"),
+            "reconciliation": reconciliation,
             "active": True}
 
 
@@ -2637,17 +2821,23 @@ def _objective_rows(db, company_id):
     ds = _active_company_dataset(db, company_id)
     if not ds:
         return None, [], {"uploaded_at": None, "legacy": False}
-    objs = (db.query(Objective).filter_by(company_id=company_id, dataset_id=ds.id)
-              .order_by(Objective.row_index).all())
+    objs = [o for o in db.query(Objective).filter_by(company_id=company_id, dataset_id=ds.id)
+              .order_by(Objective.row_index).all() if not getattr(o, "archived", False)]
     if objs:
         by_oid = {}
         for kr in (db.query(KeyResult).filter_by(company_id=company_id, dataset_id=ds.id)
                      .order_by(KeyResult.row_index).all()):
+            if getattr(kr, "archived", False):
+                continue
             by_oid.setdefault(kr.objective_id, []).append(kr)
         rows = [{"objective": o.objective, "owner": o.owner, "priority": o.priority,
                  "horizon": o.horizon, "status": o.status, "objective_id": o.objective_id,
                  "obj_key": o.obj_key, "row_index": o.row_index,
                  "department_id": getattr(o, "department_id", None),
+                 "provenance": {"source": getattr(o, "source", "template"),
+                                "created_by": getattr(o, "created_by_name", None),
+                                "created_at": getattr(o, "created_at", None),
+                                "flagged_absent": getattr(o, "flagged_absent", False)},
                  "krs": by_oid.get(o.objective_id, [])} for o in objs]
         return ds, rows, {"uploaded_at": max((o.uploaded_at for o in objs), default=None), "legacy": False}
     goals = (db.query(OrgGoal).filter_by(company_id=company_id, dataset_id=ds.id)
@@ -2689,7 +2879,8 @@ def company_objectives(company_id: int, department: int | None = None,
     def kr_out(kr):
         return {"objective_id": kr.objective_id, "key_result": kr.key_result, "unit": kr.unit,
                 "baseline": kr.baseline, "target": kr.target, "current": kr.current,
-                "due_date": kr.due_date, "progress": _kr_progress(kr.baseline, kr.target, kr.current)}
+                "due_date": kr.due_date, "progress": _kr_progress(kr.baseline, kr.target, kr.current),
+                "id": getattr(kr, "id", None), "source": getattr(kr, "source", "template")}
 
     def obj_out(r):
         krs = [kr_out(k) for k in r["krs"]]
@@ -2699,6 +2890,7 @@ def company_objectives(company_id: int, department: int | None = None,
                 "owner": r["owner"], "priority": r["priority"], "horizon": r["horizon"], "status": r["status"],
                 "department_id": r.get("department_id"),
                 "department": _dept_out(dept_idx.get(r.get("department_id"))),
+                "provenance": r.get("provenance"),
                 "key_results": krs, "kr_count": len(krs),
                 "progress": (round(sum(progs) / len(progs), 4) if progs else None),
                 "linked_count": len(linked), "rag_mix": _rag_mix(linked),
@@ -2727,26 +2919,47 @@ class KRCreateIn(BaseModel):
 
 class ObjectiveCreateIn(BaseModel):
     objective: str
-    owner: str | None = None
+    owner: str | None = None            # PERSON name from the picker (not a title)
     priority: str | None = None
     horizon: str | None = "Short"
     status: str | None = None
+    department_id: int | None = None
     kr: KRCreateIn | None = None
+
+
+def _owner_person_ref(db, company_id: int, owner: str | None, dept_id: int | None) -> str | None:
+    """Resolve an owner to a PERSON reference (keeps the owner-join fix intact). The
+    in-app picker supplies a person name; if it happens to be the dept head's title it
+    still resolves to the head person, otherwise the name is itself the person ref."""
+    if not (owner or "").strip():
+        return None
+    dep = db.get(Department, dept_id) if dept_id else None
+    return (_resolve_owner_person(owner, dep) if dep else None) or owner.strip()
+
+
+def _dept_id_valid(db, company_id: int, dept_id: int | None) -> int | None:
+    if dept_id is None:
+        return None
+    dep = db.get(Department, dept_id)
+    if not dep or dep.company_id != company_id:
+        raise HTTPException(422, "department not found for this company")
+    return dept_id
 
 
 @router.post("/companies/{company_id}/objectives", status_code=201)
 def create_objective(company_id: int, body: ObjectiveCreateIn,
                      member=Depends(require_company_admin),
                      user: User = Depends(get_current_user), db=Depends(get_db)):
-    """Create a manual objective in the ACTIVE dataset (the §9 KPI-breach → objective
-    door). Attaches an optional first key result. Note: manual objectives live on the
-    active dataset snapshot — a later re-upload replaces the snapshot, but any
-    initiative links survive (keyed on the objective text hash)."""
+    """Create an IN-APP objective in the ACTIVE dataset. Stamped source='in_app' with
+    creator + timestamp so it is distinguishable from template rows and SURVIVES a
+    later re-upload (the reconciliation carries in-app rows forward). Owner is stored
+    as a person reference. Attaches an optional first key result."""
     if not (body.objective or "").strip():
         raise HTTPException(422, "objective text is required")
     ds = _active_company_dataset(db, company_id)
     if not ds:
         raise HTTPException(409, "No active dataset — upload financials first.")
+    dept_id = _dept_id_valid(db, company_id, body.department_id)
     existing = db.query(Objective).filter_by(company_id=company_id, dataset_id=ds.id).all()
     n = max([int(o.objective_id[1:]) for o in existing
              if o.objective_id and o.objective_id[0] == "O" and o.objective_id[1:].isdigit()], default=0) + 1
@@ -2758,16 +2971,242 @@ def create_objective(company_id: int, body: ObjectiveCreateIn,
     obj = Objective(company_id=company_id, dataset_id=ds.id, row_index=ri,
                     objective=body.objective.strip(), owner=(body.owner or None),
                     priority=prio, horizon=hor, status=(body.status or None),
-                    objective_id=oid, obj_key=_goal_key(body.objective), uploaded_at=now)
+                    objective_id=oid, obj_key=_goal_key(body.objective),
+                    department_id=dept_id,
+                    owner_person_name=_owner_person_ref(db, company_id, body.owner, dept_id),
+                    uploaded_at=now, source="in_app", created_at=now,
+                    created_by_user_id=user.id, created_by_name=(user.name or user.email))
     db.add(obj)
     if body.kr and (body.kr.key_result or "").strip():
         db.add(KeyResult(company_id=company_id, dataset_id=ds.id, row_index=ri + 1000,
                          objective_id=oid, key_result=body.kr.key_result.strip(),
                          unit=body.kr.unit, baseline=body.kr.baseline, target=body.kr.target,
-                         current=body.kr.current, due_date=body.kr.due_date, uploaded_at=now))
+                         current=body.kr.current, due_date=body.kr.due_date, uploaded_at=now,
+                         source="in_app", created_at=now, created_by_user_id=user.id,
+                         created_by_name=(user.name or user.email)))
     audit(db, user.id, "objective_created", "company", company_id, detail=f"{oid} {body.objective[:40]}")
     db.commit()
     return {"ok": True, "objective_id": oid, "key": _goal_key(body.objective), "dataset_id": ds.id}
+
+
+class ObjectiveUpdateIn(BaseModel):
+    objective: str | None = None
+    owner: str | None = None
+    priority: str | None = None
+    horizon: str | None = None
+    status: str | None = None
+    department_id: int | None = None
+
+
+@router.patch("/companies/{company_id}/objectives/{obj_key}")
+def update_objective(company_id: int, obj_key: str, body: ObjectiveUpdateIn,
+                     member=Depends(require_company_admin),
+                     user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Edit an objective on the active dataset. Editing the objective TEXT re-keys it
+    (obj_key = hash of text); any initiative links are migrated to the new key."""
+    ds = _active_company_dataset(db, company_id)
+    if not ds:
+        raise HTTPException(409, "No active dataset.")
+    obj = db.query(Objective).filter_by(company_id=company_id, dataset_id=ds.id, obj_key=obj_key).first()
+    if not obj:
+        raise HTTPException(404, "objective not found in the active dataset")
+    old_key = obj.obj_key
+    if body.objective is not None and body.objective.strip():
+        obj.objective = body.objective.strip()
+        obj.obj_key = _goal_key(obj.objective)
+        if obj.obj_key != old_key:   # migrate initiative links to the new text identity
+            for l in db.query(GoalInitiativeLink).filter_by(company_id=company_id, goal_key=old_key).all():
+                l.goal_key = obj.obj_key
+    if body.department_id is not None:
+        obj.department_id = _dept_id_valid(db, company_id, body.department_id)
+    if body.owner is not None:
+        obj.owner = body.owner or None
+        obj.owner_person_name = _owner_person_ref(db, company_id, body.owner, obj.department_id)
+    if body.priority is not None:
+        obj.priority = body.priority if body.priority in _GOAL_PRIORITY_RANK else None
+    if body.horizon is not None and body.horizon in _GOAL_HORIZON_ORDER:
+        obj.horizon = body.horizon
+    if body.status is not None:
+        obj.status = body.status or None
+    audit(db, user.id, "objective_updated", "company", company_id, detail=f"{obj.objective_id}")
+    db.commit()
+    return {"ok": True, "key": obj.obj_key, "objective_id": obj.objective_id}
+
+
+@router.delete("/companies/{company_id}/objectives/{obj_key}")
+def delete_objective(company_id: int, obj_key: str, archive: bool = True,
+                     member=Depends(require_company_admin),
+                     user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Archive (default) or hard-delete an objective and its key results on the active
+    dataset. Archived rows are hidden from reads but retained; ?archive=false deletes."""
+    ds = _active_company_dataset(db, company_id)
+    if not ds:
+        raise HTTPException(409, "No active dataset.")
+    obj = db.query(Objective).filter_by(company_id=company_id, dataset_id=ds.id, obj_key=obj_key).first()
+    if not obj:
+        raise HTTPException(404, "objective not found in the active dataset")
+    krs = db.query(KeyResult).filter_by(company_id=company_id, dataset_id=ds.id, objective_id=obj.objective_id).all()
+    if archive:
+        obj.archived = True
+        for kr in krs:
+            kr.archived = True
+    else:
+        for kr in krs:
+            db.delete(kr)
+        db.delete(obj)
+    audit(db, user.id, "objective_" + ("archived" if archive else "deleted"), "company", company_id, detail=obj.objective_id)
+    db.commit()
+    return {"ok": True, "archived": archive, "objective_id": obj.objective_id}
+
+
+# ── Key Result CRUD (addressed by KR id; created under an objective by obj_key) ──
+class KRUpdateIn(BaseModel):
+    key_result: str | None = None
+    unit: str | None = None
+    baseline: float | None = None
+    target: float | None = None
+    current: float | None = None
+    due_date: str | None = None
+
+
+@router.post("/companies/{company_id}/objectives/{obj_key}/key-results", status_code=201)
+def add_key_result(company_id: int, obj_key: str, body: KRCreateIn,
+                   member=Depends(require_company_admin),
+                   user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Add an in-app key result to an objective on the active dataset."""
+    if not (body.key_result or "").strip():
+        raise HTTPException(422, "key result text is required")
+    ds = _active_company_dataset(db, company_id)
+    if not ds:
+        raise HTTPException(409, "No active dataset.")
+    obj = db.query(Objective).filter_by(company_id=company_id, dataset_id=ds.id, obj_key=obj_key).first()
+    if not obj:
+        raise HTTPException(404, "objective not found in the active dataset")
+    ri = max([kr.row_index for kr in
+              db.query(KeyResult).filter_by(company_id=company_id, dataset_id=ds.id).all()], default=1000) + 1
+    now = datetime.utcnow()
+    kr = KeyResult(company_id=company_id, dataset_id=ds.id, row_index=ri,
+                   objective_id=obj.objective_id, key_result=body.key_result.strip(),
+                   unit=body.unit, baseline=body.baseline, target=body.target,
+                   current=body.current, due_date=body.due_date, uploaded_at=now,
+                   source="in_app", created_at=now, created_by_user_id=user.id,
+                   created_by_name=(user.name or user.email))
+    db.add(kr)
+    audit(db, user.id, "key_result_created", "company", company_id, detail=f"{obj.objective_id}")
+    db.commit(); db.refresh(kr)
+    return {"ok": True, "id": kr.id, "objective_id": obj.objective_id}
+
+
+@router.patch("/companies/{company_id}/key-results/{kr_id}")
+def update_key_result(company_id: int, kr_id: int, body: KRUpdateIn,
+                      member=Depends(require_company_admin),
+                      user: User = Depends(get_current_user), db=Depends(get_db)):
+    ds = _active_company_dataset(db, company_id)
+    kr = db.query(KeyResult).filter_by(id=kr_id, company_id=company_id).first()
+    if not kr or (ds and kr.dataset_id != ds.id):
+        raise HTTPException(404, "key result not found in the active dataset")
+    for f in ("key_result", "unit", "baseline", "target", "current", "due_date"):
+        v = getattr(body, f)
+        if v is not None:
+            setattr(kr, f, (v.strip() if isinstance(v, str) and f == "key_result" else v))
+    audit(db, user.id, "key_result_updated", "company", company_id, detail=str(kr_id))
+    db.commit()
+    return {"ok": True, "id": kr.id}
+
+
+@router.delete("/companies/{company_id}/key-results/{kr_id}")
+def delete_key_result(company_id: int, kr_id: int, archive: bool = True,
+                      member=Depends(require_company_admin),
+                      user: User = Depends(get_current_user), db=Depends(get_db)):
+    kr = db.query(KeyResult).filter_by(id=kr_id, company_id=company_id).first()
+    if not kr:
+        raise HTTPException(404, "key result not found")
+    if archive:
+        kr.archived = True
+    else:
+        db.delete(kr)
+    audit(db, user.id, "key_result_" + ("archived" if archive else "deleted"), "company", company_id, detail=str(kr_id))
+    db.commit()
+    return {"ok": True, "archived": archive, "id": kr_id}
+
+
+# ── KPI CRUD (addressed by KPI id) ──
+class KpiCreateIn(BaseModel):
+    kpi_name: str
+    unit: str | None = None
+    ytd_plan: float | None = None
+    ytd_actual: float | None = None
+    full_year_target: float | None = None
+    department_id: int | None = None
+
+
+class KpiUpdateIn(BaseModel):
+    kpi_name: str | None = None
+    unit: str | None = None
+    ytd_plan: float | None = None
+    ytd_actual: float | None = None
+    full_year_target: float | None = None
+    department_id: int | None = None
+
+
+@router.post("/companies/{company_id}/kpis", status_code=201)
+def create_kpi(company_id: int, body: KpiCreateIn,
+               member=Depends(require_company_admin),
+               user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Create an in-app KPI on the active dataset, with department + targets."""
+    if not (body.kpi_name or "").strip():
+        raise HTTPException(422, "KPI name is required")
+    ds = _active_company_dataset(db, company_id)
+    if not ds:
+        raise HTTPException(409, "No active dataset — upload financials first.")
+    dept_id = _dept_id_valid(db, company_id, body.department_id)
+    ri = max([k.row_index for k in
+              db.query(KpiPlan).filter_by(company_id=company_id, dataset_id=ds.id).all()], default=2) + 1
+    now = datetime.utcnow()
+    kpi = KpiPlan(company_id=company_id, dataset_id=ds.id, row_index=ri,
+                  kpi_name=body.kpi_name.strip(), unit=body.unit, ytd_plan=body.ytd_plan,
+                  ytd_actual=body.ytd_actual, full_year_target=body.full_year_target,
+                  department_id=dept_id, uploaded_at=now, source="in_app", created_at=now,
+                  created_by_user_id=user.id, created_by_name=(user.name or user.email))
+    db.add(kpi)
+    audit(db, user.id, "kpi_created", "company", company_id, detail=body.kpi_name[:40])
+    db.commit(); db.refresh(kpi)
+    return {"ok": True, "id": kpi.id}
+
+
+@router.patch("/companies/{company_id}/kpis/{kpi_id}")
+def update_kpi(company_id: int, kpi_id: int, body: KpiUpdateIn,
+               member=Depends(require_company_admin),
+               user: User = Depends(get_current_user), db=Depends(get_db)):
+    ds = _active_company_dataset(db, company_id)
+    kpi = db.query(KpiPlan).filter_by(id=kpi_id, company_id=company_id).first()
+    if not kpi or (ds and kpi.dataset_id != ds.id):
+        raise HTTPException(404, "KPI not found in the active dataset")
+    if body.department_id is not None:
+        kpi.department_id = _dept_id_valid(db, company_id, body.department_id)
+    for f in ("kpi_name", "unit", "ytd_plan", "ytd_actual", "full_year_target"):
+        v = getattr(body, f)
+        if v is not None:
+            setattr(kpi, f, (v.strip() if isinstance(v, str) else v))
+    audit(db, user.id, "kpi_updated", "company", company_id, detail=str(kpi_id))
+    db.commit()
+    return {"ok": True, "id": kpi.id}
+
+
+@router.delete("/companies/{company_id}/kpis/{kpi_id}")
+def delete_kpi(company_id: int, kpi_id: int, archive: bool = True,
+               member=Depends(require_company_admin),
+               user: User = Depends(get_current_user), db=Depends(get_db)):
+    kpi = db.query(KpiPlan).filter_by(id=kpi_id, company_id=company_id).first()
+    if not kpi:
+        raise HTTPException(404, "KPI not found")
+    if archive:
+        kpi.archived = True
+    else:
+        db.delete(kpi)
+    audit(db, user.id, "kpi_" + ("archived" if archive else "deleted"), "company", company_id, detail=str(kpi_id))
+    db.commit()
+    return {"ok": True, "archived": archive, "id": kpi_id}
 
 
 class ObjectiveLinkIn(BaseModel):
@@ -2865,7 +3304,7 @@ def company_kpi_variance(company_id: int, department: int | None = None,
     q = db.query(KpiPlan).filter_by(company_id=company_id, dataset_id=ds.id)
     if department is not None:
         q = q.filter(KpiPlan.department_id == department)
-    rows = q.order_by(KpiPlan.row_index).all()
+    rows = [r for r in q.order_by(KpiPlan.row_index).all() if not getattr(r, "archived", False)]
     if not rows:
         return {"company_id": company_id, "dataset_id": ds.id, "has_data": False, "kpis": []}
     dept_idx = _dept_index(db, company_id)
@@ -2874,6 +3313,10 @@ def company_kpi_variance(company_id: int, department: int | None = None,
              "full_year_target": r.full_year_target,
              "department_id": getattr(r, "department_id", None),
              "department": _dept_out(dept_idx.get(getattr(r, "department_id", None))),
+             "provenance": {"source": getattr(r, "source", "template"),
+                            "created_by": getattr(r, "created_by_name", None),
+                            "created_at": getattr(r, "created_at", None),
+                            "flagged_absent": getattr(r, "flagged_absent", False)},
              "variance": _kpi_variance(r.ytd_actual, r.ytd_plan)} for r in rows]
     return {"company_id": company_id, "dataset_id": ds.id,
             "uploaded_at": max((r.uploaded_at for r in rows), default=None),
@@ -7883,6 +8326,15 @@ def _ensure_ax_columns(engine):
     _add("ax_kpi_plan", "department_id", "department_id INTEGER")
     _add("ax_initiatives", "department_id", "department_id INTEGER")
     _add("ax_objectives", "owner_person_name", "owner_person_name VARCHAR(160)")
+    # in-app OKR CRUD: provenance (source/creator/timestamp), archive, and the
+    # reconciliation flag for template rows absent from a later upload.
+    for _t in ("ax_objectives", "ax_key_results", "ax_kpi_plan"):
+        _add(_t, "source", "source VARCHAR(16) NOT NULL DEFAULT 'template'")
+        _add(_t, "created_by_user_id", "created_by_user_id INTEGER")
+        _add(_t, "created_by_name", "created_by_name VARCHAR(160)")
+        _add(_t, "created_at", "created_at TIMESTAMP")
+        _add(_t, "archived", "archived BOOLEAN NOT NULL DEFAULT false")
+        _add(_t, "flagged_absent", "flagged_absent BOOLEAN NOT NULL DEFAULT false")
     _add("ax_document_proposals", "source", "source VARCHAR(16) NOT NULL DEFAULT 'synthesis'")
     _add("ax_assessment_invites", "is_demo", "is_demo BOOLEAN NOT NULL DEFAULT false")
     # §16: report-share bundling (multiple formats in one email)
