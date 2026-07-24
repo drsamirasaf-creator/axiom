@@ -201,11 +201,17 @@ def read_tenant(authorization: str | None = Header(default=None),
                             detail="invalid or expired session token")
     if require_auth():
         return SHOWCASE_TENANT
-    t = (x_axiom_tenant or "").strip()[:64] or SHOWCASE_TENANT
-    # The visitor-facing demo reads from the canonical showcase companies —
-    # 'demo' is an anonymous-read alias for the showcase tenant (single source
-    # of truth), so the demo roster is exactly the reference three (7b).
-    return SHOWCASE_TENANT if t == DEMO_TENANT else t
+    # Anonymous (no valid session): reads are CONFINED to the public showcase.
+    # The X-AXIOM-Tenant header may only SELECT the showcase — explicit 'showcase'
+    # or the 'demo' alias (the visitor-facing demo reads the canonical showcase
+    # companies, so the demo roster is exactly the reference three, 7b). Any OTHER
+    # value — including a real "u-…" tenant id — is IGNORED and falls back to
+    # showcase; a session-less caller must never name a private tenant. (For
+    # anonymous callers viewer_company/_scoped is None, so _get_dataset's per-
+    # enterprise guard is skipped — without this pin, tenant-string secrecy would
+    # be the ONLY barrier to a cross-tenant read.)
+    t = (x_axiom_tenant or "").strip()[:64]
+    return t if t == SHOWCASE_TENANT else SHOWCASE_TENANT
 
 
 def write_tenant(authorization: str | None = Header(default=None),
