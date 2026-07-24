@@ -230,99 +230,195 @@ def forecast_dataset(dataset_id: int, body: schemas.ForecastRequest,
     return out
 
 
+# Line set for Plan vs Forecast + long-run variance, as the model carries them.
+_PVM_LINES = [
+    ("revenue", "Revenue"), ("cogs", "COGS"), ("gross_profit", "Gross profit"),
+    ("opex", "Operating expenses"), ("ebitda", "EBITDA"), ("ebit", "EBIT"),
+    ("net_income", "Net income"), ("capex", "Capex"),
+    ("nwc_change", "Δ Net working capital"), ("fcff", "FCFF"),
+]
+
+
+def _pvm_full(base_hist: dict, forecast_stmts: dict, fyears: list) -> dict:
+    """A full dataset = base historicals + a forecast statement set (income/balance/
+    cash_flow, forecast-only), so derive_series can produce apples-to-apples lines."""
+    hist = list(base_hist["periods"]["historical"])
+    keep = {str(y) for y in hist}
+    out = {"company": base_hist["company"],
+           "periods": {"historical": hist, "forecast": [int(y) for y in fyears]},
+           "income_statement": {}, "balance_sheet": {}, "cash_flow": {}}
+    for block, keys in (("income_statement", engines.IS_KEYS),
+                        ("balance_sheet", engines.BS_KEYS),
+                        ("cash_flow", engines.CF_KEYS)):
+        for k in keys:
+            hv = {y: base_hist[block].get(k, {}).get(y) for y in keep}
+            fv = (forecast_stmts.get(block) or {}).get(k, {})
+            out[block][k] = {**hv, **fv}
+    return out
+
+
+def _pvm_line_values(full: dict) -> dict:
+    """{line_key: {year_str: value}} over the FORECAST years of `full`, using the
+    model's own derivations so every series compares like-for-like."""
+    d = engines.derive_series(full)
+    years, n_h = d["years"], d["n_historical"]
+    IS, CF = full["income_statement"], full["cash_flow"]
+    out = {k: {} for k, _ in _PVM_LINES}
+    for i, y in enumerate(years):
+        if i < n_h:
+            continue
+        ys = str(y)
+        rev = d["revenue"][i]
+        cogs = IS["cogs"].get(ys)
+        opex = IS["opex"].get(ys)
+        out["revenue"][ys] = rev
+        out["cogs"][ys] = cogs
+        out["gross_profit"][ys] = round(rev - cogs, 4) if (rev is not None and cogs is not None) else None
+        out["opex"][ys] = opex
+        out["ebitda"][ys] = d["ratios"][i]["ebitda"]
+        out["ebit"][ys] = d["ebit"][i]
+        out["net_income"][ys] = d["net_income"][i]
+        out["capex"][ys] = CF["capex"].get(ys)
+        out["nwc_change"][ys] = round(d["nwc"][i] - d["nwc"][i - 1], 4) if i > 0 else None
+        out["fcff"][ys] = d["fcff"][i]
+    return out
+
+
+def _pvm_forecast_only(data: dict, years: list) -> dict:
+    """Extract a forecast-only statement set (income/balance/cash_flow) for `years`."""
+    keep = {str(y) for y in years}
+    return {block: {k: {y: v for y, v in (data[block].get(k) or {}).items() if y in keep}
+                    for k in keys}
+            for block, keys in (("income_statement", engines.IS_KEYS),
+                                ("balance_sheet", engines.BS_KEYS),
+                                ("cash_flow", engines.CF_KEYS))}
+
+
 @router.get("/datasets/{dataset_id}/plan-vs-methods")
 def plan_vs_methods(dataset_id: int, db: Session = Depends(get_db),
                     tenant: str = Depends(_tenant),
                     scoped: int | None = Depends(_scoped),
-                    horizon: int | None = None):
-    """Business Planning & Forecasting — the CLIENT PLAN (the forecast columns the
-    client uploaded) laid against each of AXIOM's five forecasting methodologies
-    plus the ensemble, per line item and per year, with variance (plan − AXIOM,
-    abs and %). Honest-empty (`has_client_plan=false`) when the dataset carries no
-    client forecast — the caller shows the template door. The client plan is read
-    exactly as supplied and is never re-forecast or overwritten; the AXIOM methods
-    are fit on the historicals only."""
-    from ...forecast_studio import compute_method, METHODS as FS_METHODS
+                    horizon: int | None = None,
+                    extend_method: str | None = None):
+    """Business Planning & Forecasting — the CLIENT PLAN laid against each of AXIOM's
+    five forecasting methodologies + ensemble, per line item and per year, with
+    variance (plan − ensemble, abs and %). The `horizon` governs how far the AXIOM
+    method series project (shared across the page). `extend_method` optionally
+    continues the client plan beyond its supplied years, ANCHORED ON THE PLAN'S
+    ENDPOINT (level + trajectory continue from the plan, never re-anchored to
+    history); extended years are flagged is_extension=true. Honest-empty when no
+    client plan. method_params carries the ACTUAL fitted parameters for the drawers."""
+    from ...forecast_studio import (compute_method, METHODS as FS_METHODS, _LABELS,
+                                    DAMP_PHI, DAMP_ALPHA, DAMP_BETA, MC_PATHS, MC_SEED,
+                                    DIVERGENCE_CV, HORIZON_MAX)
     row = _get_dataset(db, tenant, dataset_id, scoped)
     data = row.data
     periods = data.get("periods") or {}
     hist = [int(y) for y in periods.get("historical") or []]
     fc_years = [int(y) for y in periods.get("forecast") or []]
     std = (data.get("company") or {}).get("standard", "us_gaap")
-    labels = templates.LABELS.get(std, templates.LABELS["us_gaap"])["lines"]
+    method_labels = {m: _LABELS.get(m, m) for m in FS_METHODS}
     base_resp = {"dataset_id": row.id, "dataset_version": row.version,
                  "standard": std, "has_client_plan": bool(fc_years),
                  "historical_years": hist, "forecast_years": fc_years,
-                 "methods": list(FS_METHODS), "ensemble_method": "ensemble"}
+                 "methods": list(FS_METHODS), "method_labels": method_labels,
+                 "ensemble_method": "ensemble"}
     if not fc_years:
-        return {**base_resp, "line_items": [], "summary": None,
+        return {**base_resp, "line_items": [], "summary": None, "extension": None,
                 "note": ("No client plan on this dataset. Upload your own forecast "
                          "with the v7 template — mark the right-hand columns "
                          "'Forecast', enter a year and your figures — and AXIOM "
                          "will compare it against its five forecasting methods.")}
     if len(hist) < 2:
-        return {**base_resp, "line_items": [], "summary": None,
+        return {**base_resp, "line_items": [], "summary": None, "extension": None,
                 "note": "At least 2 historical years are required to compare "
                         "against AXIOM's methods."}
 
     base = _historicals_only(data)
-    span = max(fc_years) - hist[-1]
-    hz = max(1, min(horizon or span, 15))
-    method_stmts = {m: compute_method(base, m, hz)[0] for m in FS_METHODS}
+    hist_last, plan_last = hist[-1], max(fc_years)
+    plan_span = plan_last - hist_last
+    hz = max(1, min(horizon or plan_span, HORIZON_MAX))
+    all_last = max(plan_last, hist_last + hz)
+    method_hz = all_last - hist_last
+    method_years = [hist_last + k for k in range(1, method_hz + 1)]
 
-    def val(stmts, block, key, ys):
-        return ((stmts.get(block) or {}).get(key) or {}).get(ys)
+    # AXIOM method series — fit on HISTORY, projected across the full range.
+    method_out = {m: compute_method(base, m, method_hz) for m in FS_METHODS}
+    method_extra = {m: method_out[m][1] for m in FS_METHODS}
+    method_vals = {m: _pvm_line_values(_pvm_full(base, method_out[m][0], method_years))
+                   for m in FS_METHODS}
 
-    def ebit_from(stmts, ys):
-        g = lambda k: val(stmts, "income_statement", k, ys)
-        rev, cogs, opex, da = g("revenue"), g("cogs"), g("opex"), g("depreciation_amortization")
-        if None in (rev, cogs, opex, da):
-            return None
-        return round(rev - cogs - opex - da, 4)
+    # Optional PLAN EXTENSION — anchored on the plan's endpoint (the plan itself is
+    # the "history" for the extension, so level + trajectory continue seamlessly).
+    ext_years, extension = [], None
+    plan_fyears = list(fc_years)
+    plan_forecast = _pvm_forecast_only(data, fc_years)
+    if extend_method in FS_METHODS and all_last > plan_last:
+        pseudo = {"company": data["company"],
+                  "periods": {"historical": list(fc_years), "forecast": []},
+                  **_pvm_forecast_only(data, fc_years)}
+        ext_hz = all_last - plan_last
+        ext_stmts, ext_extra = compute_method(pseudo, extend_method, ext_hz)
+        ext_years = [plan_last + k for k in range(1, ext_hz + 1)]
+        # splice the extension onto the plan's forecast statements
+        for block in ("income_statement", "balance_sheet", "cash_flow"):
+            for k, series in (ext_stmts.get(block) or {}).items():
+                plan_forecast.setdefault(block, {}).setdefault(k, {}).update(series)
+        plan_fyears = fc_years + ext_years
+        extension = {"method": extend_method, "label": _LABELS.get(extend_method, extend_method),
+                     "from_year": plan_last, "to_year": all_last, "anchor": "plan_endpoint",
+                     "years": ext_years,
+                     "note": ("Projected from the plan's endpoint — the level and trajectory "
+                              "continue from the plan (fit on the plan's own years), never "
+                              "re-anchored to history, so there is no discontinuity at the seam. "
+                              "These years are an AXIOM projection, not management intent.")}
+
+    plan_vals = _pvm_line_values(_pvm_full(base, plan_forecast, plan_fyears))
+
+    all_years = sorted(set(plan_fyears) | set(method_years))
+    ext_set = set(ext_years)
 
     def variance(plan_v, axiom_v):
         if plan_v is None or axiom_v is None:
             return None
-        d = plan_v - axiom_v
-        return {"abs": round(d, 4), "pct": round(d / axiom_v, 6) if axiom_v else None}
+        return {"abs": round(plan_v - axiom_v, 4),
+                "pct": round((plan_v - axiom_v) / axiom_v, 6) if axiom_v else None}
 
     line_items = []
-    # derived EBIT headline first (what a CFO actually compares)
-    ebit_years = []
-    for y in fc_years:
-        ys = str(y)
-        plan_e = ebit_from(data, ys)
-        methods_e = {m: ebit_from(method_stmts[m], ys) for m in FS_METHODS}
-        ebit_years.append({"year": y, "plan": plan_e, "methods": methods_e,
-                           "variance": variance(plan_e, methods_e.get("ensemble"))})
-    line_items.append({"block": "derived", "key": "ebit", "label": "EBIT (derived)",
-                       "years": ebit_years})
+    for key, label in _PVM_LINES:
+        yrs = []
+        for y in all_years:
+            ys = str(y)
+            plan_v = plan_vals.get(key, {}).get(ys)
+            methods_v = {m: method_vals[m].get(key, {}).get(ys) for m in FS_METHODS}
+            yrs.append({"year": y, "plan": plan_v, "is_extension": y in ext_set,
+                        "methods": methods_v, "variance": variance(plan_v, methods_v.get("ensemble"))})
+        line_items.append({"key": key, "label": label, "years": yrs})
 
-    for block, keys in (("income_statement", engines.IS_KEYS),
-                        ("balance_sheet", engines.BS_KEYS),
-                        ("cash_flow", engines.CF_KEYS)):
-        for k in keys:
-            years_out = []
-            for y in fc_years:
-                ys = str(y)
-                plan_v = val(data, block, k, ys)
-                methods_v = {m: val(method_stmts[m], block, k, ys) for m in FS_METHODS}
-                years_out.append({"year": y, "plan": plan_v, "methods": methods_v,
-                                  "variance": variance(plan_v, methods_v.get("ensemble"))})
-            line_items.append({"block": block, "key": k, "label": labels.get(k, k),
-                               "years": years_out})
+    # per-method ACTUAL parameters for the drawers (from the real fit)
+    method_params = {"constants": {
+        "damping_phi": DAMP_PHI, "damping_alpha": DAMP_ALPHA, "damping_beta": DAMP_BETA,
+        "montecarlo_paths": MC_PATHS, "montecarlo_seed": MC_SEED,
+        "driver_cagr_cap": 0.25, "ensemble_backtest_min_history": 6,
+        "divergence_cv_threshold": DIVERGENCE_CV}}
+    for m in FS_METHODS:
+        e = method_extra[m]
+        method_params[m] = {"drivers": e.get("drivers"), "bands": e.get("bands"),
+                            "weights": e.get("weights"), "divergence": e.get("divergence"),
+                            "fitted_history_len": e.get("fitted_history_len")}
 
-    # headline: terminal-year revenue, plan vs ensemble
     rev_line = next((li for li in line_items if li["key"] == "revenue"), None)
     summary = None
     if rev_line and rev_line["years"]:
-        term = rev_line["years"][-1]
+        term = next((yy for yy in reversed(rev_line["years"]) if not yy["is_extension"]), rev_line["years"][-1])
         v = term["variance"]
         summary = {"line": "revenue", "terminal_year": term["year"],
                    "plan": term["plan"], "ensemble": term["methods"].get("ensemble"),
-                   "variance": v,
-                   "plan_more_optimistic": bool(v and v["abs"] > 0)}
-    return {**base_resp, "horizon": hz, "line_items": line_items, "summary": summary}
+                   "variance": v, "plan_more_optimistic": bool(v and v["abs"] > 0)}
+    return {**base_resp, "horizon": hz, "method_horizon": method_hz,
+            "forecast_years": fc_years, "extended_years": ext_years, "all_years": all_years,
+            "extension": extension, "line_items": line_items,
+            "method_params": method_params, "summary": summary}
 
 
 @router.post("/documents", response_model=schemas.DocumentOut, status_code=201)
