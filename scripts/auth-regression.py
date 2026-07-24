@@ -739,8 +739,10 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
         try:
             st["pg"].goto(APP_BASE + "/initiatives", wait_until=WAIT_UNTIL, timeout=30000)
             st["pg"].wait_for_timeout(SETTLE_MS)
+            # Row display-code badges are `.font-mono.bg-secondary`; the band-SECTION
+            # headers ("A", "B") are `.font-mono.bg-pine`/`.bg-brass` — exclude those.
             codes = st["pg"].evaluate(
-                "() => Array.from(document.querySelectorAll('span.font-mono'))"
+                "() => Array.from(document.querySelectorAll('span.font-mono.bg-secondary'))"
                 ".map(e => (e.textContent||'').trim())"
                 ".filter(t => /^[A-Z][0-9]*$/.test(t))")
             bare = [t for t in (codes or []) if len(t) == 1]
