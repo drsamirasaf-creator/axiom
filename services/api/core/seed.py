@@ -237,7 +237,17 @@ def _backfill_showcase_management_plan(db):
     Runs AFTER _backfill_showcase_names/_logos in the loop, so the enterprise exists."""
     from ..modules.financials import models as fin_models
     from .refcompanies import meridian_with_management_plan
-    # the Meridian enterprise is linked onto the DIRECT dataset by names/logos.
+    def _is_mgmt_plan(s):
+        return isinstance(s.data, dict) and (s.data.get("_demo_plan") or {}).get("kind") == "management_plan"
+    # PROD-SAFE no-clobber: if ANY showcase dataset already carries the management-plan
+    # marker (incl. prod ds 45), do nothing — never duplicate, regardless of how the
+    # Meridian datasets are split across enterprises. This guard is tenant-wide ON
+    # PURPOSE so a tangled enterprise linkage can't slip past it into a duplicate.
+    tenant_rows = db.query(fin_models.FinancialDataset).filter_by(tenant=SHOWCASE_TENANT).all()
+    if any(_is_mgmt_plan(s) for s in tenant_rows):
+        return
+    # fresh env only past here: link to the Meridian enterprise (set by names/logos on
+    # the DIRECT dataset) and create the management-plan dataset as the active one.
     direct = (db.query(fin_models.FinancialDataset).filter(
                 fin_models.FinancialDataset.tenant == SHOWCASE_TENANT,
                 fin_models.FinancialDataset.source == "direct",
@@ -247,11 +257,6 @@ def _backfill_showcase_management_plan(db):
     ent_id = direct.enterprise_id
     siblings = db.query(fin_models.FinancialDataset).filter_by(
         tenant=SHOWCASE_TENANT, enterprise_id=ent_id).all()
-    # no-clobber: recognize an already-present management-plan dataset by its marker.
-    for s in siblings:
-        dp = s.data.get("_demo_plan") if isinstance(s.data, dict) else None
-        if isinstance(dp, dict) and dp.get("kind") == "management_plan":
-            return                              # already seeded (incl. prod ds 45) → no-op
     data = meridian_with_management_plan()
     next_ver = max([s.version or 1 for s in siblings], default=1) + 1
     for s in siblings:                          # unambiguous single active dataset
