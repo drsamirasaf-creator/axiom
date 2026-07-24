@@ -13,6 +13,10 @@ VERSION = "v1"
 TABS = ["Assessors", "Viewers", "Decision Makers"]
 SENIORITY_BANDS = ["Executive", "Senior management", "Mid-level", "Junior", "External partner"]
 YESNO = ["Yes", "No"]
+# Generic, company-AGNOSTIC department placeholders for the PUBLIC sample template.
+# Deliberately obvious placeholders — never a real org chart — so the ungated sample
+# carries only FORMAT, never tenant data (see build_participant_template's departments).
+SAMPLE_DEPARTMENTS = ["Department A", "Department B", "Department C", "Department D"]
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 # column layout per tab (header text; order matters — parser reads by position)

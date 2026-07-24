@@ -8721,6 +8721,22 @@ def _participant_out(p):
             "invited_at": p.invited_at, "activated_at": p.activated_at}
 
 
+@router.get("/participants/sample-template")
+def participant_sample_template():
+    """PUBLIC, company-AGNOSTIC Participant List SAMPLE — mirrors the ungated financial
+    sample (GET /api/v1/financials/templates/{standard}). Same three tabs, columns,
+    dropdowns and version stamp as the real template, but the DEPARTMENTS dropdown
+    carries GENERIC placeholders (SAMPLE_DEPARTMENTS). Takes NO company id and reads NO
+    company row — format only, never tenant data. The company-scoped, org-prefilled
+    template + the upload stay admin-only (unchanged)."""
+    from . import participant_upload as PU
+    from fastapi import Response
+    content = PU.build_participant_template(PU.SAMPLE_DEPARTMENTS)   # no db, no company
+    return Response(content, media_type=("application/vnd.openxmlformats-officedocument"
+                                         ".spreadsheetml.sheet"),
+                    headers={"Content-Disposition": 'attachment; filename="AXIOM_Participant_List_sample_v1.xlsx"'})
+
+
 @router.get("/companies/{company_id}/participants/template")
 def participant_template(company_id: int, member=Depends(require_company_admin), db=Depends(get_db)):
     """Download the version-stamped Participant List template (Assessors / Viewers /

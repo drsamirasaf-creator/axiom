@@ -801,8 +801,8 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
              "Sentiment Analysis tab"),
             ("/initiatives?tab=cockpit", "text=Needs attention",
              "Portfolio Cockpit"),
-            ("/data-input?tab=participants", "text=Participant List",
-             "Participant List bulk-upload tab"),
+            ("/data-input?tab=participants", "text=Download sample template",
+             "Participant List public sample-download (anonymous)"),
             ("/dashboard?tab=urgent", "text=Needs Attention",
              "Urgent Items tab (populated)"),
         ]
