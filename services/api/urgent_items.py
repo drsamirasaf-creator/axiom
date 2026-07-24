@@ -15,10 +15,15 @@ LOOKBACK_DAYS = 90           # recognition look-back for completed milestones/in
 RATING_RED_MAX = 2.5         # member star rating at/below this → red flag (I7)
 PROGRESS_AHEAD_MIN = 70      # green initiative at/above this progress → "ahead" (R4)
 
-# I5 tracked line set — the client-plan lines compared against AXIOM's PRIMARY
+# I4/I5 tracked line set — the client-plan lines compared against AXIOM's PRIMARY
 # (ensemble) forecast. Keys are the model's own line keys (fcff = free cash flow,
-# the "cash" line). |plan − ensemble| / ensemble beyond FORECAST_GAP_RED_PCT → red.
+# the "cash" line).
+#   I5 = terminal-year POINT gap:  |plan − ensemble| / ensemble  ≥ FORECAST_GAP_RED_PCT
+#   I4 = whole-horizon CUMULATIVE:  |Σ plan − Σ ensemble| / Σ ensemble ≥ CUMULATIVE_DIVERGENCE_PCT
+# I4 is a different quantity from I5 (cumulative-over-the-plan, not a single year), so
+# it carries its OWN, intentionally looser band — never overload FORECAST_GAP_RED_PCT.
 FORECAST_TRACKED_LINES = ("revenue", "ebitda", "fcff")
+CUMULATIVE_DIVERGENCE_PCT = 15   # I4: whole-horizon cumulative plan-vs-ensemble divergence → red
 
 SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "NOTABLE": 2}
 
@@ -27,6 +32,7 @@ SIGNALS = {
     "I1": ("intervention", "CRITICAL", "Sentinel band"),
     "I2": ("intervention", "HIGH", "KPI vs target"),
     "I3": ("intervention", "HIGH", "Objective/KR red"),
+    "I4": ("intervention", "HIGH", "Long-run divergence"),
     "I5": ("intervention", "HIGH", "Forecast vs plan"),
     "I6": ("intervention", "NOTABLE", "Undispositioned proposal"),
     "I7": ("intervention", "HIGH", "Initiative execution"),

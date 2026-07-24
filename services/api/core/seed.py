@@ -221,6 +221,43 @@ def _backfill_showcase_helios(db):
         logging.getLogger("axiom.seed").exception("Helios backfill failed")
 
 
+def _backfill_showcase_i5_gap(db):
+    """Idempotent: raise the Meridian showcase PLAN's forecast capex to the current
+    canonical 9.3%-of-revenue (its board plan front-loads capex above the ~7%
+    historical norm AXIOM's ensemble projects), so the Business Planning &
+    Forecasting page shows a real plan-vs-ensemble FCFF gap (~15%) and the
+    Urgent-Items I5 (terminal) + I4 (cumulative) forecast-divergence cards light on
+    the demo. Overwrites ONLY the forecast-year values of the capex-coupled lines
+    (CF capex + the PP&E, cash and equity rolls) on the DIRECT Meridian dataset with
+    the canonical meridian() values — overwrite-to-canonical, so re-running is a
+    no-op that can never compound. Historicals and every other line are untouched, so
+    revenue/EBITDA keep tracking the ensemble (one line moves, by design)."""
+    from ..modules.financials import models as fin_models
+    from sqlalchemy.orm.attributes import flag_modified
+    from .refcompanies import meridian
+    canon = meridian()
+    fyears = [str(y) for y in canon["periods"]["forecast"]]
+    ds = (db.query(fin_models.FinancialDataset)
+            .filter(fin_models.FinancialDataset.tenant == SHOWCASE_TENANT,
+                    fin_models.FinancialDataset.source == "direct",
+                    fin_models.FinancialDataset.name.like("Meridian%")).first())
+    if not ds or not isinstance(ds.data, dict):
+        return
+    changed = False
+    for block, key in (("cash_flow", "capex"), ("balance_sheet", "noncurrent_assets"),
+                       ("balance_sheet", "cash"), ("balance_sheet", "total_equity")):
+        src = (canon.get(block) or {}).get(key) or {}
+        dst = (ds.data.get(block) or {}).get(key)
+        if not isinstance(dst, dict):
+            continue
+        for y in fyears:
+            if y in src and dst.get(y) != src[y]:
+                dst[y] = src[y]; changed = True
+    if changed:
+        flag_modified(ds, "data")
+        db.commit()
+
+
 def seed_showcase():
     if os.environ.get("AXIOM_SEED_SHOWCASE", "true").strip().lower() in (
             "0", "false", "no", "off"):
@@ -242,7 +279,8 @@ def seed_showcase():
             # _backfill_showcase_shares call previously NameError'd here and
             # silently blocked every showcase backfill).
             for _fn in (_backfill_showcase_oci, _backfill_showcase_helios,
-                        _backfill_showcase_names, _backfill_showcase_logos):
+                        _backfill_showcase_names, _backfill_showcase_logos,
+                        _backfill_showcase_i5_gap):
                 try:
                     _fn(db)
                 except Exception:

@@ -5612,38 +5612,61 @@ def urgent_items(company_id: int, member=Depends(_summary_access), db=Depends(ge
     except Exception:
         pass
 
-    # ── I5 — primary (ensemble) forecast vs client plan, tracked lines ────────
-    # Shares ONE computation with the Business Planning & Forecasting page via the
-    # extracted compute_plan_vs_methods (pure over the active dataset's .data). No
-    # client plan / <2 hist years → honest-empty, contributes nothing.
+    # ── I4 / I5 — client plan vs AXIOM PRIMARY (ensemble) forecast ────────────
+    # ONE engine call (compute_plan_vs_methods over the active dataset — shared with
+    # the Business Planning & Forecasting page) feeds BOTH signals per tracked line:
+    #   I5 = terminal-year POINT gap        |plan−ens|/ens        ≥ FORECAST_GAP_RED_PCT
+    #   I4 = whole-horizon CUMULATIVE gap    |Σplan−Σens|/Σens     ≥ CUMULATIVE_DIVERGENCE_PCT
+    # Only the client-plan (non-extension) years count; the AXIOM tail is a projection,
+    # not management intent. No plan / <2 hist / no dataset → honest-empty, contributes
+    # nothing. deep-link → the plan tab. (I4's inflection-year sub-signal was DROPPED as
+    # unbuildable-without-fabrication; I4 = whole-horizon cumulative divergence.)
     try:
         ds = _active_company_dataset(db, company_id)
         if ds and isinstance(ds.data, dict):
             from .modules.financials.router import compute_plan_vs_methods
-            pvm = compute_plan_vs_methods(ds.data)
+            pvm = compute_plan_vs_methods(ds.data)                 # ← the ONLY engine call
+            link = "/financial-forecasts?tab=plan"
             if pvm.get("has_client_plan") and pvm.get("line_items"):
                 by_key = {li["key"]: li for li in pvm["line_items"]}
                 for key in UI.FORECAST_TRACKED_LINES:
                     li = by_key.get(key)
                     if not li:
                         continue
-                    # terminal NON-extension forecast year with a computable variance
-                    # (matches the page's own summary basis — plan vs ensemble).
-                    term = next((y for y in reversed(li["years"])
-                                 if not y.get("is_extension") and y.get("variance")), None)
-                    pct = (term or {}).get("variance", {}).get("pct") if term else None
-                    if pct is None:
-                        continue
-                    pct100 = round(pct * 100, 1)
-                    if abs(pct100) >= UI.FORECAST_GAP_RED_PCT:
-                        more = "above" if pct100 > 0 else "below"
-                        item("I5",
-                             f"{li['label']}: plan {abs(pct100)}% {more} AXIOM forecast (FY{term['year']})",
-                             "forecast_line", key,
-                             {"value": pct100, "unit": "%", "direction": "up" if pct100 > 0 else "down"},
-                             {"year": term["year"], "plan": term["plan"],
-                              "ensemble": term["methods"].get("ensemble"), "basis": "ensemble"},
-                             ds.uploaded_at, "/financial-forecasts?tab=plan", severity="HIGH")
+                    # client-plan (non-extension) forecast years only.
+                    yrs = [y for y in li["years"] if not y.get("is_extension")]
+
+                    # I5 — terminal-year point gap (plan vs ensemble).
+                    term = next((y for y in reversed(yrs) if y.get("variance")), None)
+                    tpct = (term or {}).get("variance", {}).get("pct") if term else None
+                    if tpct is not None:
+                        p100 = round(tpct * 100, 1)
+                        if abs(p100) >= UI.FORECAST_GAP_RED_PCT:
+                            more = "above" if p100 > 0 else "below"
+                            item("I5",
+                                 f"{li['label']}: plan {abs(p100)}% {more} AXIOM forecast (FY{term['year']})",
+                                 "forecast_line", key,
+                                 {"value": p100, "unit": "%", "direction": "up" if p100 > 0 else "down"},
+                                 {"year": term["year"], "plan": term["plan"],
+                                  "ensemble": term["methods"].get("ensemble"), "basis": "ensemble"},
+                                 ds.uploaded_at, link, severity="HIGH")
+
+                    # I4 — whole-horizon CUMULATIVE divergence (Σ plan vs Σ ensemble),
+                    # over the years where BOTH sides are present (≥2 → genuinely multi-year).
+                    pairs = [(y["plan"], y["methods"].get("ensemble")) for y in yrs
+                             if y.get("plan") is not None and (y.get("methods") or {}).get("ensemble") is not None]
+                    if len(pairs) >= 2:
+                        sp = sum(p for p, _ in pairs); se = sum(e for _, e in pairs)
+                        if se:
+                            cpct = round(abs(sp - se) / abs(se) * 100, 1)
+                            if cpct >= UI.CUMULATIVE_DIVERGENCE_PCT:
+                                item("I4",
+                                     f"{li['label']}: long-run forecast divergence {cpct}% over {len(pairs)} yrs",
+                                     "forecast_line", key,
+                                     {"value": cpct, "unit": "%", "direction": "up" if sp > se else "down"},
+                                     {"horizon_years": len(pairs), "cumulative_plan": round(sp, 4),
+                                      "cumulative_ensemble": round(se, 4), "basis": "ensemble"},
+                                     ds.uploaded_at, link, severity="HIGH")
     except Exception:
         pass
 
@@ -5693,6 +5716,7 @@ def urgent_items(company_id: int, member=Depends(_summary_access), db=Depends(ge
             "all_clear": (len(inter) == 0 and len(recog) == 0),
             "thresholds": {"variance_red_pct": UI.VARIANCE_RED_PCT,
                            "forecast_gap_red_pct": UI.FORECAST_GAP_RED_PCT,
+                           "cumulative_divergence_pct": UI.CUMULATIVE_DIVERGENCE_PCT,
                            "outperform_pct": UI.OUTPERFORM_PCT, "aging_days": UI.AGING_DAYS,
                            "stale_days": UI.STALE_DAYS, "lookback_days": UI.LOOKBACK_DAYS}}
 

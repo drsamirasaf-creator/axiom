@@ -43,7 +43,14 @@ def meridian():
         CF["capex"][str(y)] = capex_h[y]
         CF["net_borrowing"][str(y)] = nb_h[y]
         CF["dividends"][str(y)] = div
-    # forecast: same margin structure; capex 7.5% rev; cash rolls +FCFE; equity plug
+    # forecast: same margin structure; cash rolls +FCFE; equity plug.
+    # §demo (Urgent Items I4/I5): the board PLAN front-loads capex to 9.3% of revenue
+    # (historical norm ≈7%, which AXIOM's history-fit ensemble projects) — so plan FCFF
+    # runs ~15% below the ensemble and lights the showcase's forecast-divergence cards.
+    # Applied consistently across CF capex, the PP&E roll, and the FCFE/cash roll so the
+    # statements stay internally coherent; revenue, margins and EBITDA are untouched, so
+    # every OTHER tracked line keeps tracking the ensemble (one line moves, by design).
+    capex_pct = 0.093
     prev = 2025
     for y in fcst:
         v = rev[y]; vp = rev[prev]
@@ -52,12 +59,12 @@ def meridian():
         IS["opex"][str(y)] = round(0.20*v, 6)
         IS["depreciation_amortization"][str(y)] = round(0.05*v, 6)
         IS["interest_expense"][str(y)] = 24.0
-        CF["capex"][str(y)] = round(0.075*v, 6)
+        CF["capex"][str(y)] = round(capex_pct*v, 6)
         CF["net_borrowing"][str(y)] = 0.0
         CF["dividends"][str(y)] = 0.0
         BS["other_current_assets"][str(y)] = round(0.22*v, 6)
         BS["current_liabilities_ex_debt"][str(y)] = round(0.12*v, 6)
-        BS["noncurrent_assets"][str(y)] = round(BS["noncurrent_assets"][str(prev)] + 0.075*v - 0.05*v, 6)
+        BS["noncurrent_assets"][str(y)] = round(BS["noncurrent_assets"][str(prev)] + capex_pct*v - 0.05*v, 6)
         BS["short_term_debt"][str(y)] = st
         BS["long_term_debt"][str(y)] = 400.0
         BS["preferred_equity"][str(y)] = 0.0
@@ -65,7 +72,7 @@ def meridian():
         ebit = 0.17*v
         ni = (ebit - 24.0)*0.75
         d_nwc = 0.10*(v - vp)
-        fcfe = ni + 0.05*v - 0.075*v - d_nwc
+        fcfe = ni + 0.05*v - capex_pct*v - d_nwc
         BS["cash"][str(y)] = round(BS["cash"][str(prev)] + fcfe, 6)
         assets = BS["cash"][str(y)] + 0.22*v + BS["noncurrent_assets"][str(y)]
         BS["total_equity"][str(y)] = round(assets - 0.12*v - st - 400.0, 6)

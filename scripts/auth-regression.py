@@ -565,6 +565,18 @@ def make_context(browser, token):
     return ctx
 
 
+# Known, gracefully-handled non-2xx that must NOT red a route — kept DELIBERATELY
+# narrow (same discipline as the retry-policy lane: never mask a real failure). The
+# ONLY exemption: the dataset-scoped forecast-horizon PREFERENCE call 401s for an
+# ANONYMOUS visitor (no per-user preference to read/write) and the app swallows it
+# (.catch), yet its late arrival races into the SETTLE_MS window and false-reds
+# /financial-forecasts. Exempt strictly (path + 401 + no-auth); ANY other status on
+# that path (500…), the SAME path WITH auth, or any other path still fails.
+def _expected_benign(call):
+    method, path, status, had_auth = call
+    return status == 401 and not had_auth and "forecast-horizon" in path
+
+
 def visit(page, rec, path):
     """Navigate a route; return (ok, why, backend_nonok, body_len)."""
     before = len(rec.calls)
@@ -573,7 +585,8 @@ def visit(page, rec, path):
     except Exception as e:
         return False, f"navigation error: {e}", [], 0
     page.wait_for_timeout(SETTLE_MS)
-    nonok = [c for c in rec.calls[before:] if not (200 <= c[2] < 400)]
+    nonok = [c for c in rec.calls[before:]
+             if not (200 <= c[2] < 400) and not _expected_benign(c)]
     # silent-empty: rendered-but-empty main content
     try:
         body = page.inner_text("body") or ""
