@@ -733,6 +733,27 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
                              f"(needs a Lovable Publish of the Part-2 frontend)")
             print(f"    {mode} demo-element {label} -> {'ok' if present else 'MISSING'}", flush=True)
 
+        # ---- demo ranking guard: EVERY Underway row shows a full display code
+        # (band letter + number), never a bare band letter. Guards the showcase
+        # against a future seed edit reintroducing an unranked initiative. ----
+        try:
+            st["pg"].goto(APP_BASE + "/initiatives", wait_until=WAIT_UNTIL, timeout=30000)
+            st["pg"].wait_for_timeout(SETTLE_MS)
+            codes = st["pg"].evaluate(
+                "() => Array.from(document.querySelectorAll('span.font-mono'))"
+                ".map(e => (e.textContent||'').trim())"
+                ".filter(t => /^[A-Z][0-9]*$/.test(t))")
+            bare = [t for t in (codes or []) if len(t) == 1]
+            ok_rank = bool(codes) and not bare
+        except Exception:
+            ok_rank = False; bare = ["<error>"]; codes = []
+        tick()
+        if not ok_rank:
+            fails.append(f"{mode} demo ranking: Underway list has bare band-letter code(s) "
+                         f"{bare or '(no codes found)'} — every row must be letter+number")
+        print(f"    {mode} demo-ranking (no bare band letter) -> "
+              f"{'ok' if ok_rank else 'FAIL ' + str(bare)} [{len(codes or [])} coded rows]", flush=True)
+
     # ---- DATA-UPLOAD door reachability (custody-10) ----
     # The upload path has vanished twice (a Lovable redirect, then a missing nav
     # entry). This asserts, from an authed session, that /data-input RENDERS its

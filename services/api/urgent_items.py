@@ -5,15 +5,15 @@ accounts.py reads these; no scattered literals. Strictly descriptive surface —
 registry names facts and magnitudes, never advice.
 """
 
-# ── threshold constants (initial values) ──────────────────────────────────────
+# ── ratified threshold constants (values unchanged; one place, Samir-ratifiable) ──
 VARIANCE_RED_PCT = 10        # KR/KPI plan-vs-actual unfavourable beyond this → red
 FORECAST_GAP_RED_PCT = 10    # primary-forecast vs plan gap on key lines → red
 OUTPERFORM_PCT = 10          # KPI/KR ahead of target by this → recognition
 AGING_DAYS = 14              # undispositioned URGENT/HIGH proposal aging
 STALE_DAYS = 21              # initiative with no cadence update in this many days
 LOOKBACK_DAYS = 90           # recognition look-back for completed milestones/initiatives
-RATING_RED_MAX = 2.5         # member star rating at/below this → red flag (local band)
-PROGRESS_AHEAD_MIN = 70      # green initiative at/above this progress → "ahead"
+RATING_RED_MAX = 2.5         # member star rating at/below this → red flag (I7)
+PROGRESS_AHEAD_MIN = 70      # green initiative at/above this progress → "ahead" (R4)
 
 SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "NOTABLE": 2}
 

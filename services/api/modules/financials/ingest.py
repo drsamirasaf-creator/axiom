@@ -16,7 +16,12 @@ from openpyxl.workbook.defined_name import DefinedName
 from . import engines
 from .templates import LABELS, COMPANY_ROWS, BLOCK_KEYS
 
-TEMPLATE_VERSION = "7M-v7.0"   # v7: optional client-plan FORECAST columns on IS/BS/CF (Business Planning)
+TEMPLATE_VERSION = "7M-v7.1"   # v7.1: + optional Employees column on the Organization sheet
+# Both stamps are accepted (v7.0 files are already in the wild; the parser never rejects
+# on version — it records the stamp). On a v7.0 file the Employees column is simply absent
+# and parses to null (_cell_int of a missing cell), so v7.0 and v7.1 parse identically
+# apart from headcount.
+ACCEPTED_TEMPLATE_VERSIONS = frozenset({"7M-v7.0", "7M-v7.1"})
 
 # §9 OKR strategy sheets — fixed-name, standard-independent. Builder + parser share
 # these so the dropdown values and the accepted enums can never drift apart.
