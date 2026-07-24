@@ -1340,6 +1340,50 @@ def require_company_admin(company_id: int,
     db.commit()
     return m
 
+
+def _participant_role_set(db, user, company_id):
+    """The caller's role set for this company (Participant Role Enforcement): admin
+    (superset — operator/staff or an admin Membership), viewer (any active membership),
+    UNION the ax_participants roles matched by lowercased email (decision_maker /
+    assessor / viewer). Returns (roles:set, scoped:str|None). Empty roles == no access."""
+    roles = set()
+    scoped = getattr(user, "_token_scope", None)
+    if not scoped and _is_company_admin(db, user, company_id):
+        roles.add("admin")
+    m = _membership(db, user.id, company_id)
+    if m and m.status == "active":
+        roles.add("viewer")
+        if m.role == "admin":
+            roles.add("admin")
+    p = (db.query(Participant)
+           .filter_by(company_id=company_id, email=(user.email or "").strip().lower()).first())
+    if p:
+        roles |= set(p.roles or [])
+    return roles, scoped
+
+
+def require_capability(cap: str):
+    """FastAPI dependency — resolve the caller's role set once and enforce `cap`
+    against the declarative matrix in permissions.py. Deny → 403 with a STABLE shape
+    {error:'forbidden', required:[cap]} (never a silent 200/empty body). A view-only
+    magic-link token can never satisfy a write capability."""
+    from . import permissions as _perm
+
+    def dep(company_id: int, user: User = Depends(get_current_user), db=Depends(get_db)):
+        roles, scoped = _participant_role_set(db, user, company_id)
+        if not roles:
+            raise HTTPException(403, detail={"error": "forbidden", "required": [cap],
+                                             "reason": "no access to this company"})
+        if scoped and cap in (_perm.CAP_DISPOSE, _perm.CAP_ADMIN):
+            raise HTTPException(403, detail={"error": "forbidden", "required": [cap],
+                                             "reason": "view-only link"})
+        if not _perm.has_capability(roles, cap):
+            raise HTTPException(403, detail={"error": "forbidden", "required": [cap]})
+        return {"roles": sorted(roles), "user": user}
+
+    return dep
+
+
 # ======================================================================
 # router_auth
 # ======================================================================
@@ -4431,7 +4475,7 @@ def list_proposals(company_id: int, member=Depends(_summary_access), db=Depends(
 
 @router.post("/companies/{company_id}/initiatives/proposals/{pid}/adopt", status_code=201)
 def adopt_proposal(company_id: int, pid: int, body: AdoptIn,
-                   member=Depends(require_company_admin),
+                   perm=Depends(require_capability("dispose_recommendations")),
                    user: User = Depends(get_current_user), db=Depends(get_db)):
     p, t = _flagged_or_404(db, company_id, pid)
     priority = body.priority if body.priority in _PRIORITY else "medium"
@@ -4456,7 +4500,7 @@ def adopt_proposal(company_id: int, pid: int, body: AdoptIn,
 
 @router.post("/companies/{company_id}/initiatives/proposals/{pid}/park", status_code=201)
 def park_proposal(company_id: int, pid: int,
-                  member=Depends(require_company_admin),
+                  perm=Depends(require_capability("dispose_recommendations")),
                   user: User = Depends(get_current_user), db=Depends(get_db)):
     """Park -> a D-band (not-accepted) initiative, kept for the record."""
     p, t = _flagged_or_404(db, company_id, pid)
@@ -4477,7 +4521,7 @@ def park_proposal(company_id: int, pid: int,
 
 @router.post("/companies/{company_id}/initiatives/proposals/{pid}/dismiss")
 def dismiss_proposal(company_id: int, pid: int,
-                     member=Depends(require_company_admin),
+                     perm=Depends(require_capability("dispose_recommendations")),
                      user: User = Depends(get_current_user), db=Depends(get_db)):
     p, t = _flagged_or_404(db, company_id, pid)
     p.proposal_status = "dismissed"
@@ -5932,7 +5976,7 @@ def _rec_by_fp(db, company_id, fingerprint):
 
 @router.post("/companies/{company_id}/recommendations/{fingerprint}/adopt", status_code=201)
 def adopt_recommendation(company_id: int, fingerprint: str, body: RecAdoptIn,
-                         member=Depends(require_company_admin),
+                         perm=Depends(require_capability("dispose_recommendations")),
                          user: User = Depends(get_current_user), db=Depends(get_db)):
     ds, rec = _rec_by_fp(db, company_id, fingerprint)
     if not rec:
@@ -5970,7 +6014,7 @@ def adopt_recommendation(company_id: int, fingerprint: str, body: RecAdoptIn,
 
 @router.post("/companies/{company_id}/recommendations/{fingerprint}/park", status_code=201)
 def park_recommendation(company_id: int, fingerprint: str,
-                        member=Depends(require_company_admin),
+                        perm=Depends(require_capability("dispose_recommendations")),
                         user: User = Depends(get_current_user), db=Depends(get_db)):
     ds, rec = _rec_by_fp(db, company_id, fingerprint)
     if not rec:
@@ -6003,7 +6047,7 @@ def park_recommendation(company_id: int, fingerprint: str,
 
 @router.post("/companies/{company_id}/recommendations/{fingerprint}/dismiss")
 def dismiss_recommendation(company_id: int, fingerprint: str, body: RecDismissIn,
-                           member=Depends(require_company_admin),
+                           perm=Depends(require_capability("dispose_recommendations")),
                            user: User = Depends(get_current_user), db=Depends(get_db)):
     ds, rec = _rec_by_fp(db, company_id, fingerprint)
     if not rec:
@@ -8741,6 +8785,19 @@ async def participant_commit(company_id: int, resolve: str = "keep",
             "counts": parsed.get("counts", {}),
             "seats": _seat_status(db, company_id,
                                   (lambda c: c.id if c else None)(_current_open_cycle(db, company_id)))}
+
+
+@router.get("/companies/{company_id}/my-capabilities")
+def my_capabilities(company_id: int, user: User = Depends(get_current_user), db=Depends(get_db)):
+    """The caller's resolved participant role set + capabilities for this company —
+    the single source a frontend can read to gate UX (courtesy only; the backend
+    `require_capability` deps are the real boundary)."""
+    from . import permissions as _perm
+    roles, scoped = _participant_role_set(db, user, company_id)
+    caps = sorted({"admin"} | _perm.ALL_CAPS) if "admin" in roles else sorted(_perm.capabilities_for(roles))
+    return {"company_id": company_id, "roles": sorted(roles),
+            "capabilities": caps, "is_admin": "admin" in roles,
+            "can_dispose": _perm.has_capability(roles, _perm.CAP_DISPOSE) and not scoped}
 
 
 @router.get("/companies/{company_id}/participants")
