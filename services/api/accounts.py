@@ -5462,6 +5462,161 @@ def initiatives_cockpit(company_id: int, member=Depends(_summary_access), db=Dep
             "by_department": departments}
 
 
+@router.get("/companies/{company_id}/urgent-items")
+def urgent_items(company_id: int, member=Depends(_summary_access), db=Depends(get_db)):
+    """Executive 'Urgent Items' — a read-only, strictly DESCRIPTIVE cross-domain
+    aggregation into INTERVENTION (underperformance) and RECOGNITION (outperformance).
+    Never advice. Each signal is deterministic against the thresholds in urgent_items.py.
+    Missing subsystems contribute nothing (no fabrication); both-empty → all_clear."""
+    from . import urgent_items as UI
+    inter, recog = [], []
+
+    def item(sig, title, entity_type, entity_ref, magnitude, context, as_of, deep_link, severity=None):
+        cat, dsev, _ = UI.SIGNALS[sig]
+        (inter if cat == "intervention" else recog).append({
+            "signal_id": sig, "category": cat, "severity": severity or dsev, "title": title,
+            "entity_type": entity_type, "entity_ref": entity_ref, "magnitude": magnitude,
+            "context": context, "as_of": as_of, "deep_link": deep_link})
+
+    now = datetime.utcnow()
+
+    # ── I7 / R4 — initiative execution (Part 2 roll-ups) ──────────────────────
+    try:
+        for i in db.query(Initiative).filter_by(company_id=company_id).all():
+            if i.status not in _ACTIVE_STATUSES:
+                continue
+            r = _initiative_rollups(db, i)
+            dc = _display_code(i)
+            link = f"/initiatives?open={i.ref_code}"
+            if r["effective_rag"] == "red":
+                crit = (db.query(InitiativeBlocker).filter(
+                    InitiativeBlocker.initiative_id == i.id, InitiativeBlocker.resolved_at.is_(None),
+                    InitiativeBlocker.severity.in_(("high", "critical"))).count())
+                item("I7", f"{dc} {i.title}: RAG red"
+                     + (f", {r['open_blocker_count']} open blocker(s)" if r["open_blocker_count"] else ""),
+                     "initiative", dc, {"value": r["open_blocker_count"], "unit": "blockers", "direction": "down"},
+                     {"rag": "red", "progress": r["progress"]["pct"]},
+                     getattr(i, "rag_updated_at", None) or now,
+                     link, severity="CRITICAL" if crit else "HIGH")
+            if r.get("slipped_milestone_count"):
+                item("I7", f"{dc} {i.title}: {r['slipped_milestone_count']} slipped milestone(s)",
+                     "initiative", dc, {"value": r["slipped_milestone_count"], "unit": "milestones", "direction": "down"},
+                     {"progress": r["progress"]["pct"]}, now, link, severity="HIGH")
+            cad = r.get("cadence") or {}
+            if cad.get("overdue"):
+                item("I7", f"{dc} {i.title}: no cadence update in over {UI.STALE_DAYS} days",
+                     "initiative", dc, {"value": None, "unit": "", "direction": "flat"},
+                     {"cadence": cad.get("cadence"), "last_update_at": cad.get("last_update_at")}, now, link, severity="NOTABLE")
+            rt = r.get("rating") or {}
+            if rt.get("avg") is not None and rt["avg"] <= UI.RATING_RED_MAX:
+                item("I7", f"{dc} {i.title}: low member rating {rt['avg']} ({rt['n']})",
+                     "initiative", dc, {"value": rt["avg"], "unit": "stars", "direction": "down"},
+                     {"n": rt["n"]}, now, link, severity="NOTABLE")
+            # R4 — execution ahead of plan
+            if r["effective_rag"] == "green" and (r["progress"]["pct"] or 0) >= UI.PROGRESS_AHEAD_MIN:
+                item("R4", f"{dc} {i.title}: green and {r['progress']['pct']}% complete",
+                     "initiative", dc, {"value": r["progress"]["pct"], "unit": "%", "direction": "up"},
+                     {"rag": "green", "basis": r["progress"]["basis"]}, now, link)
+    except Exception:
+        pass
+
+    # ── I8 / R3 — department sentiment (below k-floor NEVER appears) ───────────
+    try:
+        dmap = _department_sentiment_map(db, company_id)
+        dnames = {d.id: d.name for d in db.query(Department).filter_by(company_id=company_id).all()}
+        for did, v in dmap.items():
+            if v["below_floor"]:
+                continue
+            nm = dnames.get(did, "Department")
+            link = "/stakeholder-engagement?tab=sentiment"
+            if v["rag"] == "red":
+                item("I8", f"{nm}: comment sentiment red ({v['score']}/100)", "department", nm,
+                     {"value": v["score"], "unit": "/100", "direction": "down"},
+                     {"rag": "red", "n": v["n"]}, now, link, severity="HIGH")
+            elif v["divergence"]:
+                item("I8", f"{nm}: sentiment divergence (leadership vs staff)", "department", nm,
+                     {"value": v["score"], "unit": "/100", "direction": "flat"},
+                     {"divergence": True, "rag": v["rag"], "n": v["n"]}, now, link, severity="NOTABLE")
+            if v["rag"] == "green":
+                item("R3", f"{nm}: comment sentiment green ({v['score']}/100)", "department", nm,
+                     {"value": v["score"], "unit": "/100", "direction": "up"},
+                     {"rag": "green", "n": v["n"]}, now, link)
+    except Exception:
+        pass
+
+    # ── I2 / R1 — KPI plan-vs-actual (reuse the 7L variance logic) ────────────
+    try:
+        ds = _active_company_dataset(db, company_id)
+        if ds:
+            for r in db.query(KpiPlan).filter_by(company_id=company_id, dataset_id=ds.id).all():
+                if getattr(r, "archived", False):
+                    continue
+                var = _kpi_variance(r.ytd_actual, r.ytd_plan)
+                pct = var.get("pct")
+                if pct is None:
+                    continue
+                pct100 = round(pct * 100, 1)
+                if var["status"] == "unfavorable" and abs(pct100) >= UI.VARIANCE_RED_PCT:
+                    item("I2", f"{r.kpi_name}: {abs(pct100)}% below plan",
+                         "kpi", r.kpi_name, {"value": pct100, "unit": "%", "direction": "down"},
+                         {"plan": r.ytd_plan, "actual": r.ytd_actual, "target": r.full_year_target},
+                         ds.uploaded_at, "/dashboard", severity="HIGH")
+                elif var["status"] == "favorable" and pct100 >= UI.OUTPERFORM_PCT:
+                    item("R1", f"{r.kpi_name}: {pct100}% ahead of plan",
+                         "kpi", r.kpi_name, {"value": pct100, "unit": "%", "direction": "up"},
+                         {"plan": r.ytd_plan, "actual": r.ytd_actual}, ds.uploaded_at, "/dashboard")
+    except Exception:
+        pass
+
+    # ── I3 — objectives in red status ─────────────────────────────────────────
+    try:
+        _, orows, _ = _objective_rows(db, company_id)
+        for o in orows:
+            if (o.get("status") or "").lower() == "red":
+                item("I3", f"Objective “{o['objective'][:60]}”: red status",
+                     "objective", o.get("obj_key"), {"value": None, "unit": "", "direction": "down"},
+                     {"priority": o.get("priority"), "horizon": o.get("horizon")}, now, "/dashboard", severity="HIGH")
+    except Exception:
+        pass
+
+    # ── I6 — undispositioned proposals aging past AGING_DAYS ───────────────────
+    try:
+        cutoff = now - timedelta(days=UI.AGING_DAYS)
+        threads = {t.id: t for t in db.query(Thread).filter_by(company_id=company_id).all()}
+        for p in db.query(ThreadPost).filter(ThreadPost.proposal_status == "flagged").all():
+            if p.thread_id in threads and p.created_at and p.created_at <= cutoff:
+                age = (now - p.created_at).days
+                item("I6", f"Proposal awaiting disposition for {age} days",
+                     "proposal", p.id, {"value": age, "unit": "days", "direction": "up"},
+                     {"title": p.suggested_title or (p.body or "")[:60]}, p.created_at,
+                     "/initiatives?tab=recommendations", severity="NOTABLE")
+    except Exception:
+        pass
+
+    # ── I1 — Sentinel band (best-effort; contributes nothing if no run) ───────
+    try:
+        from .sentinel import latest_band  # optional helper
+        b = latest_band(db, company_id)
+        if b and b.get("band") in ("CRITICAL", "FRAGILE"):
+            item("I1", f"Viability sentinel band: {b['band']}", "sentinel", None,
+                 {"value": b.get("shock_margin"), "unit": "t*", "direction": "down"},
+                 {"band": b["band"], "last_run": b.get("last_run")}, b.get("last_run"), "/risk-analysis",
+                 severity="CRITICAL" if b["band"] == "CRITICAL" else "HIGH")
+    except Exception:
+        pass
+
+    inter.sort(key=UI.sort_key)
+    recog.sort(key=UI.sort_key)
+    return {"company_id": company_id, "generated_at": now,
+            "intervention": inter, "recognition": recog,
+            "counts": {"intervention": len(inter), "recognition": len(recog),
+                       "total": len(inter) + len(recog)},
+            "all_clear": (len(inter) == 0 and len(recog) == 0),
+            "thresholds": {"variance_red_pct": UI.VARIANCE_RED_PCT,
+                           "outperform_pct": UI.OUTPERFORM_PCT, "aging_days": UI.AGING_DAYS,
+                           "stale_days": UI.STALE_DAYS, "lookback_days": UI.LOOKBACK_DAYS}}
+
+
 # ====================================================================
 # 7e-E: notifications, stale-nudge, one-click RAG action tokens
 # ====================================================================
