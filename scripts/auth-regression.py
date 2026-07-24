@@ -110,6 +110,54 @@ TAB_SELECTOR = ("[role='tab'], a[href*='tab='], a[href*='section='], "
 # fire the backend calls we grade) to complete and be recorded.
 WAIT_UNTIL = "load"
 SETTLE_MS = 2600
+
+# ── retry policy (RATIFIED) — connection-class ONLY ──────────────────────────
+# page.goto() RAISES only when no response arrived (connection died / navigation
+# aborted / timeout); it RETURNS a response for any HTTP status (incl. 4xx/5xx). So
+# "goto raised" == "no response" == the only retryable condition. A response that
+# ARRIVES and then fails a content/status assertion is NEVER retried (those are the
+# caller's checks, after _safe_goto returns) — real regressions still surface.
+GOTO_RETRIES = 2                     # max retries on a connection-class error
+GOTO_BACKOFF_MS = (500, 1500)        # exponential-ish backoff between attempts
+CTX_RECYCLE_EVERY = 10               # fresh browser CONTEXT (→ fresh HTTP/2 conn) every N navs
+_CONN_ERR_MARKERS = (
+    "ERR_CONNECTION_CLOSED", "ERR_CONNECTION_RESET", "ERR_CONNECTION_REFUSED",
+    "ERR_CONNECTION_ABORTED", "ERR_ABORTED", "ERR_EMPTY_RESPONSE", "ERR_NETWORK_CHANGED",
+    "ERR_TIMED_OUT", "ERR_SOCKET_NOT_CONNECTED", "net::ERR_",
+    "interrupted by another navigation", "chrome-error://", "Timeout",
+)
+
+
+def _is_connection_error(exc) -> bool:
+    """True iff the goto exception is connection-class (no response arrived) — the
+    ONLY retryable condition. Assertion/content/HTTP-status outcomes never reach here
+    (goto returns normally for those)."""
+    m = str(exc)
+    return any(k in m for k in _CONN_ERR_MARKERS)
+
+
+def _safe_goto(page, url, timeout=30000, settle=0):
+    """Navigate with retry ONLY on connection-class errors (max GOTO_RETRIES,
+    backoff GOTO_BACKOFF_MS). Returns the goto response (any HTTP status — the caller
+    asserts on it, unretried). On exhaustion raises RuntimeError tagged
+    'connection-class, N retries exhausted' so a sustained outage is distinguishable
+    from a one-shot blip. A non-connection exception is re-raised immediately."""
+    last = None
+    for attempt in range(GOTO_RETRIES + 1):
+        try:
+            resp = page.goto(url, wait_until=WAIT_UNTIL, timeout=timeout)
+            if settle:
+                page.wait_for_timeout(settle)
+            return resp
+        except Exception as e:
+            if not _is_connection_error(e):
+                raise                                   # arrived-but-different: never retried
+            last = e
+            if attempt < GOTO_RETRIES:
+                page.wait_for_timeout(GOTO_BACKOFF_MS[min(attempt, len(GOTO_BACKOFF_MS) - 1)])
+    raise RuntimeError(f"connection-class, {GOTO_RETRIES} retries exhausted :: {str(last)[:90]}")
+
+
 # non-sidebar routes to also crawl (anonymous-reachable + utility). UPDATE with nav.
 EXTRA_ROUTES_ANON = ["/", "/login", "/pricing"]
 
@@ -314,7 +362,7 @@ def interaction_sweep(page, rec, sink, path, cap=16):
     undersampling). Recycling now happens only at route boundaries in run_mode."""
     findings, acted = [], 0
     try:
-        page.goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
+        _safe_goto(page, APP_BASE + path)
         page.wait_for_timeout(SETTLE_MS)
     except Exception as e:
         return [(path, "(load)", f"nav error {str(e)[:50]}")], 0
@@ -333,7 +381,7 @@ def interaction_sweep(page, rec, sink, path, cap=16):
             if prev is not None:
                 findings.append((path, prev, "ERROR BOUNDARY (async, after click)"))
             try:
-                page.goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
+                _safe_goto(page, APP_BASE + path)
                 page.wait_for_timeout(1200)
             except Exception:
                 pass
@@ -364,7 +412,7 @@ def interaction_sweep(page, rec, sink, path, cap=16):
             if bad:
                 findings.append((path, f"select · {txt}", f"ERROR on option '{bad}'"))
                 try:
-                    page.goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
+                    _safe_goto(page, APP_BASE + path)
                     page.wait_for_timeout(1000)
                 except Exception:
                     pass
@@ -379,7 +427,7 @@ def interaction_sweep(page, rec, sink, path, cap=16):
         if _err_surface(page):
             findings.append((path, f"{tag} · {txt}", "ERROR BOUNDARY"))
             try:
-                page.goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
+                _safe_goto(page, APP_BASE + path)
                 page.wait_for_timeout(1000)
             except Exception:
                 pass
@@ -392,7 +440,7 @@ def interaction_sweep(page, rec, sink, path, cap=16):
         # off-route navigation → return to keep sweeping this route's controls
         if _norm_href(page.url) != path:
             try:
-                page.goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
+                _safe_goto(page, APP_BASE + path)
                 page.wait_for_timeout(900)
             except Exception:
                 pass
@@ -475,7 +523,7 @@ def flow_sweep(page, rec, sink):
         settle = flow.get("settle", SETTLE_MS)
         label = f"flow: {name}"
         try:
-            page.goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
+            _safe_goto(page, APP_BASE + path)
             page.wait_for_timeout(settle)
         except Exception as e:
             findings.append((label, "(load)", f"nav error {str(e)[:40]}"))
@@ -521,7 +569,7 @@ def visit(page, rec, path):
     """Navigate a route; return (ok, why, backend_nonok, body_len)."""
     before = len(rec.calls)
     try:
-        resp = page.goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
+        resp = _safe_goto(page, APP_BASE + path)
     except Exception as e:
         return False, f"navigation error: {e}", [], 0
     page.wait_for_timeout(SETTLE_MS)
@@ -609,10 +657,35 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
             except Exception:
                 pass
 
+    def recycle_context():
+        """Connection hardening: drop the current CONTEXT + page (and its long-lived
+        HTTP/2 connection) and open a fresh one on the SAME browser. Lighter than a
+        full browser relaunch, and a fresh context gives a fresh connection — so the
+        Cloudflare HTTP/2 connection-reset amplification can't accumulate. A new
+        context also spawns a new renderer, so this ALSO addresses the renderer-memory
+        leak the batch-reuse (583–585) was working around."""
+        for k in ("pg", "ctx"):
+            try:
+                if st.get(k):
+                    st[k].close()
+            except Exception:
+                pass
+        ctx = make_context(st["b"], token)
+        pg = ctx.new_page()
+        pg.on("response", rec.on_response)
+        pg.on("console", sink.on_console)
+        pg.on("pageerror", sink.on_pageerror)
+        st.update(ctx=ctx, pg=pg, n=0)
+
     def tick():
         st["n"] += 1
+        # operator mode relaunches the WHOLE browser (OOM guard) every recycle_every;
+        # every other mode recycles just the CONTEXT every CTX_RECYCLE_EVERY navigations
+        # (fresh HTTP/2 connection — connection-reset hardening).
         if recycle_every and st["n"] >= recycle_every:
             shutdown(); launch()
+        elif not recycle_every and CTX_RECYCLE_EVERY and st["n"] >= CTX_RECYCLE_EVERY:
+            recycle_context()
 
     def recycle_now():
         """Force a fresh browser at a SAFE boundary (between sweep routes/flows).
@@ -677,7 +750,7 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
     # ---- alias resolution (all modes; authed sees content) ----
     for alias, spec in ALIASES.items():
         try:
-            st["pg"].goto(APP_BASE + alias, wait_until=WAIT_UNTIL, timeout=30000)
+            _safe_goto(st["pg"], APP_BASE + alias)
             st["pg"].wait_for_timeout(SETTLE_MS)
             final = _norm_href(st["pg"].url)
             body = (st["pg"].inner_text("body") or "")
@@ -694,7 +767,7 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
     if authed:
         for path, _kind in SUBTABS.items():
             try:
-                st["pg"].goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
+                _safe_goto(st["pg"], APP_BASE + path)
                 st["pg"].wait_for_timeout(SETTLE_MS)
                 n_tabs = st["pg"].locator(TAB_SELECTOR).count()
             except Exception:
@@ -722,7 +795,7 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
         ]
         for path, sel, label in DEMO_ELEMENTS:
             try:
-                st["pg"].goto(APP_BASE + path, wait_until=WAIT_UNTIL, timeout=30000)
+                _safe_goto(st["pg"], APP_BASE + path)
                 st["pg"].wait_for_timeout(SETTLE_MS)
                 present = st["pg"].locator(sel).count() > 0
             except Exception:
@@ -737,7 +810,7 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
         # (band letter + number), never a bare band letter. Guards the showcase
         # against a future seed edit reintroducing an unranked initiative. ----
         try:
-            st["pg"].goto(APP_BASE + "/initiatives", wait_until=WAIT_UNTIL, timeout=30000)
+            _safe_goto(st["pg"], APP_BASE + "/initiatives")
             st["pg"].wait_for_timeout(SETTLE_MS)
             # Row display-code badges are `.font-mono.bg-secondary`; the band-SECTION
             # headers ("A", "B") are `.font-mono.bg-pine`/`.bg-brass` — exclude those.
@@ -764,7 +837,7 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
     if authed:
         up_ok, up_why = True, ""
         try:
-            st["pg"].goto(APP_BASE + "/data-input", wait_until=WAIT_UNTIL, timeout=30000)
+            _safe_goto(st["pg"], APP_BASE + "/data-input")
             st["pg"].wait_for_timeout(SETTLE_MS)
             final = _norm_href(st["pg"].url)
             body = (st["pg"].inner_text("body") or "").lower()
