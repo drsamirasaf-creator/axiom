@@ -717,6 +717,8 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
              "Portfolio Cockpit"),
             ("/data-input?tab=participants", "text=Participant List",
              "Participant List bulk-upload tab"),
+            ("/dashboard?tab=urgent", "text=Needs Attention",
+             "Urgent Items tab (populated)"),
         ]
         for path, sel, label in DEMO_ELEMENTS:
             try:
