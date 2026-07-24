@@ -374,6 +374,33 @@ class AssessmentInvite(Base):
     alt_email = Column(String(255), nullable=True)              # DELIVERY-ONLY cc; NEVER an identity/dedup/join key
 
 
+class Participant(Base):
+    """A bulk-uploaded participant (Participant List lane) — the staged roster keyed by
+    lowercased email (identity). Roles are a UNION across the template tabs (a CEO can
+    be an Assessor + Decision Maker). Lifecycle: staged → invited → active. In-app
+    creation and re-uploads reconcile into this one roster (never auto-overwrite,
+    never auto-delete)."""
+    __tablename__ = "ax_participants"
+    __table_args__ = (UniqueConstraint("company_id", "email", name="uq_participant"),)
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    email = Column(String(255), index=True, nullable=False)     # lowercased identity key
+    name = Column(String(255), default="", nullable=False)
+    title = Column(String(160), nullable=True)
+    roles = Column(JSON, default=list, nullable=False)          # subset of assessor|viewer|decision_maker
+    department = Column(String(80), nullable=True)              # org-chart name (matched, never auto-created)
+    seniority = Column(String(40), nullable=True)               # §4u band (assessors)
+    is_ceo = Column(Boolean, default=False, nullable=False)
+    status = Column(String(16), default="staged", nullable=False)   # staged|invited|active
+    source = Column(String(16), default="upload", nullable=False)   # upload|in_app
+    not_in_latest = Column(Boolean, default=False, nullable=False)  # absent from the most recent upload (flag, never delete)
+    is_demo = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    invited_at = Column(DateTime, nullable=True)
+    activated_at = Column(DateTime, nullable=True)
+
+
 class Thread(Base):
     """The single discussion primitive (7e-A). One 'General' thread per company
     (auto), one per initiative (auto on creation), plus report/topic threads."""
@@ -6712,18 +6739,29 @@ def _assessor_cap(db, company_id):
     return base + (acct.assessor_overage or 0)
 
 
-def _assessor_seats_used(db, cycle_id):
-    """Assessor seats consumed in ONE cycle = non-revoked assessor invites. Revoked
-    invites free their seat (never counted)."""
-    return (db.query(AssessmentInvite)
-              .filter(AssessmentInvite.cycle_id == cycle_id,
-                      AssessmentInvite.revoked_at.is_(None)).count())
+def _assessor_seats_used(db, company_id, cycle_id):
+    """Assessor seats consumed — the SINGLE source (§4d, no second counter). Distinct
+    assessor emails across: non-revoked assessor INVITES in this cycle ∪ committed
+    assessor PARTICIPANTS from the bulk-upload roster (staged/invited/active). Deduping
+    by email means a participant who has also been invited counts once. Revoked invites
+    free their seat."""
+    emails = set()
+    if cycle_id:
+        for (e,) in (db.query(AssessmentInvite.email)
+                       .filter(AssessmentInvite.cycle_id == cycle_id,
+                               AssessmentInvite.revoked_at.is_(None)).all()):
+            if e:
+                emails.add(e.strip().lower())
+    for p in db.query(Participant).filter_by(company_id=company_id).all():
+        if "assessor" in (p.roles or []) and p.status in ("staged", "invited", "active"):
+            emails.add((p.email or "").strip().lower())
+    return len(emails)
 
 
 def _seat_status(db, company_id, cycle_id):
     """{cap, used, remaining, at_cap, overage_price, overage_block} for the live counter."""
     cap = _assessor_cap(db, company_id)
-    used = _assessor_seats_used(db, cycle_id) if cycle_id else 0
+    used = _assessor_seats_used(db, company_id, cycle_id)
     remaining = max(0, cap - used)
     return {"cap": cap, "used": used, "remaining": remaining, "at_cap": used >= cap,
             "overage_block": ASSESSOR_OVERAGE_BLOCK, "overage_price": ASSESSOR_OVERAGE_PRICE}
@@ -8406,6 +8444,231 @@ def request_assessor_seats(company_id: int, body: AssessorSeatQuoteIn,
             "message": (f"Request received. Adding {seats} assessor seats is "
                         f"${price} for this cycle. Our team will confirm and enable them — "
                         f"in-app purchase is coming with billing. Questions? {SUPPORT}")}
+
+
+# ====================================================================
+# Participant List bulk upload — template · preview · commit · invite
+# ====================================================================
+def _company_department_names(db, company_id):
+    return [d.name for d in db.query(Department).filter_by(company_id=company_id)
+              .order_by(Department.name).all()]
+
+
+def _participant_out(p):
+    return {"id": p.id, "email": p.email, "name": p.name, "title": p.title,
+            "roles": list(p.roles or []), "department": p.department,
+            "seniority": p.seniority, "is_ceo": bool(p.is_ceo), "status": p.status,
+            "source": p.source, "not_in_latest": bool(p.not_in_latest),
+            "invited_at": p.invited_at, "activated_at": p.activated_at}
+
+
+@router.get("/companies/{company_id}/participants/template")
+def participant_template(company_id: int, member=Depends(require_company_admin), db=Depends(get_db)):
+    """Download the version-stamped Participant List template (Assessors / Viewers /
+    Decision Makers) with the DEPARTMENTS dropdown pre-populated from the org chart."""
+    from . import participant_upload as PU
+    from fastapi import Response
+    content = PU.build_participant_template(_company_department_names(db, company_id))
+    return Response(content, media_type=("application/vnd.openxmlformats-officedocument"
+                                         ".spreadsheetml.sheet"),
+                    headers={"Content-Disposition": 'attachment; filename="AXIOM_Participant_List_v1.xlsx"'})
+
+
+def _reconcile_participants(db, company_id, parsed):
+    """DB reconciliation over the parsed file's unioned participants. Returns the plan:
+    new / unchanged / changed(collision) / absent(flag), never mutating on preview."""
+    existing = {p.email: p for p in db.query(Participant).filter_by(company_id=company_id).all()}
+    file_emails = set(parsed.get("participants", {}).keys())
+    new, unchanged, changed, absent = [], [], [], []
+    for email, inc in parsed.get("participants", {}).items():
+        cur = existing.get(email)
+        if cur is None:
+            new.append(inc)
+            continue
+        diffs = {}
+        if (cur.department or None) != (inc["department"] or None):
+            diffs["department"] = {"current": cur.department, "incoming": inc["department"]}
+        if (cur.seniority or None) != (inc["seniority"] or None):
+            diffs["seniority"] = {"current": cur.seniority, "incoming": inc["seniority"]}
+        if set(cur.roles or []) != set(inc["roles"]):
+            diffs["roles"] = {"current": list(cur.roles or []), "incoming": inc["roles"]}
+        if diffs:
+            changed.append({**inc, "diffs": diffs})
+        else:
+            unchanged.append(inc)
+    # existing participants absent from THIS file → flag (never delete/deactivate)
+    for email, cur in existing.items():
+        if email not in file_emails:
+            absent.append({"email": email, "name": cur.name, "source": cur.source,
+                           "status": cur.status})
+    return {"new": new, "unchanged": unchanged, "changed": changed, "absent": absent}
+
+
+async def _read_participant_file(file):
+    content = await file.read()
+    return content
+
+
+@router.post("/companies/{company_id}/participants/preview")
+async def participant_preview(company_id: int, file: UploadFile = File(...),
+                              member=Depends(require_company_admin), db=Depends(get_db)):
+    """PREVIEW (no commit): parse + validate + reconcile. Returns per-tab counts, all
+    errors/warnings/collisions with row numbers, and the reconciliation plan. The admin
+    confirms before commit — no silent partial imports."""
+    from . import participant_upload as PU
+    content = await file.read()
+    parsed = PU.parse_participant_workbook(content, _company_department_names(db, company_id))
+    recon = _reconcile_participants(db, company_id, parsed) if parsed.get("version_ok") else None
+    return {"version": parsed.get("version"), "version_ok": parsed.get("version_ok"),
+            "counts": parsed.get("counts", {}), "errors": parsed.get("errors", []),
+            "warnings": parsed.get("warnings", []), "collisions": parsed.get("collisions", []),
+            "reconciliation": recon,
+            "committable": bool(parsed.get("version_ok"))}
+
+
+@router.post("/companies/{company_id}/participants/commit", status_code=201)
+async def participant_commit(company_id: int, resolve: str = "keep",
+                             file: UploadFile = File(...),
+                             member=Depends(require_company_admin),
+                             user: User = Depends(get_current_user), db=Depends(get_db)):
+    """COMMIT all valid rows at once. `resolve=keep` (default) leaves changed existing
+    participants untouched and lists them as unresolved collisions; `resolve=accept`
+    applies the incoming department/seniority/roles. Error rows are skipped and listed.
+    In-app participants survive; absent ones are flagged, never deleted."""
+    from . import participant_upload as PU
+    content = await file.read()
+    parsed = PU.parse_participant_workbook(content, _company_department_names(db, company_id))
+    if not parsed.get("version_ok"):
+        raise HTTPException(422, "Template version stamp invalid — download a fresh template.")
+    existing = {p.email: p for p in db.query(Participant).filter_by(company_id=company_id).all()}
+    file_emails = set(parsed["participants"].keys())
+    created = updated = kept = 0
+    unresolved = []
+    now = datetime.utcnow()
+    for email, inc in parsed["participants"].items():
+        cur = existing.get(email)
+        if cur is None:
+            db.add(Participant(company_id=company_id, email=email, name=inc["name"] or "",
+                               title=inc["title"], roles=inc["roles"], department=inc["department"],
+                               seniority=inc["seniority"], is_ceo=inc["is_ceo"],
+                               status="staged", source="upload"))
+            created += 1
+            continue
+        # existing: detect change
+        changed = ((cur.department or None) != (inc["department"] or None)
+                   or (cur.seniority or None) != (inc["seniority"] or None)
+                   or set(cur.roles or []) != set(inc["roles"]))
+        cur.not_in_latest = False
+        if changed and resolve != "accept":
+            unresolved.append({"email": email, "diffs": {
+                "department": [cur.department, inc["department"]],
+                "seniority": [cur.seniority, inc["seniority"]],
+                "roles": [list(cur.roles or []), inc["roles"]]}})
+            kept += 1
+        elif changed:
+            cur.department = inc["department"]; cur.seniority = inc["seniority"]
+            cur.roles = inc["roles"]; cur.title = inc["title"] or cur.title
+            cur.is_ceo = inc["is_ceo"]; cur.updated_at = now
+            updated += 1
+        else:
+            kept += 1
+    # flag existing not in this file (never delete)
+    flagged = 0
+    for email, cur in existing.items():
+        if email not in file_emails and not cur.not_in_latest:
+            cur.not_in_latest = True; flagged += 1
+    audit(db, user.id, "participants_committed", "company", company_id,
+          detail=f"+{created} ~{updated} kept{kept} flagged{flagged}")
+    db.commit()
+    return {"ok": True, "created": created, "updated": updated, "kept": kept,
+            "flagged_absent": flagged, "unresolved_collisions": unresolved,
+            "skipped_error_rows": parsed.get("errors", []),
+            "counts": parsed.get("counts", {}),
+            "seats": _seat_status(db, company_id,
+                                  (lambda c: c.id if c else None)(_current_open_cycle(db, company_id)))}
+
+
+@router.get("/companies/{company_id}/participants")
+def list_participants(company_id: int, member=Depends(require_company_admin), db=Depends(get_db)):
+    rows = (db.query(Participant).filter_by(company_id=company_id)
+              .order_by(Participant.email).all())
+    by_status = {"staged": 0, "invited": 0, "active": 0}
+    for p in rows:
+        by_status[p.status] = by_status.get(p.status, 0) + 1
+    return {"company_id": company_id, "participants": [_participant_out(p) for p in rows],
+            "counts": {"total": len(rows), **by_status,
+                       "assessors": sum(1 for p in rows if "assessor" in (p.roles or [])),
+                       "viewers": sum(1 for p in rows if "viewer" in (p.roles or [])),
+                       "decision_makers": sum(1 for p in rows if "decision_maker" in (p.roles or []))}}
+
+
+class ParticipantInviteIn(BaseModel):
+    ids: list[int] | None = None       # specific participant ids
+    role: str | None = None            # or a whole role: assessor|viewer|decision_maker
+    all: bool = False                  # or everyone staged
+    resend: bool = False               # also re-email already-invited
+
+
+@router.post("/companies/{company_id}/participants/invite", status_code=201)
+def invite_participants(company_id: int, body: ParticipantInviteIn,
+                        member=Depends(require_company_admin),
+                        user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Explicit send (upload ≠ invite). Selectable by ids / role / all. Idempotent:
+    ACTIVE and already-INVITED participants are never re-emailed unless resend=True.
+    Assessors get an assessment magic-link (seat-counted); viewers & decision makers a
+    view-only invite. Lifecycle staged → invited."""
+    q = db.query(Participant).filter_by(company_id=company_id)
+    if body.ids:
+        q = q.filter(Participant.id.in_(body.ids))
+    rows = q.all()
+    if body.role:
+        rows = [p for p in rows if body.role in (p.roles or [])]
+    elif not body.ids and not body.all:
+        raise HTTPException(422, "specify ids, role, or all")
+    company_name = _company_name(db, company_id)
+    cyc = None
+    invited, skipped = [], []
+    for p in rows:
+        if p.status == "active" and not body.resend:
+            skipped.append({"email": p.email, "reason": "already active"}); continue
+        if p.status == "invited" and not body.resend:
+            skipped.append({"email": p.email, "reason": "already invited"}); continue
+        roles = p.roles or []
+        try:
+            if "assessor" in roles:
+                if cyc is None:
+                    cyc, _ = _ensure_open_cycle(db, company_id, user.id)
+                if not db.query(AssessmentInvite).filter_by(cycle_id=cyc.id, email=p.email).first():
+                    jti = secrets.token_urlsafe(16)
+                    tok = make_token(str(cyc.id), purpose="assess-invite", ttl=_ASSESS_INVITE_TTL,
+                                     jti=jti, cycle_id=cyc.id, company_id=company_id,
+                                     invited_email=p.email, invited_name=p.name)
+                    ai = AssessmentInvite(cycle_id=cyc.id, company_id=company_id, email=p.email,
+                                          name=p.name, department=p.department, seniority=p.seniority,
+                                          jti=jti, invited_by=user.id, is_demo=bool(p.is_demo))
+                    db.add(ai); db.flush()
+                    _send_assess_invite_all(ai, company_name, cyc.anonymity_mode, token=tok)
+            if "viewer" in roles or "decision_maker" in roles:
+                if not db.query(Invite).filter_by(company_id=company_id, email=p.email).first():
+                    jti = secrets.token_urlsafe(16)
+                    tok = make_token(str(company_id), purpose="invite", ttl=7 * 86_400, jti=jti,
+                                     company_id=company_id, invited_email=p.email, invited_name=p.name)
+                    db.add(Invite(jti=jti, company_id=company_id, email=p.email, name=p.name,
+                                  invited_by=user.id))
+                    try: send_invite(p.email, p.name, company_name, tok)
+                    except Exception: pass
+            p.status = "invited"; p.invited_at = datetime.utcnow()
+            invited.append(p.email)
+        except HTTPException:
+            raise
+        except Exception as e:
+            skipped.append({"email": p.email, "reason": str(e)[:80]})
+    audit(db, user.id, "participants_invited", "company", company_id,
+          detail=f"{len(invited)} invited, {len(skipped)} skipped")
+    db.commit()
+    return {"ok": True, "invited": invited, "invited_count": len(invited),
+            "skipped": skipped,
+            "seats": _seat_status(db, company_id, cyc.id if cyc else None)}
 
 
 def _l1_maps(db, framework_id):
