@@ -16,6 +16,8 @@ class DatasetOut(BaseModel):
     ownership: str
     source: str
     enterprise_id: int | None
+    version: int | None = None
+    is_active: bool | None = None
     validation: dict
     created_at: datetime
 

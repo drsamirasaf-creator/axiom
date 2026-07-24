@@ -876,6 +876,61 @@ def showcase_integrity_check():
     return fails
 
 
+def plan_vs_forecast_render_check(p):
+    """§17.3d — RENDERED-page guard. The API can report has_client_plan=true on the
+    active dataset while the actual PAGE shows the empty state, because dataset
+    RESOLUTION picked a stale/non-active dataset (a returning viewer's persisted id
+    that still exists in the list, so no 404 to heal). We reproduce exactly that:
+    prime a stale persisted dataset in localStorage, load the Plan vs Forecast tab,
+    and assert the page resolves to the ACTIVE dataset and renders the plan — not the
+    template door. This is the check the API-only guard cannot make."""
+    import urllib.request
+    base = f"https://{BACKEND}"
+    def apiget(path):
+        try:
+            req = urllib.request.Request(base + path, headers={"X-AXIOM-Tenant": "showcase"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return json.loads(r.read())
+        except Exception:
+            return None
+    sc = apiget("/access/showcase-companies")
+    companies = (sc or {}).get("companies", []) if isinstance(sc, dict) else []
+    if not companies:
+        return []
+    cid = companies[0].get("company_id")
+    dsl = apiget(f"/companies/{cid}/datasets")
+    active_ds = (dsl or {}).get("active_dataset_id") if isinstance(dsl, dict) else None
+    rows = (dsl or {}).get("datasets", []) if isinstance(dsl, dict) else []
+    stale = next((d.get("dataset_id") for d in rows
+                  if d.get("dataset_id") != active_ds), None)
+    if active_ds is None or stale is None:
+        return []   # can't construct the stale scenario (only one dataset) — skip
+    fails, reqs = [], []
+    br = p.chromium.launch(args=LAUNCH_ARGS)
+    pg = br.new_page()
+    pg.on("response", lambda r: reqs.append(r.url) if "plan-vs-methods" in r.url else None)
+    try:
+        pg.goto(APP_BASE, wait_until="domcontentloaded", timeout=45000)
+        pg.evaluate(f"() => localStorage.setItem('axiom.forecasts.dataset.company.{cid}','{stale}')")
+        pg.goto(f"{APP_BASE}/financial-forecasts?tab=plan", wait_until="networkidle", timeout=45000)
+        pg.wait_for_timeout(3500)
+        hit_active = any(f"/datasets/{active_ds}/plan-vs-methods" in u for u in reqs)
+        hit_stale = any(f"/datasets/{stale}/plan-vs-methods" in u for u in reqs)
+        empty = "No client plan" in (pg.content() or "")
+        if empty or hit_stale or not hit_active:
+            fails.append(
+                f"Plan vs Forecast RENDER: with a stale persisted dataset ({stale}) the page "
+                f"requested {[u.split('/api')[-1] for u in reqs] or 'nothing'} "
+                f"(active={active_ds}, empty_state={empty}) — dataset resolution is honoring a "
+                "stale/non-active dataset over the active one, so the rendered page is empty.")
+    except Exception as e:
+        fails.append(f"Plan vs Forecast render check error: {e}")
+    finally:
+        try: br.close()
+        except Exception: pass
+    return fails
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", default="all", choices=["anonymous", "operator", "member", "all"])
@@ -914,6 +969,12 @@ def main():
                                     sweep=args.interactions))
             print()
 
+        # §17.3d rendered-page guard (needs a browser) — runs once, anonymously.
+        try:
+            pvf_render_fails = plan_vs_forecast_render_check(p)
+        except Exception as e:
+            pvf_render_fails = [f"Plan vs Forecast render check crashed: {e}"]
+
     print("================ SUMMARY ================")
     any_fail = False
     for r in results:
@@ -928,13 +989,14 @@ def main():
 
     # §17.3 standing demo-integrity guard (GRADED — fails the run on demo rot)
     print("\n=========== SHOWCASE INTEGRITY (§17.3) ===========")
-    sc_fails = showcase_integrity_check()
+    sc_fails = showcase_integrity_check() + (pvf_render_fails if "pvf_render_fails" in dir() else [])
     if sc_fails:
         any_fail = True
         for f in sc_fails:
             print(f"      FAIL: {f}")
     else:
-        print("  PASS — exactly one showcase company; all primary surfaces populated; zero ERROR states")
+        print("  PASS — one showcase company; all surfaces populated; Plan vs Forecast renders "
+              "the client plan even with a stale persisted dataset; zero ERROR states")
     print("==================================================")
 
     if args.interactions:

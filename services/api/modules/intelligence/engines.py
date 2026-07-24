@@ -2228,6 +2228,19 @@ def _apply_levers(data: dict, levers: dict) -> dict:
         term_ratio = term_debt / term_rev if term_rev else 0.0
         d["company"]["cost_of_debt"] = kd0 + LEV_KD_COEF * max(
             0.0, term_ratio - LEV_KD_KINK) ** 2
+        # PRIVATE companies price WACC off the TARGET capital structure
+        # (company.target_debt_to_equity), a fixed profile constant — so scaling the
+        # balance-sheet debt alone leaves private WACC (hence EV) untouched and the
+        # leverage lever is inert. Move the target D/E with the lever, by the same
+        # ratio the total debt changed, so the leverage decision actually reprices
+        # capital for private companies (public WACC already reads _debt_book).
+        if d["company"].get("ownership") == "private":
+            ty = str(fyears[-1])
+            orig_total = (data["balance_sheet"]["short_term_debt"][ty]
+                          + data["balance_sheet"]["long_term_debt"][ty])
+            if orig_total > 1e-9:
+                de0 = float(d["company"].get("target_debt_to_equity") or 0.0)
+                d["company"]["target_debt_to_equity"] = max(0.0, de0 * term_debt / orig_total)
         # the cash from (or used by) the debt change lands at y0
         BS["cash"][y0] += BS["long_term_debt"][y0] - data["balance_sheet"]["long_term_debt"][y0]
     return d
