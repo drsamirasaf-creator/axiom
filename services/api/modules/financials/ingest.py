@@ -16,7 +16,7 @@ from openpyxl.workbook.defined_name import DefinedName
 from . import engines
 from .templates import LABELS, COMPANY_ROWS, BLOCK_KEYS
 
-TEMPLATE_VERSION = "7M-v6.2"   # §16.2: Owner accepts name OR title (resolves to the dept head person)
+TEMPLATE_VERSION = "7M-v7.0"   # v7: optional client-plan FORECAST columns on IS/BS/CF (Business Planning)
 
 # §9 OKR strategy sheets — fixed-name, standard-independent. Builder + parser share
 # these so the dropdown values and the accepted enums can never drift apart.
@@ -70,6 +70,15 @@ _border = Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
 FIRST_COL = 2            # period columns start at B
 ANNUAL_COLS = 5
 QUARTERLY_COLS = 12
+# v7: optional CLIENT-PLAN forecast columns appended after the historical ones.
+# Left blank by default (no period year) so a history-only upload is unaffected —
+# the parser skips any column whose Period (year) cell is empty.
+FORECAST_ANNUAL = 8
+FORECAST_QUARTERLY = 8
+FORECAST_NOTE = ("Enter your own plan here (optional) — AXIOM compares it against "
+                 "its five forecasting methodologies. Mark each column 'Forecast', "
+                 "put the year in row 4, then fill the lines below. Leave blank to "
+                 "upload history only.")
 
 # subtotal/derived rows shown per sheet as LOCKED formulas (guidance only —
 # the server recomputes; these help the user sanity-check as they type).
@@ -199,6 +208,7 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
         standard = "us_gaap"
     lab = LABELS[standard]
     ncols = ANNUAL_COLS if frequency == "annual" else QUARTERLY_COLS
+    nfcst = FORECAST_ANNUAL if frequency == "annual" else FORECAST_QUARTERLY
     unit_label = {"actual": "actual amounts", "thousands": "in thousands",
                   "millions": "in millions"}.get(statement_units, statement_units)
 
@@ -222,6 +232,10 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
         f"2. Enter {ncols} {'years' if frequency=='annual' else 'quarters'} across the statement sheets.",
         "   Row 4 = the period label; row 3 marks Historical or Forecast.",
         "   At least one historical period is required.",
+        f"2b. OPTIONAL — the {nfcst} pale 'Forecast' columns on the right hold YOUR OWN",
+        "   plan. Put a year in row 4 and fill the lines to enter it; AXIOM keeps it",
+        "   as your Client Plan and compares it against its five forecasting methods",
+        "   (Business Planning & Forecasting). Leave them blank to upload history only.",
         "3. Only the highlighted (green-tinted) cells accept input; labels and",
         "   subtotal rows are locked. The lock is a guardrail — AXIOM re-validates",
         "   every cell on upload; the server-side validator is the guarantee.",
@@ -272,7 +286,8 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
         ws["A3"].font = ws["A4"].font = Font(bold=True, color="204534")
         dv = DataValidation(type="list", formula1='"Historical,Forecast"', allow_blank=True)
         ws.add_data_validation(dv)
-        letters = []
+        letters = []          # historical columns
+        fcst_letters = []     # v7: optional client-plan forecast columns
         for i in range(ncols):
             c = FIRST_COL + i
             letter = get_column_letter(c); letters.append(letter)
@@ -282,7 +297,29 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
             ws[f"{letter}4"] = sample_periods[i]            # sample period label
             dv.add(ws[f"{letter}3"])
             ws.column_dimensions[letter].width = 14
+        # v7: optional CLIENT-PLAN forecast columns — pre-labelled "Forecast" but
+        # with BLANK year + BLANK values, so the parser ignores them until the
+        # client fills a year in. History-only uploads therefore parse as today.
+        for i in range(nfcst):
+            c = FIRST_COL + ncols + i
+            letter = get_column_letter(c); fcst_letters.append(letter)
+            _input(ws[f"{letter}3"]); ws[f"{letter}3"].number_format = "General"
+            _input(ws[f"{letter}4"]); ws[f"{letter}4"].number_format = "0"
+            ws[f"{letter}3"] = "Forecast"
+            ws[f"{letter}3"].fill = PatternFill("solid", fgColor=_SUBTOTAL)
+            dv.add(ws[f"{letter}3"])
+            ws.column_dimensions[letter].width = 14
+        # guidance banner spanning the forecast columns (row 2, above the input range)
+        if fcst_letters:
+            span = f"{fcst_letters[0]}2:{fcst_letters[-1]}2"
+            ws.merge_cells(span)
+            note = ws[f"{fcst_letters[0]}2"]
+            note.value = "▶ CLIENT PLAN (optional) — " + FORECAST_NOTE
+            note.font = Font(bold=True, italic=True, color="1F6F43")
+            note.fill = PatternFill("solid", fgColor=_INPUT)
+            note.alignment = Alignment(wrap_text=True, vertical="center")
         rowmap = {}
+        all_letters = letters + fcst_letters
         for r, key in enumerate(keys, start=5):
             ws[f"A{r}"] = lab["lines"][key]
             rowmap[key] = r
@@ -290,6 +327,8 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
                 c = ws[colref(letter, r)]
                 _input(c)
                 c.value = sample[block][key][str(sample_periods[i])]   # sample figure
+            for letter in fcst_letters:               # forecast cells: input-ready, blank
+                _input(ws[colref(letter, r)])
         # locked subtotal formulas
         sub_start = 5 + len(keys) + 1
         alias = {"rev": rowmap.get("revenue"), "cogs": rowmap.get("cogs"),
@@ -303,7 +342,7 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
         for j, (label, ftmpl) in enumerate(SUBTOTALS.get(block, [])):
             rr = sub_start + j
             ws[f"A{rr}"] = label; ws[f"A{rr}"].font = Font(italic=True, bold=True)
-            for letter in letters:
+            for letter in all_letters:
                 try:
                     f = ftmpl.format(**{k: f"{letter}{v}" for k, v in alias.items() if v})
                     _locked_formula(ws[colref(letter, rr)], f)

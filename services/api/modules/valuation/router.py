@@ -10,6 +10,19 @@ from . import engines, models, schemas
 router = APIRouter(prefix="/api/v1/valuation", tags=["valuation"])
 
 
+def _data_for_mode(data: dict, mode: str) -> dict:
+    """The Plan-vs-Forecast valuation toggle. mode='proforma' values the CLIENT's
+    own numbers (data.periods.forecast, as supplied). mode='auto_forecast' values
+    AXIOM's OWN projection — re-derived from historicals; if the dataset also
+    carries a client plan we strip it first, otherwise engines.run would 422
+    ('dataset already contains pro forma years'). The client plan is never mutated
+    in storage — this is a transient view for the valuation call only."""
+    if mode == "auto_forecast" and (data.get("periods") or {}).get("forecast"):
+        from ..financials.router import _historicals_only
+        return _historicals_only(data)
+    return data
+
+
 def _transient(dataset_id: int, mode: str, params: dict, result: dict):
     """Anonymous sandbox computations return in full but are never written
     to the shared showcase (ADR-010)."""
@@ -30,12 +43,15 @@ from ..identity.deps import is_authenticated as _authed  # noqa: E402
 def list_modes():
     return [
         {"mode": "proforma",
-         "title": "Client pro forma DCF + stochastic risk adjustment",
-         "requires": "dataset with forecast years",
+         "title": "Client plan DCF + stochastic risk adjustment",
+         "subtitle": "Value the client's OWN forecast (as supplied)",
+         "requires": "dataset with forecast years (a client plan)",
          "spec_ref": "Product §8.5/§8.9, Math §3.9-3.12"},
         {"mode": "auto_forecast",
-         "title": "AXIOM trend forecast DCF + stochastic risk adjustment",
-         "requires": "dataset with historical years only",
+         "title": "AXIOM forecast DCF + stochastic risk adjustment",
+         "subtitle": "Value AXIOM's OWN projection (re-derived from historicals)",
+         "requires": "any dataset with historicals (a client plan, if present, is "
+                     "set aside for this view — never overwritten)",
          "spec_ref": "Product §7.12/§8.9 (Historical Trends), ADR-005"}]
 
 
@@ -47,8 +63,8 @@ def run_valuation(body: schemas.ValuationRequest, db: Session = Depends(get_db),
     if not ds or ds.tenant != tenant:
         raise HTTPException(status_code=404, detail="dataset not found")
     try:
-        result = engines.run(ds.data, body.mode, body.assumptions,
-                             body.monte_carlo)
+        result = engines.run(_data_for_mode(ds.data, body.mode), body.mode,
+                             body.assumptions, body.monte_carlo)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     params = {"assumptions": body.assumptions, "monte_carlo": body.monte_carlo}
@@ -76,8 +92,8 @@ def run_stress(body: StressRequest, db: Session = Depends(get_db),
     if not ds or ds.tenant != tenant:
         raise HTTPException(status_code=404, detail="dataset not found")
     try:
-        result = engines.stress(ds.data, body.mode, body.assumptions,
-                                body.monte_carlo, body.radii,
+        result = engines.stress(_data_for_mode(ds.data, body.mode), body.mode,
+                                body.assumptions, body.monte_carlo, body.radii,
                                 body.threshold_override)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))

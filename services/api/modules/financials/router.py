@@ -230,6 +230,101 @@ def forecast_dataset(dataset_id: int, body: schemas.ForecastRequest,
     return out
 
 
+@router.get("/datasets/{dataset_id}/plan-vs-methods")
+def plan_vs_methods(dataset_id: int, db: Session = Depends(get_db),
+                    tenant: str = Depends(_tenant),
+                    scoped: int | None = Depends(_scoped),
+                    horizon: int | None = None):
+    """Business Planning & Forecasting — the CLIENT PLAN (the forecast columns the
+    client uploaded) laid against each of AXIOM's five forecasting methodologies
+    plus the ensemble, per line item and per year, with variance (plan − AXIOM,
+    abs and %). Honest-empty (`has_client_plan=false`) when the dataset carries no
+    client forecast — the caller shows the template door. The client plan is read
+    exactly as supplied and is never re-forecast or overwritten; the AXIOM methods
+    are fit on the historicals only."""
+    from ...forecast_studio import compute_method, METHODS as FS_METHODS
+    row = _get_dataset(db, tenant, dataset_id, scoped)
+    data = row.data
+    periods = data.get("periods") or {}
+    hist = [int(y) for y in periods.get("historical") or []]
+    fc_years = [int(y) for y in periods.get("forecast") or []]
+    std = (data.get("company") or {}).get("standard", "us_gaap")
+    labels = templates.LABELS.get(std, templates.LABELS["us_gaap"])["lines"]
+    base_resp = {"dataset_id": row.id, "dataset_version": row.version,
+                 "standard": std, "has_client_plan": bool(fc_years),
+                 "historical_years": hist, "forecast_years": fc_years,
+                 "methods": list(FS_METHODS), "ensemble_method": "ensemble"}
+    if not fc_years:
+        return {**base_resp, "line_items": [], "summary": None,
+                "note": ("No client plan on this dataset. Upload your own forecast "
+                         "with the v7 template — mark the right-hand columns "
+                         "'Forecast', enter a year and your figures — and AXIOM "
+                         "will compare it against its five forecasting methods.")}
+    if len(hist) < 2:
+        return {**base_resp, "line_items": [], "summary": None,
+                "note": "At least 2 historical years are required to compare "
+                        "against AXIOM's methods."}
+
+    base = _historicals_only(data)
+    span = max(fc_years) - hist[-1]
+    hz = max(1, min(horizon or span, 15))
+    method_stmts = {m: compute_method(base, m, hz)[0] for m in FS_METHODS}
+
+    def val(stmts, block, key, ys):
+        return ((stmts.get(block) or {}).get(key) or {}).get(ys)
+
+    def ebit_from(stmts, ys):
+        g = lambda k: val(stmts, "income_statement", k, ys)
+        rev, cogs, opex, da = g("revenue"), g("cogs"), g("opex"), g("depreciation_amortization")
+        if None in (rev, cogs, opex, da):
+            return None
+        return round(rev - cogs - opex - da, 4)
+
+    def variance(plan_v, axiom_v):
+        if plan_v is None or axiom_v is None:
+            return None
+        d = plan_v - axiom_v
+        return {"abs": round(d, 4), "pct": round(d / axiom_v, 6) if axiom_v else None}
+
+    line_items = []
+    # derived EBIT headline first (what a CFO actually compares)
+    ebit_years = []
+    for y in fc_years:
+        ys = str(y)
+        plan_e = ebit_from(data, ys)
+        methods_e = {m: ebit_from(method_stmts[m], ys) for m in FS_METHODS}
+        ebit_years.append({"year": y, "plan": plan_e, "methods": methods_e,
+                           "variance": variance(plan_e, methods_e.get("ensemble"))})
+    line_items.append({"block": "derived", "key": "ebit", "label": "EBIT (derived)",
+                       "years": ebit_years})
+
+    for block, keys in (("income_statement", engines.IS_KEYS),
+                        ("balance_sheet", engines.BS_KEYS),
+                        ("cash_flow", engines.CF_KEYS)):
+        for k in keys:
+            years_out = []
+            for y in fc_years:
+                ys = str(y)
+                plan_v = val(data, block, k, ys)
+                methods_v = {m: val(method_stmts[m], block, k, ys) for m in FS_METHODS}
+                years_out.append({"year": y, "plan": plan_v, "methods": methods_v,
+                                  "variance": variance(plan_v, methods_v.get("ensemble"))})
+            line_items.append({"block": block, "key": k, "label": labels.get(k, k),
+                               "years": years_out})
+
+    # headline: terminal-year revenue, plan vs ensemble
+    rev_line = next((li for li in line_items if li["key"] == "revenue"), None)
+    summary = None
+    if rev_line and rev_line["years"]:
+        term = rev_line["years"][-1]
+        v = term["variance"]
+        summary = {"line": "revenue", "terminal_year": term["year"],
+                   "plan": term["plan"], "ensemble": term["methods"].get("ensemble"),
+                   "variance": v,
+                   "plan_more_optimistic": bool(v and v["abs"] > 0)}
+    return {**base_resp, "horizon": hz, "line_items": line_items, "summary": summary}
+
+
 @router.post("/documents", response_model=schemas.DocumentOut, status_code=201)
 async def upload_document(file: UploadFile = File(...),
                           note: str = Form(default=""),
