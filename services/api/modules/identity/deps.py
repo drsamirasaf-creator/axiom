@@ -219,12 +219,25 @@ def write_tenant(authorization: str | None = Header(default=None),
                  db: Session = Depends(get_db)) -> str:
     """Writes are the conversion point: anonymous -> 401 register
     invitation (flag AXIOM_REQUIRE_AUTH); authenticated on the free plan
-    -> 402 upgrade invitation (flag AXIOM_REQUIRE_PLAN, ADR-011)."""
+    -> 402 upgrade invitation (flag AXIOM_REQUIRE_PLAN, ADR-011).
+
+    SECURITY (write-side counterpart of ba09bec): when the caller has no valid
+    session, the X-AXIOM-Tenant header may only SELECT the showcase — explicit
+    'showcase' or the 'demo' alias. Any OTHER value, including a real "u-…"
+    tenant id, is IGNORED and falls back to showcase.
+
+    Before this, an anonymous caller's header was honored VERBATIM here, so with
+    AXIOM_REQUIRE_AUTH off (the shipped posture) enforce_write does not reject
+    anonymous and every endpoint depending on write_tenant accepted a
+    session-less cross-tenant WRITE — name any tenant, write into it. ba09bec
+    pinned the read side and left this one open. A session-less caller must
+    never be able to name a private tenant, on reads or on writes."""
     allow = write_allowance(authorization, db)
     enforce_write(allow)
     if allow["authenticated"]:
         return allow["tenant"]
-    return (x_axiom_tenant or "").strip()[:64] or SHOWCASE_TENANT
+    t = (x_axiom_tenant or "").strip()[:64]
+    return t if t == SHOWCASE_TENANT else SHOWCASE_TENANT
 
 
 def is_authenticated(authorization: str | None = Header(default=None),
