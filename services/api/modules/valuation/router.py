@@ -99,7 +99,12 @@ def run_valuation(body: schemas.ValuationRequest, db: Session = Depends(get_db),
               "basis_label": body.basis_label,
               "extended": bool(body.forecast_override)}
     from ...core.config import require_auth
-    if not authed and require_auth():
+    # ADR-010: an anonymous sandbox computation returns in FULL but is never
+    # written to the shared showcase. Previously this was contingent on
+    # AXIOM_REQUIRE_AUTH, so with the flag off (the shipped posture) an
+    # anonymous run PERSISTED into the showcase tenant. Now unconditional:
+    # the visitor still gets the full result, it is just never stored.
+    if not authed:
         return _transient(body.dataset_id, body.mode, params, result)
     row = models.ValuationRun(tenant=tenant, dataset_id=body.dataset_id,
                               mode=body.mode, params=params, result=result)
@@ -131,7 +136,12 @@ def run_stress(body: StressRequest, db: Session = Depends(get_db),
               "radii": body.radii,
               "threshold_override": body.threshold_override}
     from ...core.config import require_auth
-    if not authed and require_auth():
+    # ADR-010: an anonymous sandbox computation returns in FULL but is never
+    # written to the shared showcase. Previously this was contingent on
+    # AXIOM_REQUIRE_AUTH, so with the flag off (the shipped posture) an
+    # anonymous run PERSISTED into the showcase tenant. Now unconditional:
+    # the visitor still gets the full result, it is just never stored.
+    if not authed:
         return _transient(body.dataset_id, "dro_stress", params, result)
     row = models.ValuationRun(tenant=tenant, dataset_id=body.dataset_id,
                               mode="dro_stress", params=params, result=result)

@@ -10,6 +10,30 @@ def client():
     with TestClient(app) as c:
         yield c
 
+
+@pytest.fixture(scope="module")
+def auth_client(client):
+    """A signed-in client for endpoints that PERSIST.
+
+    Anonymous callers are now rejected (401) on every path that actually writes
+    — financials /datasets, /datasets/upload, /documents; twin /actuals and
+    /reforecast?persist=true; intelligence analyze/decisions/readiness-apply;
+    financials /forecast?persist=true. That gate used to be contingent on
+    AXIOM_REQUIRE_AUTH, so with the flag off these tests were writing into the
+    public showcase tenant accountlessly.
+
+    Registering here is the correct contract update, not a weakened assertion:
+    the behaviour under test (the write and its result) is asserted exactly as
+    before, just as an account holder — which is who is allowed to do it. Tests
+    that assert SANDBOX behaviour keep using the anonymous `client` on purpose.
+    """
+    tok = client.post("/api/v1/auth/register",
+                      json={"email": "persist-writer@example.com",
+                            "password": "correct-horse-battery"}).json()["token"]
+    c = TestClient(app)
+    c.headers.update({"Authorization": f"Bearer {tok}"})
+    return c
+
 def test_health(client):
     r = client.get("/health")
     assert r.status_code == 200 and r.json()["status"] == "ok"
@@ -215,37 +239,37 @@ def test_financial_templates_download(client):
     assert client.get("/api/v1/financials/templates/frs102").status_code == 404
 
 
-def test_dataset_direct_input_and_derived(client):
-    r = client.post("/api/v1/financials/datasets",
+def test_dataset_direct_input_and_derived(auth_client):
+    r = auth_client.post("/api/v1/financials/datasets",
                     json={"name": "Meridian FY25", "data": _meridian()})
     assert r.status_code == 201
     ds = r.json()
     assert ds["standard"] == "us_gaap" and ds["ownership"] == "public"
-    r = client.get(f"/api/v1/financials/datasets/{ds['id']}/derived")
+    r = auth_client.get(f"/api/v1/financials/datasets/{ds['id']}/derived")
     d = r.json()
     i = d["years"].index(2025)
     assert abs(d["fcff"][i] - 124.95) < 5e-4
     assert abs(d["fcfe"][i] - 126.95) < 5e-4
 
 
-def test_dataset_direct_input_validation_422(client):
+def test_dataset_direct_input_validation_422(auth_client):
     bad = _meridian()
     del bad["income_statement"]["revenue"]["2025"]
     bad["company"].pop("beta")
-    r = client.post("/api/v1/financials/datasets",
+    r = auth_client.post("/api/v1/financials/datasets",
                     json={"name": "broken", "data": bad})
     assert r.status_code == 422
     detail = " ".join(r.json()["detail"])
     assert "revenue[2025]" in detail and "company.beta" in detail
 
 
-def test_template_fill_and_upload_roundtrip(client):
+def test_template_fill_and_upload_roundtrip(auth_client):
     """The full client journey: download template, fill it, upload it."""
     import io
     from openpyxl import load_workbook
     from services.api.modules.financials import templates as tpl
     m = _meridian()
-    content = client.get("/api/v1/financials/templates/us_gaap").content
+    content = auth_client.get("/api/v1/financials/templates/us_gaap").content
     wb = load_workbook(io.BytesIO(content))
     ws = wb["Company"]
     values = {"name": m["company"]["name"], "ownership": "public",
@@ -263,32 +287,32 @@ def test_template_fill_and_upload_roundtrip(client):
             for c, y in enumerate(years, start=tpl.FIRST_YEAR_COL):
                 ws.cell(row=r_i, column=c, value=m[block][key][str(y)])
     buf = io.BytesIO(); wb.save(buf)
-    r = client.post("/api/v1/financials/datasets/upload",
+    r = auth_client.post("/api/v1/financials/datasets/upload",
                     files={"file": ("meridian.xlsx", buf.getvalue(),
                                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
     assert r.status_code == 201, r.text
     ds = r.json()
     assert ds["source"] == "upload"
-    d = client.get(f"/api/v1/financials/datasets/{ds['id']}/derived").json()
+    d = auth_client.get(f"/api/v1/financials/datasets/{ds['id']}/derived").json()
     assert abs(d["fcff"][d["years"].index(2025)] - 124.95) < 5e-4
 
 
-def test_upload_rejects_foreign_workbook(client):
+def test_upload_rejects_foreign_workbook(auth_client):
     import io
     from openpyxl import Workbook
     wb = Workbook(); buf = io.BytesIO(); wb.save(buf)
-    r = client.post("/api/v1/financials/datasets/upload",
+    r = auth_client.post("/api/v1/financials/datasets/upload",
                     files={"file": ("random.xlsx", buf.getvalue(), "application/octet-stream")})
     assert r.status_code == 422
     assert "AXIOM financial template" in str(r.json()["detail"])
 
 
-def test_forecast_endpoint_and_persist(client):
+def test_forecast_endpoint_and_persist(auth_client):
     from tests.fixtures.refcases import halcyon
-    r = client.post("/api/v1/financials/datasets",
+    r = auth_client.post("/api/v1/financials/datasets",
                     json={"name": "Halcyon FY25", "data": halcyon()})
     hid = r.json()["id"]
-    r = client.post(f"/api/v1/financials/datasets/{hid}/forecast",
+    r = auth_client.post(f"/api/v1/financials/datasets/{hid}/forecast",
                     json={"assumptions": {"horizon": 5}, "persist": True})
     assert r.status_code == 200
     body = r.json()
@@ -297,13 +321,13 @@ def test_forecast_endpoint_and_persist(client):
     assert "dataset_id" in body
 
 
-def test_valuation_three_modes_and_runs(client):
-    r = client.get("/api/v1/valuation/modes")
+def test_valuation_three_modes_and_runs(auth_client):
+    r = auth_client.get("/api/v1/valuation/modes")
     assert {m["mode"] for m in r.json()} == {"proforma", "auto_forecast"}
-    r = client.post("/api/v1/financials/datasets",
+    r = auth_client.post("/api/v1/financials/datasets",
                     json={"name": "Meridian for valuation", "data": _meridian()})
     mid = r.json()["id"]
-    r = client.post("/api/v1/valuation/run",
+    r = auth_client.post("/api/v1/valuation/run",
                     json={"dataset_id": mid, "mode": "proforma"})
     assert r.status_code == 201
     res = r.json()["result"]
@@ -311,21 +335,21 @@ def test_valuation_three_modes_and_runs(client):
     assert abs(res["deterministic"]["enterprise_value"] - 2481.3499) < 5e-2
     assert abs(res["risk_adjusted"]["raev"] - 2313.27) < 0.05
     # wrong mode for this dataset -> 422; unknown dataset -> 404
-    assert client.post("/api/v1/valuation/run",
+    assert auth_client.post("/api/v1/valuation/run",
                        json={"dataset_id": mid, "mode": "auto_forecast"}).status_code == 422
-    assert client.post("/api/v1/valuation/run",
+    assert auth_client.post("/api/v1/valuation/run",
                        json={"dataset_id": 99999, "mode": "proforma"}).status_code == 404
-    runs = client.get("/api/v1/valuation/runs").json()
+    runs = auth_client.get("/api/v1/valuation/runs").json()
     assert runs and runs[0]["dataset_id"] == mid
 
 
-def test_dashboard_metrics_endpoint(client):
-    r = client.post("/api/v1/financials/datasets",
+def test_dashboard_metrics_endpoint(auth_client):
+    r = auth_client.post("/api/v1/financials/datasets",
                     json={"name": "Meridian dash", "data": _meridian()})
     mid = r.json()["id"]
-    client.post("/api/v1/valuation/run",
+    auth_client.post("/api/v1/valuation/run",
                 json={"dataset_id": mid, "mode": "proforma"})
-    r = client.get(f"/api/v1/metrics/dashboard/{mid}")
+    r = auth_client.get(f"/api/v1/metrics/dashboard/{mid}")
     assert r.status_code == 200
     dash = r.json()
     strip = {k["kpi"]: k["current"] for k in dash["kpi_strip"]}
@@ -335,15 +359,15 @@ def test_dashboard_metrics_endpoint(client):
     assert abs(dash["health"]["health_index"] - 96.36) < 0.05
 
 
-def test_document_plumbing_honest_status(client):
-    r = client.post("/api/v1/financials/documents",
+def test_document_plumbing_honest_status(auth_client):
+    r = auth_client.post("/api/v1/financials/documents",
                     files={"file": ("strategy.txt", b"Five-year strategic plan.",
                                     "text/plain")},
                     data={"note": "board strategy memo"})
     assert r.status_code == 201
     doc = r.json()
     assert doc["size_bytes"] == 25 and doc["ai_analysis"] is None  # Phase 7
-    docs = client.get("/api/v1/financials/documents").json()
+    docs = auth_client.get("/api/v1/financials/documents").json()
     assert docs[0]["filename"] == "strategy.txt"
 
 
@@ -367,11 +391,11 @@ def test_glossary_covers_tabs_and_headline_terms(client):
         assert term in g and len(g[term]) > 20, term
 
 
-def test_kpi_strip_carries_definitions(client):
-    r = client.post("/api/v1/financials/datasets",
+def test_kpi_strip_carries_definitions(auth_client):
+    r = auth_client.post("/api/v1/financials/datasets",
                     json={"name": "Meridian tooltips", "data": _meridian()})
     mid = r.json()["id"]
-    dash = client.get(f"/api/v1/metrics/dashboard/{mid}").json()
+    dash = auth_client.get(f"/api/v1/metrics/dashboard/{mid}").json()
     for card in dash["kpi_strip"]:
         assert card["definition"], f"missing definition for {card['kpi']}"
 
@@ -389,24 +413,24 @@ def _upload_doc(client, text, content_type="text/plain", dataset_id=None):
     return r.json()["id"]
 
 
-def test_analyze_503_when_ai_unconfigured(client, monkeypatch):
+def test_analyze_503_when_ai_unconfigured(auth_client, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    did = _upload_doc(client, "Revenue growth of 5% (0.05) is planned.")
-    r = client.post(f"/api/v1/intelligence/documents/{did}/analyze")
+    did = _upload_doc(auth_client, "Revenue growth of 5% (0.05) is planned.")
+    r = auth_client.post(f"/api/v1/intelligence/documents/{did}/analyze")
     assert r.status_code == 503
     assert "ANTHROPIC_API_KEY" in r.json()["detail"]
 
 
-def test_analyze_415_for_binary_document(client):
-    r = client.post("/api/v1/financials/documents",
+def test_analyze_415_for_binary_document(auth_client):
+    r = auth_client.post("/api/v1/financials/documents",
                     files={"file": ("plan.pdf", b"%PDF-1.4 ...",
                                     "application/pdf")})
     did = r.json()["id"]
-    r = client.post(f"/api/v1/intelligence/documents/{did}/analyze")
+    r = auth_client.post(f"/api/v1/intelligence/documents/{did}/analyze")
     assert r.status_code == 415
 
 
-def test_analyze_decide_flow_with_mocked_ai(client, monkeypatch):
+def test_analyze_decide_flow_with_mocked_ai(auth_client, monkeypatch):
     """Full journey with the AI seam mocked: analyze -> gates -> decisions
     -> valuation-ready assumptions -> valuation run."""
     import json as _json
@@ -426,21 +450,21 @@ def test_analyze_decide_flow_with_mocked_ai(client, monkeypatch):
     monkeypatch.setattr(ai_client, "complete",
                         lambda system, user_text, max_tokens=2000: model_reply)
     from tests.fixtures.refcases import halcyon
-    ds = client.post("/api/v1/financials/datasets",
+    ds = auth_client.post("/api/v1/financials/datasets",
                      json={"name": "Halcyon AI", "data": halcyon()}).json()
-    did = _upload_doc(client, doc_text, dataset_id=ds["id"])
-    r = client.post(f"/api/v1/intelligence/documents/{did}/analyze")
+    did = _upload_doc(auth_client, doc_text, dataset_id=ds["id"])
+    r = auth_client.post(f"/api/v1/intelligence/documents/{did}/analyze")
     assert r.status_code == 200
     a = r.json()
     assert a["status"] == "proposed" and len(a["suggestions"]) == 3
     assert len(a["rejected"]) == 1                     # hallucinated quote gated
     assert all(s["verified_quote"] for s in a["suggestions"])
     # persisted on the document
-    docs = client.get("/api/v1/financials/documents").json()
+    docs = auth_client.get("/api/v1/financials/documents").json()
     assert any(d["id"] == did and d["ai_analysis"]["status"] == "proposed"
                for d in docs)
     # decide: accept growth + terminal, reject margin
-    r = client.post(f"/api/v1/intelligence/documents/{did}/decisions",
+    r = auth_client.post(f"/api/v1/intelligence/documents/{did}/decisions",
                     json={"decisions": {0: "accept", 1: "reject", 2: "accept"}})
     assert r.status_code == 200
     body = r.json()
@@ -449,52 +473,52 @@ def test_analyze_decide_flow_with_mocked_ai(client, monkeypatch):
     assert va["terminal_growth"] == 0.02
     assert va["forecast"] == {"revenue_growth": 0.08}
     # assumptions run through the certified engine
-    r = client.post("/api/v1/valuation/run",
+    r = auth_client.post("/api/v1/valuation/run",
                     json={"dataset_id": ds["id"], "mode": "auto_forecast",
                           "assumptions": va})
     assert r.status_code == 201
     assert r.json()["result"]["provenance"]["revenue_growth"] == 0.08
 
 
-def test_decisions_409_without_analysis(client):
-    did = _upload_doc(client, "no analysis yet")
-    r = client.post(f"/api/v1/intelligence/documents/{did}/decisions",
+def test_decisions_409_without_analysis(auth_client):
+    did = _upload_doc(auth_client, "no analysis yet")
+    r = auth_client.post(f"/api/v1/intelligence/documents/{did}/decisions",
                     json={"decisions": {0: "accept"}})
     assert r.status_code == 409
 
 
-def test_reo_health_endpoint(client):
-    r = client.post("/api/v1/financials/datasets",
+def test_reo_health_endpoint(auth_client):
+    r = auth_client.post("/api/v1/financials/datasets",
                     json={"name": "Meridian health", "data": _meridian()})
     mid = r.json()["id"]
-    h = client.get(f"/api/v1/intelligence/health/{mid}").json()
+    h = auth_client.get(f"/api/v1/intelligence/health/{mid}").json()
     assert abs(h["health_index"] - 95.5) < 0.05
     assert h["version"] == "reo_distance_v1"
     assert len(h["wacc_curve"]) >= 10
 
 
-def test_recommendations_endpoint(client):
+def test_recommendations_endpoint(auth_client):
     from tests.fixtures.refcases import halcyon
-    r = client.post("/api/v1/financials/datasets",
+    r = auth_client.post("/api/v1/financials/datasets",
                     json={"name": "Halcyon recs", "data": halcyon()})
     hid = r.json()["id"]
-    recs = client.get(f"/api/v1/intelligence/recommendations/{hid}").json()
+    recs = auth_client.get(f"/api/v1/intelligence/recommendations/{hid}").json()
     assert recs["recommendations"][0]["move"] == "optimal_capital_structure"
     assert recs["all_checkpoints_pass"] is True
     assert all("expected_ev_impact" in m for m in recs["recommendations"])
 
 
-def test_stress_endpoint_persists_run(client):
-    r = client.post("/api/v1/financials/datasets",
+def test_stress_endpoint_persists_run(auth_client):
+    r = auth_client.post("/api/v1/financials/datasets",
                     json={"name": "Meridian stress", "data": _meridian()})
     mid = r.json()["id"]
-    r = client.post("/api/v1/valuation/stress",
+    r = auth_client.post("/api/v1/valuation/stress",
                     json={"dataset_id": mid, "mode": "proforma"})
     assert r.status_code == 201
     res = r.json()["result"]
     assert res["resilient_beyond"] == 0.5
     assert res["all_checkpoints_pass"] is True
-    runs = client.get("/api/v1/valuation/runs").json()
+    runs = auth_client.get("/api/v1/valuation/runs").json()
     assert any(x["mode"] == "dro_stress" for x in runs)
 
 
@@ -518,24 +542,24 @@ def test_benchmark_sectors_endpoint(client):
     assert dirs["debt_to_equity"] == "lower" and dirs["capex_pct_revenue"] == "context"
 
 
-def test_benchmark_compare_endpoint(client):
-    r = client.post("/api/v1/financials/datasets",
+def test_benchmark_compare_endpoint(auth_client):
+    r = auth_client.post("/api/v1/financials/datasets",
                     json={"name": "Meridian bench", "data": _meridian()})
     mid = r.json()["id"]
-    r = client.post("/api/v1/benchmarks/compare",
+    r = auth_client.post("/api/v1/benchmarks/compare",
                     json={"dataset_id": mid, "sector": "Industrials"})
     assert r.status_code == 200
     body = r.json()
     assert abs(body["benchmark_performance_index"] - 142.62) < 0.05
     assert body["narrative"] and body["all_checkpoints_pass"] is True
     # unknown sector -> 404 with pointer
-    assert client.post("/api/v1/benchmarks/compare",
+    assert auth_client.post("/api/v1/benchmarks/compare",
                        json={"dataset_id": mid, "sector": "Nope"}).status_code == 404
     # a dataset with no sector on file and none passed -> 422
     ns = _meridian(); ns["company"].pop("sector", None)
-    nsid = client.post("/api/v1/financials/datasets",
+    nsid = auth_client.post("/api/v1/financials/datasets",
                        json={"name": "no sector", "data": ns}).json()["id"]
-    assert client.post("/api/v1/benchmarks/compare",
+    assert auth_client.post("/api/v1/benchmarks/compare",
                        json={"dataset_id": nsid}).status_code == 422
 
 
@@ -547,10 +571,10 @@ def test_benchmark_glossary_terms(client):
         assert term in g and len(g[term]) > 20, term
 
 
-def test_sector_warning_on_direct_input(client):
+def test_sector_warning_on_direct_input(auth_client):
     ds = _meridian()
     ds["company"]["sector"] = "Underwater Basket Weaving"
-    r = client.post("/api/v1/financials/datasets",
+    r = auth_client.post("/api/v1/financials/datasets",
                     json={"name": "odd sector", "data": ds})
     assert r.status_code == 201
     assert any("no curated benchmark" in w

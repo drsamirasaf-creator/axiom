@@ -297,13 +297,30 @@ def write_allowance(authorization: str | None = Header(default=None),
 def enforce_write(allow: dict):
     """The single write gate: anonymous -> register invitation (401);
     authenticated free plan -> upgrade invitation (402, when the plan flag
-    is on); business plan -> pass."""
+    is on); business plan -> pass.
+
+    SECURITY: the anonymous rejection is UNCONDITIONAL — it is no longer
+    contingent on AXIOM_REQUIRE_AUTH. This gate is only ever reached from paths
+    that genuinely PERSIST (write_tenant, and the explicit `if body.persist`
+    branches in financials /forecast and twin /reforecast), so with the flag off
+    a session-less caller was writing into the public showcase tenant. ADR-010
+    already states the intent — "anonymous sandbox computations return in full
+    but are never written to the shared showcase" — and this makes it always-on
+    rather than flag-dependent.
+
+    Compute-only endpoints never call this and stay open to visitors, which is
+    what keeps the sandbox usable: valuation /run and /stress return their full
+    result transiently for anonymous callers, twin /reforecast with
+    persist=false still returns 200, and the five educational modules
+    (enterprise state, REO, simulation, risk, learning) are untouched — they do
+    not route through here at all. AXIOM_REQUIRE_AUTH is deliberately NOT
+    flipped; that remains a separate product decision.
+    """
     if allow["authenticated"]:
         if require_plan() and allow["plan"] != "business":
             raise HTTPException(status_code=402, detail=WRITE_402)
         return
-    if require_auth():
-        raise HTTPException(status_code=401, detail=WRITE_401)
+    raise HTTPException(status_code=401, detail=WRITE_401)
 
 
 COMPANY_LIMIT_402 = (
