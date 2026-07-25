@@ -25,10 +25,43 @@ def test_enterprise_state_lifecycle(client):
     assert r.json()["payload"]["capital"] == 4.0
 
 def test_tenant_isolation(client):
-    r = client.post("/api/v1/enterprises", json={"name": "Hidden"},
-                    headers={"X-AXIOM-Tenant": "other"})
-    other_id = r.json()["id"]
-    assert client.get(f"/api/v1/enterprises/{other_id}").status_code == 404
+    """An anonymous caller must never read another tenant's enterprise.
+
+    The setup can no longer go through the API: since ba09bec (SECURITY: pin
+    anonymous callers to showcase tenant in read_tenant) an anonymous POST has
+    its X-AXIOM-Tenant header IGNORED and is pinned to showcase, so the old
+    fixture — create with `X-AXIOM-Tenant: other`, then read it back — was
+    creating a SHOWCASE row and asserting 404 on a same-tenant read. It
+    returned 200 because the read was legitimate, not because isolation broke.
+
+    The private row is therefore seeded directly, which is the only way to
+    establish a genuine cross-tenant precondition now. The assertion itself is
+    unchanged in intent and strengthened in coverage: the header-named vector
+    (the one ba09bec actually closed) is asserted too.
+    """
+    from services.api.core.db import SessionLocal
+    from services.api.modules.enterprise_state import models
+
+    db = SessionLocal()
+    try:
+        victim = models.Enterprise(tenant="u-private-victim", name="Victim Co")
+        db.add(victim)
+        db.commit()
+        db.refresh(victim)
+        vid = victim.id
+    finally:
+        db.close()
+
+    # Anonymous, no header -> pinned to showcase -> must not see a private row.
+    assert client.get(f"/api/v1/enterprises/{vid}").status_code == 404
+    # Anonymous NAMING the victim tenant -> header ignored, still pinned.
+    assert client.get(f"/api/v1/enterprises/{vid}",
+                      headers={"X-AXIOM-Tenant": "u-private-victim"}).status_code == 404
+    # Sanity: the pin is a confinement, not a blanket 404 — showcase still reads.
+    own = client.post("/api/v1/enterprises", json={"name": "Hidden"},
+                      headers={"X-AXIOM-Tenant": "other"})
+    assert own.status_code == 201
+    assert client.get(f"/api/v1/enterprises/{own.json()['id']}").status_code == 200
 
 def test_reo_solve_and_provenance(client):
     r = client.get("/api/v1/reo/problems")
