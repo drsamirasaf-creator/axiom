@@ -61,7 +61,7 @@ def test_target_state_quantifies_gaps_and_maps_levers():
 
 def test_multiples_valuation_triangulates_dcf():
     m = val.multiples(meridian(), sector="Industrials")
-    assert m["subject"] == "Meridian Industries Inc."
+    assert m["subject"] == "Meridian Industries, Inc."
     assert len(m["methods"]) == 2
     lo, hi = m["implied_ev_range"]["low"], m["implied_ev_range"]["high"]
     assert lo <= m["implied_ev_range"]["midpoint"] <= hi

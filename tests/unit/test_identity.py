@@ -219,7 +219,7 @@ def test_showcase_seeded_full_story(client):
     """The seeded sandbox carries the whole twin arc for Meridian."""
     r = client.get("/api/v1/financials/datasets")
     rows = {d["name"]: d for d in r.json()
-            if "Meridian Industries (showcase)" in d["name"]}
+            if "Meridian Industries, Inc. (showcase)" in d["name"]}
     assert len(rows) == 3          # plan, actuals child, re-forecast
     plan = [d for d in rows.values() if d["source"] == "direct"][0]
     lin = client.get(f"/api/v1/twin/lineage/{plan['id']}").json()
@@ -237,7 +237,7 @@ def test_sandbox_valuation_is_transient_under_flag(client, monkeypatch):
     _flag_on(monkeypatch)
     ds = client.get("/api/v1/financials/datasets").json()
     plan = [d for d in ds
-            if d["name"] == "Meridian Industries (showcase)"][0]
+            if d["name"] == "Meridian Industries, Inc. (showcase)"][0]
     before = len(client.get("/api/v1/valuation/runs").json())
     r = client.post("/api/v1/valuation/run",
                     json={"dataset_id": plan["id"], "mode": "proforma"})
@@ -252,7 +252,7 @@ def test_sandbox_write_gates_carry_the_invitation(client, monkeypatch):
     _flag_on(monkeypatch)
     ds = client.get("/api/v1/financials/datasets").json()
     plan = [d for d in ds
-            if d["name"] == "Meridian Industries (showcase)"][0]
+            if d["name"] == "Meridian Industries, Inc. (showcase)"][0]
     child = [d for d in ds
              if "showcase) — 2026 actuals" in d["name"]][0]
     from tests.numerical.test_twin_checkpoints import ACTUALS_2026
@@ -285,10 +285,10 @@ def test_seed_idempotent():
              .filter_by(tenant=SHOWCASE_TENANT).all()]
     db.close()
     assert n0 == n1                  # idempotent: reseeding adds nothing
-    for expected in ("Meridian Industries (showcase)",
-                     "Meridian Industries (showcase) — 2026 actuals",
-                     "Meridian Industries (showcase) — re-forecast",
-                     "Halcyon Components (showcase)"):
+    for expected in ("Meridian Industries, Inc. (showcase)",
+                     "Meridian Industries, Inc. (showcase) — 2026 actuals",
+                     "Meridian Industries, Inc. (showcase) — re-forecast",
+                     "Halcyon Components GmbH (showcase)"):
         assert expected in names
 
 
@@ -362,7 +362,7 @@ def test_plan_flag_402_for_free_writes(client, monkeypatch):
 def test_business_engines_endpoints(client):
     ds = client.get("/api/v1/financials/datasets").json()
     plan = [d for d in ds
-            if d["name"] == "Meridian Industries (showcase)"][0]
+            if d["name"] == "Meridian Industries, Inc. (showcase)"][0]
     rp = client.get(f"/api/v1/intelligence/risk-profile/{plan['id']}")
     assert rp.status_code == 200
     body = rp.json()
@@ -375,7 +375,7 @@ def test_business_engines_endpoints(client):
     prof = client.get(f"/api/v1/financials/datasets/{plan['id']}/profile")
     assert prof.status_code == 200
     p = prof.json()
-    assert p["company"]["name"] == "Meridian Industries Inc."
+    assert p["company"]["name"] == "Meridian Industries, Inc."
     assert p["latest_valuation"]["enterprise_value"] is not None
     assert p["coverage"]["forecast_years"] == [2026, 2027, 2028, 2029, 2030]
 
@@ -398,7 +398,7 @@ STRONG_R = {"leadership_quality": 8, "strategic_alignment": 7,
 def test_phase13_endpoints_open_compute(client):
     ds = client.get("/api/v1/financials/datasets").json()
     plan = [d for d in ds
-            if d["name"] == "Meridian Industries (showcase)"][0]
+            if d["name"] == "Meridian Industries, Inc. (showcase)"][0]
     r = client.post("/api/v1/intelligence/readiness",
                     json={"responses": STRONG_R})
     assert r.status_code == 200 and r.json()["readiness_label"] == "High"
@@ -413,8 +413,8 @@ def test_phase13_endpoints_open_compute(client):
 def test_readiness_apply_gated_and_private_only(client, monkeypatch):
     monkeypatch.setenv("AXIOM_REQUIRE_AUTH", "true")
     ds = client.get("/api/v1/financials/datasets").json()
-    mer = [d for d in ds if d["name"] == "Meridian Industries (showcase)"][0]
-    hal = [d for d in ds if d["name"] == "Halcyon Components (showcase)"][0]
+    mer = [d for d in ds if d["name"] == "Meridian Industries, Inc. (showcase)"][0]
+    hal = [d for d in ds if d["name"] == "Halcyon Components GmbH (showcase)"][0]
     # anonymous apply -> the register invitation
     r = client.post("/api/v1/intelligence/readiness/apply",
                     json={"dataset_id": hal["id"], "responses": STRONG_R})
@@ -453,7 +453,7 @@ def test_phase13_glossary(client):
 def test_observatory_and_analytics_endpoints(client):
     ds = client.get("/api/v1/financials/datasets").json()
     plan = [d for d in ds
-            if d["name"] == "Meridian Industries (showcase)"][0]
+            if d["name"] == "Meridian Industries, Inc. (showcase)"][0]
     child = [d for d in ds
              if "showcase) — 2026 actuals" in d["name"]][0]
     c = client.get(f"/api/v1/twin/compare/{plan['id']}/{child['id']}")
@@ -480,7 +480,7 @@ def test_observatory_and_analytics_endpoints(client):
 def test_risk_dashboard_endpoint(client):
     ds = client.get("/api/v1/financials/datasets").json()
     plan = [d for d in ds
-            if d["name"] == "Meridian Industries (showcase)"][0]
+            if d["name"] == "Meridian Industries, Inc. (showcase)"][0]
     r = client.get(f"/api/v1/intelligence/risk-dashboard/{plan['id']}")
     assert r.status_code == 200
     body = r.json()
@@ -494,7 +494,7 @@ def test_risk_dashboard_endpoint(client):
 def test_phase14_endpoints(client):
     ds = client.get("/api/v1/financials/datasets").json()
     plan = [d for d in ds
-            if d["name"] == "Meridian Industries (showcase)"][0]
+            if d["name"] == "Meridian Industries, Inc. (showcase)"][0]
     lib = client.get("/api/v1/intelligence/what-if/shocks").json()
     assert "revenue_decline" in lib and "raise_equity" in lib
     r = client.post("/api/v1/intelligence/what-if",
@@ -513,7 +513,7 @@ def test_phase14_endpoints(client):
     r = client.post("/api/v1/valuation/multiples",
                     json={"dataset_id": plan["id"], "sector": "Industrials"})
     assert r.status_code == 200
-    assert r.json()["subject"] == "Meridian Industries Inc."
+    assert r.json()["subject"] == "Meridian Industries, Inc."
 
 
 def test_phase14_glossary(client):
@@ -526,12 +526,12 @@ def test_phase14_glossary(client):
 def test_real_options_endpoints(client):
     ds = client.get("/api/v1/financials/datasets").json()
     plan = [d for d in ds
-            if d["name"] == "Meridian Industries (showcase)"][0]
+            if d["name"] == "Meridian Industries, Inc. (showcase)"][0]
     r = client.post("/api/v1/valuation/real-option",
                     json={"dataset_id": plan["id"], "option": "expand"})
     assert r.status_code == 200
     body = r.json()
-    assert body["subject"] == "Meridian Industries Inc."
+    assert body["subject"] == "Meridian Industries, Inc."
     assert body["flexibility_value"] > 0
     assert abs(body["lattice_certificate"]["up_factor"]
                * body["lattice_certificate"]["down_factor"] - 1.0) < 1e-5
@@ -553,7 +553,7 @@ def test_phase15_glossary(client):
 def test_board_report_endpoint_open_and_redactable(client):
     ds = client.get("/api/v1/financials/datasets").json()
     plan = [d for d in ds
-            if d["name"] == "Meridian Industries (showcase)"][0]
+            if d["name"] == "Meridian Industries, Inc. (showcase)"][0]
     # showcase report is freely downloadable (the marketing brochure)
     r = client.get(f"/api/v1/intelligence/board-report/{plan['id']}"
                    "?sector=Industrials")
@@ -588,7 +588,7 @@ def test_eula_recorded_at_registration(client):
 def test_pro_forma_endpoint(client):
     ds = client.get("/api/v1/financials/datasets").json()
     plan = [d for d in ds
-            if d["name"] == "Meridian Industries (showcase)"][0]
+            if d["name"] == "Meridian Industries, Inc. (showcase)"][0]
     r = client.get(f"/api/v1/financials/datasets/{plan['id']}/pro-forma")
     assert r.status_code == 200
     body = r.json()
@@ -601,7 +601,7 @@ def test_pro_forma_endpoint(client):
 def test_comprehensive_income_endpoint(client):
     ds = client.get("/api/v1/financials/datasets").json()
     plan = [d for d in ds
-            if d["name"] == "Meridian Industries (showcase)"][0]
+            if d["name"] == "Meridian Industries, Inc. (showcase)"][0]
     r = client.get(f"/api/v1/financials/datasets/{plan['id']}/comprehensive-income")
     assert r.status_code == 200
     body = r.json()
@@ -656,7 +656,7 @@ def test_helios_stressed_showcase_seeded(client):
 
 def test_bond_price_yield_curve_endpoint(client):
     ds = client.get("/api/v1/financials/datasets").json()
-    m = [d for d in ds if d["name"] == "Meridian Industries (showcase)"][0]
+    m = [d for d in ds if d["name"] == "Meridian Industries, Inc. (showcase)"][0]
     r = client.get(f"/api/v1/valuation/analytics/{m['id']}")
     assert r.status_code == 200
     curve = r.json()["rate_sensitivity"]["price_yield_curve"]
@@ -665,7 +665,7 @@ def test_bond_price_yield_curve_endpoint(client):
 
 def test_data_coverage_populates(client):
     ds = client.get("/api/v1/financials/datasets").json()
-    m = [d for d in ds if d["name"] == "Meridian Industries (showcase)"][0]
+    m = [d for d in ds if d["name"] == "Meridian Industries, Inc. (showcase)"][0]
     cov = client.get(f"/api/v1/financials/datasets/{m['id']}/profile").json()["coverage"]
     assert cov["historical_count"] == 5 and cov["forecast_count"] == 5
     assert cov["span"] == "2021\u20132030"
@@ -680,7 +680,7 @@ def test_scenario_endpoint(client):
     assert lev.status_code == 200
     assert "revenue_growth" in lev.json() and "leverage" in lev.json()
     ds = client.get("/api/v1/financials/datasets").json()
-    m = [d for d in ds if d["name"] == "Meridian Industries (showcase)"][0]
+    m = [d for d in ds if d["name"] == "Meridian Industries, Inc. (showcase)"][0]
     r = client.post("/api/v1/intelligence/scenario",
                     json={"dataset_id": m["id"],
                           "levers": {"revenue_growth": 0.03, "leverage": 0.5}})
@@ -697,7 +697,7 @@ def test_scenario_endpoint(client):
 
 def test_scenario_pro_endpoint(client):
     ds = client.get("/api/v1/financials/datasets").json()
-    m = [d for d in ds if d["name"] == "Meridian Industries (showcase)"][0]
+    m = [d for d in ds if d["name"] == "Meridian Industries, Inc. (showcase)"][0]
     r = client.post("/api/v1/intelligence/scenario-pro",
                     json={"dataset_id": m["id"],
                           "levers": {"revenue_growth": 0.03, "leverage": 0.5}})
@@ -711,7 +711,7 @@ def test_scenario_pro_endpoint(client):
 
 def test_optimal_levers_endpoint(client):
     ds = client.get("/api/v1/financials/datasets").json()
-    m = [d for d in ds if d["name"] == "Meridian Industries (showcase)"][0]
+    m = [d for d in ds if d["name"] == "Meridian Industries, Inc. (showcase)"][0]
     for obj in ("ev", "raev"):
         r = client.get(f"/api/v1/intelligence/scenario/optimal"
                        f"?dataset_id={m['id']}&objective={obj}")
@@ -727,7 +727,7 @@ def test_optimal_levers_endpoint(client):
 
 def test_unified_optimization_endpoint(client):
     ds = client.get("/api/v1/financials/datasets").json()
-    m = [d for d in ds if d["name"] == "Meridian Industries (showcase)"][0]
+    m = [d for d in ds if d["name"] == "Meridian Industries, Inc. (showcase)"][0]
     r = client.get(f"/api/v1/intelligence/optimization/unified?dataset_id={m['id']}")
     assert r.status_code == 200
     b = r.json()

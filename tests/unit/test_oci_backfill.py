@@ -33,9 +33,9 @@ def test_backfill_populates_and_is_idempotent(_app):
         db.query(fin_models.FinancialDataset)\
           .filter_by(tenant="oci_backfill_test").delete()
         db.commit()
-        m = _stale(db, "Meridian Industries (showcase)", meridian())
-        mc = _stale(db, "Meridian Industries (showcase) — 2026 actuals", meridian())
-        h = _stale(db, "Halcyon Components (showcase)", halcyon())
+        m = _stale(db, "Meridian Industries, Inc. (showcase)", meridian())
+        mc = _stale(db, "Meridian Industries, Inc. (showcase) — 2026 actuals", meridian())
+        h = _stale(db, "Halcyon Components GmbH (showcase)", halcyon())
         db.commit()
         assert (m.data or {}).get("oci") is None
         assert oci_mod.statement_of_comprehensive_income(m.data)["any_oci_on_file"] is False
