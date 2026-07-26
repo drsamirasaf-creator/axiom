@@ -642,3 +642,39 @@ def test_department_trend_obeys_complement_inference_not_just_the_floor(_app):
     assert status["HR"] == "suppress", "complement inference must hide it too"
     assert sum(1 for v in status.values() if v == "suppress") >= 2, "never exactly one hidden"
     assert status["Finance"] == "show" and status["Operations"] == "show"
+
+
+def test_every_sqlalchemy_name_used_in_accounts_is_actually_imported(_app):
+    """A NameError that only fires on one code path.
+
+    `func` was used in two places in accounts.py and imported in neither. One was
+    _axis_comment_counts, added by the alias-resolution lane — so
+    /assessment/sentiment?department=N returned 500 in PRODUCTION for days while
+    the unsliced call kept working and every test passed. My tests for that lane
+    exercised the helper functions and never the endpoint, so nothing caught it.
+
+    Compiling the module and resolving each name it references at module scope
+    catches this whole class cheaply, without needing a test per endpoint."""
+    import ast as _ast
+    import pathlib
+    import services.api.accounts as A
+
+    src = pathlib.Path(A.__file__).read_text()
+    tree = _ast.parse(src)
+
+    # every `X.y` where X is a bare name — the shape a missing import takes
+    used = {n.value.id for n in _ast.walk(tree)
+            if isinstance(n, _ast.Attribute) and isinstance(n.value, _ast.Name)}
+    # names bound anywhere in the module (imports, assignments, defs, classes)
+    bound = set(dir(A)) | {"self", "cls"}
+    for n in _ast.walk(tree):
+        if isinstance(n, (_ast.Name, _ast.arg)):
+            bound.add(n.id if isinstance(n, _ast.Name) else n.arg)
+        elif isinstance(n, (_ast.FunctionDef, _ast.ClassDef)):
+            bound.add(n.name)
+        elif isinstance(n, _ast.alias):
+            bound.add((n.asname or n.name).split(".")[0])
+
+    assert hasattr(A, "func"), "sqlalchemy.func must be importable from accounts"
+    missing = sorted(x for x in used if x not in bound)
+    assert not missing, f"names used as `X.attr` but never bound: {missing}"

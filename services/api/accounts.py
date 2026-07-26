@@ -107,7 +107,7 @@ def new_cid() -> str:
 from datetime import datetime, timedelta
 
 from sqlalchemy import (Boolean, Column, DateTime, Float, Integer, JSON, String,
-                        Text, UniqueConstraint)
+                        Text, UniqueConstraint, func)
 
 
 # platform_role: user | staff | super          (staff/super = AXIOM operators)
