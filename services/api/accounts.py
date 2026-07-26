@@ -3954,6 +3954,34 @@ def _kpi_variance(actual, plan):
             "status": "favorable" if actual >= plan else "unfavorable"}
 
 
+@router.get("/companies/{company_id}/kpi-keys/status")
+def kpi_key_status(company_id: int, member=Depends(require_company_admin),
+                   db=Depends(get_db)):
+    """Backfill observability for §4m step 1.
+
+    kpi_key is deliberately serialised nowhere else — it is unread until the
+    link tables exist — which left the step-1 backfill unverifiable from outside
+    the process. Counts only: no key values, no KPI content, admin-gated.
+    Cheap enough to keep permanently as the answer to "did the backfill run".
+    """
+    total = db.query(KpiPlan).filter_by(company_id=company_id).count()
+    keyed = (db.query(KpiPlan)
+             .filter(KpiPlan.company_id == company_id, KpiPlan.kpi_key.isnot(None)).count())
+    active = (db.query(KpiPlan)
+              .filter(KpiPlan.company_id == company_id, KpiPlan.archived.is_(False)).count())
+    active_keyed = (db.query(KpiPlan)
+                    .filter(KpiPlan.company_id == company_id,
+                            KpiPlan.archived.is_(False),
+                            KpiPlan.kpi_key.isnot(None)).count())
+    return {"company_id": company_id,
+            "kpi_rows": total, "kpi_rows_keyed": keyed, "kpi_rows_unkeyed": total - keyed,
+            "active_rows": active, "active_rows_keyed": active_keyed,
+            "distinct_kpi_keys": db.query(KpiPlan.kpi_key).filter(
+                KpiPlan.company_id == company_id, KpiPlan.kpi_key.isnot(None)).distinct().count(),
+            "aliases": db.query(KpiAlias).filter_by(company_id=company_id).count(),
+            "backfill_complete": (total - keyed) == 0}
+
+
 @router.get("/companies/{company_id}/kpi-variance")
 def company_kpi_variance(company_id: int, department: int | None = None,
                          member=Depends(_summary_access), db=Depends(get_db)):
