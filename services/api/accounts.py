@@ -8864,12 +8864,35 @@ def assessment_summary(company_id: int, department: int | None = None,
             continue
         snap = c.snapshot or {}
         if _dept_obj is not None:
-            slice_agg = _pick_dept_slice(db, company_id, _dept_obj,
-                                         snap.get("departments") or {})
+            depts_raw = snap.get("departments") or {}
+            slice_agg = _pick_dept_slice(db, company_id, _dept_obj, depts_raw)
             if slice_agg is None:
                 continue                    # this department did not exist / did not respond
             npart = slice_agg.get("n_participants") or 0
             cei_val = slice_agg.get("cei")
+            # COMPLEMENT INFERENCE — not just the primary n<KFLOOR floor.
+            #
+            # Department slices are an exact partition of respondents, so if only
+            # ONE is hidden it is derivable by subtracting the shown ones from the
+            # total. _partition_status therefore also suppresses the smallest
+            # SHOWN slice until two or more are hidden. The summary has always
+            # done this; the trend I added in Lane 1 applied only the primary
+            # floor, and so published the very number the summary withholds.
+            #
+            # Meridian made it concrete: in cycle 37 Supply Chain (n=2) falls
+            # below the floor, which forces HR (n=3) to be hidden too — and the
+            # trend was returning HR's 6.72 regardless. A per-cycle value is
+            # exactly as re-identifying as the same value on the scorecard.
+            from .assessment_engine import _partition_status
+            try:
+                status = _partition_status(depts_raw)
+                by_norm = {_norm_dept_name(k): v for k, v in status.items()}
+                for _n in _dept_variant_norms(db, company_id, _dept_obj):
+                    if by_norm.get(_n) == "suppress":
+                        cei_val, npart = None, 0
+                        break
+            except Exception:
+                cei_val, npart = None, 0        # fail closed: hide, never leak
         else:
             npart = snap.get("n_participants") or 0
             cei_val = snap.get("cei")

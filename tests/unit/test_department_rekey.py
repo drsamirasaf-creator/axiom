@@ -612,3 +612,33 @@ def test_readiness_slice_reads_department_not_enterprise(_app):
     zulu = {s["code"]: s["score"] for s in out["departments"]["Zulu"]["l1_subscores"]}["7.0"]
     assert alpha != ent and zulu != ent, "slice axes must differ from enterprise"
     assert alpha > zulu, "and from each other, in the direction the data says"
+
+
+def test_department_trend_obeys_complement_inference_not_just_the_floor(_app):
+    """A privacy defect the Meridian seed exposed.
+
+    Department slices are an exact partition of respondents, so if only ONE is
+    hidden it is derivable by subtracting the shown ones from the total.
+    _partition_status therefore suppresses the smallest SHOWN slice until two or
+    more are hidden. The summary has always done this; the per-department trend
+    applied only the primary n<KFLOOR floor and so published the very value the
+    summary withholds.
+
+    Meridian's cycle 37 is the exact shape: Supply Chain (n=2) is below the
+    floor, which forces HR (n=3) to be hidden too — and the trend was returning
+    HR's CEI anyway. A per-cycle value is exactly as re-identifying as the same
+    value on the scorecard."""
+    from services.api.assessment_engine import _partition_status, KFLOOR
+
+    parts = {"Finance": {"n_participants": 9}, "Operations": {"n_participants": 6},
+             "Technology": {"n_participants": 4}, "Sales & Marketing": {"n_participants": 6},
+             "HR": {"n_participants": 3}, "Supply Chain": {"n_participants": 2}}
+    status = _partition_status(parts)
+
+    assert status["Supply Chain"] == "suppress", "below the primary floor"
+    # HR CLEARS the primary floor (3 is not < 3) and must STILL be hidden,
+    # because leaving it visible would make Supply Chain derivable.
+    assert parts["HR"]["n_participants"] >= KFLOOR
+    assert status["HR"] == "suppress", "complement inference must hide it too"
+    assert sum(1 for v in status.values() if v == "suppress") >= 2, "never exactly one hidden"
+    assert status["Finance"] == "show" and status["Operations"] == "show"
