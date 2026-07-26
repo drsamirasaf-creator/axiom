@@ -10154,13 +10154,18 @@ def include_accounts(app, create_tables: bool = True):
     from .document_intel import document_router                       # Phase 7k
     from .forecast_studio import forecast_router                      # Phase 7L
     from .planning import planning_router                             # Phase 7L (KPIs)
+    # Approval gate (C.1/C.3) — imported before create_all so ax_changeset* ride
+    # the same pass; the template producer registers itself on import.
+    from .changeset import changeset_router
+    from .changeset_template import template_changeset_router
     if create_tables:
         Base.metadata.create_all(engine)
         _ensure_ax_columns(engine)
         _backfill_owner_persons()      # §16.2: resolve owner→head person for existing objectives
     for r in (auth_router, oauth_router, company_router, profile_router,
               superadmin_router, stripe_router, prescience_router, decision_router,
-              sentinel_router, document_router, forecast_router, planning_router):
+              sentinel_router, document_router, forecast_router, planning_router,
+              changeset_router, template_changeset_router):
         app.include_router(r)
     if create_tables:
         spawn_nightly()   # no-op unless AXIOM_DECISION_NIGHTLY is enabled
