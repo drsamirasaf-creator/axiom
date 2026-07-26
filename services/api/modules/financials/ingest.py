@@ -16,12 +16,12 @@ from openpyxl.workbook.defined_name import DefinedName
 from . import engines
 from .templates import LABELS, COMPANY_ROWS, BLOCK_KEYS
 
-TEMPLATE_VERSION = "7M-v7.2"   # v7.2: shading = input-only (unshade locked/computed cells)
+TEMPLATE_VERSION = "7M-v7.3"   # v7.3: ACTUAL figures (no thousands convention) + 2025 historical column
 # Both stamps are accepted (v7.0 files are already in the wild; the parser never rejects
 # on version — it records the stamp). On a v7.0 file the Employees column is simply absent
 # and parses to null (_cell_int of a missing cell), so v7.0 and v7.1 parse identically
 # apart from headcount.
-ACCEPTED_TEMPLATE_VERSIONS = frozenset({"7M-v7.0", "7M-v7.1", "7M-v7.2"})
+ACCEPTED_TEMPLATE_VERSIONS = frozenset({"7M-v7.0", "7M-v7.1", "7M-v7.2", "7M-v7.3"})
 # v7.2 is a PRESENTATION-ONLY change (shading convention); v7.0/v7.1 files parse
 # identically — same data shape, same defined names — so all three are accepted.
 
@@ -75,7 +75,7 @@ _thin = Side(style="thin", color="BBD9C6")
 _border = Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
 
 FIRST_COL = 2            # period columns start at B
-ANNUAL_COLS = 5
+ANNUAL_COLS = 6            # v7.3: 2020..2025 (2025 added as HISTORICAL)
 QUARTERLY_COLS = 12
 # v7: optional CLIENT-PLAN forecast columns appended after the historical ones.
 # Left blank by default (no period year) so a history-only upload is unaffected —
@@ -101,7 +101,7 @@ SUBTOTALS = {
 
 
 _WM_FILL = "FFE8A3"   # amber watermark
-WATERMARK = ("SAMPLE DATA (illustrative, in thousands) — replace on EVERY sheet "
+WATERMARK = ("SAMPLE DATA (illustrative, ACTUAL figures) — replace on EVERY sheet "
              "with your own figures")
 
 
@@ -127,8 +127,11 @@ def build_sample_data(ownership: str, standard: str, frequency: str) -> dict:
         revenue = [2250, 2400, 2500, 2850, 2550, 2700, 2850, 3200,
                    2850, 3050, 3200, 3600]
     else:
-        periods = [2020, 2021, 2022, 2023, 2024]
-        revenue = [10000, 11500, 13200, 15200, 17500]
+        # v7.3: ACTUAL figures (was thousands). 2025 added so the historical
+        # run is 2020..2025 and the client plan starts 2026 with no year gap.
+        periods = [2020, 2021, 2022, 2023, 2024, 2025]
+        revenue = [10_000_000, 11_500_000, 13_200_000, 15_200_000,
+                   17_500_000, 20_125_000]
     n = len(periods)
     cogs = [_r50(0.55 * r) for r in revenue]
     opex = [_r50(0.18 * r) for r in revenue]
@@ -214,6 +217,12 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     frequency = (frequency or "annual").lower()
     if frequency not in ("annual", "quarterly"):
         raise ValueError("frequency must be 'annual' or 'quarterly'")
+    # v7.3: the template ALWAYS declares ACTUAL figures. The client types the real
+    # number (17500000 for $17.5m) and AXIOM formats for display; ingest still
+    # normalizes to the canonical millions scale via UNIT_SCALE["actual"], so
+    # nothing downstream changes. The company profile's statement_units no longer
+    # dictates what the workbook asks for — one convention for every client.
+    statement_units = "actual"
     if standard not in LABELS:
         standard = "us_gaap"
     lab = LABELS[standard]
@@ -236,9 +245,10 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     ws["A3"].font = Font(color="446655")
     for r, line in enumerate([
         "How to complete this workbook:",
-        "1. The green cells hold SAMPLE figures for a fictional company (illustrative,",
-        "   in thousands). Replace them on EVERY sheet with your own figures in the",
-        f"   units shown ({unit_label}). Leaving any sheet's sample data in is rejected on upload.",
+        "1. The green cells hold SAMPLE figures for a fictional company. Replace them",
+        "   on EVERY sheet with your own ACTUAL figures — enter the real number, e.g.",
+        "   17500000 for $17.5 million. Do NOT scale to thousands or millions;",
+        "   AXIOM formats for display. Leaving any sheet's sample data in is rejected.",
         f"2. Enter {ncols} {'years' if frequency=='annual' else 'quarters'} across the statement sheets.",
         "   Row 4 = the period label; row 3 marks Historical or Forecast.",
         "   At least one historical period is required.",
