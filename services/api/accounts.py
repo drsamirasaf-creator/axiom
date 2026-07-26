@@ -4288,6 +4288,106 @@ def delete_kpi_link(company_id: int, kpi_id: int, goal_key: str | None = None,
     return {"ok": True, "removed": int(n)}
 
 
+@router.get("/companies/{company_id}/kpis/{kpi_id}/history")
+def kpi_history(company_id: int, kpi_id: int,
+                member=Depends(_summary_access), db=Depends(get_db)):
+    """This KPI's value series across dataset versions.
+
+    NO NEW STORAGE. KpiPlan rows have always been written per dataset version —
+    every upload inserts a fresh set — so the history was already on disk and
+    simply had no identity to gather it by. kpi_key supplies that, which is why
+    this endpoint is a query rather than a schema.
+
+    RENAME-CONTINUOUS: the series is gathered by kpi_key, and kpi_key follows a
+    KPI through a rename via ax_kpi_aliases. So renaming "OTD %" to "On-time
+    delivery %" keeps one unbroken series instead of ending one KPI's history
+    and starting another's — the same read-time alias discipline used for
+    departments and assessment slices.
+
+    NO DIRECTION IS RETURNED, deliberately. There is no polarity column on
+    KpiPlan and the backend's own variance.status is direction-blind (it reads
+    "favorable when actual >= plan", which is wrong for every lower-is-better
+    KPI). Inventing a direction here would launder a guess into the API. The
+    raw series is returned and the consumer applies the direction it already
+    prints on screen, where the assumption is visible and correctable.
+    """
+    row = db.query(KpiPlan).filter_by(id=kpi_id, company_id=company_id).first()
+    if not row:
+        raise HTTPException(404, "KPI not found")
+
+    key = row.kpi_key
+    if not key:
+        # Not yet reached by the backfill (or created in-app since): fall back to
+        # the alias for its (department, name), so history still resolves.
+        key = _resolve_kpi_key(db, company_id, row.department_id, row.kpi_name)
+
+    if not key:
+        points = [row]
+    else:
+        points = (db.query(KpiPlan)
+                  .filter(KpiPlan.company_id == company_id, KpiPlan.kpi_key == key)
+                  .all())
+        # The requested row may itself be unkeyed — created in-app after the
+        # backfill — in which case the key came from its alias and the query
+        # above would not have matched it. Include it rather than returning a
+        # history that omits the very row the caller asked about.
+        #
+        # Deliberately NOT written back: this is a GET, and a read that quietly
+        # mutates is a read you cannot reason about. The backfill keys it on the
+        # next boot.
+        if all(p.id != row.id for p in points):
+            points.append(row)
+
+    # Dataset rows supply version/is_active/uploaded_at — ENRICHMENT, not the
+    # series itself. If they cannot be read the series is still correct, ordered
+    # by KpiPlan.uploaded_at, so the lookup degrades instead of failing: a
+    # history endpoint that 500s because it could not decorate its points would
+    # be worse than one that returns them plainly.
+    ds_by_id = {}
+    try:
+        from .modules.financials.models import FinancialDataset
+        ds_by_id = {d.id: d for d in db.query(FinancialDataset)
+                    .filter(FinancialDataset.id.in_([p.dataset_id for p in points] or [0])).all()}
+    except Exception:
+        db.rollback()
+
+    def _when(p):
+        d = ds_by_id.get(p.dataset_id)
+        return (d.uploaded_at or d.created_at) if d else p.uploaded_at
+
+    points = sorted(points, key=lambda p: (_when(p) or datetime.min, p.dataset_id))
+    series = []
+    for p in points:
+        d = ds_by_id.get(p.dataset_id)
+        series.append({
+            "dataset_id": p.dataset_id,
+            "dataset_version": d.version if d else None,
+            "is_active": bool(d.is_active) if d else None,
+            "uploaded_at": _when(p),
+            "kpi_name": p.kpi_name,          # kept per point: a rename is visible in the series
+            "unit": p.unit,
+            "ytd_actual": p.ytd_actual,
+            "ytd_plan": p.ytd_plan,
+            "full_year_target": p.full_year_target,
+            "archived": bool(p.archived),
+        })
+
+    # Same honesty as the single-cycle CEI trend: one point is a reading, not a
+    # trajectory, and the caller is told so rather than left to draw a line
+    # through one dot.
+    renamed = len({s["kpi_name"] for s in series}) > 1
+    return {"company_id": company_id, "kpi_id": kpi_id, "kpi_key": key,
+            "points": len(series), "series": series,
+            "sufficient_for_trend": len(series) >= 2,
+            "insufficient_reason": (None if len(series) >= 2
+                                    else "only one dataset version carries this KPI"),
+            "renamed_over_time": renamed,
+            "direction": None,
+            "direction_note": ("No polarity is stored for KPIs, so no direction is asserted "
+                               "here — apply the direction shown to the user."),
+            }
+
+
 @router.get("/companies/{company_id}/kpi-keys/status")
 def kpi_key_status(company_id: int, member=Depends(require_company_admin),
                    db=Depends(get_db)):
