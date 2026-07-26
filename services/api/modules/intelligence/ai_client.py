@@ -53,5 +53,10 @@ def complete_messages(system: str, messages: list, max_tokens: int = 1500,
     text = "".join(b.get("text", "") for b in data.get("content", [])
                    if b.get("type") == "text")
     usage = data.get("usage", {}) or {}
+    # cache_* are surfaced so callers can PROVE caching is working. input_tokens
+    # counts only the UNCACHED remainder, so a cached call looks near-free on that
+    # field alone -- true spend is the three read together.
     return text, {"input_tokens": usage.get("input_tokens", 0),
-                  "output_tokens": usage.get("output_tokens", 0)}
+                  "output_tokens": usage.get("output_tokens", 0),
+                  "cache_read_input_tokens": usage.get("cache_read_input_tokens", 0),
+                  "cache_creation_input_tokens": usage.get("cache_creation_input_tokens", 0)}

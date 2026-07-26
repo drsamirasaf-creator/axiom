@@ -10434,6 +10434,12 @@ def _ensure_ax_columns(engine):
     _add("ax_assessment_invites", "last_reminded_at", "last_reminded_at TIMESTAMP")
     _add("ax_assessment_invites", "revoked_at", "revoked_at TIMESTAMP")
     _add("ax_assessment_invites", "alt_email", "alt_email VARCHAR(255)")
+    # Prompt-caching meter split (Ask AXIOM). ax_prescience_usage predates these
+    # two, so existing deployments need the ALTER; create_all covers fresh ones.
+    _add("ax_prescience_usage", "cache_read_tokens",
+         "cache_read_tokens INTEGER NOT NULL DEFAULT 0")
+    _add("ax_prescience_usage", "cache_write_tokens",
+         "cache_write_tokens INTEGER NOT NULL DEFAULT 0")
     try:                                     # abstention stores score NULL — drop the NOT NULL
         col = {c["name"]: c for c in _inspect(engine).get_columns("ax_assessment_responses")}
         if "score" in col and not col["score"].get("nullable", True):

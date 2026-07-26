@@ -48,6 +48,24 @@ prescience_router = APIRouter(tags=["prescience"])
 PRESCIENCE_MODEL = os.environ.get("AXIOM_PRESCIENCE_MODEL", "claude-sonnet-4-6")
 ANSWER_MAX_TOKENS = int(os.environ.get("AXIOM_PRESCIENCE_MAX_TOKENS", "1500"))
 DAILY_CAP = int(os.environ.get("AXIOM_PRESCIENCE_DAILY_CAP", "200"))
+
+# GLOBAL ceiling across ALL companies. The per-company cap bounds one tenant's
+# spend but NOT total spend: N companies x DAILY_CAP is unbounded in N, so the
+# per-company cap alone can never guarantee a monthly figure.
+#
+# Sizing (measured on Meridian, claude-sonnet-4-6 @ $3/$15 per 1M):
+#   worst case per question WITH caching = ~470 effective input tok ($0.0014)
+#                                        + 1500 output tok cap    ($0.0225)
+#                                        = $0.0239
+#   $100 / $0.0239 / 31 days = 135/day. Set to 130 for margin -> ~$96/month
+#   worst case, ~$46/month at the measured average.
+# NB output is NOT cacheable and dominates the worst case, so caching does not
+# raise this ceiling proportionally -- see the report in the commit message.
+GLOBAL_DAILY_CAP = int(os.environ.get("AXIOM_PRESCIENCE_GLOBAL_DAILY_CAP", "130"))
+
+# Low-friction shareable credential (scoped magic-link viewer). Small per-holder
+# allowance: enough to experience the capability, bounded per link-holder.
+VIEWER_DAILY_CAP = int(os.environ.get("AXIOM_PRESCIENCE_VIEWER_DAILY_CAP", "6"))
 HISTORY_TURNS = int(os.environ.get("AXIOM_PRESCIENCE_HISTORY", "10"))  # messages, ~5 Q/A
 
 
@@ -83,10 +101,30 @@ class PrescienceUsage(Base):
     company_id = Column(Integer, index=True, nullable=False)
     day = Column(String(10), nullable=False)                   # YYYY-MM-DD (UTC)
     calls = Column(Integer, default=0, nullable=False)
-    input_tokens = Column(Integer, default=0, nullable=False)
+    input_tokens = Column(Integer, default=0, nullable=False)   # UNCACHED remainder only
     output_tokens = Column(Integer, default=0, nullable=False)
+    # Split out so the meter stays truthful once caching is on. `input_tokens`
+    # from the API counts only the uncached remainder, so without these two the
+    # stored figure would appear to collapse when caching landed and understate
+    # real spend. Reads bill ~0.1x, writes ~1.25x -- different rates, so they
+    # cannot be folded into one number.
+    cache_read_tokens = Column(Integer, default=0, nullable=False)
+    cache_write_tokens = Column(Integer, default=0, nullable=False)
     __table_args__ = (UniqueConstraint("company_id", "day",
                                        name="uq_prescience_usage_day"),)
+
+
+class PrescienceViewerUsage(Base):
+    """One row per (user, UTC day) for LOW-FRICTION viewers (scoped magic-link
+    holders). Separate from PrescienceUsage, which meters cost per company: this
+    meters *abuse surface* per credential holder and carries a much smaller cap."""
+    __tablename__ = "ax_prescience_viewer_usage"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    day = Column(String(10), nullable=False)
+    calls = Column(Integer, default=0, nullable=False)
+    __table_args__ = (UniqueConstraint("user_id", "day",
+                                       name="uq_prescience_viewer_day"),)
 
 
 class PrescienceContext(Base):
@@ -568,6 +606,31 @@ def _usage_row(db, company_id, day):
     return row
 
 
+def _global_calls_today(db, day):
+    """Total calls across ALL companies for the UTC day. Computed as a SUM rather
+    than a sentinel row so it can never drift out of step with the per-company
+    counters it is derived from."""
+    return int(db.query(func.coalesce(func.sum(PrescienceUsage.calls), 0))
+               .filter(PrescienceUsage.day == day).scalar() or 0)
+
+
+def _viewer_row(db, user_id, day):
+    row = db.query(PrescienceViewerUsage).filter_by(user_id=user_id, day=day).first()
+    if not row:
+        row = PrescienceViewerUsage(user_id=user_id, day=day, calls=0)
+        db.add(row); db.flush()
+    return row
+
+
+def _limit_reached(message, kind):
+    """A cap is an expected end-state, not a failure. Returning 200 with an
+    answer-shaped body lets the chat UI render it inline as a message, rather
+    than a red error toast that reads like the product broke."""
+    return {"answer": message, "conversation_id": None, "sources_used": [],
+            "usage": {"input_tokens": 0, "output_tokens": 0},
+            "limit_reached": True, "limit_kind": kind}
+
+
 def _cite_tags(answer, valid):
     found = set(re.findall(r"\[([a-z0-9_.]+)\]", answer or ""))
     return sorted(found & set(valid))
@@ -584,14 +647,38 @@ def ask_axiom(company_id: int, body: AskBody,
     if not anthropic_api_key():
         raise HTTPException(503, "Prescience is not configured on this deployment.")
 
-    # daily cost cap (per company, UTC day)
+    # ---- cost / abuse ceilings, cheapest check first, all BEFORE any model spend ----
     day = _today_utc()
+
+    # 1. GLOBAL: the only ceiling that actually bounds total spend.
+    if _global_calls_today(db, day) >= GLOBAL_DAILY_CAP:
+        return _limit_reached(
+            "Ask AXIOM has reached today's demo question limit across the "
+            "platform. It resets at 00:00 UTC — please try again tomorrow.",
+            "global")
+
+    # 2. PER-HOLDER: a scoped magic-link is shareable, so it is the low-friction
+    #    vector. Real members skip this and are governed by the per-company cap.
+    scope = getattr(user, "_token_scope", None)
+    vrow = None
+    if scope:
+        vrow = _viewer_row(db, user.id, day)
+        if vrow.calls >= VIEWER_DAILY_CAP:
+            db.commit()
+            return _limit_reached(
+                f"You've used all {VIEWER_DAILY_CAP} questions available on this "
+                f"shared preview link. Start a free pilot to keep asking — your "
+                f"own workspace has a much higher allowance.",
+                "viewer")
+
+    # 3. PER-COMPANY: one tenant's own cost guard.
     row = _usage_row(db, company_id, day)
     if row.calls >= DAILY_CAP:
         db.commit()
-        raise HTTPException(429, f"AXIOM Prescience has reached its daily limit of "
-                                 f"{DAILY_CAP} questions for this company. It resets at "
-                                 f"00:00 UTC — try again tomorrow.")
+        return _limit_reached(
+            f"This company has reached its daily limit of {DAILY_CAP} questions. "
+            f"It resets at 00:00 UTC — try again tomorrow.",
+            "company")
 
     # resume or open a conversation (per company + per user)
     conv = None
@@ -611,27 +698,56 @@ def ask_axiom(company_id: int, body: AskBody,
     # 7k: ask-time document excerpt selection, appended INSIDE the same delimited
     # untrusted block (SYSTEM_PROMPT rule 3 governs it); tags join valid sources so
     # page-level [doc.<slug>.p<N>] citations validate.
-    context_text = ctx["context"]
     valid_sources = list(ctx["sources"])
+    doc_block = ""
     try:
         from .document_intel import select_excerpts
         doc_block, doc_tags = select_excerpts(db, company_id, body.question, body.focus)
         if doc_block:
-            context_text = context_text + "\n\n" + doc_block
             valid_sources = valid_sources + doc_tags
     except Exception:
-        pass
+        doc_block = ""
 
-    # history: last N messages of this conversation, oldest first (no context — cheap)
+    # ---- message layout is dictated by PROMPT CACHING, which is a PREFIX match ----
+    #
+    # The grounding context is ~3,400 tokens and byte-identical for a company until
+    # its data changes, so it is worth caching. But caching only pays if the cached
+    # span sits at a STABLE PREFIX. The context used to be concatenated with the
+    # question in the FINAL message, behind the variable history — the single worst
+    # position: the question differs every call, so the block was never reusable and
+    # a cache_control marker there would have written a fresh entry every time and
+    # billed the 1.25x write premium for nothing.
+    #
+    # So the context moves to its own leading message with the breakpoint on it, and
+    # everything volatile stays AFTER: history, then the per-question document
+    # excerpts, then the question itself.
+    #
+    # It stays in the USER role deliberately. Hoisting it into `system` would cache
+    # equally well and is the more obvious move — but company context includes
+    # excerpts from user-UPLOADED documents, and the system prompt is the one place
+    # whose contents the model treats as instructions. Rule 3 of SYSTEM_PROMPT exists
+    # precisely to mark this block as untrusted data; promoting it to system authority
+    # would hand any uploaded PDF a prompt-injection channel. A cheaper token bill is
+    # not worth that trade.
+    messages = [{"role": "user", "content": [{
+        "type": "text",
+        "text": f"=== COMPANY CONTEXT ===\n{ctx['context']}\n=== END CONTEXT ===",
+        "cache_control": {"type": "ephemeral"},
+    }]}]
+
     hist = (db.query(PrescienceMessage)
             .filter_by(conversation_id=conv.id)
             .order_by(PrescienceMessage.id.desc()).limit(HISTORY_TURNS).all())
     hist = list(reversed(hist))
-    messages = [{"role": m.role, "content": m.content} for m in hist]
-    # current turn: context + question, delimited as untrusted data
-    user_turn = (f"=== COMPANY CONTEXT ===\n{context_text}\n=== END CONTEXT ===\n\n"
-                 f"Question: {body.question}")
-    messages.append({"role": "user", "content": user_turn})
+    messages += [{"role": m.role, "content": m.content} for m in hist]
+
+    # Per-question document excerpts are NOT cacheable (they are selected from the
+    # question), so they ride the final turn, after the breakpoint, inside the same
+    # delimited untrusted framing.
+    tail = ""
+    if doc_block:
+        tail = f"=== ADDITIONAL CONTEXT ===\n{doc_block}\n=== END CONTEXT ===\n\n"
+    messages.append({"role": "user", "content": f"{tail}Question: {body.question}"})
 
     try:
         answer, usage = ai_client.complete_messages(
@@ -644,6 +760,8 @@ def ask_axiom(company_id: int, body: AskBody,
     sources_used = _cite_tags(answer, valid_sources)
     in_tok = usage.get("input_tokens", 0)
     out_tok = usage.get("output_tokens", 0)
+    cache_read = usage.get("cache_read_input_tokens", 0)
+    cache_write = usage.get("cache_creation_input_tokens", 0)
 
     # persist the turn (user question carries no token attribution; the model
     # billed the whole prompt on the assistant row)
@@ -655,13 +773,19 @@ def ask_axiom(company_id: int, body: AskBody,
                              input_tokens=in_tok, output_tokens=out_tok))
     conv.updated_at = datetime.utcnow()
     row.calls += 1
+    if vrow is not None:
+        vrow.calls += 1
     row.input_tokens += in_tok
     row.output_tokens += out_tok
+    row.cache_read_tokens = (row.cache_read_tokens or 0) + cache_read
+    row.cache_write_tokens = (row.cache_write_tokens or 0) + cache_write
     db.commit()
 
     return {"answer": answer, "conversation_id": conv.id,
             "sources_used": sources_used,
-            "usage": {"input_tokens": in_tok, "output_tokens": out_tok}}
+            "usage": {"input_tokens": in_tok, "output_tokens": out_tok,
+                      "cache_read_input_tokens": cache_read,
+                      "cache_creation_input_tokens": cache_write}}
 
 
 @prescience_router.get("/companies/{company_id}/prescience/conversations")
