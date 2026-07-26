@@ -4471,6 +4471,102 @@ def seed_assessment_history(company_id: int, body: SeedHistoryIn,
     return out
 
 
+SEED_REF_PREFIX = "seed:"          # every synthetic respondent_ref starts with this
+SEED_MARKER = "axiom-seed"         # created_by_name on seeded objectives / KPIs
+
+
+class UnseedIn(BaseModel):
+    cycle_names: list[str] = []
+    include_okrs: bool = False     # also remove seeded objectives / KPIs / links
+    dry_run: bool = False
+
+
+@router.post("/companies/{company_id}/assessment/unseed-history")
+def unseed_assessment_history(company_id: int, body: UnseedIn,
+                              member=Depends(require_company_admin),
+                              user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Remove exactly what the seed created, and nothing else.
+
+    NAMES SELECT; STRUCTURE DECIDES. A cycle is named in the request, but it is
+    only deleted once every one of its responses is confirmed to carry the
+    synthetic `seed:` participant_ref. Passing cycle 37's name here removes
+    nothing — its respondents are real, so the structural check refuses it. A
+    reverse operation that trusts a caller-supplied name is one typo away from
+    deleting the thing it was built to protect.
+
+    Showcase-gated like the seed: this deletes assessment history, which is the
+    last thing that should be reachable on a real tenant.
+    """
+    if not _is_showcase_company(db, company_id):
+        raise HTTPException(
+            403, "unseed-history is restricted to showcase companies.")
+
+    out = {"cycles_removed": [], "refused": [], "responses_removed": 0,
+           "objectives_removed": 0, "kpis_removed": 0, "links_removed": 0,
+           "dry_run": body.dry_run}
+
+    for nm in body.cycle_names:
+        # ALL matches, not .first(). The seed is idempotent by name so duplicates
+        # should not arise — but if one ever did, removing only the first would
+        # leave a half-unseeded company that looks clean and is not.
+        matches = (db.query(AssessmentCycle)
+                   .filter_by(company_id=company_id, name=nm.strip()).all())
+        if not matches:
+            out["refused"].append({"name": nm, "reason": "no such cycle"})
+            continue
+        for cyc in matches:
+            rows = db.query(AssessmentResponse).filter_by(cycle_id=cyc.id).all()
+            real = [r for r in rows
+                    if not (r.participant_ref or "").startswith(SEED_REF_PREFIX)]
+            if real:
+                # THE GUARD. Refuse rather than partially delete: a cycle holding
+                # even one genuine respondent is not a seeded cycle.
+                out["refused"].append({
+                    "name": nm, "cycle_id": cyc.id,
+                    "reason": f"{len(real)} of {len(rows)} responses are NOT synthetic — "
+                              f"this is not a seeded cycle"})
+                continue
+            n = len(rows)
+            if not body.dry_run:
+                db.query(AssessmentResponse).filter_by(cycle_id=cyc.id).delete(
+                    synchronize_session=False)
+                db.delete(cyc)
+            out["responses_removed"] += n
+            out["cycles_removed"].append({"name": nm, "cycle_id": cyc.id, "responses": n})
+
+    if body.include_okrs:
+        # Seeded OKR rows carry the marker in created_by_name; links to a removed
+        # KPI go with it, resolved through kpi_key so the join survives renames.
+        kpis = (db.query(KpiPlan)
+                .filter_by(company_id=company_id, created_by_name=SEED_MARKER).all())
+        keys = {k.kpi_key for k in kpis if k.kpi_key}
+        if keys:
+            for model in (KpiObjectiveLink, KpiInitiativeLink):
+                q = db.query(model).filter(model.company_id == company_id,
+                                           model.kpi_key.in_(list(keys)))
+                out["links_removed"] += q.count()
+                if not body.dry_run:
+                    q.delete(synchronize_session=False)
+        out["kpis_removed"] = len(kpis)
+        objs = (db.query(Objective)
+                .filter_by(company_id=company_id, created_by_name=SEED_MARKER).all())
+        out["objectives_removed"] = len(objs)
+        if not body.dry_run:
+            for k in kpis:
+                db.delete(k)
+            for o in objs:
+                db.delete(o)
+
+    if body.dry_run:
+        db.rollback()
+        out["note"] = "dry run — nothing removed"
+        return out
+    audit(db, user.id, "assessment_history_unseeded", "company", company_id,
+          detail=f"cycles={len(out['cycles_removed'])} responses={out['responses_removed']}")
+    db.commit()
+    return out
+
+
 @router.get("/companies/{company_id}/kpis/{kpi_id}/history")
 def kpi_history(company_id: int, kpi_id: int,
                 member=Depends(_summary_access), db=Depends(get_db)):

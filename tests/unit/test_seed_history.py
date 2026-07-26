@@ -142,3 +142,99 @@ def test_centring_does_not_make_respondents_identical(_app):
             for h in hs]
     assert len({tuple(r) for r in rows}) == 5, "five distinct respondents"
     assert len(set(hs)) == 5 and max(hs) - min(hs) > 0.2, "harshness still varies"
+
+
+# ── unseed ───────────────────────────────────────────────────────────────────
+def test_unseed_is_showcase_gated(_app, monkeypatch):
+    from fastapi import HTTPException
+    monkeypatch.setattr(A, "_is_showcase_company", lambda db, cid: cid == 20)
+    for real in (25, 38, 1):
+        with pytest.raises(HTTPException) as e:
+            A.unseed_assessment_history(real, A.UnseedIn(), member=None, user=None, db=None)
+        assert e.value.status_code == 403
+
+
+def test_unseed_refuses_a_cycle_holding_real_respondents(_app, monkeypatch):
+    """THE GUARD, and the reason unseed does not trust its input. A cycle is
+    named by the caller but deleted only if EVERY response carries the synthetic
+    seed: prefix. Passing the live cycle's name must remove nothing — otherwise
+    the reverse operation is one typo away from destroying the history it exists
+    to protect."""
+    from services.api.accounts import (
+        SessionLocal, AssessmentCycle, AssessmentResponse, SEED_REF_PREFIX,
+    )
+    monkeypatch.setattr(A, "_is_showcase_company", lambda db, cid: cid == 20)
+    db = SessionLocal()
+    CO = 20
+    try:
+        cyc = AssessmentCycle(company_id=CO, framework_id=1, revision=1,
+                              name="UNSEED GUARD PROBE", anonymity_mode="anonymous",
+                              depth="standard")
+        db.add(cyc); db.flush()
+        db.add(AssessmentResponse(cycle_id=cyc.id, participant_ref="seed:ops:0:1",
+                                  item_id=1, score=6))
+        db.add(AssessmentResponse(cycle_id=cyc.id, participant_ref="real-person-42",
+                                  item_id=1, score=7))     # ONE genuine respondent
+        db.commit()
+
+        out = A.unseed_assessment_history(
+            CO, A.UnseedIn(cycle_names=["UNSEED GUARD PROBE"], dry_run=True),
+            member=None, user=None, db=db)
+
+        assert out["cycles_removed"] == []
+        assert len(out["refused"]) == 1
+        assert "NOT synthetic" in out["refused"][0]["reason"]
+        assert db.get(AssessmentCycle, cyc.id) is not None, "cycle still present"
+    finally:
+        db.query(AssessmentResponse).filter_by(cycle_id=cyc.id).delete(synchronize_session=False)
+        db.query(AssessmentCycle).filter_by(id=cyc.id).delete(synchronize_session=False)
+        db.commit(); db.close()
+
+
+def test_unseed_removes_a_fully_synthetic_cycle(_app, monkeypatch):
+    from services.api.accounts import SessionLocal, AssessmentCycle, AssessmentResponse
+    monkeypatch.setattr(A, "_is_showcase_company", lambda db, cid: cid == 20)
+    db = SessionLocal()
+    CO = 20
+    # leftovers from an interrupted earlier run would otherwise be picked up
+    for stale in db.query(AssessmentCycle).filter_by(company_id=CO, name="UNSEED CLEAN PROBE").all():
+        db.query(AssessmentResponse).filter_by(cycle_id=stale.id).delete(synchronize_session=False)
+        db.delete(stale)
+    db.commit()
+    try:
+        cyc = AssessmentCycle(company_id=CO, framework_id=1, revision=1,
+                              name="UNSEED CLEAN PROBE", anonymity_mode="anonymous",
+                              depth="standard")
+        db.add(cyc); db.flush()
+        for i in range(3):
+            db.add(AssessmentResponse(cycle_id=cyc.id, participant_ref=f"seed:ops:{i}:9",
+                                      item_id=1, score=6))
+        db.commit()
+        cid = cyc.id
+
+        class _U:            # audit() needs an actor id on the committing path
+            id = 1
+        out = A.unseed_assessment_history(
+            CO, A.UnseedIn(cycle_names=["UNSEED CLEAN PROBE"]),
+            member=None, user=_U(), db=db)
+
+        assert out["responses_removed"] == 3
+        assert [c["cycle_id"] for c in out["cycles_removed"]] == [cid]
+        assert db.get(AssessmentCycle, cid) is None
+        assert db.query(AssessmentResponse).filter_by(cycle_id=cid).count() == 0
+    finally:
+        db.close()
+
+
+def test_unseed_reports_unknown_names_rather_than_failing(_app, monkeypatch):
+    from services.api.accounts import SessionLocal
+    monkeypatch.setattr(A, "_is_showcase_company", lambda db, cid: cid == 20)
+    db = SessionLocal()
+    try:
+        out = A.unseed_assessment_history(
+            20, A.UnseedIn(cycle_names=["no such cycle at all"], dry_run=True),
+            member=None, user=None, db=db)
+        assert out["refused"][0]["reason"] == "no such cycle"
+        assert out["cycles_removed"] == []
+    finally:
+        db.close()
