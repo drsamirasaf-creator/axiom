@@ -280,3 +280,41 @@ def test_live_upload_contract_is_preserved_through_the_gate(_app):
         assert db.query(ChangesetSnapshot).filter_by(changeset_id=cs.id).count() == 1
     finally:
         db.close()
+
+
+def test_preview_envelope_matches_the_review_ui_contract(_app):
+    """Guards the shape ChangesetReview.tsx destructures. If the envelope drifts,
+    the Wizard's review screen breaks silently — so assert it here."""
+    db = SessionLocal()
+    try:
+        ent = _company(db, "UI Contract Co")
+        cs = create_changeset(
+            db, company_id=ent.id, source=f"{SOURCE}:v7.2", source_ref="book.xlsx",
+            items=[{"category": "financials", "op": "update", "entity_key": "statements",
+                    "entity_label": "Financial statements",
+                    "old_value": {"version": 1}, "new_value": {"periods": 10}},
+                   {"category": "kpis", "op": "create", "entity_key": "gm",
+                    "entity_label": "Gross margin", "new_value": {"unit": "%"},
+                    "validation": "error", "validation_detail": "unit missing"}],
+            payload=_payload(), provenance={"template_version": "v7.2"})
+        env = preview(db, cs)
+
+        for k in ("id", "source", "source_ref", "status", "counts", "decisions",
+                  "categories", "changes", "committable"):
+            assert k in env, f"review UI reads '{k}'"
+        assert set(env["counts"]) >= {"clean", "error", "collision"}
+        assert set(env["decisions"]) >= {"pending", "approved", "rejected"}
+        for cat, items in env["changes"].items():
+            for i in items:
+                for k in ("id", "category", "op", "entity_key", "label", "old",
+                          "new", "validation", "decision", "applied"):
+                    assert k in i, f"review UI reads item.{k}"
+
+        # the error row must resist accept-all, which is what the UI promises
+        decide(db, cs, decision=APPROVED, scope="all")
+        env = preview(db, cs)
+        bad = next(i for i in env["changes"]["kpis"] if i["entity_key"] == "gm")
+        assert bad["decision"] == "pending" and bad["validation"] == "error"
+        assert env["committable"] is True          # the clean one can still apply
+    finally:
+        db.close()
