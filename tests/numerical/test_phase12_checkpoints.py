@@ -68,5 +68,12 @@ def test_simulate_custom_and_validation():
     assert c["p_negative_fcff_by_year"][-1] > 0.0     # stressed enough to bite
     with pytest.raises(ValueError):
         twin.simulate(meridian(), "apocalypse")
+    # 8e47a6f (7L Stage 1) raised the horizon ceiling from 10 to 15, so 11 is now
+    # valid. Boundary coverage is PRESERVED, just moved to the new limit: 15 is
+    # accepted, 16 is refused.
+    ok = twin.simulate(meridian(), "baseline", horizon=15)
+    assert len(ok["p_negative_fcff_by_year"]) == 15
     with pytest.raises(ValueError):
-        twin.simulate(meridian(), "baseline", horizon=11)
+        twin.simulate(meridian(), "baseline", horizon=16)
+    with pytest.raises(ValueError):
+        twin.simulate(meridian(), "baseline", horizon=0)

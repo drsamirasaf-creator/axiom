@@ -99,7 +99,14 @@ def test_halcyon_auto_forecast_valuation_with_dlom():
     assert abs(det["equity_value"] - 211.1416) < 5e-3
     assert abs(det["dlom"] - 0.20) < 1e-9
     assert abs(det["equity_value_post_dlom"] - 168.9133) < 5e-3
-    assert det["value_per_share"] is None               # private company
+    # de8cfa3: per-share is computed whenever shares are supplied, for private
+    # companies too — off the DLOM-ADJUSTED equity, and flagged INDICATIVE
+    # (illiquid private shares, not a market price). It asserted `is None` back
+    # when per-share was public-only.
+    assert abs(det["value_per_share"] - 16.891331) < 5e-6
+    assert abs(det["value_per_share"]
+               - det["equity_value_post_dlom"] / 10.0) < 5e-6   # 10 shares
+    assert det["value_per_share_indicative"] is True             # private
     assert abs(r["forecast"]["fcff"][0] - 20.392324) < 5e-4
     assert r["all_checkpoints_pass"] is True
 

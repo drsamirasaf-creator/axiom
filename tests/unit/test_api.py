@@ -334,9 +334,24 @@ def test_valuation_three_modes_and_runs(auth_client):
     assert res["all_checkpoints_pass"] is True
     assert abs(res["deterministic"]["enterprise_value"] - 2481.3499) < 5e-2
     assert abs(res["risk_adjusted"]["raev"] - 2313.27) < 0.05
-    # wrong mode for this dataset -> 422; unknown dataset -> 404
-    assert auth_client.post("/api/v1/valuation/run",
-                       json={"dataset_id": mid, "mode": "auto_forecast"}).status_code == 422
+    # eb86fbc (plan-vs-forecast toggle): auto_forecast is a SUPPORTED mode on a
+    # dataset that carries a client plan — the plan is stripped transiently and
+    # AXIOM's own projection is valued instead. It used to 422 ("dataset already
+    # contains pro forma years"), which is the removed bug this once asserted.
+    af = auth_client.post("/api/v1/valuation/run",
+                          json={"dataset_id": mid, "mode": "auto_forecast"})
+    assert af.status_code == 201
+    af_res = af.json()["result"]
+    assert af_res["all_checkpoints_pass"] is True
+    # it valued AXIOM's projection, not the client plan: the mode is echoed and
+    # the EV differs from the proforma run above.
+    assert af.json()["mode"] == "auto_forecast"
+    assert abs(af_res["deterministic"]["enterprise_value"]
+               - res["deterministic"]["enterprise_value"]) > 1e-6
+    # the client plan is NEVER mutated in storage by that transient strip
+    kept = auth_client.get(f"/api/v1/financials/datasets/{mid}").json()
+    assert kept["data"]["periods"]["forecast"], "client plan must survive auto_forecast"
+    # unknown dataset -> 404
     assert auth_client.post("/api/v1/valuation/run",
                        json={"dataset_id": 99999, "mode": "proforma"}).status_code == 404
     runs = auth_client.get("/api/v1/valuation/runs").json()
