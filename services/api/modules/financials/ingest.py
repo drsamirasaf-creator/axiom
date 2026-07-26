@@ -7,6 +7,7 @@ the showcase datasets the engines already consume. A hidden _AXIOM sheet lets
 an upload self-identify (company_id, frequency, template_version).
 """
 import io
+import re
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Protection, Border, Side
 from openpyxl.utils import get_column_letter
@@ -16,12 +17,35 @@ from openpyxl.workbook.defined_name import DefinedName
 from . import engines
 from .templates import LABELS, COMPANY_ROWS, BLOCK_KEYS
 
-TEMPLATE_VERSION = "7M-v7.3"   # v7.3: ACTUAL figures (no thousands convention) + 2025 historical column
+def split_refs(v):
+    """Comma/semicolon/whitespace-separated refs -> a clean, de-duped,
+    order-preserving list. Accepts the separators people actually type rather
+    than insisting on one.
+
+    Module-level rather than a closure inside the parser so the test exercises
+    THIS function instead of a copy of it — a copied splitter drifts from the
+    real one without anything failing."""
+    if v in (None, ""):
+        return []
+    out, seen = [], set()
+    for tok in re.split(r"[,;/\s]+", str(v).strip()):
+        t = tok.strip().upper()
+        if t and t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
+
+
+TEMPLATE_VERSION = "7M-v7.4"   # v7.4: optional KPI link columns (G serves-objectives, H addressed-by-initiatives)
 # Both stamps are accepted (v7.0 files are already in the wild; the parser never rejects
 # on version — it records the stamp). On a v7.0 file the Employees column is simply absent
 # and parses to null (_cell_int of a missing cell), so v7.0 and v7.1 parse identically
 # apart from headcount.
-ACCEPTED_TEMPLATE_VERSIONS = frozenset({"7M-v7.0", "7M-v7.1", "7M-v7.2", "7M-v7.3"})
+# Older versions keep parsing. A v7.3 workbook simply has no G/H, which reads as
+# "this upload declares no template links" — NOT as "delete the links you have":
+# in-app links are untouched by definition, and template links flag rather than
+# vanish. Honest degradation, not a forced migration.
+ACCEPTED_TEMPLATE_VERSIONS = frozenset({"7M-v7.0", "7M-v7.1", "7M-v7.2", "7M-v7.3", "7M-v7.4"})
 # v7.2 is a PRESENTATION-ONLY change (shading convention); v7.0/v7.1 files parse
 # identically — same data shape, same defined names — so all three are accepted.
 
@@ -520,10 +544,19 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     # ---- (§4o) KPI Plan vs Actual ----
     ws = wb.create_sheet(KPI_SHEET)
     ws["A1"] = ("Plan vs actual for your headline KPIs. The four standard rows are seeded — "
-                "fill YTD Plan / YTD Actual / Full-year Target; add your own KPIs below. Up to 200 rows.")
+                "fill YTD Plan / YTD Actual / Full-year Target; add your own KPIs below. Up to 200 rows. "
+                "Optional: column G links a KPI to the objectives it measures (Objective IDs from the "
+                "Objectives sheet, comma-separated, e.g. O1, O4); column H links it to the initiatives "
+                "addressing it (ref codes, e.g. A1, B3). Unknown references are reported as warnings and "
+                "skipped — they never stop the KPI row from loading.")
     ws["A1"].font = Font(italic=True, color="446655")
     #   …+ F Department (dropdown sourced from the Organization sheet, free text allowed)
-    kpi_hdrs = ["KPI name", "Unit", "YTD Plan", "YTD Actual", "Full-year Target", "Department (optional)"]
+    # G/H reuse vocabularies already visible in this workbook: the Objective IDs
+    # the Key Results sheet references, and the initiative ref codes shown
+    # throughout the app. Both optional, both comma-separated, both warn-only.
+    kpi_hdrs = ["KPI name", "Unit", "YTD Plan", "YTD Actual", "Full-year Target",
+                "Department (optional)",
+                "Serves Objective IDs (optional)", "Addressed by Initiative refs (optional)"]
     for i, h in enumerate(kpi_hdrs):
         _hdr(ws.cell(row=KPI_HEADER_ROW, column=1 + i), h, bg=_INK, fg=_ACCENT)
     kpi_last = KPI_DATA_START + ROW_CAPACITY - 1
@@ -1038,6 +1071,7 @@ def parse_okr_and_kpis(content: bytes):
     # ---- KPIs (unchanged) ----
     if has_kpis:
         ws = wb[KPI_SHEET]
+
         def _knum(v, col, r, label):
             if v in (None, ""):
                 return None
@@ -1056,7 +1090,14 @@ def parse_okr_and_kpis(content: bytes):
                          "ytd_plan": _knum(ws.cell(row=r, column=3).value, "C", r, name + " YTD Plan"),
                          "ytd_actual": _knum(ws.cell(row=r, column=4).value, "D", r, name + " YTD Actual"),
                          "full_year_target": _knum(ws.cell(row=r, column=5).value, "E", r, name + " Full-year Target"),
-                         "department": _cell_str(ws.cell(row=r, column=6).value) or None})
+                         "department": _cell_str(ws.cell(row=r, column=6).value) or None,
+                         # Raw refs as typed. Resolution to goal_key /
+                         # initiative_id happens at APPLY time, where the
+                         # objectives and initiatives of this company are known —
+                         # the parser only splits and tidies, so a workbook read
+                         # in isolation never needs a database.
+                         "serves_objective_ids": split_refs(ws.cell(row=r, column=7).value),
+                         "addressed_by_initiative_refs": split_refs(ws.cell(row=r, column=8).value)})
 
     # ---- (§4s) unknown departments referenced on Objectives/KPI rows: WARN + auto-create ----
     for src_rows, label in ((objectives, "objective"), (kpis, "KPI")):

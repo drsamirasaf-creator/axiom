@@ -2502,6 +2502,75 @@ def _backfill_kpi_keys(db, company_id: int | None = None) -> dict:
     return res
 
 
+def _template_declares_links(kpis) -> bool:
+    """Did this workbook's KPI sheet carry the link columns AT ALL?
+
+    The distinction is the whole of the honest-degradation story. A v7.4 upload
+    that clears every link declares "no links" and its template links flag
+    absent. A v7.3 workbook has no G/H to speak with — it is SILENT, and silence
+    must not flag anything. Without this check, one upload from an old template
+    would flag away every template link in the company."""
+    return any((k.get("serves_objective_ids") or k.get("addressed_by_initiative_refs")) is not None
+               and ("serves_objective_ids" in k or "addressed_by_initiative_refs" in k)
+               for k in (kpis or []))
+
+
+def _resolve_upload_kpi_links(db, company_id, kpis, objectives, warnings):
+    """Turn the template's typed refs into (kpi_key, goal_key) /
+    (kpi_key, initiative_id) pairs.
+
+    WARN-NEVER-BLOCK, matching the department dropdown and the KR sheet: a ref
+    that resolves to nothing produces a warning and is dropped, and the KPI row
+    it sat on ingests untouched. A mistyped link must never cost someone their
+    data.
+
+    Objective IDs are resolved against THIS UPLOAD's objectives, not the stored
+    ones — "O4" means the fourth objective in the workbook the author is
+    holding, and resolving it against last quarter's dataset would silently
+    point the link at a different objective."""
+    obj_by_id = {}
+    for o in (objectives or []):
+        oid = str(o.get("objective_id") or "").strip().upper()
+        if oid:
+            obj_by_id[oid] = _goal_key(o.get("objective") or "")
+
+    ini_by_ref = {(i.ref_code or "").strip().upper(): i.id
+                  for i in db.query(Initiative).filter_by(company_id=company_id).all()}
+
+    links = {"objective": set(), "initiative": set()}
+    for k in (kpis or []):
+        oref = k.get("serves_objective_ids") or []
+        iref = k.get("addressed_by_initiative_refs") or []
+        if not oref and not iref:
+            continue
+        dep = _resolve_department(db, company_id, k.get("department")) if k.get("department") else None
+        key = _resolve_kpi_key(db, company_id, dep.id if dep else None, k.get("kpi_name") or "")
+        if not key:
+            # First sighting of this KPI: it is keyed during the same apply, so
+            # mint here and record the alias, exactly as the backfill would.
+            key = _new_kpi_key()
+            _kpi_alias_add(db, company_id, key, dep.id if dep else None, k.get("kpi_name") or "")
+        for ref in oref:
+            gk = obj_by_id.get(ref)
+            if gk:
+                links["objective"].add((key, gk))
+            else:
+                warnings.append({"sheet": "KPI Plan vs Actual", "row": k.get("row_index"),
+                                 "message": f"'{k.get('kpi_name')}' refers to Objective ID "
+                                            f"'{ref}', which is not on the Objectives sheet — "
+                                            f"link skipped, the KPI itself loaded normally."})
+        for ref in iref:
+            iid = ini_by_ref.get(ref)
+            if iid:
+                links["initiative"].add((key, iid))
+            else:
+                warnings.append({"sheet": "KPI Plan vs Actual", "row": k.get("row_index"),
+                                 "message": f"'{k.get('kpi_name')}' refers to initiative "
+                                            f"'{ref}', which does not exist for this company — "
+                                            f"link skipped, the KPI itself loaded normally."})
+    return links
+
+
 def _reconcile_kpi_links(db, company_id, upload_links, now=None):
     """Reconcile TEMPLATE-declared KPI links against what is already stored.
 
@@ -2898,6 +2967,13 @@ def apply_upload(db, company_id: int, *, ent, data, objectives, key_results,
     # surface (never silently resolve) key collisions with divergent content.
     reconciliation = _reconcile_okr_upload(db, company_id, ds, prior_active,
                                            objectives, key_results, kpis, now)
+    # §4m step 3: KPI links declared in template columns G/H. Resolution warns
+    # into the SAME warnings list the upload already returns, so a bad ref is
+    # reported beside every other soft problem rather than in a channel of its
+    # own — and never as an error, which would fail the upload.
+    _kpi_links = _resolve_upload_kpi_links(db, company_id, kpis, objectives, warnings)
+    if _kpi_links["objective"] or _kpi_links["initiative"] or _template_declares_links(kpis):
+        reconciliation["kpi_links"] = _reconcile_kpi_links(db, company_id, _kpi_links, now)
     audit(db, getattr(user, "id", None), "data_uploaded", "company", company_id,
           detail=f"dataset={ds.id} v{version} {frequency} objectives={len(objectives)} "
                  f"krs={len(key_results)} kpis={len(kpis)} "
