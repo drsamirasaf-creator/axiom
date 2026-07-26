@@ -2481,7 +2481,15 @@ def apply_upload(db, company_id: int, *, ent, data, objectives, key_results,
         standard=data["company"]["standard"], ownership=data["company"]["ownership"],
         source="upload", data=data, validation={"warnings": warnings},
         version=version, is_active=True, frequency=frequency,
-        uploaded_at=now, parent_dataset_id=(prior_active.id if prior_active else None),
+        # NO parent_dataset_id. An upload version is an independent ROOT: the
+        # column means "actuals-sync child" and nothing else (models.py:23-25).
+        # Chaining uploads onto it made every re-upload look like a twin sync —
+        # twin/router.py walks to the lineage ROOT and then down the child chain,
+        # so upload history was reported as syncs_completed, and
+        # financials/router.py's profile "lineage depth" counted uploads too.
+        # Versioning is carried by `version` + `is_active`, which is all the
+        # upload path has ever needed.
+        uploaded_at=now,
         original_filename=(filename or None),
         original_content_type=(content_type or None),
         uploaded_by_user_id=getattr(user, "id", None),

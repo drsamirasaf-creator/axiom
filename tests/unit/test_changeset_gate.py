@@ -174,7 +174,10 @@ def test_full_cycle_partial_approval_then_undo(_app):
         # the commit created a NEW version and it is the active one
         new_ds = db.get(FinancialDataset, out["result"]["dataset_id"])
         assert new_ds.is_active is True and new_ds.version == 2
-        assert new_ds.parent_dataset_id == prior.id
+        # An upload version is an independent ROOT — parent_dataset_id means
+        # "actuals-sync child" only. Reversibility comes from the SNAPSHOT
+        # (asserted above), not from chaining uploads together.
+        assert new_ds.parent_dataset_id is None
         assert db.get(FinancialDataset, prior.id).is_active is False
 
         # ---- UNDO: all-or-nothing revert to the immediately-prior snapshot ----
@@ -266,7 +269,8 @@ def test_live_upload_contract_is_preserved_through_the_gate(_app):
 
         # ---- side effect: versioned dataset, lineage extended ----
         ds = db.get(FinancialDataset, res["dataset_id"])
-        assert ds.is_active is True and ds.parent_dataset_id == prior.id
+        assert ds.is_active is True
+        assert ds.parent_dataset_id is None      # uploads are independent roots
         assert ds.uploaded_by_user_id == cs.created_by_user_id
 
         # ---- the GAIN: a stored changeset per upload, with the per-field diff ----

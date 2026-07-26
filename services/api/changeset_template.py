@@ -15,9 +15,11 @@ future Data Update Wizard will drive):
     …/changesets/{cid}/commit             snapshot -> apply approved -> committed
     …/changesets/{cid}/undo               restore the prior snapshot
 
-Nothing here mutates live data until commit. The snapshot EXTENDS the existing
-FinancialDataset version/parent_dataset_id lineage: the pre-commit active
-dataset id is recorded, and undo re-activates it. Snapshots are never rewritten.
+Nothing here mutates live data until commit. The snapshot records the pre-commit
+ACTIVE dataset id and undo re-activates it, so a commit is reversible via the
+existing version/is_active mechanism. Upload versions stay independent roots —
+parent_dataset_id is reserved for actuals-sync children (models.py:23-25).
+Snapshots are never rewritten.
 Both paths apply through accounts.apply_upload — one implementation, no drift.
 """
 import re
