@@ -191,3 +191,114 @@ def test_alias_never_repoints_to_a_different_department(_app):
         assert two.id != one.id
     finally:
         db.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DIRTY-DATA migration battery — the gap that crashed production.
+# The first migration passed every test above and still died with
+# IntegrityError (uq_dept_alias) on real data, because these tests all seeded
+# CLEAN departments. These seed Milliner's ACTUAL mess first.
+# ─────────────────────────────────────────────────────────────────────────────
+def _seed_dirty(db, label):
+    """One company carrying production's real shape: short/long duplicate pairs
+    that normalize onto the SAME canonical alias, several parentless roots, and a
+    KPI hanging off one of the duplicates."""
+    ent = _company(db, label)
+    mk = lambda n, parent=None: Department(
+        company_id=ent.id, dept_key=_legacy_dept_key(n), name=n,
+        parent_id=parent, is_standard=False)
+    rows = {}
+    for n in ["Executive", "Executive Management",          # two roots
+              "HR", "Human Resources",                      # collide on "human resources"
+              "Supply Chain", "Supply Chain and Logistics", # collide likewise
+              "Finance", "Finance and Accounting",
+              "Technology", "Information Technology",
+              "Internal Audit & Control",                   # third parentless root
+              "Operations"]:
+        d = mk(n); db.add(d); rows[n] = d
+    db.commit()
+    for d in rows.values():
+        db.refresh(d)
+    # a KPI on one of the duplicate-pair members — must survive untouched
+    db.add(KpiPlan(company_id=ent.id, dataset_id=1, row_index=2, kpi_name="Headcount",
+                   unit="#", ytd_plan=1.0, ytd_actual=1.0, full_year_target=1.0,
+                   department_id=rows["HR"].id, source="template"))
+    db.commit()
+    return ent, rows
+
+
+def test_migration_survives_dirty_duplicate_departments(_app):
+    """The production crash, reproduced: it must COMPLETE, not raise."""
+    db = SessionLocal()
+    try:
+        ent, rows = _seed_dirty(db, "Dirty Co")
+        before = {(d.id, d.name, d.parent_id) for d in
+                  db.query(Department).filter_by(company_id=ent.id).all()}
+        kpi_dept = rows["HR"].id
+
+        _rekey_departments()          # must NOT raise IntegrityError
+        db.expire_all()               # migration committed in ITS session, not ours
+
+        after = {(d.id, d.name, d.parent_id) for d in
+                 db.query(Department).filter_by(company_id=ent.id).all()}
+        assert after == before, "no row lost, renamed, reparented or added"
+        assert len(after) == 12
+
+        # every department is off the name-derived key
+        for d in db.query(Department).filter_by(company_id=ent.id).all():
+            assert d.dept_key != _legacy_dept_key(d.name)
+            assert len(d.dept_key) == 32
+
+        # the KPI is still attached to the same department
+        kpis = db.query(KpiPlan).filter_by(company_id=ent.id, department_id=kpi_dept).all()
+        assert len(kpis) == 1 and kpis[0].kpi_name == "Headcount"
+
+        # the alias key each pair collides on is claimed EXACTLY once, and by the
+        # department actually named that (self-alias beats canonical)
+        for norm, owner in [("human resources", "Human Resources"),
+                            ("supply chain and logistics", "Supply Chain and Logistics"),
+                            ("finance and accounting", "Finance and Accounting"),
+                            ("information technology", "Information Technology")]:
+            claims = db.query(DepartmentAlias).filter_by(
+                company_id=ent.id, name_norm=norm).all()
+            assert len(claims) == 1, f"{norm} claimed {len(claims)}x — UNIQUE would blow up"
+            assert db.get(Department, claims[0].department_id).name == owner
+    finally:
+        db.close()
+
+
+def test_dirty_migration_is_idempotent(_app):
+    db = SessionLocal()
+    try:
+        ent, _rows = _seed_dirty(db, "Dirty Idem Co")
+        _rekey_departments()
+        db.expire_all()
+        snap = {(d.id, d.name, d.dept_key, d.parent_id) for d in
+                db.query(Department).filter_by(company_id=ent.id).all()}
+        alias_n = db.query(DepartmentAlias).filter_by(company_id=ent.id).count()
+
+        _rekey_departments()          # second run — no-op, and still no raise
+        db.expire_all()
+
+        assert {(d.id, d.name, d.dept_key, d.parent_id) for d in
+                db.query(Department).filter_by(company_id=ent.id).all()} == snap
+        assert db.query(DepartmentAlias).filter_by(company_id=ent.id).count() == alias_n
+    finally:
+        db.close()
+
+
+def test_dirty_multiple_roots_are_preserved_not_merged(_app):
+    """The migration must NOT try to fix the org — dedup is a human decision."""
+    db = SessionLocal()
+    try:
+        ent, _rows = _seed_dirty(db, "Dirty Roots Co")
+        roots_before = [d.name for d in db.query(Department).filter_by(
+            company_id=ent.id, parent_id=None).all()]
+        _rekey_departments()
+        db.expire_all()
+        roots_after = [d.name for d in db.query(Department).filter_by(
+            company_id=ent.id, parent_id=None).all()]
+        assert sorted(roots_after) == sorted(roots_before)
+        assert len(roots_after) == 12      # all parentless as seeded; none reparented
+    finally:
+        db.close()

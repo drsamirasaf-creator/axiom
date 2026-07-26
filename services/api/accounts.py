@@ -2945,54 +2945,82 @@ def _resolve_owner_person(owner, dep):
 
 def _rekey_departments():
     """Foundation Lane 1 migration: replace the name-derived dept_key with a REAL
-    stable id, and seed the alias layer.
+    stable id, and seed the alias layer. MUST survive dirty production data.
 
-    For every existing department, in one transaction:
-      * if its dept_key still equals sha1(its own name) it has not been re-keyed
-        yet -> mint an opaque uuid4 key. A row whose key does NOT match that hash
-        is already migrated (or was hand-set) and is left alone, which is what
-        makes this IDEMPOTENT — running it twice is a no-op.
-      * record a SELF-ALIAS for its current name, so the name it is known by today
-        keeps resolving.
-      * where its current name is an old STANDARD label, record the CANONICAL long
-        name as an alias too. That is what lets a later upload saying
-        "Finance and Accounting" resolve to the department already stored as
-        "Finance" and RENAME it in place instead of inserting a duplicate.
+    WHY THIS IS WRITTEN DEFENSIVELY. The first version crashed production with a
+    UNIQUE violation on uq_dept_alias(company_id, name_norm). SessionLocal is
+    built with autoflush=False, so the in-loop `db.query(...).first()` existence
+    check could not see rows added earlier in the same loop but not yet flushed.
+    On a company holding BOTH "HR" and "Human Resources" (exactly Milliner's
+    shape) the "HR" row contributed a canonical alias "human resources", then the
+    "Human Resources" row's self-alias check queried the DB, saw nothing pending,
+    and inserted a second claim on the same key — and the single commit at the end
+    took the whole migration down. Tests passed because they seeded CLEAN data.
 
-    Nothing is deleted, renamed or merged here: every department keeps its id, its
-    name, its parent and every objective/KPI/initiative pointing at it. The only
-    columns written are dept_key and new alias rows. REVERSIBLE: the old key is
-    recomputable from the name (_legacy_dept_key), so a rollback can restore it
-    and drop the alias table.
+    Now: claims are tracked in memory (so pending inserts ARE visible), every
+    alias insert runs in its own SAVEPOINT so a collision skips that alias
+    instead of aborting the run, and the ordering makes the winner predictable.
+
+    ORDERING — self-aliases for every department first, canonical aliases second.
+    So a department literally named "Human Resources" owns "human resources", and
+    the canonical alias derived from "HR" is the one that yields. The loser keeps
+    its own stable dept_key and every row it owns; it simply does not own that
+    shared alias.
+
+    Never deletes, renames, merges or reparents anything. It writes dept_key and
+    alias rows only. Idempotent (a row is re-keyed only while its key still equals
+    sha1 of its own name) and reversible (the old key is recomputable).
     """
+    import logging
+    from sqlalchemy.exc import IntegrityError
+    log = logging.getLogger(__name__)
     db = SessionLocal()
     try:
-        deps = db.query(Department).all()
-        rekeyed = aliased = canon = 0
+        deps = db.query(Department).order_by(Department.id).all()
+        rekeyed = 0
         for d in deps:
             if d.dept_key == _legacy_dept_key(d.name):
-                d.dept_key = _new_dept_key()
+                d.dept_key = _new_dept_key()      # uuid4 — unique by construction
                 rekeyed += 1
-            nn = _norm_dept_name(d.name)
-            if nn and not (db.query(DepartmentAlias)
-                             .filter_by(company_id=d.company_id, name_norm=nn).first()):
-                db.add(DepartmentAlias(company_id=d.company_id, department_id=d.id,
-                                       name_norm=nn, name=d.name))
-                aliased += 1
-            canonical = CANONICAL_DEPT_RENAMES.get(nn)
-            if canonical:
-                cn = _norm_dept_name(canonical)
-                if cn != nn and not (db.query(DepartmentAlias)
-                                       .filter_by(company_id=d.company_id, name_norm=cn).first()):
-                    db.add(DepartmentAlias(company_id=d.company_id, department_id=d.id,
-                                           name_norm=cn, name=canonical))
-                    canon += 1
+        db.flush()
+
+        # Claims already in the database, plus everything claimed during this run.
+        claimed = {(a.company_id, a.name_norm)
+                   for a in db.query(DepartmentAlias).all()}
+
+        def claim(dep, name, kind):
+            nn = _norm_dept_name(name)
+            if not nn or (dep.company_id, nn) in claimed:
+                if nn:
+                    log.info("dept alias skipped (%s): company=%s name_norm=%r already "
+                             "claimed; department %s (%r) keeps its own key",
+                             kind, dep.company_id, nn, dep.id, dep.name)
+                return 0
+            try:
+                with db.begin_nested():           # SAVEPOINT: a collision here must
+                    db.add(DepartmentAlias(       # not poison the whole migration
+                        company_id=dep.company_id, department_id=dep.id,
+                        name_norm=nn, name=(name or "").strip()))
+                    db.flush()
+            except IntegrityError:
+                db.rollback()                     # release the savepoint only
+                log.warning("dept alias collision (%s): company=%s name_norm=%r "
+                            "department=%s — skipped, migration continues",
+                            kind, dep.company_id, nn, dep.id)
+                return 0
+            claimed.add((dep.company_id, nn))
+            return 1
+
+        self_n = sum(claim(d, d.name, "self") for d in deps)
+        canon_n = 0
+        for d in deps:
+            canonical = CANONICAL_DEPT_RENAMES.get(_norm_dept_name(d.name))
+            if canonical and _norm_dept_name(canonical) != _norm_dept_name(d.name):
+                canon_n += claim(d, canonical, "canonical")
         db.commit()
-        if rekeyed or aliased or canon:
-            import logging
-            logging.getLogger(__name__).info(
-                "department re-key: %d re-keyed, %d self-alias, %d canonical alias",
-                rekeyed, aliased, canon)
+        if rekeyed or self_n or canon_n:
+            log.info("department re-key: %d re-keyed, %d self-alias, %d canonical alias",
+                     rekeyed, self_n, canon_n)
     except Exception:
         db.rollback()
         raise
