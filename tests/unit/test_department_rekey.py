@@ -547,3 +547,68 @@ def test_slice_matching_is_case_and_whitespace_insensitive(_app):
             assert _pick_dept_slice(db, ent.id, dep, {key: {"cei": 5.0}}) is not None, key
     finally:
         db.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# §4m LANE 1 — per-department trend + readiness. The history was never missing:
+# compute_cei stores RAW output, so every closed snapshot already carries its
+# `departments` map. These pin the two ways a slice can go quietly wrong.
+# ─────────────────────────────────────────────────────────────────────────────
+def test_stored_snapshots_retain_the_department_breakdown(_app):
+    """The premise of the whole lane. If compute_cei ever stopped storing
+    per-department aggregates, department trend would silently become
+    unbuildable — so assert the contract at the engine, not at the endpoint."""
+    from services.api.assessment_engine import compute_cei
+    items = [{"level": 1, "code": "1.0", "title": "Strategy", "parent_code": None, "selected": True},
+             {"level": 2, "code": "1.1", "title": "Purpose", "parent_code": "1.0", "selected": True}]
+    weights = {"1.0": 1.0}
+    resp = ([{"participant_ref": f"f{i}", "code": "1.1", "score": 8, "department": "Finance"}
+             for i in range(4)]
+            + [{"participant_ref": f"o{i}", "code": "1.1", "score": 5, "department": "Operations"}
+               for i in range(4)])
+    out = compute_cei(items, weights, resp)
+    assert "departments" in out and set(out["departments"]) == {"Finance", "Operations"}
+    fin, ops = out["departments"]["Finance"], out["departments"]["Operations"]
+    assert fin["cei"] != ops["cei"], "slices must differ — else the split is not real"
+    assert fin["n_participants"] == 4
+    # each slice is the same SHAPE as the company aggregate, which is what makes
+    # a trend point readable straight out of a stored snapshot
+    for k in ("cei", "n_participants", "l1_subscores", "radar"):
+        assert k in fin
+
+
+def test_department_trend_floors_on_the_slice_not_the_cycle(_app):
+    """A 30-respondent cycle can contain a 2-person department. Flooring the
+    trend point on the CYCLE total would publish that pair's number."""
+    from services.api.assessment_engine import compute_cei, KFLOOR
+    items = [{"level": 1, "code": "1.0", "title": "Strategy", "parent_code": None, "selected": True},
+             {"level": 2, "code": "1.1", "title": "Purpose", "parent_code": "1.0", "selected": True}]
+    resp = ([{"participant_ref": f"b{i}", "code": "1.1", "score": 7, "department": "Big"}
+             for i in range(30)]
+            + [{"participant_ref": f"t{i}", "code": "1.1", "score": 2, "department": "Tiny"}
+               for i in range(2)])
+    out = compute_cei(items, {"1.0": 1.0}, resp)
+    assert out["n_participants"] >= KFLOOR          # the CYCLE clears the floor
+    tiny = out["departments"]["Tiny"]
+    assert tiny["n_participants"] < KFLOOR          # the SLICE does not
+    # the endpoint gates on the slice's own n; assert the value that gate reads
+    assert tiny["n_participants"] == 2
+
+
+def test_readiness_slice_reads_department_not_enterprise(_app):
+    """readiness_derived took the axis means from the TOP LEVEL, which
+    assessment_summary does not filter. A department's readiness computed from
+    enterprise axes looks entirely plausible and is entirely wrong."""
+    from services.api.assessment_engine import compute_cei
+    items = [{"level": 1, "code": "7.0", "title": "People", "parent_code": None, "selected": True},
+             {"level": 2, "code": "7.1", "title": "Leadership", "parent_code": "7.0", "selected": True}]
+    resp = ([{"participant_ref": f"a{i}", "code": "7.1", "score": 9, "department": "Alpha"}
+             for i in range(5)]
+            + [{"participant_ref": f"z{i}", "code": "7.1", "score": 3, "department": "Zulu"}
+               for i in range(5)])
+    out = compute_cei(items, {"7.0": 1.0}, resp)
+    ent = {s["code"]: s["score"] for s in out["l1_subscores"]}["7.0"]
+    alpha = {s["code"]: s["score"] for s in out["departments"]["Alpha"]["l1_subscores"]}["7.0"]
+    zulu = {s["code"]: s["score"] for s in out["departments"]["Zulu"]["l1_subscores"]}["7.0"]
+    assert alpha != ent and zulu != ent, "slice axes must differ from enterprise"
+    assert alpha > zulu, "and from each other, in the direction the data says"

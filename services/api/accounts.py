@@ -7935,16 +7935,50 @@ def assessment_summary(company_id: int, department: int | None = None,
         n = ordinal.get(c.id, c.id)
         when = c.opened_at.strftime("%d %b %Y") if c.opened_at else ""
         return (c.name or "").strip() or f"Cycle {n} — {when}".strip(" —")
+    # §4s/§4u slice-filter resolution (dept id→name). Resolved HERE rather than
+    # further down because the trend series below now needs it — the ordering is
+    # load-bearing, not cosmetic.
+    _dept_obj = db.get(Department, department) if department is not None else None
+    _dept_name = ({"id": _dept_obj.id, "name": _dept_obj.name}
+                  if (_dept_obj and _dept_obj.company_id == company_id) else None)
+    if _dept_obj is not None and _dept_obj.company_id != company_id:
+        _dept_obj = None                      # foreign id: ignore, never slice by it
+
+    # PER-DEPARTMENT TREND (§4m Lane 1).
+    #
+    # The department history was never missing: compute_cei() is documented
+    # "Storage-level output is RAW; k-anonymity suppression is applied at
+    # serialization by apply_kfloor, never here", and _cycle_cei stores its
+    # output whole. So every closed snapshot already carries a `departments`
+    # map holding that department's full aggregate. _show_slice() strips
+    # `departments` only from a NESTED slice at read time — storage is intact.
+    # Nothing had to be reconstructed and nothing new has to be recorded; the
+    # series simply reads the branch that was there all along.
+    #
+    # The floor is re-evaluated on the SLICE's own n, never the cycle's: a cycle
+    # of 30 respondents can still contain a department of two, and flooring on
+    # the cycle total would publish that pair's number.
     trend = []
     for c in cycles:
         if not c.snapshot:
             continue
-        npart = (c.snapshot or {}).get("n_participants") or 0
+        snap = c.snapshot or {}
+        if _dept_obj is not None:
+            slice_agg = _pick_dept_slice(db, company_id, _dept_obj,
+                                         snap.get("departments") or {})
+            if slice_agg is None:
+                continue                    # this department did not exist / did not respond
+            npart = slice_agg.get("n_participants") or 0
+            cei_val = slice_agg.get("cei")
+        else:
+            npart = snap.get("n_participants") or 0
+            cei_val = snap.get("cei")
         pt = {"cycle_id": c.id, "revision": c.revision, "opened_at": c.opened_at,
               "closed_at": c.closed_at, "n_participants": npart,
               "name": _cycle_label(c), "depth": c.depth or "standard",
               "anonymity_mode": c.anonymity_mode,
-              "cei": (c.snapshot or {}).get("cei") if npart >= KFLOOR else None}
+              "cei": cei_val if npart >= KFLOOR else None,
+              "scope": ("department" if _dept_obj is not None else "enterprise")}
         if npart < KFLOOR:
             pt.update({"suppressed": True, "reason": "below_anonymity_floor"})
         trend.append(pt)
@@ -7971,11 +8005,7 @@ def assessment_summary(company_id: int, department: int | None = None,
         for _code, _entry in (rags["item_rag"] or {}).items():
             if isinstance(_entry, dict) and _code in item_titles:
                 _entry.setdefault("title", item_titles[_code])
-    # §4s/§4u slice-filter resolution (dept id→name, seniority band, intersection key)
     from .assessment_engine import _cross_key as _x_cross_key
-    _dept_obj = db.get(Department, department) if department is not None else None
-    _dept_name = ({"id": _dept_obj.id, "name": _dept_obj.name}
-                  if (_dept_obj and _dept_obj.company_id == company_id) else None)
     try:
         _sen_band = _norm_seniority(seniority)
     except HTTPException:
@@ -8327,15 +8357,35 @@ READINESS_MAP = {
 
 
 @router.get("/companies/{company_id}/readiness/derived")
-def readiness_derived(company_id: int, member=Depends(_summary_access), db=Depends(get_db)):
+def readiness_derived(company_id: int, department: int | None = None,
+                      member=Depends(_summary_access), db=Depends(get_db)):
     """The six Transformation Readiness dimensions computed from the latest cycle's
     assessment axis means (ratified §16.3 mapping), k-anonymity floor applied. Returns
     each dimension's derived value + the contributing axes (with weights, means, and
     renormalised effective weights) so the UI can show the derivation line, plus the
     manual override if one is stored."""
-    summ = assessment_summary(company_id, department=None, member=member, db=db)
-    subs = summ.get("l1_subscores") or []
-    n_part = summ.get("n_respondents") or summ.get("n_participants") or 0
+    # §4m Lane 1: readiness is now sliceable. It was `department=None`, hardcoded,
+    # so the six dimensions were enterprise-wide no matter what the caller asked.
+    #
+    # Two things make the slice honest rather than merely available:
+    #  * The axis means come from `department_slice`, NOT the top-level fields.
+    #    assessment_summary does not filter its top level — reading `l1_subscores`
+    #    there would compute a department's readiness from enterprise numbers and
+    #    look entirely plausible.
+    #  * `n_part` is the SLICE's own respondent count, so the k-floor is
+    #    re-evaluated on the people actually in that department. Carrying the
+    #    company-wide n forward would let a department of two clear a floor it
+    #    never met.
+    summ = assessment_summary(company_id, department=department, member=member, db=db)
+    _slice = summ.get("department_slice") if department is not None else None
+    if department is not None and _slice is None:
+        return {"company_id": company_id, "department": summ.get("department_filter"),
+                "n": 0, "cei": None, "has_data": False, "dimensions": [],
+                "reason": "no responses attributed to this department"}
+    src = _slice or summ
+    subs = src.get("l1_subscores") or []
+    n_part = (src.get("n_participants") if _slice
+              else (summ.get("n_respondents") or summ.get("n_participants"))) or 0
     by_code = {}
     for s in subs:
         try:
@@ -8369,8 +8419,13 @@ def readiness_derived(company_id: int, member=Depends(_summary_access), db=Depen
         dims.append({"key": key, "label": spec["label"], "derived": round(derived, 2),
                      "suppressed": False, "n": n_part, "contributions": contribs})
 
-    return {"company_id": company_id, "n": n_part, "cei": summ.get("cei"),
-            "has_data": summ.get("cei") is not None, "dimensions": dims}
+    # `src`, not `summ`: under a department slice, summ.get("cei") is the
+    # ENTERPRISE number and would be reported as the department's.
+    _cei = src.get("cei")
+    return {"company_id": company_id, "n": n_part, "cei": _cei,
+            "department": summ.get("department_filter") if department is not None else None,
+            "scope": "department" if department is not None else "enterprise",
+            "has_data": _cei is not None, "dimensions": dims}
 
 
 def _actioned_item_codes(db, company_id):
