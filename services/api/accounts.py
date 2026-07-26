@@ -4993,33 +4993,95 @@ def _dept_coverage(db, company_id):
     return {"cycle_id": (newest.id if newest else None), "respondents": resp, "invited": inv}
 
 
+ATTAINMENT_GREEN_MIN = 0.70
+ATTAINMENT_AMBER_MIN = 0.40
+
+
+def objective_status_band(avg, n_objectives):
+    """THE canonical objective-status rule. One definition, every surface.
+
+    The org chart and the department page used to disagree, and not by a
+    threshold — by MEANING. The chart tinted its card border from the
+    DISTRIBUTION of stored Objective.status labels (dominant wins, red breaks
+    ties); the department page ringed the MEAN KR ATTAINMENT. Two different
+    questions, both drawn as "the department's objective colour", so Meridian's
+    Finance could read amber on one screen and red on the next with neither
+    being a bug. A reader cannot reconcile that, and shouldn't have to.
+
+    Average attainment is the chosen meaning: it is a measured quantity derived
+    from baseline/target/current, where the status label is hand-entered and
+    goes stale the moment a KR moves.
+
+    FOUR states, because three would have to lie about one of them:
+      none      no objectives at all — grey. Not "red": nothing was missed.
+      unscored  objectives exist but not one has a computable progress (no
+                baseline/target). Grey too, and distinctly labelled — an
+                unmeasured department is not a failing one, and colouring it
+                red would invent a judgement from missing data.
+      red/amber/green  by the thresholds below.
+    """
+    if not n_objectives:
+        return "none"
+    if avg is None:
+        return "unscored"
+    if avg >= ATTAINMENT_GREEN_MIN:
+        return "green"
+    if avg >= ATTAINMENT_AMBER_MIN:
+        return "amber"
+    return "red"
+
+
 def _dept_counts(db, company_id):
-    """{department_id: {objectives, key_results, kpis, initiatives, rag{green,amber,red}}}
-    for the active dataset (objectives/kpis are snapshot-scoped; initiatives are
-    company-scoped). rag is the objective-status mix, for the org-chart card tint."""
+    """{department_id: {objectives, key_results, kpis, initiatives, rag{...},
+    attainment{avg, scored, band}}} for the active dataset (objectives/kpis are
+    snapshot-scoped; initiatives are company-scoped).
+
+    `attainment` is what the org-chart card tint now reads, and it is computed
+    from the SAME rows, by the SAME arithmetic, as the department page's ring —
+    both go through _objective_rows + _kr_progress, so the two surfaces cannot
+    drift apart again by construction. `rag` (the stored-status mix) is retained
+    because the drawer still reports the label breakdown, but nothing colours
+    from it any more."""
     counts = {}
     def slot(did):
         return counts.setdefault(did, {"objectives": 0, "key_results": 0, "kpis": 0,
-                                       "initiatives": 0, "rag": {"green": 0, "amber": 0, "red": 0}})
+                                       "initiatives": 0, "rag": {"green": 0, "amber": 0, "red": 0},
+                                       "_progs": []})
     def bump(did, field):
         if did is None:
             return
         slot(did)[field] += 1
     ds = _active_company_dataset(db, company_id)
     if ds:
-        objs = db.query(Objective).filter_by(company_id=company_id, dataset_id=ds.id).all()
+        # _objective_rows, NOT a fresh Objective query: it drops archived rows and
+        # falls back to legacy OrgGoal rows. Querying separately here is how the
+        # counts came to describe a different row set than the page they annotate.
+        _, rows, _ = _objective_rows(db, company_id)
         oid_dept = {}
-        for o in objs:
-            bump(o.department_id, "objectives")
-            if o.department_id is not None and o.status in ("Green", "Amber", "Red"):
-                slot(o.department_id)["rag"][o.status.lower()] += 1
-            oid_dept[o.objective_id] = o.department_id
+        for r in rows:
+            did = r.get("department_id")
+            bump(did, "objectives")
+            if did is not None and r.get("status") in ("Green", "Amber", "Red"):
+                slot(did)["rag"][r["status"].lower()] += 1
+            oid_dept[r["objective_id"]] = did
+            # Objective progress = mean of its KRs' progress, exactly as obj_out
+            # does it. An objective with no computable KR contributes nothing
+            # rather than a zero — absent is not failing.
+            progs = [p for p in (_kr_progress(k.baseline, k.target, k.current) for k in r["krs"])
+                     if p is not None]
+            if did is not None and progs:
+                slot(did)["_progs"].append(sum(progs) / len(progs))
         for kr in db.query(KeyResult).filter_by(company_id=company_id, dataset_id=ds.id).all():
             bump(oid_dept.get(kr.objective_id), "key_results")   # KRs inherit their objective's department
         for k in db.query(KpiPlan).filter_by(company_id=company_id, dataset_id=ds.id).all():
             bump(k.department_id, "kpis")
     for i in db.query(Initiative).filter_by(company_id=company_id).all():
         bump(getattr(i, "department_id", None), "initiatives")
+    for c in counts.values():
+        progs = c.pop("_progs")
+        avg = (round(sum(progs) / len(progs), 4) if progs else None)
+        c["attainment"] = {"avg": avg, "scored": len(progs),
+                           "band": objective_status_band(avg, c["objectives"])}
     return counts
 
 
@@ -5034,7 +5096,8 @@ def list_departments(company_id: int, member=Depends(_summary_access), db=Depend
     cov = _dept_coverage(db, company_id)
     sent = _department_sentiment_map(db, company_id)      # shared with the Sentiment tab
     zero = {"objectives": 0, "key_results": 0, "kpis": 0, "initiatives": 0,
-            "rag": {"green": 0, "amber": 0, "red": 0}}
+            "rag": {"green": 0, "amber": 0, "red": 0},
+            "attainment": {"avg": None, "scored": 0, "band": "none"}}
 
     def coverage(d):
         respondents = cov["respondents"].get(d.name, 0)
