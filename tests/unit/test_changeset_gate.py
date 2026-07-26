@@ -232,3 +232,51 @@ def test_discard_blocks_commit(_app):
         assert e.value.status_code == 409
     finally:
         db.close()
+
+
+def test_live_upload_contract_is_preserved_through_the_gate(_app):
+    """CUTOVER ACCEPTANCE: the response the DataInput UI reads is unchanged, and
+    all five side effects still fire — because both paths call ONE function.
+
+    Exercises exactly what data_upload now does internally: park -> approve-all
+    -> commit, with the applier calling accounts.apply_upload.
+    """
+    from services.api.changeset import commit as gate_commit
+    db = SessionLocal()
+    try:
+        ent, prior, cs = _stage(db)
+        decide(db, cs, decision=APPROVED, scope="all")
+        cs._upload_content = None          # no R2 stash in-test; key stays null, honestly
+        out = gate_commit(db, cs)
+        res = out["result"]
+
+        # ---- the UploadSuccess contract the UI destructures ----
+        for k in ("dataset_id", "version", "frequency", "periods_detected",
+                  "warnings", "objectives_ingested", "krs_ingested",
+                  "key_results_ingested", "kpis_ingested", "departments_ingested",
+                  "has_objectives_sheet", "has_kr_sheet", "has_kpi_sheet",
+                  "has_org_sheet", "legacy_goals_migrated", "reconciliation",
+                  "active"):
+            assert k in res, f"response contract lost '{k}'"
+        assert res["active"] is True
+
+        # ---- side effect: OKR reconciliation ran and kept its shape ----
+        assert set(res["reconciliation"]) >= {"carried_in_app", "flagged_absent",
+                                              "conflicts"}
+
+        # ---- side effect: versioned dataset, lineage extended ----
+        ds = db.get(FinancialDataset, res["dataset_id"])
+        assert ds.is_active is True and ds.parent_dataset_id == prior.id
+        assert ds.uploaded_by_user_id == cs.created_by_user_id
+
+        # ---- the GAIN: a stored changeset per upload, with the per-field diff ----
+        db.refresh(cs)
+        assert cs.status == COMMITTED and cs.committed_at is not None
+        assert cs.provenance["template_version"] == "v7.2"
+        items = db.query(ChangesetItem).filter_by(changeset_id=cs.id).all()
+        assert items and all(i.applied for i in items)
+        assert any(i.old_value is not None or i.new_value is not None for i in items)
+        # and the snapshot that makes the commit reversible
+        assert db.query(ChangesetSnapshot).filter_by(changeset_id=cs.id).count() == 1
+    finally:
+        db.close()

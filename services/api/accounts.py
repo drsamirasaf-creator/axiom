@@ -2442,44 +2442,36 @@ def _reconcile_okr_upload(db, company_id, new_ds, prior, objectives, key_results
     return res
 
 
-@router.post("/companies/{company_id}/data-upload", status_code=201)
-async def data_upload(company_id: int, file: UploadFile = File(...),
-                      member=Depends(require_company_admin),
-                      user: User = Depends(get_current_user), db=Depends(get_db)):
-    """Validate an uploaded workbook and attach it as a new versioned dataset
-    to THIS company's enterprise. All-or-nothing: a validation failure writes
-    nothing and returns cell-level errors."""
-    from .modules.enterprise_state.models import Enterprise
-    from .modules.financials import ingest
-    from .modules.financials.models import FinancialDataset
-    ent = db.get(Enterprise, company_id)
-    if not ent:
-        raise HTTPException(404, "Company not found")
-    content = await file.read()
-    if len(content) > 5 * 1024 * 1024:
-        raise HTTPException(413, "file exceeds 5 MB")
-    data, errors, meta, warnings = ingest.parse_and_validate(
-        content, company_id, statement_units=ent.statement_units)
-    # §9 OKR: Objectives + Key Results + KPIs validate alongside the financials —
-    # all-or-nothing on errors; OKR warnings (≥3 KRs etc.) merge non-blocking.
-    objectives, key_results, kpis, departments, okr_errors, okr_warnings, okr_flags = ingest.parse_okr_and_kpis(content)
-    if errors or okr_errors:
-        raise HTTPException(422, detail={
-            "message": "Upload validation failed — no data was saved.",
-            "errors": (errors or []) + okr_errors})
-    warnings = list(warnings or []) + list(okr_warnings or [])
+def apply_upload(db, company_id: int, *, ent, data, objectives, key_results,
+                 kpis, departments, warnings, frequency, meta, okr_flags, user,
+                 content=None, filename=None, content_type=None, approved=None):
+    """THE upload apply path — the single implementation both the live endpoint
+    and the approval gate run.
 
-    frequency = (meta or {}).get("frequency", "annual")
+    Extracted from data_upload so there is exactly ONE copy of the five things an
+    upload must do: create the versioned dataset, upsert departments + OKR/KPI
+    rows, run `_reconcile_okr_upload` (carry in-app rows forward, flag absent
+    template rows, surface collisions), stash the original workbook in R2, and
+    touch the FP-1 pilot lifecycle — then return the response contract the
+    DataInput UI reads. Duplicating any of this into the gate's applier would
+    guarantee drift; instead the applier calls straight through to here.
+
+    `approved` (optional) is {category: {entity_key, …}} — the gate passes the
+    human-approved subset; None means "everything", which is what the live
+    one-shot upload passes. Never commits: the caller owns the transaction, so a
+    gated commit can still roll the whole thing back.
+    """
+    from .modules.financials.models import FinancialDataset
+    from .modules.financials import ingest
+    now = datetime.utcnow()
+
+    def _ok(cat, key):
+        return approved is None or key in approved.get(cat, set())
+
     prior = db.query(FinancialDataset).filter_by(
         enterprise_id=company_id, source="upload").all()
     version = max([(p.version or 1) for p in prior], default=0) + 1
-    # capture the CURRENT active dataset BEFORE deactivation — its OKR rows (incl. any
-    # in-app additions) are reconciled into the new snapshot below (§ reconciliation).
     prior_active = _active_company_dataset(db, company_id)
-    # §17: an upload becomes the SINGLE active dataset — deactivate every currently
-    # active dataset for this company REGARDLESS of source (a curated source='direct'
-    # showcase dataset otherwise stayed active and shadowed the upload, so objectives/
-    # KPIs resolved to the wrong dataset).
     for p in db.query(FinancialDataset).filter_by(
             enterprise_id=company_id, is_active=True).all():
         p.is_active = False
@@ -2489,11 +2481,10 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
         standard=data["company"]["standard"], ownership=data["company"]["ownership"],
         source="upload", data=data, validation={"warnings": warnings},
         version=version, is_active=True, frequency=frequency,
-        uploaded_at=datetime.utcnow(),
-        # §2 provenance
-        original_filename=(file.filename or None),
-        original_content_type=(file.content_type or None),
-        uploaded_by_user_id=user.id,
+        uploaded_at=now, parent_dataset_id=(prior_active.id if prior_active else None),
+        original_filename=(filename or None),
+        original_content_type=(content_type or None),
+        uploaded_by_user_id=getattr(user, "id", None),
         template_version=((meta or {}).get("template_version") or None),
         n_objectives=len(objectives), n_key_results=len(key_results), n_kpis=len(kpis))
     db.add(ds)
@@ -2501,29 +2492,32 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
     # §2: stash the ORIGINAL workbook in R2 so "download the file I uploaded" can
     # re-serve the exact bytes. Best-effort — a storage outage never blocks the
     # upload (the parsed dataset is already persisted); original_r2_key stays null.
-    try:
-        _client, _bucket = _r2_client()
-        if _client is not None:
-            import uuid as _uuid
-            _safe = re.sub(r"[^A-Za-z0-9._-]+", "_", (file.filename or "upload.xlsx"))[:120]
-            _okey = f"uploads/{company_id}/{ds.id}/{_uuid.uuid4().hex}_{_safe}"
-            _client.put_object(
-                Bucket=_bucket, Key=_okey, Body=content,
-                ContentType=(file.content_type or
-                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
-            ds.original_r2_key = _okey
-    except Exception:
-        pass
+    if content:
+        try:
+            _client, _bucket = _r2_client()
+            if _client is not None:
+                import uuid as _uuid
+                _safe = re.sub(r"[^A-Za-z0-9._-]+", "_", (filename or "upload.xlsx"))[:120]
+                _okey = f"uploads/{company_id}/{ds.id}/{_uuid.uuid4().hex}_{_safe}"
+                _client.put_object(
+                    Bucket=_bucket, Key=_okey, Body=content,
+                    ContentType=(content_type or
+                                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                ds.original_r2_key = _okey
+        except Exception:
+            pass
     # §4s: upsert departments (company-scoped, STABLE across re-upload by dept_key)
     # from the Organization sheet + any auto-created from objective/KPI rows, then
     # resolve parent linkage in a second pass (all ids now exist).
     dept_by_norm = {}
     for d in departments:
+        if not _ok("departments", (d["name"] or "").strip().lower()):
+            continue
         dep = _ensure_department(db, company_id, d["name"],
                                  head_name=d.get("head_name"), head_title=d.get("head_title"),
                                  head_email=d.get("head_email"),
                                  is_standard=(d["name"] in ingest.STD_DEPARTMENTS))
-        if d.get("employees") is not None:      # blank cell → leave existing/null (never 0)
+        if d.get("employees") is not None:      # blank cell -> leave existing/null (never 0)
             dep.employees = d["employees"]
         dept_by_norm[(d["name"] or "").strip().lower()] = dep
     db.flush()
@@ -2541,9 +2535,9 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
         return dep.id if dep else None
 
     # §9: persist the OKR + KPI sheets as a snapshot keyed to THIS dataset version.
-    # Re-upload makes a new version active → latest wins; prior rows are retained.
-    now = datetime.utcnow()
     for o in objectives:
+        if not _ok("objectives", _goal_key(o["objective"])):
+            continue
         _dep = dept_by_norm.get((o.get("department") or "").strip().lower())
         db.add(Objective(company_id=company_id, dataset_id=ds.id, row_index=o["row_index"],
                          objective=o["objective"], owner=o.get("owner"),
@@ -2554,11 +2548,15 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
                          owner_person_name=_resolve_owner_person(o.get("owner"), _dep),  # §16.2
                          uploaded_at=now))
     for kr in key_results:
+        if not _ok("key_results", _norm_kpi_key(kr["key_result"])):
+            continue
         db.add(KeyResult(company_id=company_id, dataset_id=ds.id, row_index=kr["row_index"],
                          objective_id=kr.get("objective_id"), key_result=kr["key_result"],
                          unit=kr.get("unit"), baseline=kr.get("baseline"), target=kr.get("target"),
                          current=kr.get("current"), due_date=kr.get("due_date"), uploaded_at=now))
     for k in kpis:
+        if not _ok("kpis", _norm_kpi_key(k["kpi_name"])):
+            continue
         db.add(KpiPlan(company_id=company_id, dataset_id=ds.id, row_index=k["row_index"],
                        kpi_name=k["kpi_name"], unit=k["unit"], ytd_plan=k["ytd_plan"],
                        ytd_actual=k["ytd_actual"], full_year_target=k["full_year_target"],
@@ -2569,18 +2567,12 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
     # surface (never silently resolve) key collisions with divergent content.
     reconciliation = _reconcile_okr_upload(db, company_id, ds, prior_active,
                                            objectives, key_results, kpis, now)
-    audit(db, user.id, "data_uploaded", "company", company_id,
+    audit(db, getattr(user, "id", None), "data_uploaded", "company", company_id,
           detail=f"dataset={ds.id} v{version} {frequency} objectives={len(objectives)} "
                  f"krs={len(key_results)} kpis={len(kpis)} "
                  f"carried_in_app={reconciliation['carried_in_app']} "
                  f"conflicts={len(reconciliation['conflicts'])}")
     _pilot_touch(db, company_id, "Data Loaded")   # FP-1 auto lifecycle
-    db.commit()
-    try:                                           # 7i: recompute frontier + viability (background)
-        from .prescience_decision import _spawn_recompute
-        _spawn_recompute(company_id)
-    except Exception:
-        pass
     return {"dataset_id": ds.id, "version": version, "frequency": frequency,
             "periods_detected": data["periods"], "warnings": warnings,
             "objectives_ingested": len(objectives),
@@ -2593,6 +2585,73 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
             "legacy_goals_migrated": okr_flags.get("legacy"),
             "reconciliation": reconciliation,
             "active": True}
+
+
+@router.post("/companies/{company_id}/data-upload", status_code=201)
+async def data_upload(company_id: int, file: UploadFile = File(...),
+                      member=Depends(require_company_admin),
+                      user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Validate an uploaded workbook and attach it as a new versioned dataset
+    to THIS company's enterprise. All-or-nothing: a validation failure writes
+    nothing and returns cell-level errors.
+
+    Since the gate cutover this runs THROUGH the approval gate (C.1/C.3): the
+    upload is parked as a changeset, auto-approved in full, and committed. The
+    UX stays one-shot and the response contract is unchanged — the gain is that
+    every upload now leaves a stored changeset carrying the per-field old->new
+    diff and its provenance, which is the audit record (and what the future
+    Data Update Wizard's review screen will read). Approving selectively is the
+    Wizard's job; this endpoint always approves everything.
+    """
+    from .modules.enterprise_state.models import Enterprise
+    from .modules.financials import ingest as _ingest
+    from .changeset import create_changeset, decide, commit, APPROVED
+    from .changeset_template import SOURCE, build_items
+    ent = db.get(Enterprise, company_id)
+    if not ent:
+        raise HTTPException(404, "Company not found")
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(413, "file exceeds 5 MB")
+    data, errors, meta, warnings = _ingest.parse_and_validate(
+        content, company_id, statement_units=ent.statement_units)
+    # §9 OKR: Objectives + Key Results + KPIs validate alongside the financials —
+    # all-or-nothing on errors; OKR warnings (>=3 KRs etc.) merge non-blocking.
+    objectives, key_results, kpis, departments, okr_errors, okr_warnings, okr_flags = \
+        _ingest.parse_okr_and_kpis(content)
+    if errors or okr_errors:
+        raise HTTPException(422, detail={
+            "message": "Upload validation failed — no data was saved.",
+            "errors": (errors or []) + okr_errors})
+    warnings = list(warnings or []) + list(okr_warnings or [])
+    frequency = (meta or {}).get("frequency", "annual")
+    tv = (meta or {}).get("template_version") or "unknown"
+
+    cs = create_changeset(
+        db, company_id=company_id, source=f"{SOURCE}:{tv}",
+        source_ref=(file.filename or None),
+        items=build_items(db, company_id, data, departments, objectives,
+                          key_results, kpis),
+        payload={"data": data, "objectives": objectives, "key_results": key_results,
+                 "kpis": kpis, "departments": departments, "warnings": warnings,
+                 "frequency": frequency, "okr_flags": okr_flags, "meta": meta},
+        provenance={"original_filename": file.filename,
+                    "original_content_type": file.content_type,
+                    "template_version": tv,
+                    "uploaded_by_user_id": getattr(user, "id", None),
+                    "uploaded_at": datetime.utcnow().isoformat()},
+        user=user)
+    decide(db, cs, decision=APPROVED, scope="all", user=user)
+    # The raw bytes ride in memory (never into the JSON payload — a 5 MB workbook
+    # has no business in a row) so the applier can stash the original in R2.
+    cs._upload_content = content
+    out = commit(db, cs, user=user)
+    try:                                           # 7i: recompute frontier + viability
+        from .prescience_decision import _spawn_recompute
+        _spawn_recompute(company_id)
+    except Exception:
+        pass
+    return out["result"]
 
 
 @router.get("/companies/{company_id}/datasets")

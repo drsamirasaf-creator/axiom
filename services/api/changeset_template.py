@@ -1,9 +1,13 @@
-"""Template re-upload PRODUCER for the approval gate — the first consumer, wired
-to prove the gate end-to-end (STEP 4).
+"""Template re-upload PRODUCER for the approval gate.
 
-The existing `POST /companies/{id}/data` applies immediately and is left exactly
-as it is (the Data Input UI and the crawler depend on it). This adds the gated
-route alongside it:
+Since the cutover this is the ONLY way a template upload reaches the database.
+`POST /companies/{id}/data-upload` keeps its URL and its response contract, but
+runs through the gate internally: park a changeset -> auto-approve all -> commit.
+The UX stays one-shot; the gain is that every upload leaves a stored changeset
+carrying the per-field old->new diff and its provenance.
+
+The explicitly gated route stays available for a reviewed flow (and is what the
+future Data Update Wizard will drive):
 
     POST /companies/{id}/data/changeset   parse + validate + diff -> PARKED
     …/changesets/{cid}                    preview the stored diff
@@ -14,6 +18,7 @@ route alongside it:
 Nothing here mutates live data until commit. The snapshot EXTENDS the existing
 FinancialDataset version/parent_dataset_id lineage: the pre-commit active
 dataset id is recorded, and undo re-activates it. Snapshots are never rewritten.
+Both paths apply through accounts.apply_upload — one implementation, no drift.
 """
 import re
 from datetime import datetime
@@ -139,6 +144,21 @@ def _row_items(db, company_id, ds_id, objectives, key_results, kpis):
     return out
 
 
+def build_items(db, company_id, data, departments, objectives, key_results, kpis):
+    """The staged diff for a template upload: one item for the statement set,
+    plus per-row department / objective / key-result / KPI changes. Shared by the
+    live endpoint (auto-approved) and the gated producer."""
+    active = _active_company_dataset(db, company_id)
+    items = [{"category": "financials", "op": "update", "entity_key": "statements",
+              "entity_label": "Financial statements",
+              "old_value": {"version": getattr(active, "version", None)},
+              "new_value": {"periods": data.get("periods")}}]
+    items += _dept_items(db, company_id, departments)
+    items += _row_items(db, company_id, getattr(active, "id", None),
+                        objectives, key_results, kpis)
+    return items
+
+
 # ── apply / snapshot / undo ──────────────────────────────────────────────────
 def _snapshot(db, cs):
     """Pre-commit state = the currently ACTIVE dataset version. Extending the
@@ -149,10 +169,14 @@ def _snapshot(db, cs):
 
 
 def _apply(db, cs, approved):
-    """Apply ONLY the approved items, as a new dataset VERSION (the container),
-    exactly the way an immediate upload would — same models, same reconciliation
-    posture — but filtered to what a human accepted."""
-    from .modules.financials.models import FinancialDataset
+    """Apply ONLY the approved items — by calling the SAME function the live
+    upload endpoint calls (`accounts.apply_upload`). There is deliberately no
+    second implementation here: the five things an upload must do (versioned
+    dataset, department/OKR/KPI rows, `_reconcile_okr_upload`, the R2 stash of
+    the original workbook, the FP-1 pilot touch) live in exactly one place, so
+    the gated path and the live path cannot drift apart."""
+    from types import SimpleNamespace
+    from .accounts import apply_upload
     from .modules.enterprise_state.models import Enterprise
     p = cs.payload or {}
     ent = db.get(Enterprise, cs.company_id)
@@ -162,91 +186,29 @@ def _apply(db, cs, approved):
     for i in approved:
         ok.setdefault(i.category, set()).add(i.entity_key)
 
-    prior_active = _active_company_dataset(db, cs.company_id)
-    prior_rows = db.query(FinancialDataset).filter_by(
-        enterprise_id=cs.company_id, source="upload").all()
-    version = max([(r.version or 1) for r in prior_rows], default=0) + 1
-    for r in db.query(FinancialDataset).filter_by(
-            enterprise_id=cs.company_id, is_active=True).all():
-        r.is_active = False
-
-    # The statement set is ONE artifact: adopt the upload's figures only if the
-    # financials item was approved, else carry the prior version's forward.
+    # The statement set is ONE artifact: adopt the upload's figures only if that
+    # item was approved, else carry the prior active version's forward.
     use_new = "financials" in ok
-    data = p["data"] if use_new else (prior_active.data if prior_active else p["data"])
+    prior_active = _active_company_dataset(db, cs.company_id)
+    data = p["data"] if (use_new or not prior_active) else prior_active.data
+
     prov = cs.provenance or {}
-    ds = FinancialDataset(
-        tenant=ent.tenant, enterprise_id=cs.company_id,
-        name=data["company"].get("name") or ent.name,
-        standard=data["company"]["standard"], ownership=data["company"]["ownership"],
-        source="upload", data=data, validation={"warnings": p.get("warnings", [])},
-        version=version, is_active=True, frequency=p.get("frequency", "annual"),
-        uploaded_at=datetime.utcnow(),
-        parent_dataset_id=(prior_active.id if prior_active else None),
-        original_filename=prov.get("original_filename"),
-        original_content_type=prov.get("original_content_type"),
-        uploaded_by_user_id=cs.created_by_user_id,
-        template_version=prov.get("template_version"))
-    db.add(ds)
-    db.flush()
-
-    dept_by_norm = {}
-    for d in p.get("departments", []):
-        key = (d["name"] or "").strip().lower()
-        if key not in ok.get("departments", set()):
-            continue
-        dep = _ensure_department(db, cs.company_id, d["name"],
-                                 head_name=d.get("head_name"),
-                                 head_title=d.get("head_title"),
-                                 head_email=d.get("head_email"))
-        if d.get("employees") is not None:
-            dep.employees = d["employees"]
-        dept_by_norm[key] = dep
-    db.flush()
-
-    def _dept_id(name):
-        dep = dept_by_norm.get((name or "").strip().lower())
-        return dep.id if dep else None
-
-    n = {"objectives": 0, "key_results": 0, "kpis": 0}
-    now = datetime.utcnow()
-    for o in p.get("objectives", []):
-        if _goal_key(o["objective"]) not in ok.get("objectives", set()):
-            continue
-        _dep = dept_by_norm.get((o.get("department") or "").strip().lower())
-        db.add(Objective(company_id=cs.company_id, dataset_id=ds.id,
-                         row_index=o["row_index"], objective=o["objective"],
-                         owner=o.get("owner"), priority=o.get("priority"),
-                         horizon=o.get("horizon"), status=o.get("status"),
-                         objective_id=o["objective_id"],
-                         obj_key=_goal_key(o["objective"]),
-                         department_id=_dept_id(o.get("department")),
-                         owner_person_name=_resolve_owner_person(o.get("owner"), _dep),
-                         uploaded_at=now))
-        n["objectives"] += 1
-    for kr in p.get("key_results", []):
-        if _norm_kpi_key(kr["key_result"]) not in ok.get("key_results", set()):
-            continue
-        db.add(KeyResult(company_id=cs.company_id, dataset_id=ds.id,
-                         row_index=kr["row_index"], objective_id=kr.get("objective_id"),
-                         key_result=kr["key_result"], unit=kr.get("unit"),
-                         baseline=kr.get("baseline"), target=kr.get("target"),
-                         current=kr.get("current"), due_date=kr.get("due_date"),
-                         uploaded_at=now))
-        n["key_results"] += 1
-    for k in p.get("kpis", []):
-        if _norm_kpi_key(k["kpi_name"]) not in ok.get("kpis", set()):
-            continue
-        db.add(KpiPlan(company_id=cs.company_id, dataset_id=ds.id,
-                       row_index=k["row_index"], kpi_name=k["kpi_name"], unit=k["unit"],
-                       ytd_plan=k["ytd_plan"], ytd_actual=k["ytd_actual"],
-                       full_year_target=k["full_year_target"],
-                       department_id=_dept_id(k.get("department")),
-                       uploaded_at=now, source="template"))
-        n["kpis"] += 1
-    db.flush()
-    return {"dataset_id": ds.id, "version": version,
-            "financials": "adopted" if use_new else "carried_forward", **n}
+    res = apply_upload(
+        db, cs.company_id, ent=ent, data=data,
+        objectives=p.get("objectives", []), key_results=p.get("key_results", []),
+        kpis=p.get("kpis", []), departments=p.get("departments", []),
+        warnings=p.get("warnings", []), frequency=p.get("frequency", "annual"),
+        meta=p.get("meta"), okr_flags=p.get("okr_flags", {}),
+        user=SimpleNamespace(id=cs.created_by_user_id),
+        # Raw bytes ride on the in-memory changeset (never persisted into the
+        # JSON payload); absent on a park-now-commit-later flow, in which case
+        # original_r2_key stays null and the download endpoint says so honestly.
+        content=getattr(cs, "_upload_content", None),
+        filename=prov.get("original_filename"),
+        content_type=prov.get("original_content_type"),
+        approved=ok)
+    res["financials"] = "adopted" if use_new else "carried_forward"
+    return res
 
 
 def _undo(db, cs, snap: ChangesetSnapshot):
@@ -294,15 +256,8 @@ async def data_changeset(company_id: int, file: UploadFile = File(...),
             "message": "Upload validation failed — nothing was staged.",
             "errors": (errors or []) + okr_errors})
 
-    active = _active_company_dataset(db, company_id)
-    items = [{"category": "financials", "op": "update", "entity_key": "statements",
-              "entity_label": "Financial statements",
-              "old_value": {"version": getattr(active, "version", None)},
-              "new_value": {"periods": data.get("periods")}}]
-    items += _dept_items(db, company_id, departments)
-    items += _row_items(db, company_id, getattr(active, "id", None),
-                        objectives, key_results, kpis)
-
+    items = build_items(db, company_id, data, departments, objectives,
+                        key_results, kpis)
     tv = (meta or {}).get("template_version") or "unknown"
     cs = create_changeset(
         db, company_id=company_id, source=f"{SOURCE}:{tv}",
