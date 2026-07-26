@@ -421,6 +421,15 @@ def analytics(data: dict, mode: str, sigma_wacc: float = 0.01) -> dict:
          f"Terminal-growth delta {g_delta:,.0f} per unit: each 10bp of "
          f"long-run growth is worth {g_delta * 0.001:,.1f}."]
     return {"enterprise_value": ev0, "wacc": w0, "terminal_growth": gT0,
+            # The FULL deterministic block — the equity bridge (equity_value,
+            # equity_value_post_dlom, net_debt), wacc_used and value_per_share.
+            # `base` is a complete run() that analytics already performs, so this
+            # costs nothing extra; it was simply being discarded. Without it the
+            # valuation page renders EV from this payload and blanks Equity Value,
+            # Nonmarketable Equity and WACC — values that WERE computed here.
+            # `wacc` above stays the scalar it has always been (existing readers
+            # depend on that shape); the object form lives on the /run result.
+            "deterministic": base["deterministic"],
             "rate_sensitivity": {"effective_duration": round(duration, 3),
                                  "convexity": round(convexity, 2),
                                  "dv01_like": round(ev0 * duration / 10000, 3),
