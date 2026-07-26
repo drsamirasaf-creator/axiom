@@ -28,6 +28,20 @@ def _app():
         yield c
 
 
+def _data():
+    from services.api.modules.financials import ingest
+    d = ingest.build_sample_data("private", "us_gaap", "annual")
+    d["company"] = {"name": "T", "standard": "us_gaap", "ownership": "private"}
+    return d
+
+
+class _U:
+    """Minimal stand-in for the authenticated User the route handlers audit against."""
+    id = 1
+    name = "Test Admin"
+    email = "admin@test.example"
+
+
 def _company(db, name):
     ent = Enterprise(tenant="rekey-tenant", name=name, statement_units="actual")
     db.add(ent); db.commit(); db.refresh(ent)
@@ -300,5 +314,142 @@ def test_dirty_multiple_roots_are_preserved_not_merged(_app):
             company_id=ent.id, parent_id=None).all()]
         assert sorted(roots_after) == sorted(roots_before)
         assert len(roots_after) == 12      # all parentless as seeded; none reparented
+    finally:
+        db.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ALIAS-INTEGRITY family — department mutations must maintain the alias table
+# and the flagged-absent contract. All three defects share one root: the alias
+# table was written by the migration and by uploads, but NOT by rename/delete,
+# and flagged-absent never fired on the live (gated) path.
+# ─────────────────────────────────────────────────────────────────────────────
+def test_rename_records_aliases_for_both_names(_app):
+    """A rename must leave BOTH names resolving to the same stable department,
+    so a later upload using either one updates in place instead of duplicating —
+    the trap that produced Milliner's two parallel org trees."""
+    from services.api.accounts import update_department, DepartmentIn
+    db = SessionLocal()
+    try:
+        ent = _company(db, "Rename Alias Co")
+        dep = _ensure_department(db, ent.id, "Finance", head_name="Marcus Chen")
+        db.commit()
+        did, key = dep.id, dep.dept_key
+
+        update_department(ent.id, did,
+                          DepartmentIn(name="Finance and Accounting",
+                                       head_name="Marcus Chen",
+                                       head_title="CFO", head_email="m@x.example",
+                                       parent_id=None, employees=12),
+                          member=None, user=_U(), db=db)
+        db.expire_all()
+
+        # BOTH names resolve to the same row
+        assert _resolve_department(db, ent.id, "Finance").id == did
+        assert _resolve_department(db, ent.id, "Finance and Accounting").id == did
+        # an upload of EITHER name updates in place — no duplicate, key unchanged
+        for nm in ("Finance", "Finance and Accounting"):
+            got = _ensure_department(db, ent.id, nm)
+            db.commit()
+            assert got.id == did and got.dept_key == key
+        assert db.query(Department).filter_by(company_id=ent.id).count() == 1
+    finally:
+        db.close()
+
+
+def test_delete_removes_aliases_so_no_dangling_resurrection(_app):
+    """A deleted department must not leave aliases pointing at a missing row."""
+    from services.api.accounts import delete_department
+    db = SessionLocal()
+    try:
+        ent = _company(db, "Delete Alias Co")
+        keep = _ensure_department(db, ent.id, "Operations")
+        gone = _ensure_department(db, ent.id, "Legal")
+        db.commit()
+        gone_id = gone.id
+        assert db.query(DepartmentAlias).filter_by(
+            company_id=ent.id, department_id=gone_id).count() >= 1
+
+        delete_department(ent.id, gone_id, reassign_to=keep.id,
+                          member=None, user=_U(), db=db)
+        db.expire_all()
+
+        assert db.query(DepartmentAlias).filter_by(
+            company_id=ent.id, department_id=gone_id).count() == 0, "aliases must go too"
+        # the old name now resolves to NOTHING (not to a dangling id)
+        assert _resolve_department(db, ent.id, "Legal") is None
+        # and re-uploading it creates ONE clean department, not a resurrection
+        fresh = _ensure_department(db, ent.id, "Legal")
+        db.commit()
+        # NB: SQLite recycles the deleted row's primary key, so `fresh.id` may
+        # equal `gone_id`. That is the database allocating ids, not a
+        # resurrection — what matters is that exactly ONE "Legal" exists, it
+        # carries a freshly minted stable key, and it owns its own alias.
+        assert db.query(Department).filter_by(
+            company_id=ent.id, name="Legal").count() == 1
+        assert fresh.dept_key != _legacy_dept_key("Legal")
+        assert db.query(DepartmentAlias).filter_by(
+            company_id=ent.id, department_id=fresh.id, name_norm="legal").count() == 1
+    finally:
+        db.close()
+
+
+def test_flagged_absent_fires_on_the_gate_path(_app):
+    """The live endpoint commits THROUGH the gate, which always passes an
+    approved-set dict. The old `approved is None` guard therefore never fired and
+    omitted departments sat silently unmarked."""
+    from services.api.accounts import apply_upload
+    from services.api.modules.enterprise_state.models import Enterprise
+    db = SessionLocal()
+    try:
+        ent = _company(db, "Flag Gate Co")
+        kept = _ensure_department(db, ent.id, "Operations")
+        omitted = _ensure_department(db, ent.id, "Legal")
+        db.commit()
+        omitted_id = omitted.id
+
+        p = {"data": _data(), "departments": [{"name": "Operations", "head_name": None,
+             "head_title": None, "employees": None, "parent": None}]}
+        # exactly how the gate calls it: approved is a DICT, never None
+        apply_upload(db, ent.id, ent=db.get(Enterprise, ent.id), data=p["data"],
+                     objectives=[], key_results=[], kpis=[],
+                     departments=p["departments"], warnings=[], frequency="annual",
+                     meta={}, okr_flags={}, user=_U(),
+                     approved={"departments": {"operations"}, "financials": {"statements"}})
+        db.commit(); db.expire_all()
+
+        assert db.get(Department, omitted_id).flagged_absent is True, \
+            "a department the upload omitted must be FLAGGED"
+        assert db.get(Department, kept.id).flagged_absent is False
+        assert db.query(Department).filter_by(company_id=ent.id).count() == 2, \
+            "flagged, NOT deleted"
+    finally:
+        db.close()
+
+
+def test_present_but_unapproved_department_is_not_flagged(_app):
+    """Absence must mean 'not in the upload', never 'not approved' — a partial
+    approval must not mark a department the file DID mention."""
+    from services.api.accounts import apply_upload
+    from services.api.modules.enterprise_state.models import Enterprise
+    db = SessionLocal()
+    try:
+        ent = _company(db, "Partial Flag Co")
+        a = _ensure_department(db, ent.id, "Operations")
+        b = _ensure_department(db, ent.id, "Legal")
+        db.commit()
+        p = {"data": _data(),
+             "departments": [{"name": n, "head_name": None, "head_title": None,
+                              "employees": None, "parent": None}
+                             for n in ("Operations", "Legal")]}
+        apply_upload(db, ent.id, ent=db.get(Enterprise, ent.id), data=p["data"],
+                     objectives=[], key_results=[], kpis=[],
+                     departments=p["departments"], warnings=[], frequency="annual",
+                     meta={}, okr_flags={}, user=_U(),
+                     approved={"departments": {"operations"}})   # Legal NOT approved
+        db.commit(); db.expire_all()
+        assert db.get(Department, b.id).flagged_absent is False, \
+            "present-but-unapproved must NOT be flagged absent"
+        assert db.get(Department, a.id).flagged_absent is False
     finally:
         db.close()

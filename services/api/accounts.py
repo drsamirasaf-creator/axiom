@@ -2548,7 +2548,14 @@ def apply_upload(db, company_id: int, *, ent, data, objectives, key_results,
     # resolve parent linkage in a second pass (all ids now exist).
     dept_by_norm = {}
     seen_dept_ids = set()
+    # Departments the FILE mentions, regardless of whether this commit approved
+    # them. Absence must mean "not in the upload", never "not approved" — under a
+    # partial approval an unapproved-but-present department must NOT be flagged.
+    named_dept_ids = set()
     for d in departments:
+        existing = _resolve_department(db, company_id, d["name"])
+        if existing is not None:
+            named_dept_ids.add(existing.id)
         if not _ok("departments", (d["name"] or "").strip().lower()):
             continue
         dep = _ensure_department(db, company_id, d["name"],
@@ -2559,6 +2566,7 @@ def apply_upload(db, company_id: int, *, ent, data, objectives, key_results,
             dep.employees = d["employees"]
         dept_by_norm[_norm_dept_name(d["name"])] = dep
         seen_dept_ids.add(dep.id)
+        named_dept_ids.add(dep.id)
     db.flush()
     # ROOT INTEGRITY: resolve a parent across the whole STABLE-ID space, not just
     # within this upload's own rows. Resolving name-locally is what let each
@@ -2577,9 +2585,13 @@ def apply_upload(db, company_id: int, *, ent, data, objectives, key_results,
     # company already had that this upload does not mention is MARKED absent
     # (never removed, so its objectives/KPIs/participants keep resolving); a
     # department that reappears is un-flagged by _ensure_department.
-    if departments and approved is None:
+    # Runs on EVERY upload path. The old guard was `approved is None`, which never
+    # held once the live endpoint began committing through the approval gate (the
+    # gate always passes an approved-set dict) — so the "flagged, not deleted"
+    # contract silently did nothing for departments, and stale rows sat unmarked.
+    if departments:
         for dep in db.query(Department).filter_by(company_id=company_id).all():
-            if dep.id not in seen_dept_ids and not dep.flagged_absent:
+            if dep.id not in named_dept_ids and not dep.flagged_absent:
                 dep.flagged_absent = True
 
     def _dept_id_for(name):
@@ -3889,12 +3901,23 @@ def update_department(company_id: int, dept_id: int, body: DepartmentIn,
                       member=Depends(require_company_admin),
                       user: User = Depends(get_current_user), db=Depends(get_db)):
     """Edit a department's name, head, or parent. dept_key stays stable on rename so
-    existing assignments + future re-uploads of the OLD name still resolve here."""
+    existing assignments + future re-uploads of the OLD name still resolve here.
+
+    ALIAS-AWARE: a rename records BOTH names against this department's stable id.
+    Without that, renaming Finance -> "Finance and Accounting" left "finance"
+    resolving here while the NEW name resolved to nothing, so the very next
+    template upload using the canonical name created a DUPLICATE — the trap that
+    produced Milliner's two parallel org trees."""
     dep = db.get(Department, dept_id)
     if not dep or dep.company_id != company_id:
         raise HTTPException(404, "department not found")
     if body.name and body.name.strip():
-        dep.name = body.name.strip()
+        new_name = body.name.strip()
+        if _norm_dept_name(new_name) != _norm_dept_name(dep.name):
+            _dept_alias_add(db, company_id, dep.id, dep.name)   # the OLD name keeps resolving
+        dep.name = new_name
+        db.flush()
+        _dept_alias_add(db, company_id, dep.id, new_name)       # ...and so does the new one
     dep.head_name = body.head_name
     dep.head_title = body.head_title
     dep.head_email = body.head_email
@@ -3944,6 +3967,12 @@ def delete_department(company_id: int, dept_id: int, reassign_to: int | None = N
         i.department_id = new_id; moved["initiatives"] += 1
     for child in db.query(Department).filter_by(company_id=company_id, parent_id=dep.id).all():
         child.parent_id = dep.parent_id
+    # Drop this department's aliases. A dangling alias points at a row that no
+    # longer exists: _resolve_department would return None for it, so a later
+    # upload using that old name would silently CREATE a fresh department —
+    # quietly reintroducing the duplication the stable-id re-key exists to stop.
+    db.query(DepartmentAlias).filter_by(
+        company_id=company_id, department_id=dep.id).delete(synchronize_session=False)
     db.delete(dep)
     audit(db, user.id, "department_deleted", "company", company_id,
           detail=f"{dep.name} reassign_to={new_id} moved={moved}")
