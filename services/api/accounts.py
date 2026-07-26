@@ -4532,6 +4532,173 @@ class UnseedIn(BaseModel):
     dry_run: bool = False
 
 
+class SeedKpiIn(BaseModel):
+    kpi_name: str
+    unit: str | None = None
+    ytd_plan: float | None = None
+    ytd_actual: float | None = None
+    full_year_target: float | None = None
+    direction: str = "higher_better"
+
+
+class SeedObjIn(BaseModel):
+    objective: str
+    key_results: list[str] = []
+
+
+class SeedDeptOkrIn(BaseModel):
+    department: str
+    objectives: list[SeedObjIn] = []
+    kpis: list[SeedKpiIn] = []
+    initiatives: list[tuple[str, str]] = []      # (title, status)
+
+
+class SeedOkrIn(BaseModel):
+    departments: list[SeedDeptOkrIn]
+    link_kpis: bool = True
+    dry_run: bool = False
+
+
+@router.post("/companies/{company_id}/assessment/seed-okrs")
+def seed_okrs(company_id: int, body: SeedOkrIn,
+              member=Depends(require_company_admin),
+              user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Seed objectives, key results, KPIs, initiatives and their links.
+
+    Written through here rather than the ordinary create endpoints for one
+    reason: those stamp created_by_name from the CALLER, and the unseed path
+    selects on that marker. A seed the reverse cannot find is not reversible,
+    so the marker has to be set at write time.
+
+    Everything lands as source='in_app', which is also what makes it survive a
+    later template upload — reconciliation leaves in-app rows alone.
+
+    IDEMPOTENT BY NAME throughout: an objective, KPI or initiative whose
+    normalised name already exists for the company is skipped, so a re-run adds
+    nothing and an interrupted run can simply be repeated.
+    """
+    if not _is_showcase_company(db, company_id):
+        raise HTTPException(403, "seed-okrs is restricted to showcase companies.")
+
+    ds = _active_company_dataset(db, company_id)
+    if not ds:
+        raise HTTPException(409, "company has no active dataset to attach OKRs to")
+    now = datetime.utcnow()
+    out = {"objectives": 0, "key_results": 0, "kpis": 0, "initiatives": 0,
+           "links": {"objective": 0, "initiative": 0}, "skipped": [],
+           "per_department": {}, "dry_run": body.dry_run}
+
+    have_obj = {_goal_key(o.objective) for o in
+                db.query(Objective).filter_by(company_id=company_id).all()}
+    have_kpi = {(k.department_id, _norm_kpi_key(k.kpi_name)) for k in
+                db.query(KpiPlan).filter_by(company_id=company_id).all()}
+    have_ini = {_norm_kpi_key(i.title) for i in
+                db.query(Initiative).filter_by(company_id=company_id).all()}
+    next_ri = (db.query(func.coalesce(func.max(Objective.row_index), 0))
+               .filter_by(company_id=company_id, dataset_id=ds.id).scalar() or 0)
+    next_oid = 100                       # seeded codes start well clear of O1..O10
+
+    for dep_spec in body.departments:
+        dep = _resolve_department(db, company_id, dep_spec.department)
+        if not dep:
+            out["skipped"].append({"department": dep_spec.department, "reason": "unknown department"})
+            continue
+        rec = {"objectives": [], "kpis": [], "initiatives": [], "links": 0}
+
+        made_obj = []
+        for o in dep_spec.objectives:
+            gk = _goal_key(o.objective)
+            if gk in have_obj:
+                out["skipped"].append({"objective": o.objective, "reason": "already exists"})
+                continue
+            next_ri += 1; next_oid += 1
+            code = f"O{next_oid}"
+            row = Objective(company_id=company_id, dataset_id=ds.id, row_index=next_ri,
+                            objective=o.objective, objective_id=code, obj_key=gk,
+                            department_id=dep.id, priority="High", horizon="Medium",
+                            status="Amber", source="in_app", created_at=now,
+                            created_by_user_id=user.id, created_by_name=SEED_MARKER)
+            db.add(row); db.flush()
+            have_obj.add(gk); made_obj.append((code, gk, o.objective))
+            out["objectives"] += 1; rec["objectives"].append(o.objective)
+            for i, kr in enumerate(o.key_results):
+                db.add(KeyResult(company_id=company_id, dataset_id=ds.id,
+                                 row_index=next_ri * 10 + i, objective_id=code,
+                                 key_result=kr, source="in_app", created_at=now,
+                                 created_by_user_id=user.id, created_by_name=SEED_MARKER))
+                out["key_results"] += 1
+
+        made_ini = []
+        for title, status in dep_spec.initiatives:
+            if _norm_kpi_key(title) in have_ini:
+                out["skipped"].append({"initiative": title, "reason": "already exists"})
+                continue
+            ref = _next_ref(db, company_id, _band_of(status, "high"))
+            ini = Initiative(company_id=company_id, ref_code=ref, title=title,
+                             description="", importance="high", urgency="medium",
+                             current_priority="high", status=status,
+                             department_id=dep.id, created_by=user.id, created_at=now)
+            db.add(ini); db.flush()
+            have_ini.add(_norm_kpi_key(title)); made_ini.append(ini)
+            out["initiatives"] += 1; rec["initiatives"].append(f"{ref} {title}")
+
+        made_kpi = []
+        for k in dep_spec.kpis:
+            if (dep.id, _norm_kpi_key(k.kpi_name)) in have_kpi:
+                out["skipped"].append({"kpi": k.kpi_name, "reason": "already exists in this department"})
+                continue
+            next_ri += 1
+            key = _resolve_kpi_key(db, company_id, dep.id, k.kpi_name) or _new_kpi_key()
+            _kpi_alias_add(db, company_id, key, dep.id, k.kpi_name)
+            row = KpiPlan(company_id=company_id, dataset_id=ds.id, row_index=next_ri,
+                          kpi_name=k.kpi_name, unit=k.unit, ytd_plan=k.ytd_plan,
+                          ytd_actual=k.ytd_actual, full_year_target=k.full_year_target,
+                          department_id=dep.id, kpi_key=key,
+                          direction=_norm_kpi_direction(k.direction),
+                          uploaded_at=now, source="in_app", created_at=now,
+                          created_by_user_id=user.id, created_by_name=SEED_MARKER)
+            db.add(row); db.flush()
+            have_kpi.add((dep.id, _norm_kpi_key(k.kpi_name))); made_kpi.append(row)
+            out["kpis"] += 1; rec["kpis"].append(f"{k.kpi_name} [{row.direction}]")
+
+        if body.link_kpis and made_kpi:
+            # Link to this department's objectives and initiatives — the ones just
+            # made plus whatever it already had, so a KPI is never left orphaned
+            # simply because its department's objective predates the seed.
+            all_gk = [gk for _, gk, _ in made_obj] + [
+                o.obj_key for o in db.query(Objective)
+                .filter_by(company_id=company_id, department_id=dep.id).all()]
+            all_ini = [i.id for i in made_ini] + [
+                i.id for i in db.query(Initiative)
+                .filter_by(company_id=company_id, department_id=dep.id).all()]
+            for n, kp in enumerate(made_kpi):
+                if all_gk:
+                    gk = all_gk[n % len(all_gk)]
+                    if not db.query(KpiObjectiveLink).filter_by(
+                            company_id=company_id, kpi_key=kp.kpi_key, goal_key=gk).first():
+                        db.add(KpiObjectiveLink(company_id=company_id, kpi_key=kp.kpi_key,
+                                                goal_key=gk, source="in_app",
+                                                created_by=user.id))
+                        out["links"]["objective"] += 1; rec["links"] += 1
+                if all_ini:
+                    iid = all_ini[n % len(all_ini)]
+                    if not db.query(KpiInitiativeLink).filter_by(
+                            company_id=company_id, kpi_key=kp.kpi_key, initiative_id=iid).first():
+                        db.add(KpiInitiativeLink(company_id=company_id, kpi_key=kp.kpi_key,
+                                                 initiative_id=iid, source="in_app",
+                                                 created_by=user.id))
+                        out["links"]["initiative"] += 1; rec["links"] += 1
+
+        out["per_department"][dep.name] = rec
+
+    if body.dry_run:
+        db.rollback(); out["note"] = "dry run — nothing committed"; return out
+    audit(db, user.id, "okrs_seeded", "company", company_id,
+          detail=f"obj={out['objectives']} kpis={out['kpis']} ini={out['initiatives']}")
+    db.commit()
+    return out
+
+
 @router.post("/companies/{company_id}/assessment/unseed-history")
 def unseed_assessment_history(company_id: int, body: UnseedIn,
                               member=Depends(require_company_admin),
@@ -8955,7 +9122,17 @@ def assessment_summary(company_id: int, department: int | None = None,
               "cei": cei_val if npart >= KFLOOR else None,
               "scope": ("department" if _dept_obj is not None else "enterprise")}
         if npart < KFLOOR:
-            pt.update({"suppressed": True, "reason": "below_anonymity_floor"})
+            # WHY it is missing, not merely THAT it is. A department series that
+            # stops short of the latest cycle looks broken; the same series
+            # saying "suppressed for anonymity in this cycle" is information.
+            # The two causes are genuinely different and a reader deserves to
+            # know which: too few respondents to publish safely, versus nobody
+            # from that department answered at all.
+            pt.update({"suppressed": True,
+                       "reason": ("no_responses" if npart == 0 else "below_anonymity_floor"),
+                       "note": ("No responses from this department in this cycle."
+                                if npart == 0 else
+                                "Suppressed for anonymity — too few respondents in this cycle.")})
         trend.append(pt)
     # RAG is a per-item/per-axis derived value — it must vanish wherever the floor suppresses.
     rags = _summary_rags(current, latest.snapshot if latest else None)
