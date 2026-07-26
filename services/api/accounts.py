@@ -4580,6 +4580,19 @@ def seed_okrs(company_id: int, body: SeedOkrIn,
     if not _is_showcase_company(db, company_id):
         raise HTTPException(403, "seed-okrs is restricted to showcase companies.")
 
+    try:
+        return _seed_okrs_inner(db, company_id, body, user)
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Admin-only and showcase-only, so surfacing the cause is safe here and
+        # far more useful than a bare 500 — a seeding run that fails opaquely
+        # cannot be diagnosed without shell access to production.
+        db.rollback()
+        raise HTTPException(500, f"seed-okrs failed: {type(e).__name__}: {e}")
+
+
+def _seed_okrs_inner(db, company_id: int, body, user):
     ds = _active_company_dataset(db, company_id)
     if not ds:
         raise HTTPException(409, "company has no active dataset to attach OKRs to")
