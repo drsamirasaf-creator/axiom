@@ -708,6 +708,51 @@ class KpiAlias(Base):
     __table_args__ = (UniqueConstraint("company_id", "scope_key", name="uq_kpi_alias"),)
 
 
+class KpiObjectiveLink(Base):
+    """KPI → objective, many-to-many. A KPI can measure several objectives and an
+    objective is measured by several KPIs, so neither side is a foreign key on
+    the other.
+
+    Keyed by kpi_key and goal_key — both stable across re-uploads — for the same
+    reason GoalInitiativeLink is keyed by goal_key: the underlying rows are
+    replaced wholesale on every upload, so a link to a row id would not survive
+    the next quarter.
+
+    `source` and `flagged_absent` are load-bearing, not bookkeeping. Without
+    `source`, a re-upload whose template omits a link would delete a link a
+    human created in the app. Without `flagged_absent`, an omission would be
+    indistinguishable from a deletion — the same "flagged, never deleted"
+    discipline the OKR reconciliation already applies to its rows."""
+    __tablename__ = "ax_kpi_objective_links"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    kpi_key = Column(String(64), index=True, nullable=False)
+    goal_key = Column(String(64), index=True, nullable=False)
+    source = Column(String(16), default="template", nullable=False)   # template|in_app
+    flagged_absent = Column(Boolean, default=False, nullable=False)
+    created_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    __table_args__ = (UniqueConstraint("company_id", "kpi_key", "goal_key",
+                                       name="uq_kpi_objective_link"),)
+
+
+class KpiInitiativeLink(Base):
+    """KPI → initiative, many-to-many. Keyed by kpi_key + initiative_id: an
+    initiative is an in-app entity with a durable id, so it needs no text hash —
+    exactly the asymmetry GoalInitiativeLink already encodes."""
+    __tablename__ = "ax_kpi_initiative_links"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    kpi_key = Column(String(64), index=True, nullable=False)
+    initiative_id = Column(Integer, index=True, nullable=False)
+    source = Column(String(16), default="template", nullable=False)   # template|in_app
+    flagged_absent = Column(Boolean, default=False, nullable=False)
+    created_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    __table_args__ = (UniqueConstraint("company_id", "kpi_key", "initiative_id",
+                                       name="uq_kpi_initiative_link"),)
+
+
 class GoalInitiativeLink(Base):
     """§9 bridge: many-to-many between an objective (or legacy goal) and an
     initiative. Objectives/goals are snapshot-scoped (re-upload mints new rows),
@@ -2457,6 +2502,67 @@ def _backfill_kpi_keys(db, company_id: int | None = None) -> dict:
     return res
 
 
+def _reconcile_kpi_links(db, company_id, upload_links, now=None):
+    """Reconcile TEMPLATE-declared KPI links against what is already stored.
+
+    Mirrors _reconcile_okr_upload's rule set exactly, because a link deserves
+    the same protection as the row it joins:
+
+      · in the upload, already stored     → UPDATED (un-flagged, kept)
+      · in the upload, not stored         → CREATED as source='template'
+      · stored as 'template', now absent  → FLAGGED ABSENT, never deleted
+      · stored as 'in_app', absent        → UNTOUCHED. A human made it; an
+        upload that is merely silent about it must not undo it.
+      · stored 'in_app' but the template also declares it → CONFLICT SURFACED,
+        the in-app row kept as-is (it is the more deliberate statement)
+      · reference resolves to nothing     → WARNED, link skipped. Never blocks
+        the KPI row itself, matching the department parser's posture.
+
+    `upload_links` = {"objective": {(kpi_key, goal_key), ...},
+                      "initiative": {(kpi_key, initiative_id), ...}}
+    """
+    now = now or datetime.utcnow()
+    res = {"created": {"objective": 0, "initiative": 0},
+           "updated": {"objective": 0, "initiative": 0},
+           "flagged_absent": {"objective": 0, "initiative": 0},
+           "kept_in_app": {"objective": 0, "initiative": 0},
+           "conflicts": []}
+
+    for kind, model, second in (("objective", KpiObjectiveLink, "goal_key"),
+                                ("initiative", KpiInitiativeLink, "initiative_id")):
+        want = set(upload_links.get(kind) or set())
+        stored = db.query(model).filter_by(company_id=company_id).all()
+        seen = set()
+        for row in stored:
+            pair = (row.kpi_key, getattr(row, second))
+            seen.add(pair)
+            if row.source == "in_app":
+                res["kept_in_app"][kind] += 1
+                if pair in want:
+                    # Both sides assert the link. Nothing to change — but the
+                    # divergence in PROVENANCE is surfaced rather than silently
+                    # resolved, so an admin can see the template now agrees.
+                    res["conflicts"].append(
+                        {"kind": kind, "kpi_key": row.kpi_key, second: getattr(row, second),
+                         "reason": "declared in template and already linked in-app",
+                         "kept": "in_app"})
+                continue
+            if pair in want:
+                if row.flagged_absent:
+                    row.flagged_absent = False       # returned to the template
+                res["updated"][kind] += 1
+            elif not row.flagged_absent:
+                row.flagged_absent = True            # flagged, never deleted
+                res["flagged_absent"][kind] += 1
+
+        for pair in want - seen:
+            kwargs = {"company_id": company_id, "kpi_key": pair[0], second: pair[1],
+                      "source": "template", "flagged_absent": False, "created_at": now}
+            db.add(model(**kwargs))
+            res["created"][kind] += 1
+    return res
+
+
 def _run_kpi_key_backfill():
     """Boot-time wrapper for the KPI backfill, mirroring _rekey_departments.
 
@@ -3952,6 +4058,158 @@ def _kpi_variance(actual, plan):
     pct = (ab / abs(plan)) if plan else None
     return {"abs": round(ab, 4), "pct": (round(pct, 4) if pct is not None else None),
             "status": "favorable" if actual >= plan else "unfavorable"}
+
+
+class KpiLinkIn(BaseModel):
+    objective_id: str | None = None      # objective row id from the OKR payload
+    goal_key: str | None = None          # or its stable key directly
+    initiative_id: int | None = None
+    initiative_ref: str | None = None    # or its ref_code, which is what people quote
+
+
+def _kpi_key_for(db, company_id: int, kpi_id: int) -> str:
+    """The stable key of a KPI row, minting one if the backfill has not reached
+    it (an in-app KPI created after the pass). Never returns None: a link to a
+    NULL key would be a link to every unkeyed KPI at once."""
+    k = db.query(KpiPlan).filter_by(id=kpi_id, company_id=company_id).first()
+    if not k:
+        raise HTTPException(404, "KPI not found")
+    if not k.kpi_key:
+        k.kpi_key = _resolve_kpi_key(db, company_id, k.department_id, k.kpi_name) or _new_kpi_key()
+        _kpi_alias_add(db, company_id, k.kpi_key, k.department_id, k.kpi_name)
+        db.flush()
+    return k.kpi_key
+
+
+@router.get("/companies/{company_id}/kpis/{kpi_id}/links")
+def kpi_links(company_id: int, kpi_id: int, include_absent: bool = False,
+              member=Depends(_summary_access), db=Depends(get_db)):
+    """What this KPI is connected to — the drill-down's "why", traceable.
+
+    Flagged-absent links are EXCLUDED by default: a link the template dropped is
+    history, not a current connection. `?include_absent=1` shows them, because
+    "this used to be linked" is a real question when reading a regression."""
+    key = _kpi_key_for(db, company_id, kpi_id)
+
+    oq = db.query(KpiObjectiveLink).filter_by(company_id=company_id, kpi_key=key)
+    iq = db.query(KpiInitiativeLink).filter_by(company_id=company_id, kpi_key=key)
+    if not include_absent:
+        oq = oq.filter(KpiObjectiveLink.flagged_absent.is_(False))
+        iq = iq.filter(KpiInitiativeLink.flagged_absent.is_(False))
+
+    _, obj_rows, _ = _objective_rows(db, company_id)
+    by_goal = {r["obj_key"]: r for r in obj_rows}
+    objectives = []
+    for l in oq.all():
+        r = by_goal.get(l.goal_key)
+        objectives.append({
+            "goal_key": l.goal_key, "source": l.source, "flagged_absent": l.flagged_absent,
+            # Resolvable=False means the objective is not in the ACTIVE dataset —
+            # the link survives (goal_key is stable) but has nothing to show yet.
+            "resolvable": r is not None,
+            "objective": r["objective"] if r else None,
+            "objective_id": r["objective_id"] if r else None,
+            "progress": r.get("progress") if r else None,
+            "status": r.get("status") if r else None})
+
+    inis = []
+    for l in iq.all():
+        i = db.query(Initiative).filter_by(id=l.initiative_id, company_id=company_id).first()
+        inis.append({
+            "initiative_id": l.initiative_id, "source": l.source,
+            "flagged_absent": l.flagged_absent, "resolvable": i is not None,
+            "ref_code": i.ref_code if i else None, "title": i.title if i else None,
+            "status": i.status if i else None,
+            "current_priority": i.current_priority if i else None})
+
+    return {"company_id": company_id, "kpi_id": kpi_id, "kpi_key": key,
+            "objectives": objectives, "initiatives": inis,
+            "counts": {"objectives": len(objectives), "initiatives": len(inis)}}
+
+
+@router.post("/companies/{company_id}/kpis/{kpi_id}/links", status_code=201)
+def create_kpi_link(company_id: int, kpi_id: int, body: KpiLinkIn,
+                    member=Depends(require_company_admin),
+                    user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Link a KPI to an objective or an initiative, in-app.
+
+    Written as source='in_app', which is what makes it survive re-upload: the
+    reconciliation leaves in-app links alone even when the template is silent
+    about them."""
+    made = []
+    goal_key = body.goal_key
+    if goal_key is None and body.objective_id is not None:
+        _, rows, _ = _objective_rows(db, company_id)
+        match = next((r for r in rows if str(r["objective_id"]) == str(body.objective_id)), None)
+        if not match:
+            raise HTTPException(404, "objective not found in the active dataset")
+        goal_key = match["obj_key"]
+
+    iid = body.initiative_id
+    if iid is None and body.initiative_ref:
+        ini = (db.query(Initiative)
+               .filter_by(company_id=company_id, ref_code=body.initiative_ref.strip().upper())
+               .first())
+        if not ini:
+            raise HTTPException(404, "initiative not found")
+        iid = ini.id
+
+    if goal_key is None and iid is None:
+        raise HTTPException(422, "provide an objective or an initiative to link")
+
+    key = _kpi_key_for(db, company_id, kpi_id)
+    if goal_key is not None:
+        row = (db.query(KpiObjectiveLink)
+               .filter_by(company_id=company_id, kpi_key=key, goal_key=goal_key).first())
+        if row:
+            # Re-linking something the template had dropped revives it AS in-app,
+            # so a later upload cannot flag it away again.
+            row.flagged_absent, row.source = False, "in_app"
+        else:
+            db.add(KpiObjectiveLink(company_id=company_id, kpi_key=key, goal_key=goal_key,
+                                    source="in_app", created_by=user.id))
+        made.append("objective")
+    if iid is not None:
+        if not db.query(Initiative).filter_by(id=iid, company_id=company_id).first():
+            raise HTTPException(404, "initiative not found")
+        row = (db.query(KpiInitiativeLink)
+               .filter_by(company_id=company_id, kpi_key=key, initiative_id=iid).first())
+        if row:
+            row.flagged_absent, row.source = False, "in_app"
+        else:
+            db.add(KpiInitiativeLink(company_id=company_id, kpi_key=key, initiative_id=iid,
+                                     source="in_app", created_by=user.id))
+        made.append("initiative")
+
+    audit(db, user.id, "kpi_link_created", "company", company_id,
+          detail=f"kpi={kpi_id} {'+'.join(made)}")
+    db.commit()
+    return {"ok": True, "kpi_key": key, "linked": made}
+
+
+@router.delete("/companies/{company_id}/kpis/{kpi_id}/links")
+def delete_kpi_link(company_id: int, kpi_id: int, goal_key: str | None = None,
+                    initiative_id: int | None = None,
+                    member=Depends(require_company_admin),
+                    user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Remove a link. Deletes outright — unlike an upload's silence, this is a
+    person saying the connection is wrong, and flagging it would leave it on
+    screen under ?include_absent."""
+    key = _kpi_key_for(db, company_id, kpi_id)
+    n = 0
+    if goal_key:
+        n += (db.query(KpiObjectiveLink)
+              .filter_by(company_id=company_id, kpi_key=key, goal_key=goal_key)
+              .delete(synchronize_session=False))
+    if initiative_id is not None:
+        n += (db.query(KpiInitiativeLink)
+              .filter_by(company_id=company_id, kpi_key=key, initiative_id=initiative_id)
+              .delete(synchronize_session=False))
+    if not goal_key and initiative_id is None:
+        raise HTTPException(422, "specify goal_key or initiative_id")
+    audit(db, user.id, "kpi_link_deleted", "company", company_id, detail=f"kpi={kpi_id}")
+    db.commit()
+    return {"ok": True, "removed": int(n)}
 
 
 @router.get("/companies/{company_id}/kpi-keys/status")
