@@ -4288,6 +4288,171 @@ def delete_kpi_link(company_id: int, kpi_id: int, goal_key: str | None = None,
     return {"ok": True, "removed": int(n)}
 
 
+class SeedDeptTarget(BaseModel):
+    department: str                      # the name responses should carry
+    target_cei: float                    # the DERIVED cei should land near this
+    respondents: int = 5
+
+
+class SeedCycleIn(BaseModel):
+    name: str                            # deterministic — idempotency key
+    opened_at: datetime
+    closed_at: datetime
+    departments: list[SeedDeptTarget]
+
+
+class SeedHistoryIn(BaseModel):
+    cycles: list[SeedCycleIn]
+    dry_run: bool = False
+
+
+def _shape_scores(rng, target: float, n_items: int, harshness: float,
+                  item_offsets: list[float]) -> list[float]:
+    """One respondent's raw (pre-rounding) scores for the item set.
+
+    Three INDEPENDENT noise layers, all zero-mean, so the expected department CEI
+    is the target rather than something that merely drifts near it:
+      * harshness — this person marks consistently high or low
+      * item offset — this ITEM scores low for everyone (shared across the
+        department, which is what makes an axis profile look real rather than
+        flat)
+      * jitter — ordinary per-answer variation
+
+    Zero-mean matters per AXIS, not just overall: the framework's L1 axes carry
+    UNEVEN item counts (5 to 8), so CEI is a weighted mean of axis means, not a
+    flat mean of the 78 scores. Zero-mean offsets keep each axis an unbiased
+    estimate of the target; unevenness then affects spread, not the centre.
+    """
+    return [target + harshness + item_offsets[i] + rng.gauss(0, 0.40)
+            for i in range(n_items)]
+
+
+def _stochastic_int(rng, x: float) -> int:
+    """Round to an integer 1..10 WITHOUT biasing the mean.
+
+    AssessmentResponse.score is an integer, so a target of 5.83 can only be
+    expressed by the mix of whole numbers. Rounding half-up would pull every
+    department toward .5 boundaries; rounding down would drag every target
+    low. Stochastic rounding preserves the expectation exactly."""
+    x = max(1.0, min(10.0, x))
+    lo = int(x)
+    return max(1, min(10, lo + (1 if rng.random() < (x - lo) else 0)))
+
+
+@router.post("/companies/{company_id}/assessment/seed-history")
+def seed_assessment_history(company_id: int, body: SeedHistoryIn,
+                            member=Depends(require_company_admin),
+                            user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Seed CLOSED historical cycles from synthetic per-respondent RESPONSES.
+
+    WHY RESPONSES AND NOT SNAPSHOTS. A department's CEI cannot be written and
+    have the enterprise number stay honest: measured on Meridian, the
+    respondent-weighted mean of the visible department slices is 6.3411 against
+    an enterprise 6.3716 — they do not reconcile arithmetically, because
+    k-floored slices are absent from the visible set while their respondents are
+    still inside the enterprise figure, and because CEI is a mean of axis means
+    rather than a pooled mean. So every number here is DERIVED: responses go in,
+    compute_cei() produces the department and enterprise aggregates, and the
+    snapshot is whatever the inputs actually imply.
+
+    SHOWCASE ONLY. Refuses on any non-showcase company even for an admin — this
+    writes thousands of synthetic rows and must be unable to reach a real
+    tenant's assessment history by any path.
+
+    IDEMPOTENT BY CYCLE NAME: a cycle whose name already exists is skipped
+    whole, so a re-run adds nothing and a partial run can simply be repeated.
+
+    Synthetic respondents use plain participant_ref strings — no Participant or
+    AssessmentInvite rows — so seats are untouched and the roster stays real.
+    """
+    if not _is_showcase_company(db, company_id):
+        raise HTTPException(
+            403, "seed-history is restricted to showcase companies — refusing "
+                 "to write synthetic assessment history to a real tenant.")
+
+    import random
+    fw = _assess_current_framework(db, company_id)
+    if not fw:
+        raise HTTPException(409, "company has no assessment framework")
+    items = (db.query(AssessmentItem)
+             .filter_by(framework_id=fw.id, level=2)
+             .order_by(AssessmentItem.id).all())
+    items = [i for i in items if getattr(i, "selected", True)]
+    if not items:
+        raise HTTPException(409, "framework has no level-2 items to score")
+
+    existing = {(c.name or "").strip()
+                for c in db.query(AssessmentCycle).filter_by(company_id=company_id).all()}
+
+    out = {"framework_items": len(items), "cycles": [], "skipped": [],
+           "responses_written": 0, "dry_run": body.dry_run}
+
+    for spec in body.cycles:
+        nm = spec.name.strip()
+        if nm in existing:
+            out["skipped"].append({"name": nm, "reason": "a cycle with this name already exists"})
+            continue
+
+        cyc = AssessmentCycle(company_id=company_id, framework_id=fw.id,
+                              revision=fw.revision, opened_at=spec.opened_at,
+                              closed_at=None, anonymity_mode="anonymous",
+                              depth="standard", name=nm)
+        db.add(cyc); db.flush()
+
+        written = 0
+        for dept in spec.departments:
+            # Deterministic per (cycle, department): a re-run after an unseed
+            # reproduces the same history rather than a different one.
+            rng = random.Random(f"{nm}|{dept.department}")
+            item_offsets = [rng.gauss(0, 0.45) for _ in items]
+            for n in range(dept.respondents):
+                ref = f"seed:{_norm_dept_name(dept.department)}:{n}:{abs(hash(nm)) % 9973}"
+                harsh = rng.gauss(0, 0.35)
+                raws = _shape_scores(rng, dept.target_cei, len(items), harsh, item_offsets)
+                for idx, it in enumerate(items):
+                    # A few abstentions: excluded from every mean, still counted
+                    # as a respondent, and they feed the abstention_rate signal —
+                    # a survey where nobody ever skips a question is a tell.
+                    abstain = rng.random() < 0.02
+                    db.add(AssessmentResponse(
+                        cycle_id=cyc.id, participant_ref=ref, item_id=it.id,
+                        score=None if abstain else _stochastic_int(rng, raws[idx]),
+                        abstained=abstain, department=dept.department,
+                        seniority=None, submitted_at=spec.opened_at))
+                    written += 1
+        db.flush()
+
+        # Closed through the REAL path, so the CEI is derived exactly as a live
+        # cycle's would be — not written by this endpoint.
+        snap = _cycle_cei(db, cyc)
+        snap.update(_sentiment_layer(db, cyc, snap))
+        cyc.closed_at = spec.closed_at
+        cyc.snapshot = snap
+
+        derived = {d: {"cei": v.get("cei"), "n": v.get("n_participants")}
+                   for d, v in (snap.get("departments") or {}).items()}
+        out["cycles"].append({
+            "cycle_id": cyc.id, "name": nm,
+            "opened_at": spec.opened_at, "closed_at": spec.closed_at,
+            "responses": written,
+            "enterprise_cei": snap.get("cei"),
+            "n_participants": snap.get("n_participants"),
+            "derived_departments": derived,
+            "targets": {d.department: d.target_cei for d in spec.departments}})
+        out["responses_written"] += written
+        existing.add(nm)
+
+    if body.dry_run:
+        db.rollback()
+        out["note"] = "dry run — nothing committed"
+        return out
+
+    audit(db, user.id, "assessment_history_seeded", "company", company_id,
+          detail=f"cycles={len(out['cycles'])} responses={out['responses_written']}")
+    db.commit()
+    return out
+
+
 @router.get("/companies/{company_id}/kpis/{kpi_id}/history")
 def kpi_history(company_id: int, kpi_id: int,
                 member=Depends(_summary_access), db=Depends(get_db)):
