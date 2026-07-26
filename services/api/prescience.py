@@ -23,13 +23,14 @@ import os
 import re
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import (Column, DateTime, Integer, String, Text, JSON,
                         UniqueConstraint, func)
 
 from . import accounts as A
 from .accounts import (Base, get_db, require_company_member, require_company_admin,
+                       _is_showcase_company,
                        get_current_user,
                        audit, _active_company_dataset, _derive_recommendations,
                        _dispositions, _rec_view, assessment_summary,
@@ -75,6 +76,11 @@ GLOBAL_DAILY_CAP = int(os.environ.get("AXIOM_PRESCIENCE_GLOBAL_DAILY_CAP", "90")
 # Low-friction shareable credential (scoped magic-link viewer). Small per-holder
 # allowance: enough to experience the capability, bounded per link-holder.
 VIEWER_DAILY_CAP = int(os.environ.get("AXIOM_PRESCIENCE_VIEWER_DAILY_CAP", "6"))
+
+# Unauthenticated visitors on the SHOWCASE demo only. Small allowance per visitor:
+# enough to feel the capability, bounded per visitor. The global ceiling remains
+# the actual cost guarantee — this bounds any ONE visitor, not the bill.
+ANON_SESSION_CAP = int(os.environ.get("AXIOM_PRESCIENCE_ANON_CAP", "6"))
 HISTORY_TURNS = int(os.environ.get("AXIOM_PRESCIENCE_HISTORY", "10"))  # messages, ~5 Q/A
 
 
@@ -86,6 +92,11 @@ class PrescienceConversation(Base):
     id = Column(Integer, primary_key=True)
     company_id = Column(Integer, index=True, nullable=False)
     user_id = Column(Integer, index=True, nullable=False)      # per-user scoping
+    # Anonymous showcase conversations have no user, so user_id is 0 for all of
+    # them. Without a second discriminator every anonymous visitor would share one
+    # identity and could resume a stranger's thread by guessing an id — so anon
+    # conversations are additionally owned by visitor_key and must match to resume.
+    visitor_key = Column(String(64), index=True, nullable=True)
     title = Column(String(300), default="", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -134,6 +145,25 @@ class PrescienceViewerUsage(Base):
     calls = Column(Integer, default=0, nullable=False)
     __table_args__ = (UniqueConstraint("user_id", "day",
                                        name="uq_prescience_viewer_day"),)
+
+
+class PrescienceAnonUsage(Base):
+    """One row per (visitor, UTC day) for UNAUTHENTICATED showcase visitors.
+
+    `visitor_key` is a salted SHA-256 of client IP + user-agent, never the raw IP:
+    the counter needs to tell visitors apart, not identify them, and a demo
+    counter is not a reason to start retaining addresses. The salt is per-day, so
+    yesterday's keys cannot be correlated with today's.
+
+    This is a friction bump, not a security control — IPs are shared by NAT and
+    trivially rotated. The GLOBAL ceiling is what actually bounds spend."""
+    __tablename__ = "ax_prescience_anon_usage"
+    id = Column(Integer, primary_key=True)
+    visitor_key = Column(String(64), index=True, nullable=False)
+    day = Column(String(10), nullable=False)
+    calls = Column(Integer, default=0, nullable=False)
+    __table_args__ = (UniqueConstraint("visitor_key", "day",
+                                       name="uq_prescience_anon_day"),)
 
 
 class PrescienceContext(Base):
@@ -615,6 +645,45 @@ def _usage_row(db, company_id, day):
     return row
 
 
+def _ask_access(company_id: int, authorization: str = Header(None), db=Depends(get_db)):
+    """Who may ask. Mirrors _summary_access / require_report_read exactly.
+
+    Authenticated callers go through the unchanged require_company_member gate, so
+    the existing access matrix is untouched. ADDITIONALLY, a SHOWCASE company may
+    be asked about anonymously (returns None), because the demo has to work without
+    a credential. Every non-showcase company still requires auth exactly as before.
+
+    _is_showcase_company is fail-closed: any lookup error returns False, i.e. a
+    real access-controlled company. The failure mode is a locked-out demo, never
+    an exposed customer."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        if _is_showcase_company(db, company_id):
+            return None
+        raise HTTPException(401, "Missing bearer token")
+    user = get_current_user(authorization, db)               # 401 on invalid token
+    require_company_member(company_id, user, db)              # 403 on non-member
+    return user
+
+
+def _visitor_key(request: Request, day: str) -> str:
+    """Salted daily hash of client IP + user-agent. Never stores the raw address."""
+    import hashlib
+    ip = (request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+          or (request.client.host if request.client else "?"))
+    ua = request.headers.get("user-agent", "")[:200]
+    salt = os.environ.get("AXIOM_ANON_SALT", "axiom-prescience")
+    return hashlib.sha256(f"{salt}|{day}|{ip}|{ua}".encode()).hexdigest()
+
+
+def _anon_row(db, visitor_key, day):
+    row = (db.query(PrescienceAnonUsage)
+           .filter_by(visitor_key=visitor_key, day=day).first())
+    if not row:
+        row = PrescienceAnonUsage(visitor_key=visitor_key, day=day, calls=0)
+        db.add(row); db.flush()
+    return row
+
+
 def _global_calls_today(db, day):
     """Total calls across ALL companies for the UTC day. Computed as a SUM rather
     than a sentinel row so it can never drift out of step with the per-company
@@ -646,12 +715,18 @@ def _cite_tags(answer, valid):
 
 
 @prescience_router.post("/companies/{company_id}/prescience/ask")
-def ask_axiom(company_id: int, body: AskBody,
-              member=Depends(require_company_member),
-              user=Depends(get_current_user), db=Depends(get_db)):
-    """Ask AXIOM a grounded question about this company. Any active member —
-    including a magic-link scoped viewer (read+generate) — may call; the endpoint
-    writes nothing to company data. Returns {answer, conversation_id, sources_used}."""
+def ask_axiom(company_id: int, body: AskBody, request: Request,
+              user=Depends(_ask_access), db=Depends(get_db)):
+    """Ask AXIOM a grounded question about this company.
+
+    Callers: any active member (including a magic-link scoped viewer), OR — for a
+    SHOWCASE company only — an unauthenticated visitor, so the demo works without
+    a credential. `user` is None in that case.
+
+    This endpoint writes nothing to company data for ANY caller: it reads the
+    grounding context and appends to its own ax_prescience_* tables. There is no
+    company_id taken from the body, so a caller cannot pivot to another tenant —
+    the id is a path parameter and is gated before this body runs."""
     # graceful degradation: no key -> honest 503 (cheap, before any work)
     if not anthropic_api_key():
         raise HTTPException(503, "Prescience is not configured on this deployment.")
@@ -668,6 +743,22 @@ def ask_axiom(company_id: int, body: AskBody,
 
     # 2. PER-HOLDER: a scoped magic-link is shareable, so it is the low-friction
     #    vector. Real members skip this and are governed by the per-company cap.
+    # 2a. ANONYMOUS showcase visitor. No credential, so identity is a salted daily
+    #     hash of IP+UA — a friction bump, not a security control (NAT shares
+    #     addresses; rotation is trivial). GLOBAL_DAILY_CAP is the real ceiling,
+    #     and anonymous traffic counts against it like everything else.
+    anon_key, arow = None, None
+    if user is None:
+        anon_key = _visitor_key(request, day)
+        arow = _anon_row(db, anon_key, day)
+        if arow.calls >= ANON_SESSION_CAP:
+            db.commit()
+            return _limit_reached(
+                f"You've used all {ANON_SESSION_CAP} questions in this preview of "
+                f"Ask AXIOM. Start a free pilot to keep asking — with your own data, "
+                f"and a much higher allowance.",
+                "anon")
+
     scope = getattr(user, "_token_scope", None)
     vrow = None
     if scope:
@@ -693,10 +784,15 @@ def ask_axiom(company_id: int, body: AskBody,
     conv = None
     if body.conversation_id is not None:
         conv = db.get(PrescienceConversation, body.conversation_id)
-        if not conv or conv.company_id != company_id or conv.user_id != user.id:
+        owner_ok = (conv is not None and conv.company_id == company_id
+                    and (conv.visitor_key == anon_key if user is None
+                         else (conv.user_id == user.id and conv.visitor_key is None)))
+        if not owner_ok:
             raise HTTPException(404, "Conversation not found for this company.")
     if conv is None:
-        conv = PrescienceConversation(company_id=company_id, user_id=user.id,
+        conv = PrescienceConversation(company_id=company_id,
+                                      user_id=(0 if user is None else user.id),
+                                      visitor_key=anon_key,
                                       title=body.question[:120])
         db.add(conv)
         db.flush()
@@ -784,6 +880,8 @@ def ask_axiom(company_id: int, body: AskBody,
     row.calls += 1
     if vrow is not None:
         vrow.calls += 1
+    if arow is not None:
+        arow.calls += 1
     row.input_tokens += in_tok
     row.output_tokens += out_tok
     row.cache_read_tokens = (row.cache_read_tokens or 0) + cache_read
@@ -801,7 +899,7 @@ def ask_axiom(company_id: int, body: AskBody,
 def list_conversations(company_id: int, member=Depends(require_company_member),
                        user=Depends(get_current_user), db=Depends(get_db)):
     rows = (db.query(PrescienceConversation)
-            .filter_by(company_id=company_id, user_id=user.id)
+            .filter_by(company_id=company_id, user_id=user.id, visitor_key=None)
             .order_by(PrescienceConversation.updated_at.desc()).limit(50).all())
     return {"conversations": [{"id": c.id, "title": c.title, "created_at": c.created_at,
                                "updated_at": c.updated_at} for c in rows]}
@@ -812,7 +910,8 @@ def get_conversation(company_id: int, conv_id: int,
                      member=Depends(require_company_member),
                      user=Depends(get_current_user), db=Depends(get_db)):
     conv = db.get(PrescienceConversation, conv_id)
-    if not conv or conv.company_id != company_id or conv.user_id != user.id:
+    if (not conv or conv.company_id != company_id or conv.user_id != user.id
+            or conv.visitor_key is not None):
         raise HTTPException(404, "Conversation not found for this company.")
     msgs = (db.query(PrescienceMessage).filter_by(conversation_id=conv_id)
             .order_by(PrescienceMessage.id).all())

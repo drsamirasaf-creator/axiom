@@ -10440,6 +10440,8 @@ def _ensure_ax_columns(engine):
          "cache_read_tokens INTEGER NOT NULL DEFAULT 0")
     _add("ax_prescience_usage", "cache_write_tokens",
          "cache_write_tokens INTEGER NOT NULL DEFAULT 0")
+    # Anonymous showcase conversations are owned by visitor_key, not user_id.
+    _add("ax_prescience_conversations", "visitor_key", "visitor_key VARCHAR(64)")
     try:                                     # abstention stores score NULL — drop the NOT NULL
         col = {c["name"]: c for c in _inspect(engine).get_columns("ax_assessment_responses")}
         if "score" in col and not col["score"].get("nullable", True):
