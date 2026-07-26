@@ -93,3 +93,52 @@ def test_shared_item_offsets_make_a_real_axis_profile(_app):
     weak = sum(sum(c) / len(c) for c in cols[:10]) / 10
     rest = sum(sum(c) / len(c) for c in cols[10:]) / 68
     assert weak < rest - 1.0, (weak, rest)
+
+
+def test_centred_offsets_hit_the_target_at_realistic_respondent_counts(_app):
+    """Found by the first staging run, not by reasoning.
+
+    Drawing zero-MEAN offsets and trusting them to cancel is not the same as
+    them cancelling. With five respondents the harshness draws carry a standard
+    error of ~0.35/sqrt(5) = 0.16, and the ITEM offsets are shared across the
+    department so they never average out over respondents at all. The staged
+    Operations cycle landed 0.43 BELOW its target that way — a miss big enough
+    to turn a 'flat' trajectory into a visible decline.
+
+    Centring both sets pins the department mean without making respondents any
+    more alike. This asserts the tightness the seed relies on."""
+    import statistics as st
+
+    def trial(seed, target=6.30, respondents=5, n_items=78):
+        rng = random.Random(seed)
+        io = [rng.gauss(0, 0.45) for _ in range(n_items)]
+        m = sum(io) / n_items
+        io = [o - m for o in io]
+        hs = [rng.gauss(0, 0.35) for _ in range(respondents)]
+        m = sum(hs) / respondents
+        hs = [h - m for h in hs]
+        vals = []
+        for r in range(respondents):
+            vals += [A._stochastic_int(rng, x)
+                     for x in A._shape_scores(rng, target, n_items, hs[r], io)]
+        return st.mean(vals) - target
+
+    deltas = [trial(f"seed-{i}") for i in range(40)]
+    assert abs(st.mean(deltas)) < 0.02, st.mean(deltas)
+    assert max(abs(d) for d in deltas) < 0.15, max(deltas, key=abs)
+
+
+def test_centring_does_not_make_respondents_identical(_app):
+    """The mean is pinned; the people are not. If centring flattened the
+    variation it would buy accuracy with an obviously synthetic result."""
+    rng = random.Random(21)
+    io = [rng.gauss(0, 0.45) for _ in range(78)]
+    m = sum(io) / 78
+    io = [o - m for o in io]
+    hs = [rng.gauss(0, 0.35) for _ in range(5)]
+    m = sum(hs) / 5
+    hs = [h - m for h in hs]
+    rows = [[A._stochastic_int(rng, x) for x in A._shape_scores(rng, 6.4, 78, h, io)]
+            for h in hs]
+    assert len({tuple(r) for r in rows}) == 5, "five distinct respondents"
+    assert len(set(hs)) == 5 and max(hs) - min(hs) > 0.2, "harshness still varies"

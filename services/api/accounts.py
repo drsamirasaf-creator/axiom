@@ -4404,10 +4404,28 @@ def seed_assessment_history(company_id: int, body: SeedHistoryIn,
             # Deterministic per (cycle, department): a re-run after an unseed
             # reproduces the same history rather than a different one.
             rng = random.Random(f"{nm}|{dept.department}")
+            # CENTRED, not merely zero-mean in expectation. Drawing offsets and
+            # trusting them to cancel is what a first staging run disproved: with
+            # five respondents the harshness draws have a standard error of
+            # ~0.35/sqrt(5) = 0.16, and the ITEM offsets are shared across the
+            # department so they never average out over respondents at all. The
+            # staged Operations cycle landed 0.43 below its target that way.
+            #
+            # Subtracting the realised mean pins the department's average to the
+            # target exactly while leaving every respondent and every item as
+            # different from each other as before — the variation is what makes
+            # it look real, the mean is what makes it TRUE.
             item_offsets = [rng.gauss(0, 0.45) for _ in items]
+            _io_mean = sum(item_offsets) / len(item_offsets)
+            item_offsets = [o - _io_mean for o in item_offsets]
+
+            harshness = [rng.gauss(0, 0.35) for _ in range(dept.respondents)]
+            _h_mean = sum(harshness) / len(harshness) if harshness else 0.0
+            harshness = [h - _h_mean for h in harshness]
+
             for n in range(dept.respondents):
                 ref = f"seed:{_norm_dept_name(dept.department)}:{n}:{abs(hash(nm)) % 9973}"
-                harsh = rng.gauss(0, 0.35)
+                harsh = harshness[n]
                 raws = _shape_scores(rng, dept.target_cei, len(items), harsh, item_offsets)
                 for idx, it in enumerate(items):
                     # A few abstentions: excluded from every mean, still counted
