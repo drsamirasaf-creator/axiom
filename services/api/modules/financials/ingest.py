@@ -36,7 +36,7 @@ def split_refs(v):
     return out
 
 
-TEMPLATE_VERSION = "7M-v7.4"   # v7.4: optional KPI link columns (G serves-objectives, H addressed-by-initiatives)
+TEMPLATE_VERSION = "7M-v7.5"   # v7.5: KPI direction column (I) — polarity stated, not guessed
 # Both stamps are accepted (v7.0 files are already in the wild; the parser never rejects
 # on version — it records the stamp). On a v7.0 file the Employees column is simply absent
 # and parses to null (_cell_int of a missing cell), so v7.0 and v7.1 parse identically
@@ -45,7 +45,8 @@ TEMPLATE_VERSION = "7M-v7.4"   # v7.4: optional KPI link columns (G serves-objec
 # "this upload declares no template links" — NOT as "delete the links you have":
 # in-app links are untouched by definition, and template links flag rather than
 # vanish. Honest degradation, not a forced migration.
-ACCEPTED_TEMPLATE_VERSIONS = frozenset({"7M-v7.0", "7M-v7.1", "7M-v7.2", "7M-v7.3", "7M-v7.4"})
+ACCEPTED_TEMPLATE_VERSIONS = frozenset({"7M-v7.0", "7M-v7.1", "7M-v7.2", "7M-v7.3",
+                                        "7M-v7.4", "7M-v7.5"})
 # v7.2 is a PRESENTATION-ONLY change (shading convention); v7.0/v7.1 files parse
 # identically — same data shape, same defined names — so all three are accepted.
 
@@ -548,7 +549,10 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
                 "Optional: column G links a KPI to the objectives it measures (Objective IDs from the "
                 "Objectives sheet, comma-separated, e.g. O1, O4); column H links it to the initiatives "
                 "addressing it (ref codes, e.g. A1, B3). Unknown references are reported as warnings and "
-                "skipped — they never stop the KPI row from loading.")
+                "skipped — they never stop the KPI row from loading. Column I says which way is "
+                "good for each KPI: 'higher' (the default when blank) or 'lower' — set it to "
+                "'lower' for things like downtime, cost or churn, so being ABOVE target reads "
+                "as a problem rather than an achievement.")
     ws["A1"].font = Font(italic=True, color="446655")
     #   …+ F Department (dropdown sourced from the Organization sheet, free text allowed)
     # G/H reuse vocabularies already visible in this workbook: the Objective IDs
@@ -556,7 +560,8 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     # throughout the app. Both optional, both comma-separated, both warn-only.
     kpi_hdrs = ["KPI name", "Unit", "YTD Plan", "YTD Actual", "Full-year Target",
                 "Department (optional)",
-                "Serves Objective IDs (optional)", "Addressed by Initiative refs (optional)"]
+                "Serves Objective IDs (optional)", "Addressed by Initiative refs (optional)",
+                "Direction (higher/lower is better)"]
     for i, h in enumerate(kpi_hdrs):
         _hdr(ws.cell(row=KPI_HEADER_ROW, column=1 + i), h, bg=_INK, fg=_ACCENT)
     kpi_last = KPI_DATA_START + ROW_CAPACITY - 1
@@ -1097,7 +1102,11 @@ def parse_okr_and_kpis(content: bytes):
                          # the parser only splits and tidies, so a workbook read
                          # in isolation never needs a database.
                          "serves_objective_ids": split_refs(ws.cell(row=r, column=7).value),
-                         "addressed_by_initiative_refs": split_refs(ws.cell(row=r, column=8).value)})
+                         "addressed_by_initiative_refs": split_refs(ws.cell(row=r, column=8).value),
+                         # Raw as typed; normalised at apply time, where the
+                         # warnings list is available to report a typo without
+                         # failing the row.
+                         "direction": _cell_str(ws.cell(row=r, column=9).value) or None})
 
     # ---- (§4s) unknown departments referenced on Objectives/KPI rows: WARN + auto-create ----
     for src_rows, label in ((objectives, "objective"), (kpis, "KPI")):

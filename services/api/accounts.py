@@ -856,6 +856,18 @@ class KpiPlan(Base):
     # NULLABLE and unused until the link tables land, so an aborted backfill
     # leaves the system working exactly as before.
     kpi_key = Column(String(64), index=True, nullable=True)
+    # Which way is good. STATED, not inferred: the frontend previously guessed
+    # from the KPI's name against a keyword list, and a B2 dry-run showed that
+    # guess misclassifying 4 of 8 realistic names — "Audit findings open: 5
+    # against a target of 2" rendered GREEN. A confidently wrong colour is worse
+    # than none.
+    #
+    # Defaulted rather than nullable-and-checked: every KPI has a direction, and
+    # 'higher_better' is the honest default because it is what the existing rows
+    # were already being treated as. A row that predates this column therefore
+    # behaves exactly as it did yesterday.
+    direction = Column(String(16), default="higher_better",
+                       server_default="higher_better", nullable=False)
     uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     source = Column(String(16), default="template", nullable=False)
     created_by_user_id = Column(Integer, nullable=True)
@@ -2961,6 +2973,11 @@ def apply_upload(db, company_id: int, *, ent, data, objectives, key_results,
                        kpi_name=k["kpi_name"], unit=k["unit"], ytd_plan=k["ytd_plan"],
                        ytd_actual=k["ytd_actual"], full_year_target=k["full_year_target"],
                        department_id=_dept_id_for(k.get("department")), uploaded_at=now,
+                       # Blank column I -> higher_better, which is how every
+                       # pre-v7.5 row was already being treated. An unrecognised
+                       # value warns and falls back rather than failing the row.
+                       direction=_norm_kpi_direction(k.get("direction"), warnings,
+                                                     k.get("kpi_name")),
                        source="template"))
     db.flush()
     # RECONCILIATION — carry forward in-app additions, flag absent template rows, and
@@ -3983,6 +4000,23 @@ class KpiCreateIn(BaseModel):
     ytd_actual: float | None = None
     full_year_target: float | None = None
     department_id: int | None = None
+    direction: str | None = None          # higher|lower (default higher_better)
+
+
+def _norm_kpi_direction(v, warnings=None, label=None):
+    """Accepts the spellings people actually write. Unrecognised values WARN and
+    fall back to the default rather than failing the row — a direction typo must
+    not cost someone their KPI, matching the department/link parser posture."""
+    t = (v or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if t in ("", "higher", "higher_better", "higher_is_better", "up", "max", "maximise", "maximize"):
+        return "higher_better"
+    if t in ("lower", "lower_better", "lower_is_better", "down", "min", "minimise", "minimize"):
+        return "lower_better"
+    if warnings is not None:
+        warnings.append({"sheet": "KPI Plan vs Actual", "message":
+                         f"'{label}' has an unrecognised direction '{v}' — treated as "
+                         f"higher-is-better. Use 'higher' or 'lower'."})
+    return "higher_better"
 
 
 class KpiUpdateIn(BaseModel):
@@ -3992,6 +4026,7 @@ class KpiUpdateIn(BaseModel):
     ytd_actual: float | None = None
     full_year_target: float | None = None
     department_id: int | None = None
+    direction: str | None = None
 
 
 @router.post("/companies/{company_id}/kpis", status_code=201)
@@ -4012,6 +4047,7 @@ def create_kpi(company_id: int, body: KpiCreateIn,
                   kpi_name=body.kpi_name.strip(), unit=body.unit, ytd_plan=body.ytd_plan,
                   ytd_actual=body.ytd_actual, full_year_target=body.full_year_target,
                   department_id=dept_id, uploaded_at=now, source="in_app", created_at=now,
+                  direction=_norm_kpi_direction(body.direction),
                   created_by_user_id=user.id, created_by_name=(user.name or user.email))
     db.add(kpi)
     audit(db, user.id, "kpi_created", "company", company_id, detail=body.kpi_name[:40])
@@ -4029,6 +4065,8 @@ def update_kpi(company_id: int, kpi_id: int, body: KpiUpdateIn,
         raise HTTPException(404, "KPI not found in the active dataset")
     if body.department_id is not None:
         kpi.department_id = _dept_id_valid(db, company_id, body.department_id)
+    if body.direction is not None:
+        kpi.direction = _norm_kpi_direction(body.direction)
     for f in ("kpi_name", "unit", "ytd_plan", "ytd_actual", "full_year_target"):
         v = getattr(body, f)
         if v is not None:
@@ -4124,16 +4162,29 @@ def get_initiative_objectives(company_id: int, iid: int,
     return {"initiative_id": iid, "serves_objectives": _initiative_served_objectives(db, company_id, iid)}
 
 
-def _kpi_variance(actual, plan):
-    """Actual vs Plan, higher-is-better (all seeded KPIs are growth/margin/share).
-    Mirrors the 7L variance semantics: abs = actual - plan, pct = abs/|plan|,
-    status favorable when actual >= plan."""
+KPI_DIRECTIONS = ("higher_better", "lower_better")
+
+
+def _kpi_variance(actual, plan, direction: str | None = "higher_better"):
+    """Actual vs Plan, in the KPI's OWN direction.
+
+    This was direction-blind — "status favorable when actual >= plan" — which is
+    wrong for every lower-is-better KPI in the product, not just on one page.
+    Meridian's "Unplanned downtime hrs" at 101 against a 95 plan came back
+    FAVORABLE. More downtime is not favourable, and that verdict was reaching
+    the dashboard, the reports and the department page alike.
+
+    abs/pct are unchanged and stay signed in raw terms (actual - plan), because
+    the magnitude of a miss is direction-independent; only the VERDICT flips."""
     if actual is None or plan is None:
-        return {"abs": None, "pct": None, "status": None}
+        return {"abs": None, "pct": None, "status": None, "direction": direction}
     ab = actual - plan
     pct = (ab / abs(plan)) if plan else None
+    lower = (direction or "higher_better") == "lower_better"
+    good = (actual <= plan) if lower else (actual >= plan)
     return {"abs": round(ab, 4), "pct": (round(pct, 4) if pct is not None else None),
-            "status": "favorable" if actual >= plan else "unfavorable"}
+            "status": "favorable" if good else "unfavorable",
+            "direction": direction or "higher_better"}
 
 
 class KpiLinkIn(BaseModel):
@@ -4721,7 +4772,8 @@ def company_kpi_variance(company_id: int, department: int | None = None,
                             "created_by": getattr(r, "created_by_name", None),
                             "created_at": getattr(r, "created_at", None),
                             "flagged_absent": getattr(r, "flagged_absent", False)},
-             "variance": _kpi_variance(r.ytd_actual, r.ytd_plan)} for r in rows]
+             "variance": _kpi_variance(r.ytd_actual, r.ytd_plan, r.direction),
+             "direction": r.direction} for r in rows]
     return {"company_id": company_id, "dataset_id": ds.id,
             "uploaded_at": max((r.uploaded_at for r in rows), default=None),
             "filename": getattr(ds, "original_filename", None),          # §2 provenance line
@@ -6862,7 +6914,7 @@ def urgent_items(company_id: int, member=Depends(_summary_access), db=Depends(ge
             for r in db.query(KpiPlan).filter_by(company_id=company_id, dataset_id=ds.id).all():
                 if getattr(r, "archived", False):
                     continue
-                var = _kpi_variance(r.ytd_actual, r.ytd_plan)
+                var = _kpi_variance(r.ytd_actual, r.ytd_plan, r.direction)
                 pct = var.get("pct")
                 if pct is None:
                     continue
@@ -11527,6 +11579,11 @@ def _ensure_ax_columns(engine):
     # tables land, so adding it cannot change any existing behaviour — the
     # backfill that populates it is a separate, resumable pass.
     _add("ax_kpi_plan", "kpi_key", "kpi_key VARCHAR(64)")
+    # Stated KPI polarity. Defaulted rather than backfilled: existing rows were
+    # already being TREATED as higher-is-better, so the default reproduces
+    # yesterday's behaviour exactly and nothing needs rewriting.
+    _add("ax_kpi_plan", "direction",
+         "direction VARCHAR(16) NOT NULL DEFAULT 'higher_better'")
     try:                                     # abstention stores score NULL — drop the NOT NULL
         col = {c["name"]: c for c in _inspect(engine).get_columns("ax_assessment_responses")}
         if "score" in col and not col["score"].get("nullable", True):
