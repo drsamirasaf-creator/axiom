@@ -18,7 +18,7 @@ from services.api.main import app
 from services.api.accounts import (SessionLocal, Department, DepartmentAlias,
                                    KpiPlan, _ensure_department, _legacy_dept_key,
                                    _resolve_department, _rekey_departments,
-                                   _norm_dept_name)
+                                   _norm_dept_name, _dept_alias_add)
 from services.api.modules.enterprise_state.models import Enterprise
 
 
@@ -451,5 +451,99 @@ def test_present_but_unapproved_department_is_not_flagged(_app):
         assert db.get(Department, b.id).flagged_absent is False, \
             "present-but-unapproved must NOT be flagged absent"
         assert db.get(Department, a.id).flagged_absent is False
+    finally:
+        db.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ALIAS-RESOLVED READS — participants and assessment responses store the
+# department NAME captured at the time, so a rename silently detaches a
+# department from its own history. Frozen history is never rewritten; the
+# resolution happens at READ time through the alias table.
+# ─────────────────────────────────────────────────────────────────────────────
+def test_variants_include_every_former_name(_app):
+    from services.api.accounts import _dept_name_variants, _dept_variant_norms
+    db = SessionLocal()
+    try:
+        ent = _company(db, "Variants Co")
+        dep = _ensure_department(db, ent.id, "Finance")
+        db.commit()
+        _dept_alias_add(db, ent.id, dep.id, "Finance")
+        dep.name = "Finance and Accounting"
+        db.flush()
+        _dept_alias_add(db, ent.id, dep.id, "Finance and Accounting")
+        db.commit()
+
+        names = _dept_name_variants(db, ent.id, dep)
+        assert "Finance" in names and "Finance and Accounting" in names
+        norms = _dept_variant_norms(db, ent.id, dep)
+        assert {"finance", "finance and accounting"} <= norms
+        # a department with no aliases still answers to itself
+        solo = _ensure_department(db, ent.id, "Legal")
+        db.commit()
+        assert _dept_name_variants(db, ent.id, solo) == ["Legal"]
+        assert _dept_name_variants(db, ent.id, None) == []
+    finally:
+        db.close()
+
+
+def test_slice_lookup_finds_history_filed_under_the_old_name(_app):
+    """THE BUG: compute_cei() keys its departments map by the name on the
+    RESPONSE. After a rename, a .get() by the current name returns None and the
+    department reads as "no responses" while its data sits there untouched."""
+    from services.api.accounts import _pick_dept_slice
+    db = SessionLocal()
+    try:
+        ent = _company(db, "Slice Lookup Co")
+        dep = _ensure_department(db, ent.id, "Finance")
+        db.commit()
+        _dept_alias_add(db, ent.id, dep.id, "Finance")
+        dep.name = "Finance and Accounting"
+        db.flush()
+        _dept_alias_add(db, ent.id, dep.id, "Finance and Accounting")
+        db.commit()
+
+        # the aggregate as compute_cei() would build it: keyed by the OLD name
+        departments = {"Finance": {"cei": 7.1, "n_participants": 3},
+                       "Operations": {"cei": 6.2, "n_participants": 9}}
+        assert departments.get(dep.name) is None, "precondition: naive lookup misses"
+        got = _pick_dept_slice(db, ent.id, dep, departments)
+        assert got is not None and got["cei"] == 7.1
+
+        # and it must not become a wildcard — an unrelated department still misses
+        other = _ensure_department(db, ent.id, "Legal")
+        db.commit()
+        assert _pick_dept_slice(db, ent.id, other, departments) is None
+        assert _pick_dept_slice(db, ent.id, dep, {}) is None
+    finally:
+        db.close()
+
+
+def test_unrenamed_department_is_unaffected(_app):
+    """No regression: a department that was never renamed resolves exactly as
+    before, by its own name."""
+    from services.api.accounts import _pick_dept_slice
+    db = SessionLocal()
+    try:
+        ent = _company(db, "No Rename Co")
+        dep = _ensure_department(db, ent.id, "Operations")
+        db.commit()
+        got = _pick_dept_slice(db, ent.id, dep, {"Operations": {"cei": 6.38}})
+        assert got and got["cei"] == 6.38
+    finally:
+        db.close()
+
+
+def test_slice_matching_is_case_and_whitespace_insensitive(_app):
+    """Names arrive from spreadsheets, so ' finance ' and 'FINANCE' are the same
+    department to a human and must be to us."""
+    from services.api.accounts import _pick_dept_slice
+    db = SessionLocal()
+    try:
+        ent = _company(db, "Messy Names Co")
+        dep = _ensure_department(db, ent.id, "Finance")
+        db.commit()
+        for key in ("  finance  ", "FINANCE", "Finance"):
+            assert _pick_dept_slice(db, ent.id, dep, {key: {"cei": 5.0}}) is not None, key
     finally:
         db.close()

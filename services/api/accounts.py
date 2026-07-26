@@ -2816,6 +2816,51 @@ def _norm_dept_name(name: str) -> str:
     return " ".join((name or "").strip().lower().split())
 
 
+def _dept_name_variants(db, company_id: int, dep) -> list[str]:
+    """Every department NAME this department answers to: its current name plus
+    every alias it has ever been known by.
+
+    Participants and assessment responses store the department as a NAME string
+    captured at the time (Participant.department / AssessmentResponse.department
+    are VARCHAR, not FKs). Frozen response history is deliberately never
+    rewritten, so after a rename the stored name no longer equals the current
+    one and a name-equality match silently returns nothing — which is how
+    Meridian's renamed departments came to show empty rosters and empty CEI
+    slices while their responses sat there untouched.
+
+    The alias table already holds the former names (that is what the stable-id
+    re-key seeded it with), so the fix is to resolve at READ time rather than to
+    migrate history: match the union. Returns raw names; callers compare
+    case-insensitively."""
+    if dep is None:
+        return []
+    names = {dep.name}
+    for al in (db.query(DepartmentAlias)
+               .filter_by(company_id=company_id, department_id=dep.id).all()):
+        if al.name:
+            names.add(al.name)
+    return sorted(names)
+
+
+def _dept_variant_norms(db, company_id: int, dep) -> set[str]:
+    """`_dept_name_variants` normalised, for in-Python matching against the
+    department keys of an already-computed aggregate."""
+    return {_norm_dept_name(n) for n in _dept_name_variants(db, company_id, dep)}
+
+
+def _pick_dept_slice(db, company_id: int, dep, departments: dict):
+    """Look up a department's slice in a compute_cei() `departments` map, which
+    is keyed by the name ON THE RESPONSE. Tries the current name first, then
+    every alias, so a renamed department still finds its own history."""
+    if dep is None or not departments:
+        return None
+    by_norm = {_norm_dept_name(k): v for k, v in departments.items()}
+    for n in _dept_variant_norms(db, company_id, dep):
+        if n in by_norm:
+            return by_norm[n]
+    return None
+
+
 # ---- canonical taxonomy migration (STEP 3/6) --------------------------------
 # When the standard department list moved from short labels to canonical long
 # ones, an upload using the NEW name would otherwise look like a brand-new
@@ -7953,15 +7998,23 @@ def assessment_summary(company_id: int, department: int | None = None,
             "cross": safe.get("cross", {}),               # §4u dept×seniority cells (floored on the intersection)
             # §4s: echo the requested department (by id → name) and its floored slice
             "department_filter": _dept_name,
-            "department_slice": ((safe.get("departments", {}) or {}).get(_dept_name["name"])
-                                 if _dept_name else None),
+            # Alias-resolved: the map is keyed by the name ON THE RESPONSE, which
+            # for a renamed department is its FORMER name. A direct .get() by the
+            # current name silently returns None and the slice reads as "no data"
+            # while the responses sit there untouched.
+            "department_slice": _pick_dept_slice(db, company_id, _dept_obj,
+                                                 safe.get("departments", {}) or {}),
             # §4u: seniority slice + the department×seniority intersection cell
             "seniority_filter": _sen_band,
             "seniority_slice": ((safe.get("seniorities", {}) or {}).get(_sen_band)
                                 if _sen_band else None),
-            "intersection_slice": ((safe.get("cross", {}) or {}).get(
-                                    _x_cross_key(_dept_name["name"], _sen_band))
-                                   if (_dept_name and _sen_band) else None),
+            # dept×seniority cell, alias-resolved on the department half.
+            "intersection_slice": (next(
+                (( safe.get("cross", {}) or {})[k] for k in
+                 (_x_cross_key(v, _sen_band)
+                  for v in _dept_name_variants(db, company_id, _dept_obj))
+                 if k in (safe.get("cross", {}) or {})), None)
+                if (_dept_name and _sen_band) else None),
             "abstention_rates": safe.get("abstention_rates", {"item": {}, "axis": {}}),
             "no_signal_items": safe.get("no_signal_items", []),
             "item_rag": rags["item_rag"], "l1_rag": rags["l1_rag"],
@@ -8049,21 +8102,33 @@ def _department_sentiment_map(db, company_id):
     l1_div = snap.get("l1_divergence") or {}
     cohort_counts, _ = _axis_comment_counts(db, latest)      # which axes have cohort tone
     id_map, _ = _l1_maps(db, latest.framework_id)
-    # per-department per-axis comment counts
+    # Per-department per-axis comment counts, bucketed by DEPARTMENT ID rather
+    # than by the name on the response. A response carries whatever the
+    # department was called when it was submitted, so bucketing by name and then
+    # reading `dept_total[d.name]` returns 0 for every renamed department — its
+    # comments are filed under the old name. Resolve each response's name
+    # through the alias set once, up front.
+    norm_to_id = {}
+    for d in deps:
+        for n_ in _dept_variant_norms(db, company_id, d):
+            norm_to_id.setdefault(n_, d.id)
     dept_axis, dept_total = {}, {}
     for r in db.query(AssessmentResponse).filter_by(cycle_id=latest.id).all():
         if r.comment and r.comment.strip() and r.department:
+            did = norm_to_id.get(_norm_dept_name(r.department))
+            if did is None:
+                continue          # a department that no longer exists
             ax = (id_map.get(r.item_id) or {}).get("l1_code")
             if ax:
-                dept_axis.setdefault(r.department, {}).setdefault(ax, 0)
-                dept_axis[r.department][ax] += 1
-                dept_total[r.department] = dept_total.get(r.department, 0) + 1
+                dept_axis.setdefault(did, {}).setdefault(ax, 0)
+                dept_axis[did][ax] += 1
+                dept_total[did] = dept_total.get(did, 0) + 1
     for d in deps:
-        n = dept_total.get(d.name, 0)
+        n = dept_total.get(d.id, 0)
         below = n < KFLOOR
         num = den = 0.0
         div = False
-        for ax, cnt in (dept_axis.get(d.name) or {}).items():
+        for ax, cnt in (dept_axis.get(d.id) or {}).items():
             lbl = (l1_sent.get(ax) or {}).get("sentiment")
             if lbl in _SENT_SCORE and cohort_counts.get(ax, 0) >= KFLOOR:
                 num += _SENT_SCORE[lbl] * cnt
@@ -8084,13 +8149,19 @@ def _sentiment_label(score):
     return "positive" if score >= 0.33 else "negative" if score <= -0.33 else "mixed"
 
 
-def _axis_comment_counts(db, cyc, dept_name=None, seniority=None):
+def _axis_comment_counts(db, cyc, dept_names=None, seniority=None):
     """Comment-bearing responses per L1 axis for a cycle, optionally sliced by
-    department name / seniority band. Returns ({l1_code: n}, total)."""
+    department / seniority band. Returns ({l1_code: n}, total).
+
+    `dept_names` is the department's FULL set of names (current + aliases), not
+    one name: responses carry whatever the department was called when they were
+    submitted, so equality against the current name misses a renamed
+    department's own history."""
     id_map, _ = _l1_maps(db, cyc.framework_id)
     q = db.query(AssessmentResponse).filter_by(cycle_id=cyc.id)
-    if dept_name is not None:
-        q = q.filter(AssessmentResponse.department == dept_name)
+    if dept_names:
+        names = [n.strip().lower() for n in dept_names]
+        q = q.filter(func.lower(func.trim(AssessmentResponse.department)).in_(names))
     if seniority is not None:
         q = q.filter(AssessmentResponse.seniority == seniority)
     counts, total = {}, 0
@@ -8164,7 +8235,8 @@ def assessment_sentiment(company_id: int, department: int | None = None,
     # the comment COUNTS shown. cohort_counts gate whether an axis's tone is shown at
     # all; slice_counts are what the n column displays.
     cohort_counts, _cohort_total = _axis_comment_counts(db, latest)
-    slice_counts, total = (_axis_comment_counts(db, latest, _dept["name"] if _dept else None, _sen)
+    slice_counts, total = (_axis_comment_counts(db, latest,
+                           _dept_name_variants(db, company_id, _dept_obj) if _dept else None, _sen)
                            if sliced else (cohort_counts, _cohort_total))
 
     if sliced and total < KFLOOR:
@@ -8464,11 +8536,18 @@ def assessment_swot(company_id: int, department: int | None = None,
         from .assessment_engine import apply_kfloor, _cross_key
         safe = apply_kfloor(_cycle_cei(db, latest))
         if _sen_band and _dept_name is not None:
-            slice_agg = (safe.get("cross") or {}).get(_cross_key(_dept_name, _sen_band))
+            # The cross map is keyed dept×seniority using the name on the
+            # response, so try every name this department has answered to.
+            cross = safe.get("cross") or {}
+            slice_agg = next(
+                (cross[k] for k in
+                 (_cross_key(v, _sen_band) for v in _dept_name_variants(db, company_id, _dept_obj))
+                 if k in cross), None)
         elif _sen_band:
             slice_agg = (safe.get("seniorities") or {}).get(_sen_band)
         else:
-            slice_agg = (safe.get("departments") or {}).get(_dept_name)
+            slice_agg = _pick_dept_slice(db, company_id, _dept_obj,
+                                         safe.get("departments") or {})
         slice_label = " × ".join([x for x in (_dept_name, _sen_band) if x])
         if not slice_agg or slice_agg.get("suppressed"):
             buckets = {"strengths": [], "weaknesses": [], "opportunities": [],
@@ -9199,9 +9278,21 @@ def my_capabilities(company_id: int, user: User = Depends(get_current_user), db=
 
 
 @router.get("/companies/{company_id}/participants")
-def list_participants(company_id: int, member=Depends(require_company_admin), db=Depends(get_db)):
+def list_participants(company_id: int, department: int | None = None,
+                      member=Depends(require_company_admin), db=Depends(get_db)):
+    """Roster. `?department=<id>` filters ALIAS-AWARE: Participant.department is
+    the department NAME as written on the upload, so a department renamed since
+    then no longer equals its own people. Matching the department's full name
+    set (current + aliases) is what makes a renamed department's roster stop
+    coming back empty."""
     rows = (db.query(Participant).filter_by(company_id=company_id)
               .order_by(Participant.email).all())
+    if department is not None:
+        dep = db.get(Department, department)
+        if not dep or dep.company_id != company_id:
+            raise HTTPException(404, "department not found")
+        norms = _dept_variant_norms(db, company_id, dep)
+        rows = [p for p in rows if _norm_dept_name(p.department or "") in norms]
     by_status = {"staged": 0, "invited": 0, "active": 0}
     for p in rows:
         by_status[p.status] = by_status.get(p.status, 0) + 1
