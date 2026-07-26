@@ -51,6 +51,7 @@ def get_db():
 # security
 # ======================================================================
 import hashlib
+import uuid
 import hmac
 import os
 import secrets
@@ -711,8 +712,15 @@ class Department(Base):
     __table_args__ = (UniqueConstraint("company_id", "dept_key", name="uq_department"),)
     id = Column(Integer, primary_key=True)
     company_id = Column(Integer, index=True, nullable=False)
-    dept_key = Column(String(64), index=True, nullable=False)     # sha1(name.lower())[:32]
-    name = Column(String(120), nullable=False)
+    # STABLE ID: an opaque token minted at creation (uuid4 hex). Deliberately NOT
+    # derived from `name` — a hash of the display name made a rename look like a
+    # new department, which is how a re-upload duplicated an entire org tree.
+    dept_key = Column(String(64), index=True, nullable=False)
+    name = Column(String(120), nullable=False)                    # mutable DISPLAY attribute
+    # Parallel to Objective.flagged_absent: a re-upload that omits a department
+    # FLAGS it rather than silently keeping it unmarked (and never deletes it),
+    # so the UI can tell a live department from a stale one.
+    flagged_absent = Column(Boolean, default=False, nullable=False)
     head_name = Column(String(160), nullable=True)
     head_title = Column(String(120), nullable=True)
     head_email = Column(String(200), nullable=True)
@@ -721,6 +729,27 @@ class Department(Base):
     employees = Column(Integer, nullable=True)                    # headcount (optional; null ≠ 0) — coverage
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class DepartmentAlias(Base):
+    """Every name a department has ever been known by -> its stable id.
+
+    This is what lets a RENAME update in place instead of inserting a duplicate.
+    Two sources feed it: each department's own names as they change, and the
+    canonical-taxonomy migration (CANONICAL_DEPT_RENAMES), so an upload that
+    adopts the long canonical label resolves to the department that already
+    exists under the short one.
+
+    Frozen history is never rewritten — resolution happens at READ time, which is
+    the same discipline the assessment snapshots follow."""
+    __tablename__ = "ax_department_aliases"
+    __table_args__ = (UniqueConstraint("company_id", "name_norm", name="uq_dept_alias"),)
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    department_id = Column(Integer, index=True, nullable=False)
+    name_norm = Column(String(160), index=True, nullable=False)   # lowercased, collapsed
+    name = Column(String(160), nullable=False)                    # as written
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 class DatasetPref(Base):
@@ -2518,6 +2547,7 @@ def apply_upload(db, company_id: int, *, ent, data, objectives, key_results,
     # from the Organization sheet + any auto-created from objective/KPI rows, then
     # resolve parent linkage in a second pass (all ids now exist).
     dept_by_norm = {}
+    seen_dept_ids = set()
     for d in departments:
         if not _ok("departments", (d["name"] or "").strip().lower()):
             continue
@@ -2527,14 +2557,30 @@ def apply_upload(db, company_id: int, *, ent, data, objectives, key_results,
                                  is_standard=(d["name"] in ingest.STD_DEPARTMENTS))
         if d.get("employees") is not None:      # blank cell -> leave existing/null (never 0)
             dep.employees = d["employees"]
-        dept_by_norm[(d["name"] or "").strip().lower()] = dep
+        dept_by_norm[_norm_dept_name(d["name"])] = dep
+        seen_dept_ids.add(dep.id)
     db.flush()
+    # ROOT INTEGRITY: resolve a parent across the whole STABLE-ID space, not just
+    # within this upload's own rows. Resolving name-locally is what let each
+    # upload build its own parallel tree — a parent already in the database but
+    # absent from this file used to resolve to nothing, leaving the child
+    # parentless and creating another root.
     for d in departments:
-        if d.get("parent"):
-            par = dept_by_norm.get((d["parent"] or "").strip().lower())
-            dep = dept_by_norm.get((d["name"] or "").strip().lower())
-            if par is not None and dep is not None and par.id != dep.id:
-                dep.parent_id = par.id
+        if not d.get("parent"):
+            continue
+        pnorm = _norm_dept_name(d["parent"])
+        par = dept_by_norm.get(pnorm) or _resolve_department(db, company_id, d["parent"])
+        dep = dept_by_norm.get(_norm_dept_name(d["name"]))
+        if par is not None and dep is not None and par.id != dep.id:
+            dep.parent_id = par.id
+    # "FLAGGED, NOT DELETED" — now actually kept for departments. Anything this
+    # company already had that this upload does not mention is MARKED absent
+    # (never removed, so its objectives/KPIs/participants keep resolving); a
+    # department that reappears is un-flagged by _ensure_department.
+    if departments and approved is None:
+        for dep in db.query(Department).filter_by(company_id=company_id).all():
+            if dep.id not in seen_dept_ids and not dep.flagged_absent:
+                dep.flagged_absent = True
 
     def _dept_id_for(name):
         if not name:
@@ -2732,37 +2778,129 @@ def _goal_key(goal_text: str) -> str:
     return hashlib.sha1((goal_text or "").strip().lower().encode("utf-8")).hexdigest()[:32]
 
 
-def _dept_key(name: str) -> str:
-    """Stable identity for a department across re-uploads — a hash of the name,
-    so the org chart + every objective/KPI/initiative assignment survive re-upload."""
+def _legacy_dept_key(name: str) -> str:
+    """The OLD name-derived key: sha1(name). Kept ONLY so the migration can
+    recognise a not-yet-re-keyed row (and so a rollback can recompute it). Never
+    used to match a department again — that was the bug."""
     return hashlib.sha1((name or "").strip().lower().encode("utf-8")).hexdigest()[:32]
+
+
+def _new_dept_key() -> str:
+    """A REAL stable id: an opaque token minted once at creation and never
+    derived from the display name.
+
+    The old `dept_key = sha1(name)` looked like a stable id — it was a hash, it
+    lived in a column, the docstring called it "stable identity" — but it was
+    name-matching in costume. Renaming a department changed its key, so a
+    re-upload could not tell a RENAME from a NEW department and inserted a
+    duplicate. That is precisely how Milliner ended up with two org trees:
+    Operations and Legal matched (names unchanged) while Finance ->
+    "Finance and Accounting" duplicated.
+    """
+    return uuid.uuid4().hex
+
+
+def _norm_dept_name(name: str) -> str:
+    return " ".join((name or "").strip().lower().split())
+
+
+# ---- canonical taxonomy migration (STEP 3/6) --------------------------------
+# When the standard department list moved from short labels to canonical long
+# ones, an upload using the NEW name would otherwise look like a brand-new
+# department. These pairs seed the alias layer so the canonical name RESOLVES to
+# the department that already exists under its old label, and the rename applies
+# in place. A 1->N split (Sales & Marketing -> Sales + Marketing) is deliberately
+# ABSENT: it is genuinely ambiguous, so it stays a human decision rather than a
+# guess that silently reassigns someone's KPIs.
+CANONICAL_DEPT_RENAMES = {
+    "finance": "Finance and Accounting",
+    "hr": "Human Resources",
+    "technology": "Information Technology",
+    "strategy": "Strategy and Corporate Planning",
+    "supply chain": "Supply Chain and Logistics",
+    "executive": "Executive Management",
+    "r&d": "Research and Development",
+    "operations": "Operations",
+    "legal": "Legal",
+}
+
+
+def _dept_alias_add(db, company_id, department_id, name):
+    """Record a name this department is known by. Idempotent; never steals an
+    alias already pointing at a different department."""
+    nn = _norm_dept_name(name)
+    if not nn:
+        return
+    ex = (db.query(DepartmentAlias)
+            .filter_by(company_id=company_id, name_norm=nn).first())
+    if ex is None:
+        db.add(DepartmentAlias(company_id=company_id, department_id=department_id,
+                               name_norm=nn, name=(name or "").strip()))
+    # An existing alias is left alone: first writer wins, so a later upload can
+    # never silently repoint a historical name at a different department.
+
+
+def _resolve_department(db, company_id, name):
+    """Name -> Department via the alias layer. Resolution order:
+         1. exact current name
+         2. any alias the department has ever been known by (incl. the
+            canonical-taxonomy renames), so a RENAME updates in place
+    Returns None when the name is genuinely new."""
+    nn = _norm_dept_name(name)
+    if not nn:
+        return None
+    dep = next((d for d in db.query(Department).filter_by(company_id=company_id).all()
+                if _norm_dept_name(d.name) == nn), None)
+    if dep is not None:
+        return dep
+    al = (db.query(DepartmentAlias)
+            .filter_by(company_id=company_id, name_norm=nn).first())
+    if al is not None:
+        return db.get(Department, al.department_id)
+    return None
 
 
 def _ensure_department(db, company_id, name, *, head_name=None, head_title=None,
                        head_email=None, is_standard=False):
-    """Get-or-create a company department by stable dept_key. On an existing row,
-    fill in head fields only when the incoming upload provides them (never clobber
-    an edited head with a blank). Returns the Department."""
+    """Get-or-create a company department, matching on the STABLE id via the
+    alias layer rather than on a hash of the display name.
+
+    Three cases, all handled here:
+      * same name      -> resolves to the existing row, fields refreshed
+      * RENAMED        -> resolves through an alias, and the row's `name` is
+                          UPDATED in place (this is the case that used to insert
+                          a duplicate); the new name is itself recorded as an
+                          alias so it resolves next time
+      * genuinely new  -> inserted with a freshly minted opaque dept_key
+    Head fields are only filled when the upload provides them, so an edited head
+    is never clobbered by a blank cell.
+    """
     name = (name or "").strip()
     if not name:
         return None
-    key = _dept_key(name)
-    dep = (db.query(Department)
-             .filter_by(company_id=company_id, dept_key=key).first())
+    dep = _resolve_department(db, company_id, name)
     if dep is None:
-        dep = Department(company_id=company_id, dept_key=key, name=name,
+        dep = Department(company_id=company_id, dept_key=_new_dept_key(), name=name,
                          head_name=head_name, head_title=head_title, head_email=head_email,
                          is_standard=is_standard)
         db.add(dep)
+        db.flush()
+        _dept_alias_add(db, company_id, dep.id, name)
+        return dep
+    if head_name:
+        dep.head_name = head_name
+    if head_title:
+        dep.head_title = head_title
+    if head_email:
+        dep.head_email = head_email
+    if _norm_dept_name(dep.name) != _norm_dept_name(name):
+        dep.name = name                       # RENAME applied in place
     else:
-        if head_name:
-            dep.head_name = head_name
-        if head_title:
-            dep.head_title = head_title
-        if head_email:
-            dep.head_email = head_email
         dep.name = name                       # keep display casing fresh
-        dep.updated_at = datetime.utcnow()
+    dep.flagged_absent = False                # present in this upload
+    dep.updated_at = datetime.utcnow()
+    db.flush()
+    _dept_alias_add(db, company_id, dep.id, name)
     return dep
 
 
@@ -2772,6 +2910,9 @@ def _dept_out(dep):
         return None
     return {"id": dep.id, "name": dep.name, "parent_id": dep.parent_id,
             "is_standard": bool(dep.is_standard),
+            # "flagged, not deleted": present in the payload so the UI can mark a
+            # department the latest upload omitted instead of showing it as live.
+            "flagged_absent": bool(getattr(dep, "flagged_absent", False)),
             "employees": getattr(dep, "employees", None),   # headcount (null ≠ 0)
             "head": {"name": dep.head_name, "title": dep.head_title, "email": dep.head_email}
             if (dep.head_name or dep.head_title or dep.head_email) else None,
@@ -2800,6 +2941,63 @@ def _resolve_owner_person(owner, dep):
     if dep.head_title and _norm_person(dep.head_title) == o:
         return dep.head_name                     # owner entered as the head's title → the person
     return None
+
+
+def _rekey_departments():
+    """Foundation Lane 1 migration: replace the name-derived dept_key with a REAL
+    stable id, and seed the alias layer.
+
+    For every existing department, in one transaction:
+      * if its dept_key still equals sha1(its own name) it has not been re-keyed
+        yet -> mint an opaque uuid4 key. A row whose key does NOT match that hash
+        is already migrated (or was hand-set) and is left alone, which is what
+        makes this IDEMPOTENT — running it twice is a no-op.
+      * record a SELF-ALIAS for its current name, so the name it is known by today
+        keeps resolving.
+      * where its current name is an old STANDARD label, record the CANONICAL long
+        name as an alias too. That is what lets a later upload saying
+        "Finance and Accounting" resolve to the department already stored as
+        "Finance" and RENAME it in place instead of inserting a duplicate.
+
+    Nothing is deleted, renamed or merged here: every department keeps its id, its
+    name, its parent and every objective/KPI/initiative pointing at it. The only
+    columns written are dept_key and new alias rows. REVERSIBLE: the old key is
+    recomputable from the name (_legacy_dept_key), so a rollback can restore it
+    and drop the alias table.
+    """
+    db = SessionLocal()
+    try:
+        deps = db.query(Department).all()
+        rekeyed = aliased = canon = 0
+        for d in deps:
+            if d.dept_key == _legacy_dept_key(d.name):
+                d.dept_key = _new_dept_key()
+                rekeyed += 1
+            nn = _norm_dept_name(d.name)
+            if nn and not (db.query(DepartmentAlias)
+                             .filter_by(company_id=d.company_id, name_norm=nn).first()):
+                db.add(DepartmentAlias(company_id=d.company_id, department_id=d.id,
+                                       name_norm=nn, name=d.name))
+                aliased += 1
+            canonical = CANONICAL_DEPT_RENAMES.get(nn)
+            if canonical:
+                cn = _norm_dept_name(canonical)
+                if cn != nn and not (db.query(DepartmentAlias)
+                                       .filter_by(company_id=d.company_id, name_norm=cn).first()):
+                    db.add(DepartmentAlias(company_id=d.company_id, department_id=d.id,
+                                           name_norm=cn, name=canonical))
+                    canon += 1
+        db.commit()
+        if rekeyed or aliased or canon:
+            import logging
+            logging.getLogger(__name__).info(
+                "department re-key: %d re-keyed, %d self-alias, %d canonical alias",
+                rekeyed, aliased, canon)
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def _backfill_owner_persons():
@@ -10139,6 +10337,10 @@ def _ensure_ax_columns(engine):
         _add(_t, "created_at", "created_at TIMESTAMP")
         _add(_t, "archived", "archived BOOLEAN NOT NULL DEFAULT false")
         _add(_t, "flagged_absent", "flagged_absent BOOLEAN NOT NULL DEFAULT false")
+    # Foundation Lane 1: departments gain the "flagged, not deleted" marker the
+    # reconciliation contract promised but only half-kept (it existed on OKR rows
+    # and not here, so a stale department was retained with nothing marking it).
+    _add("ax_departments", "flagged_absent", "flagged_absent BOOLEAN NOT NULL DEFAULT false")
     _add("ax_document_proposals", "source", "source VARCHAR(16) NOT NULL DEFAULT 'synthesis'")
     _add("ax_assessment_invites", "is_demo", "is_demo BOOLEAN NOT NULL DEFAULT false")
     # §16: report-share bundling (multiple formats in one email)
@@ -10229,6 +10431,7 @@ def include_accounts(app, create_tables: bool = True):
         Base.metadata.create_all(engine)
         _ensure_ax_columns(engine)
         _backfill_owner_persons()      # §16.2: resolve owner→head person for existing objectives
+        _rekey_departments()           # Foundation Lane 1: sha1(name) -> real stable id
     for r in (auth_router, oauth_router, company_router, profile_router,
               superadmin_router, stripe_router, prescience_router, decision_router,
               sentinel_router, document_router, forecast_router, planning_router,

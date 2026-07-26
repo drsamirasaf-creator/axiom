@@ -34,8 +34,17 @@ KPI_SHEET = "KPI Plan vs Actual"
 # allowed everywhere a department is entered (unknowns warn + auto-create) — the
 # dropdowns are suggestions, not hard constraints (showErrorMessage disabled).
 ORG_SHEET = "Organization"
-STD_DEPARTMENTS = ("Finance", "Operations", "Sales & Marketing", "Supply Chain", "HR",
-                   "Technology", "Legal", "R&D", "Strategy", "Executive")
+# Canonical department taxonomy (long names). The short labels these replaced
+# ("Finance", "HR", "Technology", "Strategy", "Supply Chain", "Executive", "R&D")
+# live on in accounts.CANONICAL_DEPT_RENAMES as ALIASES, so a company already
+# holding a short-named department resolves to it and is renamed in place rather
+# than duplicated.
+STD_DEPARTMENTS = ("Finance and Accounting", "Operations", "Sales", "Marketing",
+                   "Supply Chain and Logistics", "Human Resources",
+                   "Information Technology", "Legal", "Research and Development",
+                   "Strategy and Corporate Planning", "Executive Management",
+                   "Manufacturing or Production", "Quality Management",
+                   "Internal Audit & Control")
 ORG_HEADER_ROW = 2
 ORG_DATA_START = 3
 ORG_CAPACITY = 60                                     # pre-formatted department rows
