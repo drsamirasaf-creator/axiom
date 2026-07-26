@@ -684,6 +684,30 @@ class KeyResult(Base):
     flagged_absent = Column(Boolean, default=False, nullable=False)
 
 
+class KpiAlias(Base):
+    """Every (department, name) a KPI has answered to → its stable kpi_key.
+
+    Scoped by DEPARTMENT deliberately: IT's "On-time delivery %" is not
+    Operations' "On-time delivery %". Keying on name alone would merge two
+    departments' KPIs — the org-structure duplication bug relocated.
+
+    `scope_key` is "<department_id or 0>|<normalised name>" as ONE column rather
+    than a (department_id, name_norm) pair, because a NULL department_id would
+    make the unique constraint useless for unassigned KPIs — in SQL, NULLs are
+    distinct from each other, so every unassigned KPI of the same name would be
+    permitted. The 0 sentinel closes that hole. department_id and name_norm are
+    still stored alongside, for reading the table by eye."""
+    __tablename__ = "ax_kpi_aliases"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    scope_key = Column(String(220), index=True, nullable=False)
+    department_id = Column(Integer, nullable=True)
+    name_norm = Column(String(160), nullable=False)
+    kpi_key = Column(String(64), index=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    __table_args__ = (UniqueConstraint("company_id", "scope_key", name="uq_kpi_alias"),)
+
+
 class GoalInitiativeLink(Base):
     """§9 bridge: many-to-many between an objective (or legacy goal) and an
     initiative. Objectives/goals are snapshot-scoped (re-upload mints new rows),
@@ -779,6 +803,14 @@ class KpiPlan(Base):
     ytd_actual = Column(Float, nullable=True)
     full_year_target = Column(Float, nullable=True)
     department_id = Column(Integer, index=True, nullable=True)   # §4s → ax_departments.id
+    # Stable identity across dataset versions. A KpiPlan row is per-dataset —
+    # every upload writes NEW rows — so `id` cannot carry a link. This can, and
+    # it is a uuid rather than a hash of the name because the department lane
+    # already proved a name-hash IS the name: rename the thing and every link
+    # keyed to it silently orphans.
+    # NULLABLE and unused until the link tables land, so an aborted backfill
+    # leaves the system working exactly as before.
+    kpi_key = Column(String(64), index=True, nullable=True)
     uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     source = Column(String(16), default="template", nullable=False)
     created_by_user_id = Column(Integer, nullable=True)
@@ -2320,6 +2352,133 @@ def _uploader_names(db, rows):
 
 def _norm_kpi_key(s: str) -> str:
     return " ".join((s or "").strip().lower().split())
+
+
+def _kpi_scope_key(department_id, name: str) -> str:
+    """(department, name) identity for a KPI. The 0 sentinel stands in for an
+    unassigned department so the uniqueness of the alias table holds — a NULL
+    would compare distinct from every other NULL."""
+    return f"{int(department_id or 0)}|{_norm_kpi_key(name)}"
+
+
+def _new_kpi_key() -> str:
+    return uuid.uuid4().hex
+
+
+def _kpi_alias_add(db, company_id: int, kpi_key: str, department_id, name: str):
+    """Record that (department, name) resolves to this kpi_key. Idempotent."""
+    sk = _kpi_scope_key(department_id, name)
+    exists = (db.query(KpiAlias)
+              .filter_by(company_id=company_id, scope_key=sk).first())
+    if exists:
+        return exists
+    row = KpiAlias(company_id=company_id, scope_key=sk,
+                   department_id=(int(department_id) if department_id else None),
+                   name_norm=_norm_kpi_key(name), kpi_key=kpi_key)
+    db.add(row)
+    return row
+
+
+def _resolve_kpi_key(db, company_id: int, department_id, name: str):
+    """The kpi_key (department, name) already resolves to, or None."""
+    row = (db.query(KpiAlias)
+           .filter_by(company_id=company_id,
+                      scope_key=_kpi_scope_key(department_id, name)).first())
+    return row.kpi_key if row else None
+
+
+def _backfill_kpi_keys(db, company_id: int | None = None) -> dict:
+    """Assign kpi_key to every KpiPlan row that lacks one, and seed the aliases.
+
+    THIS IS THE SHAPE THAT CRASHED PRODUCTION during the department re-key, so
+    it is written against that failure rather than around it:
+
+      * IDENTITY COMES FROM AN IN-MEMORY DICT, never a per-row db.query().
+        SessionLocal is autoflush=False, so a query inside the loop cannot see
+        rows added earlier in the same loop — two rows then both believe they
+        are the first to claim a key, and the unique constraint fires at commit.
+        That is exactly what happened before.
+
+      * EACH ROW IS ITS OWN SAVEPOINT (db.begin_nested()), so one unusable row
+        cannot abort a pass over thousands.
+
+      * OLDEST DATASET FIRST, so the earliest occurrence of a KPI owns the key
+        and every later version inherits it. Processing newest-first would give
+        the key to the most recent upload and orphan the history it should be
+        continuous with.
+
+    Dirty data it is built to survive: the same KPI name twice in one dataset,
+    the same name in different departments (kept SEPARATE — they are different
+    KPIs), blank names, and archived rows (still keyed; archived is not deleted).
+    """
+    res = {"scanned": 0, "assigned": 0, "reused": 0, "aliases": 0,
+           "blank_names": 0, "errors": 0}
+    q = db.query(KpiPlan).filter(KpiPlan.kpi_key.is_(None))
+    if company_id is not None:
+        q = q.filter(KpiPlan.company_id == company_id)
+    # oldest first; row_index keeps a single dataset's order deterministic
+    rows = q.order_by(KpiPlan.dataset_id, KpiPlan.row_index, KpiPlan.id).all()
+
+    # (company_id, scope_key) -> kpi_key, seeded from aliases already stored so a
+    # re-run is idempotent and a partial previous pass is honoured.
+    claimed: dict[tuple[int, str], str] = {}
+    for a in db.query(KpiAlias).all():
+        claimed[(a.company_id, a.scope_key)] = a.kpi_key
+
+    for r in rows:
+        res["scanned"] += 1
+        name = (r.kpi_name or "").strip()
+        if not name:
+            # A blank name has no identity to share, so it gets its own key
+            # rather than colliding every other blank row into one KPI.
+            res["blank_names"] += 1
+            try:
+                with db.begin_nested():
+                    r.kpi_key = _new_kpi_key()
+                res["assigned"] += 1
+            except Exception:
+                res["errors"] += 1
+            continue
+        ck = (r.company_id, _kpi_scope_key(r.department_id, name))
+        try:
+            with db.begin_nested():
+                key = claimed.get(ck)
+                if key is None:
+                    key = _new_kpi_key()
+                    claimed[ck] = key
+                    _kpi_alias_add(db, r.company_id, key, r.department_id, name)
+                    res["aliases"] += 1
+                    res["assigned"] += 1
+                else:
+                    res["reused"] += 1
+                r.kpi_key = key
+        except Exception:
+            res["errors"] += 1
+    return res
+
+
+def _run_kpi_key_backfill():
+    """Boot-time wrapper for the KPI backfill, mirroring _rekey_departments.
+
+    Safe to run on EVERY boot: it selects only rows where kpi_key IS NULL, so a
+    completed backfill scans nothing and the second boot is a no-op. That is
+    also the resume story — an aborted pass simply continues next boot, because
+    the rows it already keyed are no longer selected.
+
+    Failure here must never take the process down: kpi_key is unread until the
+    link tables land, so a company that fails to backfill is a company whose
+    KPIs behave exactly as they did yesterday."""
+    db = SessionLocal()
+    try:
+        res = _backfill_kpi_keys(db)
+        db.commit()
+        if res["scanned"]:
+            print(f"[kpi-key backfill] {res}", flush=True)
+    except Exception as e:                       # pragma: no cover - boot guard
+        db.rollback()
+        print(f"[kpi-key backfill] FAILED, left for next boot: {e}", flush=True)
+    finally:
+        db.close()
 
 
 def _reconcile_okr_upload(db, company_id, new_ds, prior, objectives, key_results, kpis, now):
@@ -10600,6 +10759,10 @@ def _ensure_ax_columns(engine):
          "cache_write_tokens INTEGER NOT NULL DEFAULT 0")
     # Anonymous showcase conversations are owned by visitor_key, not user_id.
     _add("ax_prescience_conversations", "visitor_key", "visitor_key VARCHAR(64)")
+    # KPI stable identity (§4m step 1). NULLABLE and unread until the link
+    # tables land, so adding it cannot change any existing behaviour — the
+    # backfill that populates it is a separate, resumable pass.
+    _add("ax_kpi_plan", "kpi_key", "kpi_key VARCHAR(64)")
     try:                                     # abstention stores score NULL — drop the NOT NULL
         col = {c["name"]: c for c in _inspect(engine).get_columns("ax_assessment_responses")}
         if "score" in col and not col["score"].get("nullable", True):
@@ -10655,6 +10818,7 @@ def include_accounts(app, create_tables: bool = True):
         _ensure_ax_columns(engine)
         _backfill_owner_persons()      # §16.2: resolve owner→head person for existing objectives
         _rekey_departments()           # Foundation Lane 1: sha1(name) -> real stable id
+        _run_kpi_key_backfill()        # §4m step 1: stable identity for KPIs
     for r in (auth_router, oauth_router, company_router, profile_router,
               superadmin_router, stripe_router, prescience_router, decision_router,
               sentinel_router, document_router, forecast_router, planning_router,
