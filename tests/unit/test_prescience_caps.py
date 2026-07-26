@@ -41,10 +41,11 @@ def test_global_ceiling_sums_across_companies(db):
                                  input_tokens=0, output_tokens=0))
     db.commit()
     assert P._global_calls_today(db, day) == 125
-    # each company is far under DAILY_CAP (200) yet the platform is near the
-    # global ceiling — the exact case the per-company cap cannot catch
+    # THE POINT: every company is far inside DAILY_CAP (200) and not one of them
+    # would be throttled — yet together they have already blown the platform
+    # ceiling. This is the spend the per-company cap structurally cannot see.
     assert all(c < P.DAILY_CAP for c in (40, 55, 30))
-    assert P._global_calls_today(db, day) < P.GLOBAL_DAILY_CAP
+    assert P._global_calls_today(db, day) >= P.GLOBAL_DAILY_CAP
 
 
 def test_global_counter_is_day_scoped(db):
@@ -87,8 +88,17 @@ def test_ceiling_defaults_hold_the_monthly_budget():
     output cap, which is NOT cacheable and dominates. If someone raises the cap
     or the answer ceiling without redoing the sum, this fails loudly."""
     IN_RATE, OUT_RATE = 3.0 / 1e6, 15.0 / 1e6
-    cached_input = 3300 * 0.1 + 140          # cache read + uncached remainder
-    worst = cached_input * IN_RATE + P.ANSWER_MAX_TOKENS * OUT_RATE
-    assert worst == pytest.approx(0.0239, abs=0.001)
-    assert P.GLOBAL_DAILY_CAP * 31 * worst <= 100.0, (
-        f"{P.GLOBAL_DAILY_CAP}/day x 31 x ${worst:.4f} exceeds the $100 budget")
+    UNCACHED, CTX = 293, 3162            # measured live on Meridian
+
+    # A cache WRITE bills 1.25x, so the FIRST question against a company's
+    # context costs more than it would uncached. Sparse demo traffic is mostly
+    # cold writes, so this — not the warm read — is the case a guarantee must
+    # survive. Sizing on the warm number would silently under-provision.
+    cold = (UNCACHED + CTX * 1.25) * IN_RATE + P.ANSWER_MAX_TOKENS * OUT_RATE
+    warm = (UNCACHED + CTX * 0.10) * IN_RATE + P.ANSWER_MAX_TOKENS * OUT_RATE
+    assert cold > warm, "cache writes must be dearer than reads"
+    assert cold == pytest.approx(0.0352, abs=0.001)
+
+    assert P.GLOBAL_DAILY_CAP * 31 * cold <= 100.0, (
+        f"{P.GLOBAL_DAILY_CAP}/day x 31 x ${cold:.4f} (all-cold worst case) "
+        f"exceeds the $100 budget")

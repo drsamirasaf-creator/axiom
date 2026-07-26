@@ -29,7 +29,8 @@ from sqlalchemy import (Column, DateTime, Integer, String, Text, JSON,
                         UniqueConstraint, func)
 
 from . import accounts as A
-from .accounts import (Base, get_db, require_company_member, get_current_user,
+from .accounts import (Base, get_db, require_company_member, require_company_admin,
+                       get_current_user,
                        audit, _active_company_dataset, _derive_recommendations,
                        _dispositions, _rec_view, assessment_summary,
                        assessment_swot, twin_gap, Initiative, InitiativeEvent,
@@ -54,14 +55,22 @@ DAILY_CAP = int(os.environ.get("AXIOM_PRESCIENCE_DAILY_CAP", "200"))
 # per-company cap alone can never guarantee a monthly figure.
 #
 # Sizing (measured on Meridian, claude-sonnet-4-6 @ $3/$15 per 1M):
-#   worst case per question WITH caching = ~470 effective input tok ($0.0014)
-#                                        + 1500 output tok cap    ($0.0225)
-#                                        = $0.0239
-#   $100 / $0.0239 / 31 days = 135/day. Set to 130 for margin -> ~$96/month
-#   worst case, ~$46/month at the measured average.
-# NB output is NOT cacheable and dominates the worst case, so caching does not
-# raise this ceiling proportionally -- see the report in the commit message.
-GLOBAL_DAILY_CAP = int(os.environ.get("AXIOM_PRESCIENCE_GLOBAL_DAILY_CAP", "130"))
+# Sized on MEASURED worst case (Meridian, claude-sonnet-4-6 @ $3/$15 per 1M),
+# with output pinned at the ANSWER_MAX_TOKENS cap:
+#     no caching          $0.03286/q   ->  98/day
+#     caching, warm read  $0.02433/q   -> 132/day
+#     caching, COLD write $0.03524/q   ->  91/day   <-- the binding case
+#
+# The counter-intuitive part, and the reason this is 90 and not 130: a cache
+# WRITE bills 1.25x, so the first question against a company's context costs
+# MORE than it would uncached. Sparse demo traffic (questions minutes apart,
+# past the 5-minute TTL) is mostly cold writes. Caching is a large win on the
+# AVERAGE and a slight LOSS on the guaranteed worst case.
+#
+# A guarantee has to hold in the worst case, so: 90/day = $98.31/month if every
+# single call were a cold write with a maxed-out answer. Realistic session-shaped
+# traffic (one cold write then several warm reads) lands nearer $40/month.
+GLOBAL_DAILY_CAP = int(os.environ.get("AXIOM_PRESCIENCE_GLOBAL_DAILY_CAP", "90"))
 
 # Low-friction shareable credential (scoped magic-link viewer). Small per-holder
 # allowance: enough to experience the capability, bounded per link-holder.
@@ -810,6 +819,25 @@ def get_conversation(company_id: int, conv_id: int,
     return {"id": conv.id, "title": conv.title,
             "messages": [{"role": m.role, "content": m.content, "sources": m.sources,
                           "created_at": m.created_at} for m in msgs]}
+
+
+@prescience_router.delete("/companies/{company_id}/prescience/conversations/{conv_id}")
+def delete_conversation(company_id: int, conv_id: int,
+                        member=Depends(require_company_admin),
+                        user=Depends(get_current_user), db=Depends(get_db)):
+    """Delete a conversation and its messages. Admin-only: conversations are
+    per-user, so this is a housekeeping tool (clearing test chatter off a demo
+    tenant), not something a viewer should be able to do to someone else's
+    history. Usage counters are deliberately NOT decremented — they meter spend
+    that actually occurred, and rewriting them would falsify the cost record."""
+    conv = db.get(PrescienceConversation, conv_id)
+    if not conv or conv.company_id != company_id:
+        raise HTTPException(404, "conversation not found")
+    n = (db.query(PrescienceMessage)
+         .filter_by(conversation_id=conv.id).delete(synchronize_session=False))
+    db.delete(conv)
+    db.commit()
+    return {"ok": True, "deleted": conv_id, "messages_removed": int(n)}
 
 
 @prescience_router.get("/companies/{company_id}/prescience/context")
