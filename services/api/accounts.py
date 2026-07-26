@@ -8999,8 +8999,8 @@ def seed_assessment_invites(company_id: int, cid: int, body: SeedInvitesIn,
 
 
 @router.get("/companies/{company_id}/roster")
-def company_roster(company_id: int, member=Depends(_roster_access),
-                   db=Depends(get_db)):
+def company_roster(company_id: int, department: int | None = None,
+                   member=Depends(_roster_access), db=Depends(get_db)):
     """Merged people roster for ONE table: viewer invitees (ax_invites) + assessment
     participants across ALL cycles (ax_assessment_invites). ANONYMITY-SAFE:
     participant_ref is included ONLY for identified cycles — never for an anonymous
@@ -9048,6 +9048,18 @@ def company_roster(company_id: int, member=Depends(_roster_access),
     _seat_cycle = _open or (max(cyc_by_id.values(), key=lambda c: c.id) if cyc_by_id else None)
     seats = _seat_status(db, company_id, _seat_cycle.id if _seat_cycle else None)
     seats["cycle_id"] = _seat_cycle.id if _seat_cycle else None
+    # ?department=<id> filters ALIAS-AWARE. AssessmentInvite.department is the
+    # department NAME as typed when the person was invited, so after a rename the
+    # current name no longer equals its own assessors — Meridian's three Finance
+    # assessors are tagged "Finance" while the department is now "Finance and
+    # Accounting". Matching the full name set is what stops the filter returning
+    # an empty roster over people who are plainly there.
+    if department is not None:
+        dep = db.get(Department, department)
+        if not dep or dep.company_id != company_id:
+            raise HTTPException(404, "department not found")
+        norms = _dept_variant_norms(db, company_id, dep)
+        people = [p for p in people if _norm_dept_name(p.get("department") or "") in norms]
     return {"company_id": company_id, "people": people, "seats": seats,
             "counts": {"viewers": sum(1 for p in people if p["source"] == "viewer"),
                        "assessors": sum(1 for p in people
