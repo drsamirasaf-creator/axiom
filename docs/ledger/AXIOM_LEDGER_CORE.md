@@ -150,6 +150,50 @@ forbids. All inside transactions, all rolled back, residue confirmed 0 rows.
 
 **VERDICT: ALL GUARDS BIND IN PRODUCTION.** Nothing needed fixing before item 6.
 
+**⭐ ELEVENTH SEAM OCCURRENCE — A DATASET ID USED AS A COMPANY ID (27 Jul).**
+`CompanySelector.pick()` set the active COMPANY id to `row.id`, which is a
+DATASET id, so every `/companies/{id}/*` call went out in the wrong id-space.
+`DatasetRow` never declared `enterprise_id`, so the correct value was not even
+in scope.
+
+**Pre-existing, and masked by another defect.** Nearly every session was stuck
+in demo mode, where `demoPrimaries` maps `id: c.company_id` correctly. Fixing
+the isDemo collapse made real rows selectable for the first time and exposed it
+immediately.
+
+**SEVERITY, STATED HONESTLY: no exposure occurred, and that was COINCIDENCE
+rather than structure.** The id that travelled was 48 — a dataset belonging to
+Milliner — and `/companies/48/departments` returned HTTP 200 with `count=0`
+only because no accounts-world company 48 exists. **Dataset ids and enterprise
+ids collide in production TODAY at 4, 5, 8, 21 and 38.** Selecting a dataset
+whose id equals a different company's id would silently point the whole
+application at that company.
+
+**THE OBVIOUS FIX WAS UNSAFE.** `row.enterprise_id ?? row.id` reintroduces the
+defect for exactly the rows that need it most: `enterprise_id` is nullable
+server-side (`DatasetOut.enterprise_id: int | None`) and **11 of 30 production
+rows are null**, including showcase dataset 4 — whose id collides with
+enterprise 4, a DIFFERENT TENANT'S company. So there is no fallback: a row that
+cannot name its company is **not selectable**, and `pick()` refuses loudly if one
+ever reaches it. Rule: **never default an identifier from a different
+identifier's value.**
+
+**⭐ AND A GUARD PROPOSED AS SUFFICIENT THAT WAS NOT — found only by probing it.**
+I introduced `DENY_COMPANY_IDS = {25}` specifically to make a customer-data
+crawl impossible, and described it as such. It guarded COMPANY ids; the leak
+travelled as a DATASET id, so **it could not have caught the very event it was
+built for.** Widening it to resolve datasets to enterprises then produced a
+SECOND error, caught by a control probe: Milliner owns dataset id 38, which
+collides with company 38 — the verification tenant — so the widened guard denied
+the one company the crawl exists to exercise.
+
+Both errors were invisible to reasoning and obvious to a probe. **A denylist that
+has never refused anything is undemonstrated, and so is one that has never been
+shown to permit the thing it must permit.** The four-case probe (denied dataset
+id · denied company id · permitted verification tenant · resolution listing) is
+now the standard for any guard of this shape: prove it refuses, AND prove it
+does not over-refuse.
+
 **⭐ MEMBERSHIP-BLIND GATE CLASS — FIFTH OCCURRENCE (27 Jul). The ledger
 declares this class "KILLED (4th and final occurrence)". It is not dead, and the
 reason is that it was never properly characterised.**
