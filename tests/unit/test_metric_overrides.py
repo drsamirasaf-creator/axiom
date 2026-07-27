@@ -49,7 +49,7 @@ def test_sentence_states_the_bare_value_when_unoverridden(_app):
 
 def _fake(**kw):
     d = dict(id=1, override_value=6.8, computed_value_at_override=7.1,
-             reason_category="private_info", reason_note="known upcoming churn",
+             reason_category="data_error", reason_note="Q4 restructuring charge miscoded at source",
              author_label="CFO — J. Chen", created_at=datetime(2026, 7, 27))
     d.update(kw)
     return type("O", (), d)
@@ -65,7 +65,7 @@ def test_an_override_never_yields_a_value_without_its_authorship(_app):
     assert a["adjusted"] is True
     assert a["adjusted_by"] == "CFO — J. Chen"
     assert a["computed_value"] == 7.1, "AXIOM's number survives beside the CXO's"
-    assert a["reason_label"] == "private CXO information"
+    assert a["reason_label"] == "wrong input data"
     d = r.to_dict("ytd_actual")
     assert d["ytd_actual"] == 6.8 and d["provenance"]["adjusted_by"] == "CFO — J. Chen"
 
@@ -77,7 +77,7 @@ def test_the_prose_form_cannot_state_an_adjusted_number_as_fact(_app):
     s = Resolved(7.1, _fake()).sentence("Revenue growth")
     assert "ADJUSTED by CFO — J. Chen" in s
     assert "AXIOM computed 7.1" in s
-    assert "private CXO information" in s
+    assert "wrong input data" in s
 
 
 def test_the_computed_value_is_a_frozen_snapshot_not_a_live_lookup(_app):
@@ -107,7 +107,7 @@ def test_reason_note_is_optional_but_the_category_is_not(_app):
 
 
 def test_validate_new_rejects_every_missing_piece(_app):
-    ok = dict(override_value=1, computed_value=2, reason_category="private_info",
+    ok = dict(override_value=1, computed_value=2, reason_category="data_error",
               author_label="CFO — X", metric_ref="13|ebitda margin %",
               department_id=13)
     assert validate_new(**ok)
@@ -283,8 +283,63 @@ def test_audit_row_carries_both_values_and_the_author(_app):
 
 
 def test_reason_categories_match_the_spec(_app):
-    assert set(REASON_CATEGORIES) == {"calc_error", "data_error", "definition",
-                                      "private_info", "other"}
+    assert set(REASON_CATEGORIES) == {"calc_error", "data_error", "definition", "other"}
+
+
+def test_private_cxo_information_is_not_an_accepted_category(_app):
+    """USER RULING 27 Jul — removed entirely. Combined with a nullable
+    reason_note it let an override tell a board: this number was changed, by the
+    CFO, for reasons we are not giving. Attributed number-laundering — the
+    attribution real, the reason a refusal to give one — and it would have been
+    the most-selected category precisely because it demanded nothing.
+
+    Rejected at the SCHEMA, not only at the write path: a direct INSERT must not
+    be able to resurrect it."""
+    assert "private_info" not in REASON_CATEGORIES
+    assert "private_info" not in ov.REASON_LABEL
+
+    from sqlalchemy import CheckConstraint
+    checks = {c.name: str(c.sqltext) for c in MetricOverride.__table__.constraints
+              if isinstance(c, CheckConstraint)}
+    assert "ck_override_reason_category" in checks, "no schema-level enum check"
+    assert "private_info" not in checks["ck_override_reason_category"]
+    for cat in REASON_CATEGORIES:
+        assert cat in checks["ck_override_reason_category"], cat
+
+    with pytest.raises(ValueError, match="reason_category must be one of"):
+        validate_new(override_value=1, computed_value=2,
+                     reason_category="private_info", author_label="CFO — X",
+                     metric_ref="13|x", department_id=13)
+
+
+def test_the_schema_check_actually_refuses_the_removed_value(_app):
+    """The constraint asserted above must BIND, not merely be declared — the
+    Stage 1b item 1 lesson applied to this ruling."""
+    from services.api.accounts import SessionLocal
+    from datetime import datetime
+    s = SessionLocal(); CO = 987655
+    try:
+        s.query(MetricOverride).filter_by(company_id=CO).delete(); s.commit()
+        s.add(MetricOverride(
+            company_id=CO, target_scope="department", department_id=13,
+            metric_ref="13|x", metric_label="x", override_value=1,
+            computed_value_at_override=2, reason_category="private_info",
+            author_user_id=1, author_label="CFO — X", created_at=datetime(2026, 7, 27)))
+        with pytest.raises(Exception):
+            s.commit()
+        s.rollback()
+    finally:
+        s.query(MetricOverride).filter_by(company_id=CO).delete(); s.commit(); s.close()
+
+
+def test_every_remaining_category_is_substantive_and_stateable(_app):
+    """Why reason_note can stay nullable per B.5: with the laundering option
+    gone, the category alone IS an explanation. Each remaining one also names a
+    place a fix belongs, which is what Stage 3 routing acts on."""
+    for cat in REASON_CATEGORIES:
+        assert ov.REASON_LABEL[cat].strip()
+    assert set(REASON_CATEGORIES) == {"calc_error", "data_error", "definition", "other"}
+    assert MetricOverride.__table__.columns["reason_note"].nullable is True
 
 
 def test_no_write_endpoint_resolves_to_an_override_path(_app):
@@ -395,21 +450,21 @@ def test_a_kpi_strip_metric_is_refused(_app):
         assert ov.is_resolver_covered(ref) is False, ref
         with pytest.raises(ValueError, match="not a resolver-covered metric"):
             validate_new(override_value=1, computed_value=2,
-                         reason_category="private_info", author_label="CFO — X",
+                         reason_category="data_error", author_label="CFO — X",
                          metric_ref=ref, department_id=13)
 
 
 def test_write_path_refuses_the_unresolved_enterprise_scope(_app):
     with pytest.raises(ValueError, match="target_scope must be one of"):
         validate_new(override_value=1, computed_value=2,
-                     reason_category="private_info", author_label="CFO — X",
+                     reason_category="data_error", author_label="CFO — X",
                      metric_ref="13|x", target_scope="enterprise", department_id=None)
 
 
 def test_write_path_requires_a_department(_app):
     with pytest.raises(ValueError, match="department_id is required"):
         validate_new(override_value=1, computed_value=2,
-                     reason_category="private_info", author_label="CFO — X",
+                     reason_category="data_error", author_label="CFO — X",
                      metric_ref="13|x", department_id=None)
 
 
@@ -426,3 +481,17 @@ def test_the_rebuild_refuses_rather_than_dropping_a_populated_table(_app):
     src = inspect.getsource(ov.ensure_override_schema)
     assert "SELECT COUNT(*)" in src
     assert "Refusing to rebuild" in src
+
+
+def test_the_rebuild_checks_every_guard_not_just_the_first(_app):
+    """The first version of ensure_override_schema checked ONLY for the partial
+    index. When the reason-category CheckConstraint landed a commit later, the
+    index was already present, the rebuild was skipped, and the new constraint
+    never reached the database — declared in the model, enforcing nothing.
+    Caught by inserting the forbidden value and watching it commit."""
+    import inspect
+    src = inspect.getsource(ov.ensure_override_schema)
+    assert "required_checks" in src and "get_check_constraints" in src
+    for name in ("ck_override_metric_ref_shape", "ck_override_scope",
+                 "ck_override_has_department", "ck_override_reason_category"):
+        assert name in src, f"{name} is not in the required-guard set"

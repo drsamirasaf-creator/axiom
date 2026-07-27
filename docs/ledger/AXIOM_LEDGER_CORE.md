@@ -32,15 +32,43 @@ genuinely shipped and verified.
 
 ## IMMEDIATE STATE
 
-**CXO Override & Sign-off (#3) — Stage 1 (immutable data model + read path) BUILT
-(638bd3a model+read path, 5932c41 proof; 441 passed, exit 0; backend deployed)
-and REVIEWED 27 Jul. Verdict: PASS ON INTENT, NOT CERTIFIED. Stage 2 (write UI +
-sign-off button) REMAINS BLOCKED pending Stage 1b (6 items, §4x) and 2 open
-rulings (§4x §5). Stage 1 report read clean only on second attempt — first paste
-corrupted, as in the prior session. STANDING RULE: build reports arrive as FILE
-UPLOADS, never pastes; a dropped clause in a verification report is a
-verification failure, not a formatting annoyance (one dropped clause inverted the
-meaning of report flag 4 and produced a wrong reading on first pass).**
+**CXO Override & Sign-off (#3) — Stage 1 BUILT (638bd3a model+read path, 5932c41
+proof) and REVIEWED 27 Jul (PASS ON INTENT, NOT CERTIFIED). STAGE 1b ITEMS 1–5
+COMPLETE (7969f48 items 1/2/3/5; 3f7ac0e item 4 + rulings). 455 passed, exit 0.
+ITEM 6 — production proof on a throwaway company — IS THE ONLY REMAINING GATE on
+Stage 2 (write UI + sign-off button).**
+
+**Stage 1b outcomes:** (1) partial unique index — defect confirmed empirically
+first, fix verified by re-running the failing test. (2) index key now carries
+`target_scope`+`department_id`, and `metric_ref` is whitelisted to
+resolver-covered metrics at BOTH schema and write path. (3) **`enterprise` scope
+REMOVED** — traced to a single resolver call site (`_serialize_kpis`); no
+enterprise surface resolves, so the scope was representable-but-unresolved.
+(4) **`private CXO information` REMOVED** — see §5(B). (5) route assertion now
+runs against the app's real route table, with a companion test proving the
+detector fires.
+
+**⭐ A SECOND INSTANCE OF THE SAME CLASS, found during 1b and worth recording.**
+`ensure_override_schema` initially checked only for the partial index. When the
+reason-category CheckConstraint landed one commit later the index was already
+present, the rebuild was skipped, and the new constraint never reached the
+database — declared in the model, enforcing nothing. Caught only because a test
+inserted the forbidden value and watched it commit. **The migration guard now
+names EVERY required index and check constraint and rebuilds if any is missing.**
+Generalised rule: a schema-drift guard that checks for one artifact certifies
+one artifact, not the schema.
+
+**RULINGS CLOSED 27 Jul:** §4x recomputed-RAG-badge provenance (LOCKED, Stage 2
+build condition, recorded not built) · §4x `private CXO information` (LOCKED,
+removed entirely, built) · §4y CXO Dataroom READ access (LOCKED, granted,
+departmentally scoped; write stays Admin-only; §4y scope, not buildable now).
+
+**ONE OPEN ITEM REMAINS, non-blocking:** Dataroom naming (§4y).
+
+**STANDING RULE: build reports arrive as FILE UPLOADS, never pastes**; a dropped
+clause in a verification report is a verification failure, not a formatting
+annoyance (one dropped clause inverted the meaning of report flag 4 and produced
+a wrong reading on first pass). Reports now live in `docs/reports/`.
 
 **⭐ STAGE 1b ITEM 1 — EMPIRICALLY CONFIRMED 27 Jul, not merely suspected.** The
 review's reading was tested rather than accepted. Two consecutive INSERTs of
@@ -65,12 +93,13 @@ column is wrong by default and needs a partial index or `NULLS NOT DISTINCT`.
 earlier session, never written down, and consequently missed on review. The
 ledger rule caught the gap; the writing-down step had failed.
 
-**FOUR OPEN ITEMS AWAITING USER RULING:** (1) CXO read access on the Dataroom
-[advisor recommends yes]; (2) Dataroom naming vs the existing document
-repository; (3) recomputed RAG badge inherits the provenance marker [advisor
-recommends yes, condition on an already-confirmed ruling]; (4) the
-`private CXO information` reason category — drop, or conditional NOT NULL on the
-note [advisor recommends the latter].
+**~~FOUR OPEN ITEMS AWAITING USER RULING~~ — THREE CLOSED 27 Jul, ONE REMAINS.**
+(1) CXO read access on the Dataroom — **LOCKED: granted, departmentally scoped,
+read-only.** (2) Dataroom naming vs the existing document repository — **STILL
+OPEN**, non-blocking. (3) recomputed RAG badge inherits the provenance marker —
+**LOCKED: yes**, Stage 2 build condition. (4) the `private CXO information`
+reason category — **LOCKED: removed entirely** (the stronger of the two options,
+not the advisor's conditional-NOT-NULL recommendation).
 
 ---
 
@@ -1252,16 +1281,47 @@ gap a valid user action can walk into.
 
 ---
 
-## 5. OPEN RULINGS — BLOCK THE 1b SCRIPT
+## 5. RULINGS — CLOSED 27 Jul (both were blocking the 1b script)
 
-**(A) Recomputed RAG badge provenance.** Variance recomputing on the DISPLAYED
-value is confirmed as correct — sign-off attests to the dashboard AS SHOWN, and a
-card showing 21.8 with a RAG derived from 19.4 is self-contradictory, which is
-not a thing to ask a CXO to personally attest to. CONDITION AWAITING
-CONFIRMATION: the derived verdict must carry the provenance marker too. A RAG
-badge flipping favorable→unfavorable is itself an adjusted figure; a bare flipped
-badge is a smaller version of the same leak. Computed variance stays derivable
-from `provenance_override.computed_value` — already satisfied.
+**(A) Recomputed RAG badge provenance — ⭐ LOCKED 27 Jul. CONDITION CONFIRMED.**
+Variance recomputing on the DISPLAYED value is correct — sign-off attests to the
+dashboard AS SHOWN, and a card showing 21.8 with a RAG derived from 19.4 is
+self-contradictory, which is not a thing to ask a CXO to personally attest to.
+**The derived verdict MUST carry the provenance marker too.** Rationale, recorded
+as the governing reason: a RAG badge that flips favorable→unfavorable **is itself
+an adjusted figure**, and a bare flipped badge is a smaller version of the same
+leak the feature exists to prevent — smaller only in pixels, not in consequence,
+because a badge is what a reader scanning a dashboard actually processes.
+Computed variance stays derivable from `provenance_override.computed_value` —
+already satisfied by the Stage 1 payload.
+
+**THIS IS A STAGE 2 BUILD CONDITION, NOT BUILT.** Recorded here so it gates the
+write UI rather than being rediscovered after it ships. Stage 1 already emits
+`variance` computed on the displayed value; what Stage 2 must add is the marker
+on the badge itself, wherever a badge is rendered from an overridden figure —
+department card, drill-down, and any export surface that renders a RAG.
+
+**(B) `private CXO information` reason category — ⭐ LOCKED 27 Jul. REMOVED
+ENTIRELY.** (Superseding the earlier advisor recommendation of a conditional
+NOT NULL on the note.) The category, combined with a nullable `reason_note`, let
+an override tell a board: *this number was changed, by the CFO, for reasons we
+are not giving.* That is attributed number-laundering — the attribution real,
+the reason a refusal to give one — and it would have been the most-selected
+category precisely because it demanded nothing.
+
+Every remaining category is substantive and stateable, which is what lets
+`reason_note` stay nullable per B.5: **with the laundering option gone, the
+category alone IS an explanation.** "Wrong input data" tells a reader where the
+defect is; "private CXO information" told them only that they may not ask. The
+four survivors — `calc_error`, `data_error`, `definition`, `other` — each also
+name a place a fix belongs, which is what Stage 3's reason-routing acts on; a
+category that routes nowhere was never carrying its weight.
+
+**BUILT (see §4x STATUS below).** Removed from `REASON_CATEGORIES` and
+`REASON_LABEL`, and rejected at the SCHEMA via
+`CheckConstraint(ck_override_reason_category)` so a direct INSERT cannot
+resurrect it. No data migration was required: zero rows in production and no
+write endpoint — both confirmed before the change, not assumed.
 
 **(B) `private CXO information` reason category.** Currently a `reason_category`
 value, and `reason_note` is nullable per B.5. Combined, an override can tell a
@@ -1692,10 +1752,37 @@ correction. The entire §4x trust architecture (default-no-change, rare-equals-
 signal, attributed exceptions with the computed value beside them) rests on the
 CXO having exactly ONE way to change a number, and that way being visible.
 
-**CXO READ ACCESS — RECOMMENDED, PENDING USER LOCK.** A CXO seeing the source
-inputs behind his department's figures is what makes review-before-sign-off
-meaningful (he is attesting to numbers; he should be able to see what produced
-them). Read costs nothing architecturally and creates no laundering path.
+**⭐ CXO READ ACCESS — LOCKED 27 Jul (user ruling). GRANTED, DEPARTMENTALLY
+SCOPED.**
+
+A CXO gets **READ** access to the Dataroom: the source inputs behind **his own
+department's** numbers, and no others. **Write remains Admin-only, explicitly
+excluding CXOs, enforced server-side** — the hardened rule above is unchanged and
+this ruling does not soften it.
+
+Rationale, recorded so it survives re-litigation:
+
+1. **Read is what makes review-before-sign-off meaningful.** A CXO is being asked
+   to personally attest to numbers and defend them to a board. Attestation
+   without the ability to see what produced the figure is a signature on
+   someone else's work — which is precisely the "the system's claims" posture the
+   whole trust arc exists to replace.
+2. **Read creates no laundering path.** Laundering requires the ability to
+   *change* a number without leaving a trail. Reading changes nothing; the CXO's
+   only channel for changing a figure remains the attributed override, and the
+   §4x architecture (default-no-change, rare-equals-signal, attributed exceptions
+   with the computed value beside them) is untouched by it.
+3. **Departmental scoping applies to read, not only to write.** A CXO reads his
+   OWN department's inputs, not another's. Same scoping rule and same server-side
+   enforcement as §4x override authority — an explicit grant, never an inference
+   from `Department.head_email`. Cross-department read would hand every CXO
+   visibility into every other department's raw inputs, which is a confidentiality
+   change nobody asked for and would be discovered by a customer rather than by
+   us.
+
+**STAGE / SCOPE: §4y, NOT BUILDABLE NOW.** Recorded, not built. It depends on the
+Dataroom itself, and on the §4x Stage 2 department-authority grant table that
+scoped read would reuse.
 
 **NO SEPARATE "FLAG THIS INPUT" MECHANISM.** The CXO's correction channel already
 exists and it is the override itself — §4x defines an override as a correction

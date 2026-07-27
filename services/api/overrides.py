@@ -43,19 +43,33 @@ from sqlalchemy import (CheckConstraint, Column, DateTime, Index, Integer, JSON,
 
 from .accounts import Base, Department, Membership
 
-# Reason categories (§4l B.5). `private_info` is the only one that is purely a
-# display override; the others name a defect somewhere upstream and Stage 3
-# routes them to where the fix belongs. Stage 1 stores the category and nothing
-# else acts on it.
-REASON_CATEGORIES = ("calc_error", "data_error", "definition", "private_info", "other")
+# ── reason categories (§4l B.5, amended by user ruling 27 Jul) ───────────────
+# `private_info` REMOVED. Combined with a nullable reason_note it let an override
+# tell a board: this number was changed, by the CFO, for reasons we are not
+# giving. That is attributed number-laundering — the attribution is real and the
+# reason is a refusal to give one — and it would have been the most-selected
+# category precisely because it demanded nothing.
+#
+# Every remaining category is substantive and stateable, which is what lets
+# reason_note stay nullable per B.5: with the laundering option gone, the
+# category alone IS an explanation. "Wrong input data" tells a reader where the
+# defect is; "private CXO information" tells them only that they may not ask.
+#
+# The four that remain also each name a place a fix belongs, which is what Stage
+# 3's reason-routing acts on. A category that routes nowhere was never carrying
+# its weight.
+REASON_CATEGORIES = ("calc_error", "data_error", "definition", "other")
 
 REASON_LABEL = {
     "calc_error": "calculation error",
     "data_error": "wrong input data",
     "definition": "definition disagreement",
-    "private_info": "private CXO information",
     "other": "other",
 }
+
+# SQL-side form, so a DIRECT INSERT cannot resurrect the removed value. The
+# write path is not the only way rows arrive.
+_REASON_SQL_CHECK = "reason_category IN ('calc_error','data_error','definition','other')"
 
 # ── target scopes — ONLY what the resolver actually covers (Stage 1b item 3) ──
 # `enterprise` was representable and UNRESOLVED. Determined empirically:
@@ -145,6 +159,7 @@ class MetricOverride(Base):
         # protects the write path, and the write path is not the only way rows
         # arrive (a migration, a console session, a future importer).
         CheckConstraint(_METRIC_REF_SQL_CHECK, name="ck_override_metric_ref_shape"),
+        CheckConstraint(_REASON_SQL_CHECK, name="ck_override_reason_category"),
         CheckConstraint("target_scope = 'department'", name="ck_override_scope"),
         # department_id is nullable in the column definition only because the
         # enterprise scope once existed. With that scope removed there is no
@@ -211,19 +226,38 @@ def ensure_override_schema(engine):
     insp = _inspect(engine)
     if not insp.has_table("ax_metric_overrides"):
         return {"action": "none", "reason": "table does not exist yet"}
-    idx = {i["name"] for i in insp.get_indexes("ax_metric_overrides")}
-    if "uq_active_metric_override" in idx:
-        return {"action": "none", "reason": "partial index already present"}
+
+    # EVERY guard, not just the first one added. The initial version of this
+    # function checked only for the partial index — so when the reason-category
+    # CheckConstraint landed a commit later, the table already had the index,
+    # the rebuild was skipped, and the new constraint never reached the
+    # database. It existed in the model and enforced nothing, which is the exact
+    # failure mode Stage 1b item 1 was about. Caught by a test that inserted the
+    # forbidden value and saw it commit.
+    #
+    # So: name every guard that must be present, and rebuild if ANY is missing.
+    required_indexes = {"uq_active_metric_override"}
+    required_checks = {"ck_override_metric_ref_shape", "ck_override_scope",
+                       "ck_override_has_department", "ck_override_reason_category"}
+    have_idx = {i["name"] for i in insp.get_indexes("ax_metric_overrides")}
+    try:
+        have_chk = {c["name"] for c in insp.get_check_constraints("ax_metric_overrides")}
+    except NotImplementedError:
+        have_chk = set()          # dialect cannot introspect; index check still applies
+    missing = (required_indexes - have_idx) | (required_checks - have_chk)
+    if not missing:
+        return {"action": "none", "reason": "all guards present"}
     with engine.begin() as conn:
         n = conn.exec_driver_sql("SELECT COUNT(*) FROM ax_metric_overrides").scalar()
         if n:
             raise RuntimeError(
-                f"ax_metric_overrides holds {n} row(s) but predates the partial "
-                f"unique index. Refusing to rebuild: this table is an immutable "
-                f"audit trail and must be migrated deliberately, not dropped.")
+                f"ax_metric_overrides holds {n} row(s) but is missing guards "
+                f"{sorted(missing)}. Refusing to rebuild: this table is an "
+                f"immutable audit trail and must be migrated deliberately, not "
+                f"dropped.")
         conn.exec_driver_sql("DROP TABLE ax_metric_overrides")
     MetricOverride.__table__.create(engine)
-    return {"action": "rebuilt", "rows_preserved": 0}
+    return {"action": "rebuilt", "rows_preserved": 0, "was_missing": sorted(missing)}
 
 
 # ── the read path ────────────────────────────────────────────────────────────

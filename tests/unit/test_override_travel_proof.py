@@ -73,7 +73,7 @@ def _add_override(s, dep, kpi):
         company_id=CO, target_scope="department", department_id=dep.id,
         metric_ref=_kpi_scope_key(dep.id, KPI_NAME), metric_label=KPI_NAME,
         override_value=ADJUSTED, computed_value_at_override=COMPUTED,
-        reason_category="private_info",
+        reason_category="data_error",
         reason_note="Q4 one-off restructuring charge is non-recurring",
         author_user_id=1, author_label=AUTHOR, created_at=datetime(2026, 7, 27))
     s.add(o); s.commit()
@@ -102,7 +102,7 @@ def test_card_and_drilldown_before_and_after(env):
     assert p["adjusted"] is True
     assert p["adjusted_by"] == AUTHOR
     assert p["computed_value"] == COMPUTED, "AXIOM's number travels WITH it"
-    assert p["reason_label"] == "private CXO information"
+    assert p["reason_label"] == "wrong input data"
     assert after["computed_ytd_actual"] == COMPUTED
     assert after["variance"]["status"] == "favorable", \
         "variance follows the displayed figure; the computed one stays derivable"
@@ -140,7 +140,7 @@ def test_export_extras_before_and_after(env):
     assert len(rows) == 1
     r = rows[0]
     assert r["displayed_value"] == ADJUSTED and r["computed_value"] == COMPUTED
-    assert r["author"] == AUTHOR and r["reason_label"] == "private CXO information"
+    assert r["author"] == AUTHOR and r["reason_label"] == "wrong input data"
 
 
 def test_the_pdf_section_renders_both_figures(env):
@@ -152,7 +152,7 @@ def test_the_pdf_section_renders_both_figures(env):
     row = [str(adj[0].get("metric")), str(adj[0].get("computed_value")),
            str(adj[0].get("displayed_value")),
            f"{adj[0].get('author')} · {adj[0].get('reason_label')}"]
-    assert row == [KPI_NAME, "19.4", "21.8", f"{AUTHOR} · private CXO information"]
+    assert row == [KPI_NAME, "19.4", "21.8", f"{AUTHOR} · wrong input data"]
     assert "19.4" in row[1], "the board sees what AXIOM computed, not only the adjustment"
 
 
