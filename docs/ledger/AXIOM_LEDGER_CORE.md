@@ -150,6 +150,47 @@ forbids. All inside transactions, all rolled back, residue confirmed 0 rows.
 
 **VERDICT: ALL GUARDS BIND IN PRODUCTION.** Nothing needed fixing before item 6.
 
+**⭐ NINTH OCCURRENCE — THE ACCOUNTS-WORLD / LEGACY-IDENTITY SEAM NOW CATCHES
+DIAGNOSIS, NOT ONLY CODE (27 Jul).** The eight seam incidents are closed and in
+ARCHIVE. **The seam is not.** It persists as a CLASS, and its ninth occurrence
+was not a defect in the product — it was a defect in my *diagnosis of* the
+product.
+
+Investigating the drifting `/companies/48/logo` 404, I queried `enterprises` for
+id 48, found nothing, and concluded the company did not exist. **`enterprises` is
+the LEGACY-IDENTITY table; `/companies/{id}/*` takes ACCOUNTS-WORLD ids.**
+Company 48 exists perfectly well — `/companies/48/departments` and
+`/companies/48/reports/latest` both return 200. The 404 was only ever the
+documented "this company has no logo" signal (`company-logo.ts`: *"Returns null
+if none"*).
+
+The standing rule — *"no code may join accounts-world ids against
+legacy-identity ids; email is the only cross-world key"* — was written for code.
+**It applies to investigation with equal force**, and a wrong diagnosis is more
+dangerous than a wrong line of code because it gets written into a report and
+believed. Extend the rule: **before concluding anything from an id lookup,
+establish WHICH WORLD the id belongs to.**
+
+**⭐ THE §8.2 DECAY PATH, OBSERVED INSIDE THE VERIFICATION TOOL (27 Jul).** §8.2
+argues that a hand-maintained list of "things that invalidate" goes stale
+silently — correct the day it is written, wrong after the next change, and
+failing in a way nothing reports. That is not a hypothetical: **it had already
+happened, in the crawler.**
+
+The `/cei` alias asserted the needle `"Collaborative Assessment"` — a heading the
+app has never rendered. The nav restructure folded Collaborative Assessment into
+Stakeholder Engagement, **and the crawler's own `EXPECTED_SIDEBAR_LINKS` comment
+documents that restructure**. So one hand-maintained list in the file recorded
+the change that invalidated another hand-maintained list in the same file, and
+the stale one failed on every run for weeks without anyone treating it as a
+defect — it had become background noise, which is precisely the state in which a
+real regression goes unnoticed.
+
+Two things follow. First, §8.2's "derive it, never restate it" is confirmed by
+observation rather than argument, and applies to verification assertions as much
+as to invalidation sets. Second, **a permanently-failing assertion is itself a
+defect**, because it trains readers to discount the tool.
+
 **⭐ A SECOND INSTANCE OF THE SAME CLASS, found during 1b and worth recording.**
 `ensure_override_schema` initially checked only for the partial index. When the
 reason-category CheckConstraint landed one commit later the index was already
