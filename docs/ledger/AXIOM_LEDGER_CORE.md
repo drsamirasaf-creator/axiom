@@ -2802,6 +2802,14 @@ that same state are called in the same synchronous block is suspect. The setter
 has not taken effect for the consumer, whatever the consumer reads it through —
 closure, ref, or hook.
 
+**LOGGED FOR A LATER LANE — NOT CHASED (27 Jul).** Sweep the other routes for
+this same synchronous `setState`-then-consume pattern. **Four occurrences means
+there are likely others**, and the pattern is mechanical enough to be a CI check
+rather than a manual pass — the heuristic above is expressible as a lint rule.
+That would make it the second *preventing* guard alongside
+`check-single-dataset-owner.mjs`, which is the only guard in this sequence that
+prevents rather than detects.
+
 ### 7.15f THE FIX AS SHIPPED (27 Jul)
 
 Client-side only. **No server change, no ADR amendment** — the server was doing
