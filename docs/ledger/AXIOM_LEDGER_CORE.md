@@ -2965,6 +2965,100 @@ is "any admin", and is correct. **Only the sentence was wrong.** Corrected. A
 stale comment asserting a constraint the code does not enforce is the same
 false-model hazard as `_operator_bypass`.
 
+## §7.19 ⭐ THE HALF-DONE-SUPERSESSION CLASS — WRITES MIGRATED, READS LEFT BEHIND
+
+**Beside two-owners (§7.15g) and shadowed-route (§7.17). A third way for a
+codebase to hold two answers to one question.**
+
+A model is superseded. The writes move to the replacement. **The reads do not.**
+Each half is internally coherent — the old read path queries the old table
+correctly, the new write path writes the new table correctly — and **nothing
+forces them to agree**, because nothing connects them. There is no error, no
+exception, no failing test. The system simply answers from a table nobody
+fills.
+
+### THE INSTANCE — AND IT IS LIVE
+
+```
+GET    /companies/{id}/kpis         -> planning.py -> KpiDefinition   (only registration, SERVED)
+POST   /companies/{id}/kpis         -> accounts.py -> KpiPlan         (shadows planning's)
+PATCH  /companies/{id}/kpis/{id}    -> accounts.py -> KpiPlan
+DELETE /companies/{id}/kpis/{id}    -> accounts.py -> KpiPlan         (shadows planning's)
+
+ax_kpi_definitions : 0 rows,   0 companies      <- what the READ serves
+ax_kpi_plan        : 180 rows, 3 companies      <- where the WRITES go
+```
+
+⭐ **`GET /companies/{id}/kpis` SERVES A LIVE WRONG ANSWER.** Not a missing
+feature and not an error: an **always-empty list**, read from a zero-row table,
+for every company, while 180 KPI rows sit in the table the writes use. An empty
+list is a valid-looking answer, which is why nothing has ever complained.
+
+Zero rows is what makes this evidence rather than suspicion — it is not a quiet
+table, it is a dead one.
+
+### WHY IT IS A CLASS AND NOT A BUG
+
+The three now recorded share a shape: **two coherent halves, no forcing
+function between them.**
+
+| class | the two halves | what nothing forced |
+| --- | --- | --- |
+| two-owners (§7.15g) | page state / store state | which is authoritative |
+| shadowed-route (§7.17) | two registrations of one path | which one serves |
+| **half-done supersession (§7.19)** | **old read path / new write path** | **that they address the same table** |
+
+Each is invisible in review of either half alone. Each is mechanically
+detectable. **That is the argument for the mechanical pass at position 4.**
+
+### DISPOSITION — AN OPEN DECISION, NOT A CLEANUP TASK
+
+**Retire planning's KPI surface and the `KpiDefinition` model, OR repoint the
+read at `KpiPlan`.** These are not the same change and not equivalent in risk:
+retiring removes a surface something may still call; repointing changes what an
+existing endpoint returns from empty to populated, which is a behavioural change
+for any consumer that has adapted to empty.
+
+**Scoped to the mechanical-class pass at position 4.** It is recorded here as a
+DECISION because choosing between them requires knowing what still reads
+planning's other routes (`PUT /kpis/{id}`, `/readiness`, `/kpis/{id}/values`) —
+which is discovery, and discovery belongs in a pass, not in a closing thread.
+
+No frontend caller of `GET /companies/{id}/kpis` was found; the UI calls
+`/kpis/{id}/links` and `/kpis/{id}/history`, both accounts.py. **That is an
+absence of evidence from one search, not evidence of absence** — the template
+pipeline and any external consumer were not checked.
+
+## §7.20 ⭐ A TEST THAT THE DEFECT CAN SATISFY BY LUCK IS NOT A TEST OF THE DEFECT
+
+**Standing rule: verify a new regression test by running it against the PRE-FIX
+code and confirming it FAILS.** A test written after the fix, validated only
+against the fix, proves the code passes its own test.
+
+**The instance that produced this rule.** The two-admin test for
+`transfer_admin` asserted "the named admin is demoted, the other is untouched".
+It named `a1` — and `.first()` **happened to return `a1`** — so it **PASSED
+AGAINST THE DEFECTIVE CODE**. The defect being tested was *query-order
+arbitrariness*, and the test had accepted one arrangement of that very
+arbitrariness as correct.
+
+Rewritten to name `a2`, the admin `.first()` would **not** have picked. Then:
+
+```
+old .first() code : 3 failed
+fixed code        : 3 passed
+```
+
+⭐ **THE TEST ONLY BECAME A TEST WHEN IT NAMED THE CASE THE DEFECT COULD NOT
+SATISFY.** Where a defect is non-deterministic, the test must select the branch
+the defect gets wrong — otherwise it samples the same luck the defect relies on.
+
+This is the same family as the other instrument findings of 27–28 Jul (the
+substring sanity gate, poll-until-satisfied, the four-clause verdict grading one
+clause, the guard that named an unestablished cause) and it is the **last of
+them to be turned into a rule**: every one was an instrument that agreed with
+the thing it was supposed to check.
+
 ## §7.17 ⭐ THE SHADOWED-ROUTE CLASS — CODE WRITTEN, CORRECT, AND NEVER SERVED
 
 **A path declared twice. FastAPI resolves to the first registration; the second
