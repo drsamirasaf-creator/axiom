@@ -69,6 +69,15 @@ the RENDERED behaviour of an override across live surfaces, which is what makes
 item 6 completes.** Anyone picking this up must treat item 6 as a release gate,
 not a backlog item.
 
+**⭐ STAGE 2 GRANT MODEL LOCKED 27 Jul — see §4x §7 below. DESIGN ONLY, NOT
+BUILT.** Admin grants and may never exercise; grants are rows with `revoked_at`
+timestamps, never a role field; one person may hold multiple departments;
+**revocation never touches history** (test-pinned: revoke, then assert prior
+sign-offs and overrides are byte-identical); department change moves the grant
+and the display renders the role AS IT WAS ("then CHRO"); and **no admin
+sign-off ever** — vacancy resolves by interim grant to a real CXO, or by an
+explicit vacancy state that renders differently from "unsigned".
+
 **Stage 1b outcomes:** (1) partial unique index — defect confirmed empirically
 first, fix verified by re-running the failing test. (2) index key now carries
 `target_scope`+`department_id`, and `metric_ref` is whitelisted to
@@ -1413,6 +1422,113 @@ category stays board-visible; but an override whose reason is unstateable even
 internally should not be creatable. **Note: the ledger says reason NOT NULL,
 schema-enforced. Spec B.5's change-and-sign-without-prose carve-out is the looser
 reading, and THE LEDGER SUPERSEDES THE SPEC.**
+
+---
+
+## 7. STAGE 2 GRANT MODEL — ⭐ LOCKED 27 Jul (user rulings). DESIGN ONLY, NOT BUILT.
+
+The authority layer Stage 1 fails closed against. Stage 1's
+`department_authority()` returns False for everyone because no grant table
+exists; this is that table's design. **Recorded, not built.**
+
+### 7.1 WHO GRANTS — the company admin
+
+The **company admin** grants departmental authority. **Not the CEO** — a CEO has
+no time for grant administration, and this is operational work.
+
+The already-locked rule stands unchanged and is the spine of the whole feature:
+**the admin may grant authority but may never exercise it.** The admin decides
+who speaks for a department and can never speak for one.
+
+### 7.2 GRANTS ARE ROWS, NOT A ROLE FIELD
+
+Each grant is its own row with its own lifecycle: `granted_by`, `granted_at`,
+`revoked_at`. **Revocation is a timestamp, not a deletion.**
+
+Mirrors the override model's new-row-never-update discipline, for the same two
+reasons: history is untouched **by construction** rather than by remembering to
+preserve it, and multi-department support falls out free instead of needing a
+join table bolted onto a role enum.
+
+### 7.3 ONE PERSON MAY HOLD MULTIPLE DEPARTMENTS
+
+E.g. one CXO over both Sales and Marketing. **Two grant rows.** Revoking one must
+not disturb the other — which is automatic once grants are rows, and would have
+required special-casing under a role field.
+
+### 7.4 ⭐ REVOCATION NEVER TOUCHES HISTORY
+
+Past sign-offs and overrides stand **exactly as made**, with the departed
+executive's frozen `author_label` intact.
+
+**A revocation that cascaded into historical attestations would be the worst
+possible defect on this feature.** A board figure that loses its attester is
+worse than one that never had an attester: the first looks like a covered-up
+authorship, the second merely looks unsigned.
+
+**TEST-PIN THIS (Stage 2 build requirement):** revoke a grant, then assert every
+prior sign-off and override row is **byte-identical**. Per the standing principle
+above, this must be asserted behaviourally — perform the revocation and compare
+the rows, not merely observe that no cascade is declared.
+
+### 7.5 DEPARTMENT CHANGE
+
+The admin **moves the grant** to the new department head. Prior sign-offs remain
+valid **for the date they were made**.
+
+Display renders the role **as it was**: *"Signed off by J. Chen, then CHRO,
+14 Mar."* Without the "then", a CEO reading the dashboard wonders why the head of
+Operations signed HR's numbers — the attestation looks wrong precisely because
+the display is showing today's org chart against a historical act. This is the
+same reason `author_label` is frozen text and never a join (§4x Stage 1).
+
+### 7.6 ⭐ VACANCY — NO ADMIN SIGN-OFF, EVER
+
+When a CXO leaves, **authority does NOT revert to the admin.**
+
+An admin who can sign off **collapses the separation the feature rests on**: the
+person assigning authority would also be exercising it, and the board-facing
+claim that *a named executive personally attested* becomes unverifiable from
+outside. The signature would still exist; what it certifies would not.
+
+**Two permitted paths, in order:**
+
+**(a) INTERIM GRANT — primary.** The admin grants the department temporarily to
+an **existing CXO** — e.g. Finance to the COO during a CFO search. A real
+executive with a real name attests, so the sign-off means what it says. Uses the
+multi-department machinery in 7.3 and **requires nothing new**. When the
+replacement joins, the admin moves the grant per 7.5.
+
+**(b) VACANCY STATE — fallback, only when there is genuinely no one to grant
+to.** No grant. The dashboard **states it explicitly** — e.g. *"Finance: no CXO
+assigned since 14 Mar."*
+
+**A department with nobody accountable and a department whose CXO simply hasn't
+acted yet are DIFFERENT STATES and must render differently.** An unsigned
+dashboard that looks identical in both cases is the trap: it reads as executive
+inattention when the real condition is an unfilled role, and it silently converts
+an organisational gap into an apparent individual failure. (Same
+three-state discipline as §4x suppression reasons and the CEI cards — absence is
+never one state.)
+
+**If admin involvement is ever needed during a vacancy,** the only acceptable
+form is **admin acting on behalf of a named executive, rendered as such** —
+reusing the existing admin-on-behalf-of audit attribution
+(`_on_behalf_suffix`, §4s), **not a new mechanism**. Never a sign-off in the
+admin's own name.
+
+### 7.7 Consistency notes for whoever builds this
+
+- `_on_behalf_suffix` matches the department head **by email string**. That is
+  fine for the on-behalf LABEL in 7.6 and remains **unacceptable for the GRANT
+  itself** (§4x Stage 1): an admin editing `Department.head_email` would
+  otherwise silently transfer the right to author board figures. Grants are
+  explicit rows; the label may keep using the email heuristic.
+- Platform staff remain excluded from authoring, explicitly, even though the
+  operator bypass grants them `require_company_admin` everywhere else.
+- Stage 1's `department_authority()` already reads a grant model through
+  `Base._department_authority_model` and fails closed when absent — this design
+  is what fills that slot.
 
 ---
 
