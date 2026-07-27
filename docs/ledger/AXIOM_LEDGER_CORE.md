@@ -2375,7 +2375,18 @@ auth/accounts/slots changes · **no unguarded iteration over fetched data
 **cleanup deletes scoped to exact created ids, never
 all-X-for-company-Y** · **no code may join accounts-world ids against
 legacy-identity ids --- email is the only cross-world key** · **infra
-start-flags via Railway env vars, not Procfile** · no fabricated
+start-flags via Railway env vars, not Procfile** ·
+**⭐ MINT CAPABILITY IS FOR VERIFICATION READS — NOT STANDING WRITE PERMISSION
+(recorded 27 Jul, beside the Railway capability fence). `scripts/mint_operator_token.py`
+gives automated runs UNATTENDED SUPER-ADMIN JWT MINTING: the crawler now holds,
+without a human in the loop, a credential that can do anything a super admin can
+do. That is the correct trade for a verification tool that must never go stale,
+and it is a real increase in what an automated run is capable of. THE RULE:
+the mint capability exists for verification READS. PRODUCTION WRITES REQUIRE AN
+EXPLICITLY AUTHORIZED LANE, NAMED BY THE USER, EACH TIME. The ability to mint is
+not permission to write, and no future lane may treat "the crawler can already
+authenticate" as authorization for anything beyond reading. §4x Stage 1b item 6
+is such a lane — AUTHORIZED 27 Jul, SCOPED TO COMPANY 38 ONLY.** · no fabricated
 artifacts · showcase = enterprises 20/21/22 via GET
 /access/showcase-companies, never hardcoded · 4xx never retried · demo
 fires zero authenticated calls · components never render null · gates
