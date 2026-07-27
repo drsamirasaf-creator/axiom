@@ -2342,13 +2342,90 @@ The sweep tests the paths that cost a sale: purchase, transfer, first login,
 first upload, first dashboard, invite a CXO. A link audit tests paths that may
 carry no commercial weight at all. Ordering follows consequence, not tidiness.
 
-**Fold into the sweep** (both sit on the new-customer path, so they are sweep
-findings rather than separate lanes):
+**Fold into the sweep** (all three sit on the new-customer path, so they are
+sweep findings rather than separate lanes):
 
 - **(A) access-without-data** — a company an account can reach but which holds
   no dataset is invisible in the switcher
 - **the NULL-`enterprise_id` backfill** — rows whose `enterprise_id` is null;
   they also bypass `filterDatasetsByAllowlist`
+- **⭐ THE SAMPLE-WORKSPACE TRAP (§7.15) — carried onto the sweep as a KNOWN
+  DEFECT, not a discovery.** Any signed-in user who lands on the sample
+  workspace **cannot reach their own companies in the switcher.** Diagnosed and
+  isolated 27 Jul; the sweep must confirm the fix, not re-find the fault.
+
+---
+
+## §7.15 ⭐ THE ESCAPE-HATCH RULE, AND THE INSTRUMENT GAP (27 Jul)
+
+Recorded independent of any fix. Both items outlived the incident that produced
+them.
+
+### 7.15a THE GENERAL FORM
+
+> **AN ESCAPE HATCH MUST NOT BE SCOPED BY THE THING IT ESCAPES.**
+
+The incident: the company switcher enumerates from
+`GET /api/v1/financials/datasets`, which is tenant-scoped by
+`X-AXIOM-Tenant`, which the client derives from the **currently active
+company**. While a showcase company is active the header is `showcase`, so the
+only companies the switcher can list are showcase companies — **the session
+cannot leave the showcase, because the list of places to go is scoped by the
+place you are.**
+
+⭐ **NEITHER SIDE WAS VIOLATING ITS SPEC.** `read_tenant` honours
+`X-AXIOM-Tenant: showcase` for signed-in users *deliberately*, per ADR-010 §2
+(reads open, writes convert) and with an explicit code comment saying so;
+`demo` is deliberately not honoured. The client sends `showcase` only when a
+showcase company is active — exactly the Sample Workspace case ADR-010
+describes. **The client was sending precisely what the server documented.**
+
+So this is NOT the declared-but-unbound class — every line is bound and
+executes, and each component is correct read on its own. The defect is at the
+seam: **one endpoint serving two jobs.**
+
+- **Content** — "the datasets of the tenant I am viewing." Correctly
+  showcase-scoped in the sample workspace.
+- **Navigation** — the only source the switcher has for enumerating where the
+  user may go. **Must never be scoped by the current view.**
+
+⭐ **THE LESSON THAT GENERALISES: TWO CORRECT COMPONENTS COMPOSE INTO A DEFECT
+WHEN ONE ENDPOINT ANSWERS BOTH "WHAT AM I LOOKING AT" AND "WHERE MAY I GO."**
+Enumeration and content must not share a scoping rule. Check this wherever a
+navigation surface is fed by a content endpoint.
+
+### 7.15b THE INSTRUMENT GAP
+
+> **THE CALL RECORD CAPTURES WHAT WAS CALLED, NOT WHAT WAS SENT.**
+
+Three separate observation attempts failed to find this. The reason is not
+carelessness — it is that the record has nothing wrong in it. Every call was
+authenticated, `200`, against the correct host, carrying a **byte-identical**
+token (verified by SHA-256 fingerprint, 5/5 requests). The record captures
+`(method, path, status, had_auth, full_url, t_ms)`. **The deciding fact was a
+request header — `X-AXIOM-Tenant` — which the record does not capture at all.**
+
+Found only by capturing the browser's full outbound header set and replaying it
+from a separate client, bisecting one header at a time until a single header
+flipped the row count 13 → 9.
+
+Consequence to carry forward: **when a call looks correct and the answer is
+wrong, the next thing to inspect is what was SENT, not what came back.** Any
+instrument that grades requests should record the headers it grades on, or it
+cannot see this class at all. This is the same shape as the other 27 Jul
+measurement failures — *the instrument measured something adjacent to the
+claim* — and it is the fourth instance.
+
+### 7.15c CUSTOMER-FACING SEVERITY
+
+Not a test-instrument problem. **Any signed-in user who lands on the sample
+workspace cannot reach their own companies in the switcher.** They are held in
+the demo by the circularity above.
+
+That is on the new-customer path — first login → sample workspace → reach own
+company — which is why it folds into the §7.14 customer-journey sweep **as a
+known defect to be confirmed fixed**, not as something for the sweep to
+discover.
 
 ---
 
