@@ -150,6 +150,42 @@ forbids. All inside transactions, all rolled back, residue confirmed 0 rows.
 
 **VERDICT: ALL GUARDS BIND IN PRODUCTION.** Nothing needed fixing before item 6.
 
+**⭐ THIRD DEFECT FROM ONE NULLABLE COLUMN — THE ALLOWLIST BYPASS (recorded
+27 Jul, NOT acted on. Its own lane, not now.)**
+
+`filterDatasetsByAllowlist` contains:
+
+```js
+const eid = row.enterprise_id;
+if (eid == null) return true;      // <-- bypasses the allowlist entirely
+```
+
+So the **11 of 30 production datasets with `enterprise_id = NULL` are exempt from
+the accounts-world access gate.** The filter that exists to keep a user from
+seeing datasets outside their access lets every unattributed row through, and
+those rows span multiple tenants (`showcase`, `u-b756d543b812c8b8`, others).
+
+**THIS IS THE THIRD DISTINCT DEFECT TRACEABLE TO ONE NULLABLE COLUMN:**
+  1. `pick()` using a dataset id as a company id — the correct value was
+     nullable, so it was never declared on the row type (11th seam occurrence);
+  2. `?? row.id` as the obvious repair being unsafe *because* the column is
+     nullable, and unsafe precisely for the rows that are null;
+  3. this bypass — nullable meaning "unknown", and unknown being treated as
+     "permitted".
+
+**THE OBSERVATION THAT MATTERS MORE THAN THE FIX: the column itself is probably
+the right repair.** Backfill `enterprise_id` and make it NOT NULL, rather than
+adding a third guard around a field that should not be nullable. Each of the
+three defects is a different piece of code compensating for the same missing
+guarantee, and a third compensation would leave the fourth still to come. A
+column that is nullable in the schema but meaningless when null is a data-model
+defect wearing a code-defect costume.
+
+**Not scoped, not estimated, not started.** Needs its own lane: a backfill has to
+establish what each of the 11 rows actually belongs to, and some may be
+genuinely orphaned — in which case the answer is deletion or an explicit
+"unattributed" sentinel, not a guessed parent.
+
 **⭐ ELEVENTH SEAM OCCURRENCE — A DATASET ID USED AS A COMPANY ID (27 Jul).**
 `CompanySelector.pick()` set the active COMPANY id to `row.id`, which is a
 DATASET id, so every `/companies/{id}/*` call went out in the wrong id-space.
