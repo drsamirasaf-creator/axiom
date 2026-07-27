@@ -37,9 +37,21 @@ proof) and REVIEWED 27 Jul (PASS ON INTENT, NOT CERTIFIED). ⭐ STAGE 1b ITEMS 1
 COMPLETE (7969f48 items 1/2/3/5 · 5708729 item 4 + rulings · c40269e production
 constraint sweep). 455 passed, exit 0.**
 
-**⭐ ITEM 6 — DEFERRED, NOT CANCELLED. RE-GATED.** The production surface proof
-on a throwaway company is outstanding, blocked on an admin token. It no longer
-gates Stage 2 being BUILT; **it gates Stage 2 SHIPPING TO A CUSTOMER.** The
+**⭐ ITEM 6 — COMPLETE 27 Jul. STAGE 1b IS CLOSED (items 1-6).** Production
+surface proof run against company 38, authorized as a named write lane. All five
+surfaces carried value + attribution live; removal restored the resting state
+exactly including the flipped variance verdict; crawler diff showed no new
+failure; zero residue. **⭐ THE FinancialDataset-on-core.db.Base FIXTURE CAVEAT
+IS CLOSED** — dataset 50 was created by the real upload endpoint on
+core.db.Base and every read crossed the bind with no stub, so the proof
+exercised the seam that produced the last eight bugs instead of standing beside
+it. The release gate recorded at e1549b5 is SATISFIED; Stage 2 has no remaining
+Stage 1b blocker. Report:
+docs/reports/2026-07-27-item-6-production-surface-proof.md
+
+**Historical note (superseded):** item 6 was previously DEFERRED and RE-GATED —
+the production surface proof was outstanding and blocked on an admin token, and
+it gated Stage 2 SHIPPING TO A CUSTOMER rather than Stage 2 being BUILT. The
 distinction is deliberate: the schema is now certified behaviourally against
 production (c40269e), which is what made building safe; what remains unproven is
 the RENDERED behaviour of an override across live surfaces, which is what makes
