@@ -150,6 +150,53 @@ forbids. All inside transactions, all rolled back, residue confirmed 0 rows.
 
 **VERDICT: ALL GUARDS BIND IN PRODUCTION.** Nothing needed fixing before item 6.
 
+**⭐ COMPANY 38 IS THE STANDING VERIFICATION TENANT (authorized 27 Jul).** Not a
+throwaway. `AXIOM Test Fixture Co`, id 38, carries persistent departments and KPI
+data so the crawler can exercise owner-gated, department-scoped content rather
+than only its gate.
+
+**LICENCE GATE RESOLVED CLEAN — NOTHING WAS ACTIVATED, BECAUSE NOTHING NEEDED TO
+BE.** Company 38 was ALREADY in `ax_company_access` for account 20. No seat was
+consumed, no licence state mutated, and the account carrying Milliner was never
+written to. (Had activation been required it would have been REFUSED anyway: the
+seat gate is `used >= company_slots`, and the account stands at 2 activated
+against 0 purchased — so forcing it would have meant either raising
+`company_slots` or bypassing the gate with a direct INSERT, both of which touch
+billing state on an account carrying a real customer. The stop-and-report gate
+would have fired.)
+
+**ISOLATION PROPERTIES — ASSERTED EVERY RUN, NEVER ASSUMED:** not Meridian · not
+showcase-gated · unreachable anonymously (401) · no real respondent data · never
+a customer. `VERIFY_COMPANY_ID = 38` is a fail-closed PIN: the authed crawl
+ABORTS if the app resolves anything else. `DENY_COMPANY_IDS = {25}` is separate
+and absolute — **the operator ALSO owns Milliner, a real customer**, and no
+resolver change may ever redirect an automated crawl into customer data.
+Activation is NOT standing write permission; Stage 2 write exercises remain a
+named, user-authorized lane per the mint fence. Teardown is by exact id (the app
+ARCHIVES rather than deletes).
+
+**⭐ OWNERSHIP CORRECTION, AND A PATTERN WORTH MORE THAN THE CORRECTION.** The
+operator DOES own Milliner (25) — and company 38. The earlier "owns no
+companies" was a **probe-level operator-precedence bug** in my own parsing
+expression, not an empty list. A later read then printed a **truncated** slice of
+the same list and was again read as complete.
+
+**FOUR MEASUREMENT ERRORS THIS SESSION, ALL IN THE VERIFICATION TOOLING
+REPORTING ON ITSELF:** (1) the crawler's identity check matching `/me` as a
+substring of `/api/v1/metrics/glossary` and passing a rejected credential;
+(2) `enterprises` queried where accounts-world ids apply, concluding a company
+did not exist; (3) an operator-precedence bug reporting zero owned companies;
+(4) a truncated list read as exhaustive. Zero were product defects. **All four
+were the instrument mis-measuring, and each was found only by testing the
+instrument the way we test the product.**
+
+**THE RULE THIS SETTLES: the instrument gets the same behavioural standard as
+the thing it measures.** A guard is only proven by attempting what it forbids
+and watching it refuse; a list is only complete if the read is proven
+untruncated; an id only means something once its world is established. The
+standing principle already says assert behaviour, never declaration — this
+extends it explicitly to the tooling, which had been exempt in practice.
+
 **⭐ NINTH OCCURRENCE — THE ACCOUNTS-WORLD / LEGACY-IDENTITY SEAM NOW CATCHES
 DIAGNOSIS, NOT ONLY CODE (27 Jul).** The eight seam incidents are closed and in
 ARCHIVE. **The seam is not.** It persists as a CLASS, and its ninth occurrence
