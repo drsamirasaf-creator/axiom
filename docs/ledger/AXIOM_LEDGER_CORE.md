@@ -2907,6 +2907,64 @@ scoped. A refused POST creates nothing — but if the reading of the guard is
 wrong it creates a grant, and "probably refuses" is not a basis for a production
 write.
 
+## §7.16 SWEEP SEGMENT 1 — FINDINGS (28 Jul, read-only)
+
+### 7.16a ⭐ THE ROSTER SCREEN AND THE MEMBERSHIP TABLE DISAGREE ABOUT WHO HAS ACCESS
+
+**Ranked first: this is a customer-facing misstatement of access, on the screen
+used to manage access.** Measured across three companies:
+
+| company | `ax_memberships` | roster `people` | people carrying a `user_id` | agree? |
+| --- | --- | --- | --- | --- |
+| Meridian (showcase) | 0 | 7 (all `source=assessor`) | 0 | yes (vacuously) |
+| **Milliner (real customer)** | **2** — admin + viewer, both active | 7 (2 viewer, 5 assessor) | **0** | **NO** |
+| Fixture (38) | 2 — admin + viewer, both active | 1 (viewer) | **0** | **NO** |
+
+⭐ **`GET /companies/{id}/roster` RETURNS NO ACCOUNT MEMBERSHIPS AT ALL.** Not
+one row it returns, on any company, carries a `user_id`. It enumerates
+*invitations and assessors* — the people who were asked — and never the people
+who actually **hold** membership. On Milliner, a real customer, **an admin and a
+viewer with live access do not appear on the roster.**
+
+This is not a display nicety. The roster is where an administrator checks who
+can see their company's financials. It currently cannot answer that question,
+and it fails silently — it shows a plausible, populated list.
+
+**It generalizes.** Not specific to the fixture; the real customer is affected.
+
+### 7.16b A MEMBERSHIP POINTING AT A USER THAT DOES NOT EXIST
+
+Company 38 carries `user_id=37, role=viewer, status=active` with **no row in
+`users`**. Milliner and Meridian have zero dangling memberships, so this is not
+yet known to generalize — but any code that trusts `ax_memberships` and then
+resolves the user will get `None`, and any candidate list built from memberships
+would offer a person who cannot exist.
+
+### 7.16c COMPANY 38'S ADMIN SEAT IS HELD BY THE PLATFORM OPERATOR
+
+`ax_memberships` for 38: `user_id=1, role=admin, status=active` — user 1 is the
+platform-**super** operator. §7.1 refuses platform staff from *granting*, so the
+tenant has an admin **who is refused by design from exercising Stage 2's admin
+authority**. The tenant is not broken; it is in a shape the feature has no move
+for.
+
+### 7.16d ⚠ THE "NO REPAIR ROUTE" FINDING WAS WRONG — CORRECTED BEFORE RECORDING
+
+I was about to record that *there is no route by which a tenant with a wrongly
+held admin seat can be repaired through the application*. **That is false, and
+reading the code before writing the entry is what caught it.**
+
+```
+POST /companies/{company_id}/transfer-admin
+    "Current admin, or platform staff/super, may transfer the admin seat."
+    -> demotes the current admin to viewer, promotes the target, audits the actor
+```
+
+The repair route exists and platform staff may use it. **What is NOT verified is
+whether it is reachable from the UI** — I have only read the API. The support-path
+question therefore narrows from "does a route exist" (it does) to "can support
+reach it without a direct API call", which is unanswered.
+
 ### 7.15f THE FIX AS SHIPPED (27 Jul)
 
 Client-side only. **No server change, no ADR amendment** — the server was doing
