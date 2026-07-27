@@ -645,6 +645,42 @@ def build_board_pdf(report: dict, extras: dict, meta: dict) -> bytes:
     story.append(datatable(["Term", "Definition"], arows[half:], [1.0, 5.8]))
     story.append(PageBreak())
 
+    # ===== ADJUSTED FIGURES (attributed CXO overrides) =====
+    # BEFORE the legal section, not buried after it. A board reading this deck
+    # must be able to tell a computed figure from an executive-adjusted one, and
+    # a disclosure printed behind the disclaimers is a disclosure designed not to
+    # be read. Every row states both numbers: what the executive asserts and
+    # what AXIOM computed.
+    #
+    # DEFAULT-NO-CHANGE: with no overrides this block emits nothing — no
+    # heading, no empty table — so an unadjusted deck is byte-identical to the
+    # decks produced before this feature existed.
+    _adj = (extras or {}).get("adjusted_figures") or []
+    if _adj:
+        story += kicker("Governance", "Adjusted Figures",
+                        "Figures on this page were adjusted by an executive. AXIOM's computed "
+                        "value is retained and shown beside each.")
+        _rows = []
+        for a in _adj[:40]:
+            _rows.append([
+                str(a.get("metric") or a.get("metric_ref") or "—"),
+                str(a.get("computed_value")),
+                str(a.get("displayed_value")),
+                f"{a.get('author') or '—'} · {a.get('reason_label') or a.get('reason_category') or '—'}",
+            ])
+        story.append(datatable(["Metric", "AXIOM computed", "Displayed (adjusted)", "Adjusted by · reason"],
+                               _rows, [2.2, 1.3, 1.5, 1.8]))
+        if len(_adj) > 40:
+            # NEVER a silent truncation on a governance disclosure.
+            story.append(Paragraph(f"{len(_adj) - 40} further adjusted figures are listed in the "
+                                   f"full override audit export.", styles["Sm"]))
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(
+            "Adjustments are attributed display overrides. AXIOM's computed value is never "
+            "destroyed and remains available in the platform's immutable override audit trail.",
+            styles["Sm"]))
+        story.append(PageBreak())
+
     # ===== LEGAL =====
     story += kicker("Legal", "Important Notice, Disclaimer & Licence",
                     "Please read this notice carefully. Your use of this report and the AXIOM platform is subject to the terms below.")

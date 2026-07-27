@@ -493,6 +493,47 @@ def _sec_recommendations(doc, db, company_id, cur):
         doc.note("No value-creating recommendations from the current dataset.")
 
 
+def _sec_overrides(doc, db, company_id):
+    """CXO-adjusted figures, stated as adjusted.
+
+    Ask AXIOM is the surface most likely to launder a number: it answers in
+    prose, and prose has no field for a badge. If an adjusted figure reached
+    the model as a bare fact it would be repeated to the user as AXIOM's own
+    computation — the exact failure the attributed-layer model exists to
+    prevent, and the hardest one to detect after the fact.
+
+    So the context carries BOTH figures and an explicit instruction. The model
+    cannot cite the displayed number without also having been told who adjusted
+    it, why, and what AXIOM computed.
+
+    DEFAULT-NO-CHANGE: with no overrides this section emits nothing at all —
+    not a heading, not a note — so a company that never uses the feature has a
+    byte-identical context document and an unchanged prompt-cache prefix.
+    """
+    from .overrides import active_overrides
+    from .accounts import Department
+    rows = active_overrides(db, company_id)
+    if not rows:
+        return
+    doc.head("CXO-ADJUSTED FIGURES (attributed overrides)")
+    doc.note("The figures below were adjusted by an executive. AXIOM's computed value is "
+             "retained and shown beside each. When answering about any of these metrics you "
+             "MUST state that the figure was adjusted, by whom, and for what stated reason — "
+             "never present an adjusted figure as AXIOM's own computation.")
+    names = {d.id: d.name for d in db.query(Department).filter_by(company_id=company_id).all()}
+    for o in rows:
+        where = names.get(o.department_id) or o.target_scope
+        label = f"{where} · {o.metric_label or o.metric_ref}"
+        from .overrides import REASON_LABEL
+        doc.fact(
+            f"override.{o.id}", label,
+            f"DISPLAYED {o.override_value} (adjusted by {o.author_label}, "
+            f"{REASON_LABEL.get(o.reason_category, o.reason_category)}"
+            f"{'; ' + o.reason_note if o.reason_note else ''}) · "
+            f"AXIOM COMPUTED {o.computed_value_at_override} · "
+            f"adjusted {o.created_at.strftime('%d %b %Y') if o.created_at else 'unknown date'}")
+
+
 def _sec_context_artifacts(doc, db, company_id):
     doc.head("DOCUMENTS & RECENT ACTIVITY")
     docs = db.query(Document).filter_by(company_id=company_id).order_by(Document.id.desc()).all()
@@ -575,6 +616,7 @@ def build_company_context(db, company_id, focus=None, use_cache=True):
     _sec_assessment(doc, db, company_id)
     _sec_initiatives(doc, db, company_id, cur)
     _sec_recommendations(doc, db, company_id, cur)
+    _sec_overrides(doc, db, company_id)
     _sec_context_artifacts(doc, db, company_id)
 
     text = doc.text()

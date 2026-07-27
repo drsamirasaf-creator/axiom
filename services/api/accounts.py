@@ -4943,21 +4943,62 @@ def company_kpi_variance(company_id: int, department: int | None = None,
     if not rows:
         return {"company_id": company_id, "dataset_id": ds.id, "has_data": False, "kpis": []}
     dept_idx = _dept_index(db, company_id)
-    kpis = [{"id": r.id, "kpi_name": r.kpi_name, "unit": r.unit,
-             "ytd_plan": r.ytd_plan, "ytd_actual": r.ytd_actual,
-             "full_year_target": r.full_year_target,
-             "department_id": getattr(r, "department_id", None),
-             "department": _dept_out(dept_idx.get(getattr(r, "department_id", None))),
-             "provenance": {"source": getattr(r, "source", "template"),
-                            "created_by": getattr(r, "created_by_name", None),
-                            "created_at": getattr(r, "created_at", None),
-                            "flagged_absent": getattr(r, "flagged_absent", False)},
-             "variance": _kpi_variance(r.ytd_actual, r.ytd_plan, r.direction),
-             "direction": r.direction} for r in rows]
+    kpis = _serialize_kpis(db, company_id, rows, dept_idx)
     return {"company_id": company_id, "dataset_id": ds.id,
             "uploaded_at": max((r.uploaded_at for r in rows), default=None),
             "filename": getattr(ds, "original_filename", None),          # §2 provenance line
             "has_data": True, "count": len(kpis), "kpis": kpis}
+
+
+def _serialize_kpis(db, company_id, rows, dept_idx=None):
+    """THE ONE PLACE a department KPI becomes JSON.
+
+    Both /kpi-variance and the department okr-map used to build this dict
+    inline, which meant two copies of the field list and — far more dangerous
+    once overrides exist — two places a CXO-adjusted figure could be emitted
+    without its authorship. A single serializer makes the unmarked value
+    unreachable rather than merely discouraged; the AST test in
+    test_metric_overrides.py asserts nothing else reads ytd_actual into a
+    payload.
+
+    DEFAULT-NO-CHANGE: with no overrides on the company, resolve_many returns a
+    Resolved whose .display IS the computed value and whose .attribution is
+    None, so `provenance_override` is simply absent and this payload is
+    byte-identical to what it was before this function existed.
+    """
+    from .overrides import resolve_many
+    dept_idx = dept_idx if dept_idx is not None else _dept_index(db, company_id)
+    computed = {_kpi_scope_key(getattr(r, "department_id", None), r.kpi_name): r.ytd_actual
+                for r in rows}
+    resolved = resolve_many(db, company_id, computed)
+    out = []
+    for r in rows:
+        ref = _kpi_scope_key(getattr(r, "department_id", None), r.kpi_name)
+        res = resolved.get(ref)
+        actual = res.display if res else r.ytd_actual
+        row = {"id": r.id, "kpi_name": r.kpi_name, "unit": r.unit,
+               "ytd_plan": r.ytd_plan,
+               # The DISPLAYED figure. When an override exists this is the CXO's
+               # number and `provenance_override` below carries both it and
+               # AXIOM's — never one without the other.
+               "ytd_actual": actual,
+               "full_year_target": r.full_year_target,
+               "department_id": getattr(r, "department_id", None),
+               "department": _dept_out(dept_idx.get(getattr(r, "department_id", None))),
+               "provenance": {"source": getattr(r, "source", "template"),
+                              "created_by": getattr(r, "created_by_name", None),
+                              "created_at": getattr(r, "created_at", None),
+                              "flagged_absent": getattr(r, "flagged_absent", False)},
+               # Variance recomputed on the DISPLAYED value: a CXO who corrects a
+               # figure expects its RAG to follow. The computed variance remains
+               # derivable from provenance_override.computed_value.
+               "variance": _kpi_variance(actual, r.ytd_plan, r.direction),
+               "direction": r.direction}
+        if res is not None and res.overridden:
+            row["provenance_override"] = res.attribution
+            row["computed_ytd_actual"] = res.override.computed_value_at_override
+        out.append(row)
+    return out
 
 
 # ============================ §4s Organizational Structure ============================
@@ -7976,8 +8017,19 @@ def _report_extras(db, company_id):
             if p.thread_id in tids]
     discussion = {"threads": len(threads), "posts": posts, "pending_proposals": len(pend),
                   "proposal_titles": [(p.suggested_title or (p.body or "")[:40]) for p in pend[:8]]}
+    # ADJUSTED-FIGURE DISCLOSURE. Every export format (pptx comprehensive, pptx,
+    # pdf) is built from `extras`, so attaching the disclosure here is what makes
+    # it structurally impossible for one format to ship without it — a per-format
+    # addition would be three places to forget, and the exported deck is the
+    # artifact that actually reaches a board and outlives the session.
+    #
+    # DEFAULT-NO-CHANGE: an empty list when nothing is overridden, and the
+    # renderers skip the section entirely rather than printing an empty heading.
+    from .overrides import audit_rows
+    adjusted = [r for r in audit_rows(db, company_id, include_superseded=False)]
     return {"cei": cei, "swot": swot, "recommendations": rec_view, "initiatives": initiatives,
-            "csf_health": csf_health, "discussion": discussion}
+            "csf_health": csf_health, "discussion": discussion,
+            "adjusted_figures": adjusted}
 
 
 def _store_report_blob(company_id, filename, content, content_type):
@@ -11984,6 +12036,10 @@ def include_accounts(app, create_tables: bool = True):
     # the same pass; the template producer registers itself on import.
     from .changeset import changeset_router
     from .changeset_template import template_changeset_router
+    # §4x Stage 1 — imported before create_all so ax_metric_overrides rides the
+    # same pass. NO ROUTER: Stage 1 is the model and the read path only, and the
+    # write endpoint is deliberately absent until provenance-travel is reviewed.
+    from . import overrides as _overrides_model      # noqa: F401  (table registration)
     if create_tables:
         Base.metadata.create_all(engine)
         _ensure_ax_columns(engine)
