@@ -2109,6 +2109,55 @@ This also closes the stale-attribution problem the retirement lifecycle was
 opened for: without it, an absorbed override keeps labelling a number that no
 longer needs adjusting, and four quarters of that inverts rare-equals-signal.
 
+### 7.1-INCIDENT ⭐ AN ADMIN COULD GRANT THEMSELVES AUTHORITY (27 Jul)
+
+**§7.1's separation was defeated in one request: grant, then sign.** Verified
+over HTTP before the fix was written:
+
+```
+POST /authority (user_id = the admin)  ->  HTTP 201
+live grants now: 1
+*** THE SERVER ALLOWED IT ***
+*** AND can_author NOW PERMITS THE ADMIN TO SIGN AND OVERRIDE ***
+```
+
+Every downstream guard then admitted that admin **correctly** — the grant is what
+those guards check. Nothing was broken except the one rule the feature rests on:
+*the admin decides who speaks for a department and can never speak for one.*
+Without it, "the CFO's owned number" is unfalsifiable, because an admin could
+have written it.
+
+**⭐ THE VARIANT — THE GUARD WAS IN A DIFFERENT LAYER FROM THE THING IT
+GUARDED.** The rule existed, and existed only in the §7.9 UI's candidate filter:
+the admin was excluded from the list of people who could be granted. **Absence in
+one file, rule in another.** Reading `grant_department()` shows no self-grant
+check and gives no hint that one is missing — the rule is nowhere in that file to
+be found absent. This is why it was **unreadable as missing**: the previous five
+instances were guards that checked the wrong thing or looked at too little, and
+could in principle be caught by reading them. This one could not. Only attempting
+the forbidden operation revealed it.
+
+**THE GENERAL FORM, now standing: A RULE ENFORCED IN THE UI ALONE IS NOT
+ENFORCED — IT IS MERELY NOT OFFERED.** A UI filter shapes what is convenient; it
+constrains nobody with an HTTP client. Any rule that matters must exist at the
+layer that can refuse, and the UI's job is to avoid offering what will be
+refused — never to be the refusal.
+
+**SIXTH INSTANCE OF DECLARED-BUT-UNBOUND.**
+
+**⭐ WHY IT WAS FOUND AT ALL — THE FRAMING PRODUCED THE CHECK.** §7.9 was scoped
+as *"the mechanism by which authoring is obtained"* rather than as a settings
+screen. Scoped as a settings screen, filtering the admin out of a dropdown IS the
+feature and there is nothing further to verify — the work would have looked
+complete. Scoped as the authority mechanism, the obvious next question is
+*"what happens if someone calls this directly"*, and that question is what
+returned the 201.
+
+**The scoping was the control.** Worth recording as a method note and not only as
+an incident: how a lane is framed determines which questions get asked inside it,
+and a lane framed as low-risk generates low-risk questions regardless of what it
+actually touches.
+
 ### 7.9 REMAINING STAGE 2 SURFACE — THE GRANT/REVOKE ADMIN UI (logged, not built)
 
 **Nothing in the product can issue or revoke department authority.** The
