@@ -2262,6 +2262,96 @@ worth reading), **not** by suppressing invalidations.
 
 ---
 
+## §7 LAUNCH GATES — PRE-LAUNCH AUDIT (⭐ LOCKED 27 Jul, user confirmation)
+
+**DESIGN ONLY. NOT BUILT. NOT BEGUN.**
+
+Two exercises, one owner. **Both audits are Claude Code lanes. Lovable does not
+perform the audit.**
+
+### §7.10 ROUTING — WHY THE AUDIT OWNER IS CLAUDE CODE, NOT LOVABLE
+
+Recorded because this is a routing decision, and **routing corrections become
+policy**. Three reasons, each grounded in something that happened on 27 Jul:
+
+1. **Lovable is a generative environment — asked to check, it edits.** An audit
+   must produce a truthful list, not begin remediating. A tool that repairs what
+   it finds cannot tell you what it found.
+2. **Lovable reports on source, not the served bundle.** The 27 Jul publish
+   stall proved that source-correct and served-wrong coexist happily while every
+   ordinary check passes. Only the served bundle is truth.
+3. **Lovable would be assessing code it wrote, in the environment that wrote
+   it.** ⭐ **EVERY MEASUREMENT ERROR OF 27 JUL CAME FROM AN INSTRUMENT
+   REPORTING ON ITSELF.** That is the whole list: the substring identity match,
+   the 7-routes-vs-292-paths table, the `is_staff` test double, the stale-host
+   probe with no positive control, the bundle sweep over route shells that could
+   not contain the components.
+
+**Lovable's role is remediation, after.** Visual and copy defects surfaced by
+the audit route to Lovable as a **separate lane**, one lane at a time per the
+custody rules.
+
+### §7.11 AUDIT 1 — FRONTEND, CRAWLER-DRIVEN
+
+**Extend `scripts/auth-regression.py`. Do not build a second tool.** It already
+reads the served bundle, walks the route set in two personas, and carries this
+session's hardening: sanity gate segment-exact, company pin fail-closed,
+denylist probed four-case, `_poll_dom` presence-not-pass. A second tool would
+start without any of it and would have to re-earn it defect by defect.
+
+Coverage checklist:
+
+- every route renders
+- no silent-empty
+- internal link integrity
+- no 4xx/5xx on user-walked paths
+- sidebar presence
+- empty states honest rather than blank
+
+### §7.12 AUDIT 2 — BACKEND, STATIC + BEHAVIOURAL
+
+Coverage checklist:
+
+- every endpoint reachable and correctly gated
+- no orphaned routes
+- **the attribute-audit class extended across all permission checks** — per the
+  `is_staff` and `_operator_bypass` findings (declared-but-unbound, six
+  instances)
+- dependency and secrets review
+- **error paths that surface failures rather than swallowing them.** Reference
+  case: `fetchDepartments`'s `catch { return [] }` hid a live 401 for an entire
+  session. A swallowed error is indistinguishable from an empty result, which is
+  the silent-empty failure mode arriving through the error handler.
+
+### §7.13 ⭐ SCOPING CONSTRAINT — BOTH AUDITS TERMINATE
+
+**Each audit is a defined checklist with pass/fail per item. Neither is "find
+all errors."**
+
+**An audit without an end condition becomes the project.**
+
+This constraint exists because open-ended error-hunting consumed most of 27 Jul
+before Stage 2 was built. The constraint is recorded with its cause so that a
+later reader cannot mistake it for excessive caution — it is a schedule fact.
+
+### §7.14 SEQUENCE
+
+**The customer-journey sweep comes FIRST, then the two audits.**
+
+The sweep tests the paths that cost a sale: purchase, transfer, first login,
+first upload, first dashboard, invite a CXO. A link audit tests paths that may
+carry no commercial weight at all. Ordering follows consequence, not tidiness.
+
+**Fold into the sweep** (both sit on the new-customer path, so they are sweep
+findings rather than separate lanes):
+
+- **(A) access-without-data** — a company an account can reach but which holds
+  no dataset is invisible in the switcher
+- **the NULL-`enterprise_id` backfill** — rows whose `enterprise_id` is null;
+  they also bypass `filterDatasetsByAllowlist`
+
+---
+
 ## 6. OPERATIONAL NOTE (recurring, now twice)
 
 Stage 1 report pastes corrupted in-window on first attempt both sessions —
