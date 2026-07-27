@@ -2856,15 +2856,36 @@ it is stronger than predicted.
 
 Company 38, the standing verification tenant:
 
+> ⚠ **CORRECTED 28 Jul, SAME DAY.** The first version of this entry said company
+> 38 had **ZERO accounts**. That was **WRONG**. It was read from
+> `GET /companies/38/roster`, which returns only a viewer *invite*
+> (`user_id = None`). The database says otherwise:
+>
+> ```
+> ax_company_access   company 38 = 1     <- 38 IS ALREADY ACTIVATED
+> ax_memberships      company 38 = 2     ('admin','active') + ('viewer','active')
+>     user_id=1   role=admin   status=active   real_user_row=TRUE
+>     user_id=37  role=viewer  status=active   real_user_row=FALSE  <- dangling
+> ax_departments      company 38 = 2
+> ```
+>
+> The correction does not rescue the conclusion, and the conclusion is now
+> **sharper**: the admin of company 38 **is user 1 — the platform-super
+> operator** — and §7.1 refuses platform staff from granting. So the tenant has
+> an admin who is refused by design, and a viewer membership whose user row
+> **does not exist**. Neither can hold or issue a grant.
+
 ```
 departments : 2 — both never_assigned
-roster      : 1 entry — a viewer INVITE, user_id = None (an invitation, not an account)
-accounts    : ZERO
+memberships : 2 — admin = user 1 (platform-super, refused by §7.1)
+                  viewer = user 37 (NO backing user row)
+activated   : YES — ax_company_access has a row, so /access/activate returns 409
 ```
 
-⭐ **A COMPANY WITHOUT ACCOUNTS CANNOT EXERCISE STAGE 2 AT ALL, REGARDLESS OF
-WHETHER STAGE 2 IS CORRECT.** Every populated state in the feature is a
-statement about people:
+⭐ **A COMPANY WITHOUT USABLE PEOPLE CANNOT EXERCISE STAGE 2 AT ALL, REGARDLESS
+OF WHETHER STAGE 2 IS CORRECT.** "Usable" is the operative word — company 38 has
+two memberships and neither can be used. Every populated state in the feature is
+a statement about people:
 
 - a grant needs a `user_id` to grant **to**;
 - issuing it needs a **company admin** (§7.1 refuses platform staff, so we
