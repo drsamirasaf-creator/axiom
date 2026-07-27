@@ -473,32 +473,98 @@ class DashboardSignoff(Base):
 
 
 def signed_dashboard_state(db, company_id, department_id):
-    """The dependency set: the values the dashboard DISPLAYS, from the resolver.
+    """The dependency set: EVERYTHING the department dashboard DISPLAYS.
 
-    §8.1 scopes invalidation to displayed values and nothing else — too broad
-    and executives re-sign for reasons they cannot see, which destroys the
-    feature more quietly than a bug would; too narrow and a signed number
-    changes silently. §8.2 requires that set be DERIVED. This reads
-    `company_kpi_variance`, the one serializer the department dashboard renders
-    from, so the set cannot drift as the dashboard grows.
+    §8.1 scopes invalidation to displayed values and nothing else — too broad and
+    executives re-sign for reasons they cannot see, which destroys the feature
+    more quietly than a bug would; too narrow and a signed number changes
+    silently.
+
+    ⭐ THE NARROW FAILURE IS THE INVISIBLE ONE, which is why this covers four
+    families rather than one. A signature capturing only KPIs would attest to
+    LESS THAN IT CLAIMS, and nothing would report the shortfall: the CXO signs
+    "this dashboard", the objectives panel changes, and the signature stays
+    green. That is the §8.1 too-narrow trap wearing a completed feature's
+    clothes.
+
+    §8.2 — COMPUTED, NEVER HAND-MAINTAINED. Every family below is read from the
+    SAME serializer the dashboard renders from:
+        KPIs        company_kpi_variance   (via the override resolver)
+        objectives  department_okr_map     (progress -> attainment)
+        sentiment   assessment_summary     (department_slice)
+        CEI trend   assessment_summary     (trend, per-cycle)
+    A hand-listed set would be correct the day it was written and silently stale
+    after the next panel is added.
+
+    Every family degrades to an explicit marker rather than vanishing on error:
+    a family that silently disappears from the signed state would make a later
+    diff read "nothing changed" about a panel that was never captured.
     """
-    from .accounts import company_kpi_variance
-    out = {}
-    payload = company_kpi_variance(company_id, department=department_id,
-                                   member=None, db=db)
-    for k in payload.get("kpis", []):
-        prov = k.get("provenance_override")
-        out[str(k.get("id"))] = {
-            "metric": k.get("kpi_name"),
-            "display": k.get("ytd_actual"),
-            "plan": k.get("ytd_plan"),
-            "target": k.get("full_year_target"),
-            "variance": (k.get("variance") or {}).get("status"),
-            "adjusted": bool(prov),
-            "computed": (prov or {}).get("computed_value"),
-            "adjusted_by": (prov or {}).get("adjusted_by"),
+    from .accounts import (company_kpi_variance, department_okr_map,
+                           assessment_summary)
+
+    state = {"dataset_id": None, "metrics": {}, "objectives": {},
+             "sentiment": {}, "trend": {}, "unavailable": []}
+
+    # ── KPIs — the only family an override can currently target ──────────────
+    try:
+        payload = company_kpi_variance(company_id, department=department_id,
+                                       member=None, db=db)
+        state["dataset_id"] = payload.get("dataset_id")
+        for k in payload.get("kpis", []):
+            prov = k.get("provenance_override")
+            state["metrics"][str(k.get("id"))] = {
+                "metric": k.get("kpi_name"),
+                "display": k.get("ytd_actual"),
+                "plan": k.get("ytd_plan"),
+                "target": k.get("full_year_target"),
+                "variance": (k.get("variance") or {}).get("status"),
+                "adjusted": bool(prov),
+                "computed": (prov or {}).get("computed_value"),
+                "adjusted_by": (prov or {}).get("adjusted_by"),
+            }
+    except Exception:
+        state["unavailable"].append("metrics")
+
+    # ── objectives + attainment ──────────────────────────────────────────────
+    try:
+        okr = department_okr_map(company_id, department_id, member=None, db=db)
+        for o in okr.get("objectives", []):
+            state["objectives"][str(o.get("objective_id"))] = {
+                "objective": o.get("objective"),
+                "progress": o.get("progress"),
+                "status": o.get("status"),
+                "kr_count": o.get("kr_count"),
+            }
+    except Exception:
+        state["unavailable"].append("objectives")
+
+    # ── sentiment + CEI trend, both from the assessment summary ──────────────
+    try:
+        summ = assessment_summary(company_id, department=department_id,
+                                  member=None, db=db)
+        sl = summ.get("department_slice") or {}
+        state["sentiment"] = {
+            "cei": sl.get("cei"),
+            # A withheld slice carries `n`; a shown one carries `n_participants`.
+            # Reading one key would record None for the other state and make a
+            # later diff report a change that never happened.
+            "n": sl.get("n_participants", sl.get("n")),
+            "suppressed": bool(sl.get("suppressed")),
+            "reason": sl.get("reason"),
         }
-    return {"dataset_id": payload.get("dataset_id"), "metrics": out}
+        for p in summ.get("trend", []):
+            state["trend"][str(p.get("cycle_id"))] = {
+                "cycle": p.get("name"),
+                "cei": p.get("cei"),
+                "n": p.get("n_participants"),
+                "suppressed": bool(p.get("suppressed")),
+                "reason": p.get("reason"),
+            }
+    except Exception:
+        state["unavailable"].append("sentiment_and_trend")
+
+    return state
 
 
 def state_digest(state) -> str:
@@ -507,6 +573,11 @@ def state_digest(state) -> str:
     §8.1's too-broad failure, which trains executives to click without
     reviewing."""
     import hashlib
+    # sort_keys is applied RECURSIVELY by json.dumps, so the wider set — four
+    # families of nested dicts — hashes stably regardless of insertion order.
+    # A spurious invalidation is not harmless: §8.1's too-broad failure trains
+    # executives to click without reviewing, which destroys the feature more
+    # quietly than a bug would.
     return hashlib.sha256(
         json.dumps(state, sort_keys=True, default=str).encode()).hexdigest()
 
@@ -825,6 +896,85 @@ def validate_new(*, override_value, computed_value, reason_category, author_labe
             f"produce an adjusted figure with no provenance marker on the "
             f"surfaces that render it.")
     return True
+
+
+# ── the write path (§4x Stage 2, stage 3 of 4) ───────────────────────────────
+
+def create_override(db, company_id, department_id, *, user, author_label,
+                    metric_ref, metric_label, override_value, computed_value,
+                    reason_category, reason_note=None, now=None):
+    """Author an attributed exception. THE RARE DELIBERATE ACT, not an edit.
+
+    The dashboard is NOT a spreadsheet and this is not an editable field. Every
+    property below exists to keep an override expensive enough to mean
+    something:
+
+      * AUTHORITY — the SAME can_author() sign-off uses, so a signature and an
+        adjustment can never disagree about who may act on a department. Not a
+        parallel check that could drift; the identical call.
+      * REASON MANDATORY — `reason_category` is NOT NULL in the schema and
+        validated here. `private CXO information` is absent from the enum by
+        user ruling: combined with a nullable note it let an override tell a
+        board "this was changed, by the CFO, for reasons we are not giving",
+        which is attributed number-laundering.
+      * WHITELIST — refused unless the metric is resolver-covered. A kpi_strip
+        metric would render as a bare adjusted figure in a board PDF, because
+        that family never passes through the resolver.
+      * COMPUTED VALUE STORED, NEVER OVERWRITTEN — the write creates an OVERLAY
+        ROW. KpiPlan.ytd_actual is not touched, and computed_value_at_override
+        freezes what AXIOM said at this moment, which cannot be re-derived after
+        the next upload.
+      * SUPERSEDE, NEVER UPDATE — adjusting an existing override writes a new
+        row. Editing in place would destroy the audit trail of the override
+        itself.
+    """
+    can_author(db, company_id, user, "department", department_id)      # raises
+    validate_new(override_value=override_value, computed_value=computed_value,
+                 reason_category=reason_category, author_label=author_label,
+                 metric_ref=metric_ref, target_scope="department",
+                 department_id=department_id)
+    ts = now or datetime.utcnow()
+    prev = (_active_q(db, company_id)
+            .filter(MetricOverride.metric_ref == metric_ref,
+                    MetricOverride.department_id == department_id).first())
+    if prev is not None:
+        prev.superseded_at = ts
+        prev.supersession_kind = "superseded"
+        db.flush()
+    row = MetricOverride(
+        company_id=company_id, target_scope="department",
+        department_id=department_id, metric_ref=metric_ref,
+        metric_label=metric_label, override_value=override_value,
+        computed_value_at_override=computed_value,
+        reason_category=reason_category, reason_note=reason_note,
+        author_user_id=user.id, author_label=author_label, created_at=ts)
+    db.add(row); db.flush()
+    if prev is not None:
+        prev.superseded_by_id = row.id
+        db.flush()
+    return row
+
+
+def withdraw_override(db, company_id, department_id, *, user, metric_ref,
+                      kind="withdrawn", now=None):
+    """Retract an override. NEVER a delete.
+
+    "This was adjusted and then un-adjusted" is itself board-relevant, and an
+    override that disappears without trace is a worse artifact than one that
+    stands. `kind` distinguishes a withdrawal (the CXO was wrong) from an
+    absorption (the Admin corrected the source and the adjustment is now
+    redundant) — the §4x retirement lifecycle's two paths.
+    """
+    can_author(db, company_id, user, "department", department_id)      # raises
+    row = (_active_q(db, company_id)
+           .filter(MetricOverride.metric_ref == metric_ref,
+                   MetricOverride.department_id == department_id).first())
+    if row is None:
+        raise ValueError("No active override on that metric to withdraw.")
+    row.superseded_at = now or datetime.utcnow()
+    row.supersession_kind = kind
+    db.flush()
+    return row
 
 
 # ── audit export ─────────────────────────────────────────────────────────────
