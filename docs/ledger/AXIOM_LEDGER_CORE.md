@@ -2588,6 +2588,51 @@ When a lane states two conditions, the check returns PASS only if it evaluated
 both — and the evidence for each belongs in the output beside the verdict, which
 is the only reason this one was caught.
 
+### 7.15j ⭐ THE ACCIDENTAL GUARD — CORRECT BEHAVIOUR RESTING ON A CONDITION NOBODY CHOSE
+
+`routes/dashboard.tsx`:
+
+```ts
+useSyncActiveCompany(datasetId, datasets, setDatasetId, { disableLocalToStore: isDemo });
+```
+
+`isDemo` derives from `isAnonymous`, which derives from `!session`, which is
+**true for a window on every boot** because the session resolves asynchronously.
+So during boot this flag **disabled the `local→store` writer** — and that writer
+is one of the two participants in the §7.15g dataset oscillation (measured:
+52 x `local->store` against 52 x `BRANCH-A`).
+
+⭐ **NOBODY CHOSE THAT.** The option exists to keep demo sessions from writing
+their dataset selection into the shared store. Its boot-time effect on a
+*signed-in* user is a side effect of an unrelated async race. **An accident has
+been suppressing a live defect, and in doing so has been masking how reachable
+that defect is.**
+
+#### THE CLASS: AN ACCIDENTAL GUARD
+
+**Correct behaviour that depends on an unrelated condition nobody selected for
+that purpose.** It is not a guard — it is a coincidence that has been doing a
+guard's job. The system appears healthier than it is, and the appearance is
+load-bearing.
+
+⭐ **REMOVING AN ACCIDENTAL GUARD IS A DISTINCT RISK FROM REMOVING A DELIBERATE
+ONE, BECAUSE NOTHING DOCUMENTS WHAT IT WAS HOLDING.** A deliberate guard names
+its purpose; delete it and the purpose is at least visible in what you deleted.
+An accidental guard names nothing. Its removal is invisible in review — here,
+`isDemo` becoming correct at boot is *the fix*, and it silently switches on a
+writer that has been dormant. Nothing in the diff would say so.
+
+**Consequence, and it is why this is recorded before the change lands:** the
+axis-1 fix (the auth tri-state) cannot ship alone. It would make `isDemo` false
+at boot for a signed-in user, enabling the dormant writer and making the
+oscillation *more* reachable than it is today — the same trade the ruling on
+§7.15g already rejected when it declined to revert `131681b`. **Axis 1 and axis
+2 land together.**
+
+**Detection heuristic for the audits (§7.11/§7.12):** when a fix makes a
+previously-wrong value correct, ask what was *depending* on it being wrong.
+The answer is rarely nothing.
+
 ### 7.15f THE FIX AS SHIPPED (27 Jul)
 
 Client-side only. **No server change, no ADR amendment** — the server was doing
