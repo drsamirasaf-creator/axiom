@@ -234,6 +234,41 @@ establish what each of the 11 rows actually belongs to, and some may be
 genuinely orphaned — in which case the answer is deletion or an explicit
 "unattributed" sentinel, not a guessed parent.
 
+**⭐ CORRECTION — THE DRIFTING 401 WAS NOT BENIGN NAV TIMING. I RECORDED THAT
+TWICE AND IT WAS WRONG (27 Jul).** The standing anonymous failure
+`GET /companies/45/departments -> 401` was diagnosed as nav-timing drift and
+recorded as known-and-understood. **It was the (C) defect at a second call site,
+and it had a real cause the whole time.**
+
+Located by OBSERVATION: a CDP initiator capture on the anonymous route traced the
+request to `fetchDepartments(active.id)` in `DepartmentNavSelector`, with
+`active.id = 45`. Dataset 45 is *"Meridian Industries, Inc. — with management
+plan"*, `enterprise_id = 20`. **The code asked for company 45; the company was
+20.** The setter was `useSyncActiveCompany` in `active-company.ts`, whose own
+comment stated the false assumption outright:
+
+> *"Primary dataset: for real companies `row.id === enterprise_id`, so we can
+> safely reuse it as both `id` and `datasetId`."*
+
+`row.id` is a DATASET id. They coincide only by accident.
+
+**Two separate things were conflated under one "drifting" label**, which is why
+it survived two diagnoses: the `/logo` **404** genuinely IS benign (documented
+`"Returns null if none"`), and the `/departments` **401** never was. Same
+apparent drift — because which route reports either depends on which nav mounts
+the component first — different causes. **A single label over two phenomena is
+how a real defect hides behind a benign one.**
+
+**Recorded as a method failure, not just a fact correction:** both prior
+diagnoses reasoned from the drift PATTERN rather than observing a single
+instance. The pattern was real and the inference from it was wrong. **Drift
+tells you the trigger varies; it tells you nothing about the cause.**
+
+**(E) FIXED** with (C)'s resolution — read `enterprise_id`, no `?? row.id`
+fallback, and skip rather than guess when it is null (the null rows are exactly
+the showcase datasets, whose company id comes from the showcase list via
+auto-resolve, so skipping leaves the already-correct value in place).
+
 **⭐ ELEVENTH SEAM OCCURRENCE — A DATASET ID USED AS A COMPANY ID (27 Jul).**
 `CompanySelector.pick()` set the active COMPANY id to `row.id`, which is a
 DATASET id, so every `/companies/{id}/*` call went out in the wrong id-space.
