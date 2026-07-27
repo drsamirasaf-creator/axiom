@@ -110,6 +110,37 @@ enterprise surface resolves, so the scope was representable-but-unresolved.
 runs against the app's real route table, with a companion test proving the
 detector fires.
 
+**⭐⭐ COROLLARY — A GUARD THAT ENUMERATES MUST PROVE ITS ENUMERATION IS COMPLETE
+(27 Jul).** Refusal tests prove a guard REJECTS. They do not prove it LOOKED. A
+guard that walks a collection needs a **positive control on the enumeration
+itself** — evidence that the collection it walked is the one it was meant to
+police.
+
+**FOURTH INSTANCE OF DECLARED-BUT-UNBOUND, and the sharpest one: the replacement
+inherited the defect class it was built to escape.** The route-table guard was
+written specifically to replace a grep, BECAUSE THE GREP WAS INSUFFICIENT — a
+grep over `overrides.py` said nothing about a write path added elsewhere. The
+replacement iterated `app.routes`, which in this app holds **7 entries** (the
+included routers appear as opaque `_IncludedRouter` objects with `path=None`),
+so it inspected seven routes, none carrying a write method, none company-scoped,
+while the app serves **292 paths**. It passed by looking at almost nothing.
+
+Both versions failed the same way: **each checked something real and neither
+checked the thing that mattered.** Escaping a defect class requires knowing what
+made it a class, not merely changing mechanism.
+
+**THE REQUIRED SHAPE, now standing for any enumerating guard:**
+  1. assert the enumeration is NON-TRIVIAL (`len(paths) > 100`), so a narrowed
+     view fails loudly instead of passing vacuously;
+  2. assert it CONTAINS a known instance of what it polices (>20 write routes,
+     at least one `/companies/` route) — so "none found" means *looked and found
+     none*, not *looked at nothing*;
+  3. only then assert the absence.
+
+Found by mounting five read endpoints and noticing they never appeared in the
+list the guard walks, though the app answered them. **Not by review** — the guard
+had been read twice and looked correct both times.
+
 **⭐⭐ STANDING PRINCIPLE — ASSERT BEHAVIOUR AGAINST THE LIVE SYSTEM, NEVER
 DECLARATION. (Generalised 27 Jul; this is the THIRD instance of one principle,
 not a third unrelated lesson.)**
