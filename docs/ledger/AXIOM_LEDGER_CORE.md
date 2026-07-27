@@ -150,6 +150,47 @@ forbids. All inside transactions, all rolled back, residue confirmed 0 rows.
 
 **VERDICT: ALL GUARDS BIND IN PRODUCTION.** Nothing needed fixing before item 6.
 
+**⭐ MEMBERSHIP-BLIND GATE CLASS — FIFTH OCCURRENCE (27 Jul). The ledger
+declares this class "KILLED (4th and final occurrence)". It is not dead, and the
+reason is that it was never properly characterised.**
+
+**What the first four had in common:** a gate derived the user's rights from a
+`memberships[]` row, so a platform super/staff account — which HAS no membership
+row — was locked out of Proposals, Team, Data Input writes and CEI cycle
+controls. The kill centralised admin escalation at both hook seams
+(`useCompanyAccess`, `useAccessMode`) and eliminated local derivations. That fix
+was correct **for the failure as characterised: rights derived from membership.**
+
+**What makes the FIFTH different, and why the kill did not cover it.** This one
+derives nothing from membership and touches no role at all. `CompanySelector`
+asked `isDemo` — a predicate about **the content being viewed** — to answer
+**"which companies may this user switch to"**. Those are different questions, and
+because the active company was the showcase, the answer collapsed to
+showcase-only and the session could never leave. **The gate was not
+membership-blind; it was QUESTION-BLIND.** No role check was wrong; the wrong
+question was asked.
+
+**THE CORRECTED CHARACTERISATION, so a sixth is recognisable:** the class is not
+"gates that read memberships". It is **"a gate answering a question its predicate
+was not built for"** — membership-as-rights was one instance,
+content-mode-as-selectability is another. The recognisable shape is a boolean
+whose NAME describes one axis (is this demo CONTENT?) being used to decide a
+different axis (what may this user REACH?).
+
+**The test that finds the sixth:** for every gating boolean, ask what question
+its name answers, then ask what question the call site is actually asking. If
+they differ, it is this class — regardless of whether membership appears
+anywhere. A gate that is correct for its own question can still be wrong at a
+call site that needed a different one.
+
+**Fix applied (B lane):** `isDemo` is UNCHANGED — it remains the right predicate
+for content and every content gate behaves identically. `CompanySelector` now
+gates its FETCH on `isAnonymous` (the demo-safety line: anonymous fires zero
+authenticated calls, unchanged) and builds its LIST from the user's own
+companies plus showcase entries they do not already own. Separating the two
+questions is the fix; changing the predicate would have been the wrong repair,
+because `isDemo` was never wrong about what it describes.
+
 **⭐ COMPANY 38 IS THE STANDING VERIFICATION TENANT (authorized 27 Jul).** Not a
 throwaway. `AXIOM Test Fixture Co`, id 38, carries persistent departments and KPI
 data so the crawler can exercise owner-gated, department-scoped content rather
