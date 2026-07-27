@@ -2523,6 +2523,71 @@ the feature freeze. The taken fix is strictly smaller and leaves this open.
 **Worth revisiting after launch.** Recorded so it is a deferred decision with a
 reason, not a forgotten one.
 
+### 7.15h ⭐ THE ID-SPACE CLASS, THIRD OCCURRENCE — AND WHY THERE WILL BE A FOURTH
+
+**Third occurrence, third call site**, after (C) `CompanySelector.pick()` and
+(E) `useSyncActiveCompany` local→store. This one is the same function's
+**store→local** branch — the opposite direction — and it read:
+
+```ts
+if (active.id !== datasetId && datasets.some((d) => d.id === active.id))
+  setDatasetId(active.id);
+```
+
+A **company** id tested against, and assigned into, a **dataset** id.
+
+⭐ **IT WAS MADE REACHABLE BY A COLLISION ALREADY ENUMERATED IN OUR OWN
+PRODUCTION TABLE.** (C)'s comment names the colliding ids in production —
+**4, 5, 8, 21 and 38** — and the site that finally fired was company **38**,
+one of the five already written down. **The collision list was recorded and the
+next site still shipped.** Knowing the hazard did not prevent the third
+instance, because nothing structural stopped an integer from one space being
+written into the other.
+
+#### THE STRUCTURAL OBSERVATION
+
+**Two id spaces sharing an integer namespace with no type distinction means the
+fourth site is a matter of time.** Every site is individually reviewable and
+individually correct-looking; `number` and `number` compare and assign happily,
+so the compiler is silent and only a runtime collision reveals it. Catching each
+site is not a strategy — it is a queue.
+
+**The honest fix is making them non-interchangeable rather than catching each
+site**: branded/nominal types (`CompanyId` / `DatasetId`) so the mistake becomes
+a compile error rather than a production oscillation.
+
+⭐ **RECORDED AS A POST-LAUNCH STRUCTURAL LANE, NOT NOW.** It touches every
+call site that handles either id and is exactly the kind of sweeping change the
+feature freeze exists to prevent. Recorded so it is a scheduled decision with a
+reason, not a lesson re-learned at the fourth site.
+
+### 7.15i ⭐ A VERDICT WEAKER THAN THE REQUIREMENT REPORTS SUCCESS FOR HALF A FIX
+
+The lane required that selecting an own company **complete without crashing AND
+bind across a navigation**. The verdict function graded **crashes only**. It
+duly returned PASS on a run where the selection did not bind after navigation —
+the second clause, unchecked, silently absent from the result.
+
+It was caught only because the printed row carried the binding alongside the
+verdict, so the PASS and the evidence contradicting it were on the same line.
+Tightening the verdict to both clauses immediately exposed a regression from a
+guard that had looked correct.
+
+**THIRD INSTANCE TODAY of the same class — the instrument grading something
+weaker than the claim:**
+
+1. **The sanity gate's substring match** — `"/me" in "/api/v1/metrics/glossary"`
+   passed a rejected credential.
+2. **Poll-until-satisfied** — a probe that waits for an assertion to come true
+   cannot fail; it waits out real defects (avoided by design in `_poll_dom`,
+   which polls for PRESENCE and grades CONTENT separately).
+3. **This** — a verdict checking one of two required clauses.
+
+⭐ **THE RULE: THE VERDICT MUST ENUMERATE THE REQUIREMENT, CLAUSE FOR CLAUSE.**
+When a lane states two conditions, the check returns PASS only if it evaluated
+both — and the evidence for each belongs in the output beside the verdict, which
+is the only reason this one was caught.
+
 ### 7.15f THE FIX AS SHIPPED (27 Jul)
 
 Client-side only. **No server change, no ADR amendment** — the server was doing
