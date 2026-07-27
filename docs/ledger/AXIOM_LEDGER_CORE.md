@@ -2911,6 +2911,48 @@ write.
 
 ### 7.16a ⭐ THE ROSTER SCREEN AND THE MEMBERSHIP TABLE DISAGREE ABOUT WHO HAS ACCESS
 
+> **DIAGNOSED 28 Jul — AND IT IS NEITHER OF THE TWO CANDIDATE CAUSES.**
+> The question put was: is `/roster` *intended* to enumerate invitations (and the
+> membership view simply missing), or *intended* to show access and doing it
+> wrong? **Neither. BOTH ENDPOINTS EXIST, ON THE IDENTICAL PATH, AND THE WRONG
+> ONE WINS.**
+>
+> ```
+> accounts.py:10433  @router.get("/companies/{company_id}/roster")
+>                    def company_roster(...)   -> invitees + assessment participants
+>                    "Merged people roster for ONE table: viewer invitees
+>                     (ax_invites) + assessment participants across ALL cycles"
+>
+> accounts.py:11237  @router.get("/companies/{company_id}/roster")
+>                    def roster(...)           -> Membership JOIN User
+>                    returns membership_id, user_id, email, role, status, last_seen_at
+> ```
+>
+> FastAPI resolves to the **first** registered route. Line 10433 answers every
+> request; **line 11237 is unreachable code.** The membership view was written,
+> is correct, and has never been served.
+>
+> ⭐ **CORROBORATION — THE ACTIONS ARE KEYED TO DATA THE SURFACE CANNOT SUPPLY.**
+> `POST /companies/{id}/roster/{membership_id}/approve` and `/pause` take a
+> `membership_id`. The reachable roster returns `invite_id`, never
+> `membership_id`. The approve/pause actions sit next to a list that cannot
+> produce their key — which is what a shadowed endpoint looks like from the
+> outside.
+>
+> The two also differ in gate: the shadowed one requires
+> `require_company_admin`; the winner uses the looser `_roster_access`.
+>
+> **The fix is therefore neither "add a membership view" nor "correct the query"
+> — both exist. It is to stop merging two different questions onto one path, and
+> to present members and pending invitations as distinct groups.**
+
+**Found only because a fixture discrepancy prompted the check.** Company 38's
+membership table and roster disagreed; that was a fixture, easy to dismiss as
+fixture noise. Checking whether it generalized is what put it on a **real
+customer's tenant**. The habit of asking "does this generalize?" is what turned a
+throwaway observation into a live finding.
+
+
 **Ranked first: this is a customer-facing misstatement of access, on the screen
 used to manage access.** Measured across three companies:
 
