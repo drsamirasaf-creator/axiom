@@ -38,8 +38,10 @@ from datetime import datetime
 
 import re
 
-from sqlalchemy import (CheckConstraint, Column, DateTime, Index, Integer, JSON,
-                        String, Text, text)
+import json
+
+from sqlalchemy import (Boolean, CheckConstraint, Column, DateTime, Index,
+                        Integer, JSON, String, Text, text)
 
 from .accounts import Base, Department, Membership
 
@@ -396,6 +398,207 @@ def department_state(db, company_id, department_id):
                 "since": last.revoked_at.isoformat() if last.revoked_at else None,
                 "reason": last.revoke_reason}
     return {"state": "never_assigned", "holders": 0}
+
+
+# ── sign-off (§4x §7, Stage 2 of 4) ──────────────────────────────────────────
+
+class DashboardSignoff(Base):
+    """A CXO's attestation to a department dashboard AS SHOWN.
+
+    Sign-off is the CXO's primary action: REVIEW THEN ATTEST, one act. It is not
+    editing — the override write path is a separate thing, and a signature that
+    doubled as an edit would make "the CFO's owned number" mean two different
+    claims at once.
+
+    ⭐ WHAT IT PERSISTS, AND WHY THE OBVIOUS SHAPE WOULD BLOCK STAGE 4.
+    The natural design is a digest: hash the signed figures, compare later,
+    invalidate on mismatch. That is enough for §8.1 (did anything change?) and
+    NOT enough for §8.3 (show which values changed and by how much). A digest
+    answers "something moved"; the re-sign-off diff has to answer "these three
+    moved, by this much". Storing only a digest would mean stage 4 could not be
+    built without a migration — and worse, without the PRE-CHANGE VALUES, which
+    by then would be unrecoverable because the whole point is that they changed.
+
+    So the signature persists BOTH:
+      * `signed_state` — the actual displayed values at sign time, per metric,
+        including each one's provenance. This is what the stage-4 diff is
+        computed against.
+      * `state_digest` — sha256 over the same, for cheap change detection
+        without loading the snapshot.
+
+    §8.2 — THE DEPENDENCY SET IS COMPUTED, NEVER HAND-MAINTAINED. `signed_state`
+    is built by `signed_dashboard_state()`, which reads the SAME serializer the
+    dashboard renders from. A hand-listed set of "things that invalidate" would
+    be correct the day it was written and silently stale after the next panel is
+    added — the defect class already recorded twice in this ledger.
+
+    §7.5 — signer_label is FROZEN TEXT, never a join. A board reading a
+    two-year-old sign-off needs "CFO — J. Chen" and the role AS IT WAS
+    ("then CHRO"), not as the org chart is now.
+    """
+    __tablename__ = "ax_dashboard_signoffs"
+    __table_args__ = (
+        # One ACTIVE signature per department. Same partial-index discipline as
+        # the override table — a plain unique constraint including the nullable
+        # superseded column would enforce nothing on live rows.
+        Index("uq_active_signoff", "company_id", "department_id", unique=True,
+              sqlite_where=text("superseded_at IS NULL"),
+              postgresql_where=text("superseded_at IS NULL")),
+        Index("ix_signoff_lookup", "company_id", "superseded_at"),
+    )
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    department_id = Column(Integer, index=True, nullable=False)
+
+    # WHO — frozen at signature time (§7.5)
+    signer_user_id = Column(Integer, nullable=False)
+    signer_label = Column(String(160), nullable=False)      # "J. Chen"
+    signer_role_label = Column(String(160), nullable=True)  # "CHRO" -> "then CHRO"
+    grant_id = Column(Integer, nullable=True)               # the grant relied on
+
+    # WHEN
+    signed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # WHAT — the dashboard state attested to
+    dataset_id = Column(Integer, nullable=True)
+    signed_state = Column(JSON, nullable=False)
+    state_digest = Column(String(64), nullable=False)
+    # Derived, never self-declared: true when any displayed value carried an
+    # override at signature time.
+    with_adjustments = Column(Boolean, default=False, nullable=False)
+
+    # Supersession — a re-signature never overwrites its predecessor.
+    superseded_at = Column(DateTime, nullable=True)
+    superseded_by_id = Column(Integer, nullable=True)
+
+
+def signed_dashboard_state(db, company_id, department_id):
+    """The dependency set: the values the dashboard DISPLAYS, from the resolver.
+
+    §8.1 scopes invalidation to displayed values and nothing else — too broad
+    and executives re-sign for reasons they cannot see, which destroys the
+    feature more quietly than a bug would; too narrow and a signed number
+    changes silently. §8.2 requires that set be DERIVED. This reads
+    `company_kpi_variance`, the one serializer the department dashboard renders
+    from, so the set cannot drift as the dashboard grows.
+    """
+    from .accounts import company_kpi_variance
+    out = {}
+    payload = company_kpi_variance(company_id, department=department_id,
+                                   member=None, db=db)
+    for k in payload.get("kpis", []):
+        prov = k.get("provenance_override")
+        out[str(k.get("id"))] = {
+            "metric": k.get("kpi_name"),
+            "display": k.get("ytd_actual"),
+            "plan": k.get("ytd_plan"),
+            "target": k.get("full_year_target"),
+            "variance": (k.get("variance") or {}).get("status"),
+            "adjusted": bool(prov),
+            "computed": (prov or {}).get("computed_value"),
+            "adjusted_by": (prov or {}).get("adjusted_by"),
+        }
+    return {"dataset_id": payload.get("dataset_id"), "metrics": out}
+
+
+def state_digest(state) -> str:
+    """Stable hash of the signed state. Sorted keys so an unrelated ordering
+    change cannot read as a data change and trigger a spurious re-sign-off —
+    §8.1's too-broad failure, which trains executives to click without
+    reviewing."""
+    import hashlib
+    return hashlib.sha256(
+        json.dumps(state, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def sign_off(db, company_id, department_id, *, user, signer_label,
+             signer_role_label=None, now=None):
+    """Attest to the dashboard as shown. AUTHORITY-CHECKED — can_author() is the
+    same gate the override write path uses, so a signature and an adjustment can
+    never disagree about who may act on a department."""
+    can_author(db, company_id, user, "department", department_id)   # raises
+    grants = grants_for(db, company_id, department_id=department_id,
+                        user_id=getattr(user, "id", None))
+    state = signed_dashboard_state(db, company_id, department_id)
+    prev = active_signoff(db, company_id, department_id)
+    ts = now or datetime.utcnow()
+    if prev is not None:
+        prev.superseded_at = ts
+        db.flush()
+    row = DashboardSignoff(
+        company_id=company_id, department_id=department_id,
+        signer_user_id=user.id, signer_label=signer_label,
+        signer_role_label=signer_role_label or (grants[0].role_label if grants else None),
+        grant_id=(grants[0].id if grants else None),
+        signed_at=ts, dataset_id=state.get("dataset_id"),
+        signed_state=state, state_digest=state_digest(state),
+        with_adjustments=any(m.get("adjusted") for m in state["metrics"].values()))
+    db.add(row); db.flush()
+    if prev is not None:
+        prev.superseded_by_id = row.id
+        db.flush()
+    return row
+
+
+def active_signoff(db, company_id, department_id):
+    return (db.query(DashboardSignoff)
+              .filter_by(company_id=company_id, department_id=department_id)
+              .filter(DashboardSignoff.superseded_at.is_(None)).first())
+
+
+def signoff_state(db, company_id, department_id):
+    """⭐ THREE STATES AT THE DATA LAYER, not a boolean (§7.6).
+
+    `signed` / `unsigned` / `vacant` are distinct facts and must be
+    distinguishable without inference. The vacancy-versus-unsigned pair is the
+    one whose failure is SILENT and visually similar: both are "no signature",
+    and an unsigned dashboard that renders identically in both cases converts an
+    organisational gap into an apparent individual failure — it reads as
+    executive inattention when the real condition is an unfilled role.
+
+    So the distinction is produced here, from the grant state, rather than left
+    to a caller to derive from a null signature.
+    """
+    dep_state = department_state(db, company_id, department_id)
+    sig = active_signoff(db, company_id, department_id)
+    if sig is not None:
+        return {
+            "state": "signed_with_adjustments" if sig.with_adjustments else "signed",
+            "signed": True,
+            "signer": sig.signer_label,
+            "signer_role": sig.signer_role_label,
+            "signed_at": sig.signed_at.isoformat() if sig.signed_at else None,
+            "with_adjustments": bool(sig.with_adjustments),
+            "signoff_id": sig.id,
+            # §7.5 — the board-visible artifact, with the role AS IT WAS.
+            "attestation": _attestation_line(sig),
+            "authority": dep_state["state"],
+        }
+    if dep_state["state"] in ("vacant", "never_assigned"):
+        return {
+            "state": "vacant", "signed": False,
+            "authority": dep_state["state"],
+            "since": dep_state.get("since"),
+            "reason": dep_state.get("reason"),
+            # Named explicitly so no surface has to infer it from a null.
+            "note": ("No CXO is assigned to this department, so there is no one "
+                     "to sign off. This is not an unsigned dashboard."),
+        }
+    return {
+        "state": "unsigned", "signed": False, "authority": dep_state["state"],
+        "note": "Assigned but not yet signed off.",
+    }
+
+
+def _attestation_line(sig) -> str:
+    """The board-visible artifact. §7.5: a signer since moved renders as
+    "then CHRO", because without it a CEO wonders why the head of Operations
+    signed HR's numbers — the attestation looks wrong precisely because the
+    display shows today's org chart against a historical act."""
+    when = sig.signed_at.strftime("%d %b %Y") if sig.signed_at else "unknown date"
+    role = f", then {sig.signer_role_label}" if sig.signer_role_label else ""
+    adj = " (with adjustments)" if sig.with_adjustments else ""
+    return f"Signed off by {sig.signer_label}{role}, {when}{adj}"
 
 
 # ── the read path ────────────────────────────────────────────────────────────
