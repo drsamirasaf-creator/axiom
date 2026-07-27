@@ -2764,6 +2764,44 @@ Not observed failing in production. Not chased. Recorded because it was found
 by reading, and because it argues the coupling was wrong on twin's own terms,
 independently of mechanism 2.
 
+### 7.15n ⭐ THE RENDER-DEPENDENCY CLASS — FOURTH OCCURRENCE, INSIDE THE FIX FOR ITS THIRD
+
+**A WRITER ACTING ON STATE A RENDER HAS NOT COMMITTED.**
+
+This belongs **beside** the two-owners rule, not under it, because **removing the
+second owner did not remove this.** They are independent faults that happen to
+produce similar symptoms.
+
+| # | Where | Form |
+| --- | --- | --- |
+| 1 | `local→store` in `useSyncActiveCompany` | effect flushed a render-captured `datasetId` over a store that had already moved |
+| 2 | `store→local` (BRANCH-A) | effect flushed a render-captured `active` back over the page |
+| 3 | the pair together | 52 x 52 alternation, "Maximum update depth exceeded" |
+| 4 | **`useActiveDataset`, in the fix for 1–3** | hook resolves rows from a **ref assigned during render**, while the seating call runs synchronously **before that render commits** |
+
+Measured trace of #4:
+
+```
+D1 dashboard pickDatasetId -> 45 | activeCompany.id 20 | rows 9
+S3 selectDataset CALLED id 45   | rows 0 | row found false
+S3x REFUSE: row not in list
+```
+
+`setDatasets(rows)` and `setDatasetId(chosen)` run in the same fetch callback.
+The first schedules a render; the second executes before it commits. The hook
+looks up dataset 45 in an empty list and refuses. Nothing ever seats.
+
+⭐ **THE LESSON: THE SINGLE-OWNER REWRITE FIXED THE TOPOLOGY AND CARRIED THE
+TIMING ASSUMPTION ACROSS.** Two writable locations became one — a real
+improvement, and the two-owners rule stands — but the surviving writer still
+read React-scoped state that had not been committed. **Fixing "how many places
+hold the value" is orthogonal to fixing "when the value can be read."**
+
+**Detection heuristic:** any code path where a state setter and a consumer of
+that same state are called in the same synchronous block is suspect. The setter
+has not taken effect for the consumer, whatever the consumer reads it through —
+closure, ref, or hook.
+
 ### 7.15f THE FIX AS SHIPPED (27 Jul)
 
 Client-side only. **No server change, no ADR amendment** — the server was doing
