@@ -2429,16 +2429,44 @@ discover.
 
 **PAIRED WITH §7.15g. THE SWEEP MUST CONFIRM BOTH FIXED, NOT ONE.**
 
-### 7.15g ⭐ THE SECOND HALF OF THE SAME JOURNEY — SELECTION DOES NOT SURVIVE NAVIGATION
+### 7.15g ⭐ THE SECOND HALF OF THE SAME JOURNEY — THE SWITCHER CRASHES THE APP
 
 Found 27 Jul immediately after §7.15 was fixed and published, by the company
 pin, which stayed red.
 
-**A customer who selects their own company is returned to the sample workspace
-on the next navigation.** Observed against the live deployment: selecting the
-company writes `axiom.lastOpenedCompanyId = '38'` correctly, and after a fresh
-page load the app binds active to the showcase default and fires its content
-calls against company 20.
+> **SEVERITY REVISED 27 Jul, ahead of the fix.** This entry first read
+> "selection does not survive navigation — the customer is returned to the
+> sample workspace." **That was wrong and it understated the defect.**
+>
+> **THE APP CRASHES TO AN ERROR BOUNDARY.** A customer who clicks their own
+> company in the switcher gets *"This page didn't load — Something went wrong
+> on our end."* Sidebar gone, page body reduced to 120 characters. React:
+> **"Maximum update depth exceeded"** — an infinite render loop through
+> `setRef` in `@radix-ui/react-compose-refs`, the primitive the switcher's
+> dropdown is built on. Reproduced identically in production (minified error
+> #185) and on a dev build at tip.
+>
+> The "returned to the sample workspace" symptom is **downstream** of the
+> crash: whether `axiom.lastOpenedCompanyId` is written before the app dies is
+> a race. The restore path itself is sound — pre-seeding the key binds the
+> right company in 3/3 trials with zero showcase calls.
+>
+> ⭐ **THE ORIGINAL ENTRY DESCRIBED THE SYMPTOM THAT SURVIVED THE CRASH, NOT
+> THE CRASH.** An error boundary between the action and the assertion is
+> exactly the kind of deciding fact that leaves a plausible, wrong story
+> standing — the same class as §7.15b, where the deciding fact was a request
+> header the record did not capture.
+
+⭐ **THE §7.15 FIX DID NOT CAUSE THIS LOOP, BUT IT MADE IT MORE REACHABLE, AND
+NET CUSTOMER EXPOSURE MAY BE HIGHER TODAY THAN YESTERDAY.** The loop is in the
+SELECTION path; §7.15 changed the ENUMERATION path. Before that fix,
+own-company rows were usually absent from the menu, so the crash was hard to
+reach. They now appear reliably, so it is easy to reach. **This is the argument
+for urgency and it is recorded rather than left to be inferred.**
+
+Reverting §7.15 was considered and **rejected by user ruling**: it would
+reintroduce §7.15c to reduce the reachability of §7.15g, and **an absent menu
+row is a quieter failure than a crash, not a safer one.**
 
 ⭐ **RECORD THESE TWO AS A PAIR. TOGETHER THEY MEAN A POST-TRANSFER CUSTOMER
 CANNOT RELIABLY REACH THEIR OWN DATA.**
