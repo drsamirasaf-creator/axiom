@@ -3025,6 +3025,87 @@ who can see their financials.
   not a suppressed guard** — a guard that fails on known-open items teaches
   everyone to skip it.
 
+# ⭐⭐ PLAN OF RECORD — LAUNCH SCOPE AND BUILD ORDER (user ruling, 27–28 Jul)
+
+## L.1 AXIOM LAUNCHES FEATURE-COMPLETE
+
+**The C-suite must see a full product, not an MVP.** Arriving partial is a
+**positioning cost that cannot be recovered later**, because the first
+impression sets the competitive category. **All designed features ship before
+public launch.**
+
+This supersedes any assumption that a launch cut would be taken. There is no
+cut: the ~30 designed features are the launch.
+
+**Launch scope:** Innovation Hub §4p + Customer Change Requests §4j (shared
+spine) · Survey Designer · Initiative Execution Suite §7m · CXO Priorities
+Registry · Dictionary §4w · Free Pilot motion · Partner Program · DEI · VOC ·
+Prescience engines · Performance Monitoring · the commercial layer (pricing
+tiers, upgrade SKU, EID/CID model, DCT Advisory) · Dataroom §4y · multiple
+admins.
+
+## L.2 BUILD ORDER — DEPENDENCY-FIRST, TO MINIMISE REWORK
+
+| # | Lane | Why here |
+| --- | --- | --- |
+| 1 | **Close the current thread** — KpiDefinition, transfer_admin, admin records, seeding, Stage 2 write half | finish what is open before opening more |
+| 2 | **Multiple admins** | small, and unblocks everything with an admin surface |
+| 3 | **Dataroom §4y** — coupling diagnosis FIRST | most features touch data; building them against a template-coupled model means rebuilding them after |
+| 4 | **The four regression passes** | see L.3 — deliberately before the feature run |
+| 5 | **Dictionary §4w** | definitions are referenced by OKRs, KPIs, CXO Priorities and the Registry |
+| 6 | **Innovation Hub + Change Requests shared spine** | one spine, two entry points |
+| 7 | **CXO Priorities Registry**, then **Initiative Execution Suite §7m** | Registry is the dependency |
+| 8 | **Survey Designer, DEI, VOC** | all extend the assessment instrument |
+| 9 | **Prescience engines, Performance Monitoring** | |
+| 10 | **Commercial layer last** — pricing, Free Pilot, Partner Program | least dependent on the rest, most likely to change before launch |
+
+## L.3 ⭐ THE REGRESSION PASSES SIT AT POSITION 4 DELIBERATELY
+
+**They are cheaper before the feature run than after.** Every subsequent feature
+lands on this baseline, so fixing it once is cheaper than fixing it twelve times
+over. Running them after the feature run would mean each defect found had
+already been built on top of.
+
+### THE FOUR PASSES — each bounded, each pass/fail per item
+
+1. **Customer journey** — purchase, transfer, first login, first upload, first
+   dashboard, invite a CXO. Includes (A) access-without-data, the
+   NULL-`enterprise_id` backfill, §7.15c and §7.15g as **known defects to
+   confirm fixed, not discover**.
+2. **Mechanical class checks** — see L.4.
+3. **Known-defect backlog** — everything logged and triaged, worked as a list.
+4. **§7.11 / §7.12 audits** — frontend crawler-driven, backend static +
+   behavioural, each a defined checklist with pass/fail per item (§7.13: both
+   terminate).
+
+### ⭐ THE STANDING RULE: FINDINGS DURING A PASS ARE LOGGED AND TRIAGED AT THE END, NOT FIXED INLINE
+
+**This rule exists because discovery-driven lanes consumed most of 27 Jul.** A
+pass that stops to fix what it finds stops being a pass and becomes an
+open-ended hunt; it also loses the one thing a pass is for, which is a complete
+picture of the state at a single moment. Log, finish the pass, triage the list,
+then fix in priority order.
+
+## L.4 CANDIDATE CLASS CHECKS FOR THE MECHANICAL PASS
+
+Each of these **would have caught every past instance, including the ones
+introduced while fixing others** — which is the argument for mechanising them
+rather than trusting review.
+
+| check | occurrences | note |
+| --- | --- | --- |
+| **branded id types** (`CompanyId` / `DatasetId` non-interchangeable) | **3** — (C) `pick()`, (E) local→store, §7.15h store→local | the third shipped while fixing the second; the colliding ids (4, 5, 8, 21, 38) were already written down and the next site shipped anyway |
+| **setState-then-consume** in one synchronous block | **4** — §7.15n; the fourth appeared **inside the fix for the first three** | heuristic: a state setter and a consumer of that state in the same block, whatever the consumer reads it through — closure, ref, or hook |
+| **attribute-based permission checks** | **2** — `is_staff` (never fired in production), `_operator_bypass` (read, never assigned) | a permission attribute that no real object carries |
+
+Two mechanical guards already exist and are proven to fire:
+`scripts/check-single-dataset-owner.mjs` (no two-way pair) and
+`scripts/check-route-shadowing.py` (no path registered twice, with a dated
+allowlist). **These are the only guards in the sequence that PREVENT rather than
+DETECT**, which is why the class checks above are worth building.
+
+---
+
 ## §7.16 SWEEP SEGMENT 1 — FINDINGS (28 Jul, read-only)
 
 ### 7.16a ⭐ THE ROSTER SCREEN AND THE MEMBERSHIP TABLE DISAGREE ABOUT WHO HAS ACCESS
