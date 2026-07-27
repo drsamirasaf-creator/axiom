@@ -2427,6 +2427,81 @@ company — which is why it folds into the §7.14 customer-journey sweep **as a
 known defect to be confirmed fixed**, not as something for the sweep to
 discover.
 
+### 7.15d ⭐ TWO LIVE PRECEDENCE RULES, DELIBERATELY OPPOSITE — A READER TRAP
+
+**Both of these are live, in different functions, and they specify the
+OPPOSITE precedence. Neither is wrong. A reader who finds one and assumes it
+is "the rule" will be wrong about the other.**
+
+| Function | Rule | Source |
+| --- | --- | --- |
+| `request_tenant` | **bearer wins.** `X-Axiom-Tenant` is a fallback used ONLY when there is no token | ADR-007 §3 |
+| `read_tenant` | **`X-AXIOM-Tenant: showcase` is honoured for a signed-in caller**, overriding their own tenant. `demo` is deliberately NOT honoured; any other value ignored | ADR-010 §2 (supersedes the ADR-007 lock for reads) |
+
+`read_tenant` is the later, deliberate divergence, and it is the one that
+matters in practice: **10 modules** use it as their tenancy authority
+(financials, intelligence, learning, optimization, simulation, benchmarks,
+enterprise_state, twin, valuation, risk) against **1** for `request_tenant`.
+
+⭐ **THE TRAP IS NOT THE DIVERGENCE, IT IS THAT THE DIVERGENCE IS INVISIBLE
+FROM EITHER SIDE.** Reading `request_tenant` gives a complete, coherent,
+correct account of tenancy that is false for almost every endpoint. Nothing at
+the `request_tenant` call site hints that a second rule exists. This is the
+same shape as the §7.1 self-grant incident — *the rule lived in a different
+layer from the thing it governed* — and it is why the 27 Jul diagnosis had to
+be settled by reading the server rather than by reasoning from one ADR.
+
+### 7.15e THE STRUCTURAL ALTERNATIVE — NOTED, NOT TAKEN
+
+**Enumerate the switcher from `/access/my-companies` instead of from the
+datasets list.** That endpoint already exists, already returns the caller's
+companies correctly, and is **not tenant-scoped** — so the circularity could
+not re-form. It is the right shape: **a navigation question answered by a
+navigation endpoint**, rather than a navigation surface borrowing a content
+endpoint and inheriting its scoping.
+
+**Not taken now** because it changes the selector's data flow — the component
+is built on dataset rows (`pick()` reads `enterprise_id`, primaries carry
+dataset shape), and reworking that is more than this lane should carry under
+the feature freeze. The taken fix is strictly smaller and leaves this open.
+
+**Worth revisiting after launch.** Recorded so it is a deferred decision with a
+reason, not a forgotten one.
+
+### 7.15f THE FIX AS SHIPPED (27 Jul)
+
+Client-side only. **No server change, no ADR amendment** — the server was doing
+what ADR-010 §2 specifies.
+
+`api.ts` gains a per-call `tenantScope` on `AxiomRequestInit`, defaulting to
+`"view"` so every existing call site is unchanged:
+
+- **`"view"`** — *"what am I looking at"*. Content reads. Carries `showcase`
+  while a showcase company is active. **This is the ADR-010 §2 affordance and
+  it is preserved exactly.**
+- **`"identity"`** — *"where may I go"*. Enumeration. Always carries `demo`,
+  which the backend deliberately does not honour for a signed-in caller, so it
+  falls through to the caller's own tenant.
+
+One call site passes `"identity"`: the company switcher's datasets fetch.
+
+**Proved behaviourally, both directions, against a build at tip** (3 trials,
+sample workspace active):
+
+- **Direction 1 — the fix.** From the sample workspace the switcher lists
+  **14 entries, 13 of them the operator's own, fixture present**. Was 7
+  showcase-only entries with the fixture absent.
+- **Direction 2 — the guard.** The sample workspace's own content reads still
+  carry `showcase` and still return 200. **A wrong fix would have silently
+  broken this**, which is why it was asserted rather than assumed.
+
+⭐ **THE DECISIVE EVIDENCE IS BOTH HEADERS IN ONE SESSION:** headers
+`['showcase','demo','showcase']` with row counts `[9, 13, 9]` on a single page
+load. Same session, same active company, different questions, different scope.
+That is the fix discriminating by *what was asked*, not by *where the session
+stands* — which is the whole point, and a single-value header could not have
+demonstrated it.
+
 ---
 
 ## 6. OPERATIONAL NOTE (recurring, now twice)
