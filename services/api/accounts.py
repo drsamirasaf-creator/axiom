@@ -5031,6 +5031,75 @@ def objective_status_band(avg, n_objectives):
     return "red"
 
 
+def _dept_cei_map(db, company_id):
+    """{department_id: {cei, n, state, reason, note, cycle_id, cycle_name}} for the
+    latest closed cycle with responses.
+
+    SERVER-SIDE BY NECESSITY, not preference. The cycle's `departments` aggregate
+    is keyed by the department name AS TYPED ON THE RESPONSE, which for a renamed
+    department is its FORMER name — on Meridian only 2 of 7 keys match a current
+    department ("Finance" vs "Finance and Accounting", "Technology" vs
+    "Information Technology", ...). A client joining that map by name would show
+    a CEI for two departments and silently blank five, including both of the
+    numbers anyone would check first. _pick_dept_slice resolves each department
+    through its alias set, which the browser has no way to do.
+
+    THREE STATES, from the shared vocabulary (see assessment_engine):
+      scored      a publishable number, with the n behind it
+      suppressed  responses exist, withheld — reason says which kind
+      absent      nobody from that department answered this cycle
+
+    The floor is applied by apply_kfloor BEFORE this reads the map, so a
+    suppressed slice never carries a cei here to leak by accident."""
+    # Imported HERE, not assumed present at module scope: a bare name that
+    # resolves nowhere is a 500 that only fires on the branch that uses it, and
+    # this file has already shipped one of those to production (see the `func`
+    # import fix in 92e7340).
+    from .assessment_engine import apply_kfloor, SUPPRESSION_NOTE, cei_band
+    deps = db.query(Department).filter_by(company_id=company_id).all()
+    empty = {d.id: {"cei": None, "n": 0, "state": "absent", "reason": None,
+                    "note": None, "cycle_id": None, "cycle_name": None} for d in deps}
+    cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
+                .order_by(AssessmentCycle.opened_at).all())
+    latest = None
+    for c in reversed(cycles):
+        if c.closed_at and db.query(AssessmentResponse.id).filter_by(cycle_id=c.id).first():
+            latest = c
+            break
+    if latest is None:
+        return empty
+    depts_raw = (apply_kfloor(_cycle_cei(db, latest)) or {}).get("departments") or {}
+    out = {}
+    # The summary's _cycle_label is nested inside assessment_summary and cannot be
+    # called from here; the fallback matches its shape for an unnamed cycle.
+    ordinal = {c.id: i + 1 for i, c in enumerate(cycles)}
+    label = (latest.name or "").strip() or (
+        f"Cycle {ordinal.get(latest.id, latest.id)}"
+        + (f" — {latest.opened_at.strftime('%d %b %Y')}" if latest.opened_at else ""))
+    for d in deps:
+        sl = _pick_dept_slice(db, company_id, d, depts_raw)
+        base = {"cycle_id": latest.id, "cycle_name": label}
+        if sl is None:
+            # ABSENT — no slice at all. Distinct from suppressed: there is
+            # nothing being withheld, nobody answered.
+            out[d.id] = {**base, "cei": None, "n": 0, "state": "absent",
+                         "reason": "no_responses",
+                         "note": SUPPRESSION_NOTE["no_responses"]}
+        elif sl.get("suppressed"):
+            # SUPPRESSED — note the field: a withheld slice carries `n`, a shown
+            # one carries `n_participants`. Reading the wrong one yields None and
+            # turns "withheld, 3 responded" into "withheld, unknown".
+            out[d.id] = {**base, "cei": None, "n": sl.get("n") or 0,
+                         "state": "suppressed", "reason": sl.get("reason"),
+                         "note": sl.get("note") or SUPPRESSION_NOTE.get(sl.get("reason"))}
+        else:
+            out[d.id] = {**base, "cei": sl.get("cei"),
+                         "n": sl.get("n_participants") or 0,
+                         "state": "scored", "reason": None, "note": None,
+                         "band": cei_band(sl.get("cei"))}
+    return out
+
+
 def _dept_counts(db, company_id):
     """{department_id: {objectives, key_results, kpis, initiatives, rag{...},
     attainment{avg, scored, band}}} for the active dataset (objectives/kpis are
@@ -5095,6 +5164,11 @@ def list_departments(company_id: int, member=Depends(_summary_access), db=Depend
     counts = _dept_counts(db, company_id)
     cov = _dept_coverage(db, company_id)
     sent = _department_sentiment_map(db, company_id)      # shared with the Sentiment tab
+    # THE CEI IS A THIRD MEASURE, alongside objective attainment and comment
+    # tone — not a banding of either. On Meridian, Sales & Marketing scores the
+    # HIGHEST cei (6.67) while its tone reads 0/Poor: people rated the work well
+    # and wrote about it badly. Collapsing the two would delete a real signal.
+    cei = _dept_cei_map(db, company_id)
     zero = {"objectives": 0, "key_results": 0, "kpis": 0, "initiatives": 0,
             "rag": {"green": 0, "amber": 0, "red": 0},
             "attainment": {"avg": None, "scored": 0, "band": "none"}}
@@ -5109,7 +5183,8 @@ def list_departments(company_id: int, member=Depends(_summary_access), db=Depend
     return {"company_id": company_id, "has_data": bool(deps),
             "departments": [{**_dept_out(d), "counts": counts.get(d.id, zero),
                              "coverage": coverage(d),
-                             "sentiment": sent.get(d.id)} for d in deps]}
+                             "sentiment": sent.get(d.id),
+                             "cei": cei.get(d.id)} for d in deps]}
 
 
 @router.post("/companies/{company_id}/departments", status_code=201)

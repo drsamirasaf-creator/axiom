@@ -263,6 +263,29 @@ def _cross_key(dept, seniority) -> str:
 KFLOOR = 3                       # minimum respondents per serialized slice
 
 
+# ── THE CEI band scheme — one definition, every surface ──────────────────────
+# The CEI is 0–10 and the department tone chip is 0–100; they are different
+# measures on different scales and must never be banded by each other's rule.
+# These thresholds are the ones /cei already used for its headline colour; they
+# are named here so the org cards, the enterprise breakdown and the scorecard
+# all read one scheme instead of three copies of two numbers.
+CEI_GOOD_MIN = 7.5
+CEI_NEUTRAL_MIN = 5.0
+
+CEI_DEFINITION = ("Composite Effectiveness Index — the mean of scored "
+                  "assessment items, 0–10.")
+
+
+def cei_band(cei):
+    """good / neutral / poor, or None when there is no number to band. A missing
+    CEI is never 'poor': suppressed and absent are states, not low scores."""
+    if cei is None:
+        return None
+    if cei >= CEI_GOOD_MIN:
+        return "good"
+    return "neutral" if cei >= CEI_NEUTRAL_MIN else "poor"
+
+
 # ── WHY a slice is missing — three states, never conflated ───────────────────
 # A department-cycle with no number is not one fact but three, and they carry
 # opposite meanings for the reader:
