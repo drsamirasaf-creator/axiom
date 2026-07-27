@@ -2724,6 +2724,46 @@ wrong, not the app.** Eighth measurement error of 27 Jul, and the eighth in the
 instrument rather than the product. The instruments have now been wrong more
 often than the code they grade.
 
+### 7.15m ⭐ TWIN'S ROOT COULD BE SET TO AN INELIGIBLE DATASET (pre-existing)
+
+Found 27 Jul by **reading `twin.tsx` before converting it**, not by a failure.
+
+`twin.tsx` chooses a lineage root under an eligibility constraint — only rows
+with a forecast lineage qualify:
+
+```ts
+const firstEligible = datasets.find((d) => typeof eligibility[d.id] === "object");
+if (firstEligible) setRootId(firstEligible.id);
+```
+
+But it also ran:
+
+```ts
+useSyncActiveCompany(rootId, datasets, setRootId);
+```
+
+⭐ **THAT LET THE SHARED STORE PUSH ANY DATASET ID INTO `rootId` WITH NO
+ELIGIBILITY TEST AT ALL.** A company switch, or any other page's selection,
+could seat a root with no forecast lineage — a page whose entire content is
+lineage, pointed at something that has none.
+
+**The general form:** `rootId` and "the active dataset" were being treated as
+one concept because they share a type. They are different questions — *"which
+dataset is the user looking at"* against *"which dataset satisfies this
+predicate"* — and the sync coupled them anyway. This is the same shape as
+§7.15's `X-AXIOM-Tenant`: **one value asked to answer two questions.**
+
+**Status: fixed by the reader-only conversion, which is ON THE BRANCH
+`wip/pending-state-tri-state` AND NOT ON MAIN.** Twin keeps its own `rootId`,
+subscribes to the active *company*, and re-runs eligibility when that changes;
+it never reads or writes the shared dataset selection. **Recorded here rather
+than left to ride along with that branch, because the branch is blocked and may
+not land soon — so the defect is on the record independently of its fix.**
+
+Not observed failing in production. Not chased. Recorded because it was found
+by reading, and because it argues the coupling was wrong on twin's own terms,
+independently of mechanism 2.
+
 ### 7.15f THE FIX AS SHIPPED (27 Jul)
 
 Client-side only. **No server change, no ADR amendment** — the server was doing
