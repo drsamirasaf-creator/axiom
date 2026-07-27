@@ -110,6 +110,41 @@ enterprise surface resolves, so the scope was representable-but-unresolved.
 runs against the app's real route table, with a companion test proving the
 detector fires.
 
+**⭐⭐ FIFTH INSTANCE OF DECLARED-BUT-UNBOUND — ATTRIBUTE-NAME MISMATCH BETWEEN
+GUARD AND MODEL (27 Jul). A distinct variant, and the most dangerous so far.**
+
+`can_author()` excluded platform staff with `getattr(user, "is_staff", False)`.
+**The real `User` model has no `is_staff`** — it carries `platform_role`
+(`'staff' | 'super'`). So the exclusion written to guarantee that *we* can never
+author a customer's signed board figure evaluated to False for **every genuine
+user** and **never fired in production**.
+
+**WHAT MAKES THIS VARIANT DIFFERENT FROM THE PREVIOUS FOUR.** Those were guards
+that checked the wrong thing, or looked at too little. This one checked a field
+**that does not exist**, and Python's `getattr(..., default)` turns that into a
+silent False rather than an error. There is no failure, no warning, no log line —
+the guard is simply always permissive.
+
+**⭐ IT DEFEATED SERVICE-LEVEL PROOF BY CONSTRUCTION.** The service tests passed
+because their lightweight test double exposed `is_staff` — the double was shaped
+to satisfy the guard rather than to mirror the model. **A test double built from
+the guard's expectations can only ever confirm them.** The defect was reachable
+only from the HTTP layer, where the object is a real `User` loaded from the
+database.
+
+**THE RULE: a guard must be exercised against the object PRODUCTION actually
+supplies.** Not a stand-in, not a namespace, not a dict shaped like one.
+
+**AND THIS IS WHY LAYERED PROOF IS NOT REDUNDANCY.** Route-level and
+service-level checks looked like belt-and-braces duplication; they are not. Each
+layer sees different objects, and a defect can be invisible at one layer and
+obvious at the next. Proving a guard once, at the layer most convenient to test,
+proves it for that layer only.
+
+Fixed by `_is_platform_staff()`, which honours `platform_role`, `is_staff` and
+`_operator_bypass` — so real users and test doubles are both caught and neither
+layer can pass for the wrong reason again.
+
 **⭐⭐ COROLLARY — A GUARD THAT ENUMERATES MUST PROVE ITS ENUMERATION IS COMPLETE
 (27 Jul).** Refusal tests prove a guard REJECTS. They do not prove it LOOKED. A
 guard that walks a collection needs a **positive control on the enumeration
