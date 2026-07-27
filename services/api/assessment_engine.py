@@ -263,8 +263,60 @@ def _cross_key(dept, seniority) -> str:
 KFLOOR = 3                       # minimum respondents per serialized slice
 
 
-def _suppressed(n: int, extra: dict | None = None) -> dict:
-    out = {"suppressed": True, "n": n, "reason": "below_anonymity_floor"}
+# ── WHY a slice is missing — three states, never conflated ───────────────────
+# A department-cycle with no number is not one fact but three, and they carry
+# opposite meanings for the reader:
+#
+#   no_responses          nobody from that department answered. A participation
+#                         fact, and the department's own.
+#   below_anonymity_floor they answered, but too few to publish safely. A
+#                         privacy fact, and NOT a failure to participate.
+#   complement_inference  they cleared the floor and are hidden anyway, because
+#                         another slice's concealment would otherwise be
+#                         reversible by subtraction. Nothing to do with their
+#                         own count at all.
+#
+# The trend used to report all three as "no responses from this department",
+# which tells a manager their team ignored the survey when in fact it answered
+# and was protected. `_suppressed` hardcoding below_anonymity_floor made the
+# same mistake more quietly: Meridian's HR sits at n=3 WITH KFLOOR=3 — at the
+# floor, not below it — and was hidden only to cover Supply Chain's n=2.
+SUPPRESSION_NOTE = {
+    "no_responses": "No responses from this department in this cycle.",
+    "below_anonymity_floor":
+        "Withheld for anonymity — responses exist but are below the "
+        "confidentiality floor for reporting.",
+    "complement_inference":
+        "Withheld for anonymity — publishing this would make another "
+        "withheld department's result derivable by subtraction.",
+}
+
+
+def suppression_reason(n: int, by_partition: bool = False) -> str:
+    """The one place a missing slice is explained. `by_partition` is True when
+    _partition_status hid a slice that cleared the floor on its own count."""
+    if not n:
+        return "no_responses"
+    if n < KFLOOR:
+        return "below_anonymity_floor"
+    return "complement_inference" if by_partition else "below_anonymity_floor"
+
+
+def suppression_block(n: int, by_partition: bool = False) -> dict:
+    """{suppressed, n, reason, note} — the shape every surface should carry.
+
+    `n` is published even for a hidden slice, and deliberately: it is what makes
+    "withheld" credible rather than indistinguishable from silence, and it
+    discloses nothing on its own. The complement-inference guard already
+    guarantees at least TWO hidden slices, so the counts leave two unknowns
+    against a single total-equation and no individual result is recoverable."""
+    reason = suppression_reason(n, by_partition)
+    return {"suppressed": True, "n": n, "reason": reason,
+            "note": SUPPRESSION_NOTE[reason]}
+
+
+def _suppressed(n: int, extra: dict | None = None, by_partition: bool = False) -> dict:
+    out = suppression_block(n, by_partition)
     if extra:
         out.update(extra)
     return out
@@ -322,8 +374,12 @@ def _apply_dept_kfloor(depts: dict) -> dict:
     if not depts:
         return {}
     status = _partition_status(depts)
-    return {d: (_suppressed(a.get("n_participants", 0)) if status[d] == "suppress"
-                else _show_slice(a))
+    # by_partition: this slice cleared the floor on its own count and is hidden
+    # only to protect another. Saying "below the floor" about a department that
+    # is NOT below the floor is the mislabel this argument exists to prevent.
+    return {d: (_suppressed(a.get("n_participants", 0),
+                            by_partition=(a.get("n_participants", 0) >= KFLOOR))
+                if status[d] == "suppress" else _show_slice(a))
             for d, a in depts.items()}
 
 

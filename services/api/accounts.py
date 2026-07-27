@@ -9113,7 +9113,7 @@ def assessment_summary(company_id: int, department: int | None = None,
             break
     if latest is None:
         latest = cycles[-1] if cycles else None
-    from .assessment_engine import apply_kfloor, KFLOOR
+    from .assessment_engine import apply_kfloor, KFLOOR, suppression_block
     current = _cycle_cei(db, latest) if latest else {}
     safe = apply_kfloor(current) if latest else {}      # k-anonymity display gate (storage untouched)
     suppressed_all = bool(safe.get("suppression"))
@@ -9162,9 +9162,20 @@ def assessment_summary(company_id: int, department: int | None = None,
             depts_raw = snap.get("departments") or {}
             slice_agg = _pick_dept_slice(db, company_id, _dept_obj, depts_raw)
             if slice_agg is None:
-                continue                    # this department did not exist / did not respond
-            npart = slice_agg.get("n_participants") or 0
-            cei_val = slice_agg.get("cei")
+                # ABSENT — but from which cause? A department that did not yet
+                # EXIST at this cycle must not appear as a gap: a row saying
+                # "no responses" about a team that had not been created blames it
+                # for missing a survey it could not have taken. One that existed
+                # and did not answer IS a gap, and dropping the point silently
+                # made the cycle look like it never happened.
+                created = getattr(_dept_obj, "created_at", None)
+                if created and c.closed_at and created > c.closed_at:
+                    continue
+                npart, cei_val, forced = 0, None, False
+            else:
+                npart = slice_agg.get("n_participants") or 0
+                cei_val = slice_agg.get("cei")
+                forced = False
             # COMPLEMENT INFERENCE — not just the primary n<KFLOOR floor.
             #
             # Department slices are an exact partition of respondents, so if only
@@ -9184,31 +9195,42 @@ def assessment_summary(company_id: int, department: int | None = None,
                 by_norm = {_norm_dept_name(k): v for k, v in status.items()}
                 for _n in _dept_variant_norms(db, company_id, _dept_obj):
                     if by_norm.get(_n) == "suppress":
-                        cei_val, npart = None, 0
+                        # HIDE THE VALUE, KEEP THE COUNT. This line used to read
+                        # `cei_val, npart = None, 0`, and zeroing npart is what
+                        # made the annotation lie: the reason below is derived
+                        # from npart, so a department suppressed WITH three
+                        # respondents became indistinguishable from one with
+                        # none, and was told it had not answered. Suppression
+                        # must not destroy the evidence it needs to explain
+                        # itself. `forced` carries the decision instead.
+                        cei_val, forced = None, True
                         break
             except Exception:
-                cei_val, npart = None, 0        # fail closed: hide, never leak
+                cei_val, forced = None, True    # fail closed: hide, never leak
         else:
             npart = snap.get("n_participants") or 0
             cei_val = snap.get("cei")
+            forced = False
+        hidden = forced or npart < KFLOOR
         pt = {"cycle_id": c.id, "revision": c.revision, "opened_at": c.opened_at,
               "closed_at": c.closed_at, "n_participants": npart,
               "name": _cycle_label(c), "depth": c.depth or "standard",
               "anonymity_mode": c.anonymity_mode,
-              "cei": cei_val if npart >= KFLOOR else None,
+              "cei": None if hidden else cei_val,
               "scope": ("department" if _dept_obj is not None else "enterprise")}
-        if npart < KFLOOR:
-            # WHY it is missing, not merely THAT it is. A department series that
-            # stops short of the latest cycle looks broken; the same series
-            # saying "suppressed for anonymity in this cycle" is information.
-            # The two causes are genuinely different and a reader deserves to
-            # know which: too few respondents to publish safely, versus nobody
-            # from that department answered at all.
-            pt.update({"suppressed": True,
-                       "reason": ("no_responses" if npart == 0 else "below_anonymity_floor"),
-                       "note": ("No responses from this department in this cycle."
-                                if npart == 0 else
-                                "Suppressed for anonymity — too few respondents in this cycle.")})
+        if hidden:
+            # WHY it is missing, not merely THAT it is — and the right why. A
+            # series that stops short of the latest cycle looks broken; one that
+            # says "withheld for anonymity" is information. Saying "no responses"
+            # when three people answered is worse than either: it reports a
+            # participation failure that did not happen, and hands a manager a
+            # conversation to have with a team that did nothing wrong.
+            #
+            # One helper decides the reason for every surface — the trend, the
+            # department slice, and the CEI cards to come — so the three states
+            # cannot drift apart again.
+            pt.update(suppression_block(npart, by_partition=forced and npart >= KFLOOR))
+            pt.pop("n", None)     # n_participants already carries it on a trend point
         trend.append(pt)
     # RAG is a per-item/per-axis derived value — it must vanish wherever the floor suppresses.
     rags = _summary_rags(current, latest.snapshot if latest else None)
