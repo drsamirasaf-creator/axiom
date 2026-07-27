@@ -633,8 +633,15 @@ def signoff_state(db, company_id, department_id):
     dep_state = department_state(db, company_id, department_id)
     sig = active_signoff(db, company_id, department_id)
     if sig is not None:
+        # §8.1 — invalidation is COMPUTED ON READ, never by a background job. A
+        # job that fails leaves a stale "signed" badge sitting on changed
+        # numbers, which is precisely the trap the mechanism exists to prevent.
+        stale = state_digest(signed_dashboard_state(db, company_id,
+                                                    department_id)) != sig.state_digest
         return {
-            "state": "signed_with_adjustments" if sig.with_adjustments else "signed",
+            "state": ("needs_resignoff" if stale else
+                      "signed_with_adjustments" if sig.with_adjustments else "signed"),
+            "stale": stale,
             "signed": True,
             "signer": sig.signer_label,
             "signer_role": sig.signer_role_label,
@@ -896,6 +903,201 @@ def validate_new(*, override_value, computed_value, reason_category, author_labe
             f"produce an adjusted figure with no provenance marker on the "
             f"surfaces that render it.")
     return True
+
+
+# ── invalidation + the re-sign-off diff (§8, stage 4 of 4) ───────────────────
+
+# WHICH FAMILY IS DRIVEN BY WHAT. §8.6 forbids EXCLUDING a family; it does not
+# forbid EXPLAINING one. Sentiment and the CEI trend move when an assessment
+# cycle closes — an enterprise-wide event that shifts every department at once
+# and has nothing to do with a CXO's own numbers. Saying so is §8.3's
+# presentation lever, and it is the only lever permitted: grouping by cause
+# changes how a change is READ, never whether it INVALIDATES.
+OWN_FAMILIES = ("metrics", "objectives")
+ENTERPRISE_FAMILIES = ("sentiment", "trend")
+
+FAMILY_LABEL = {
+    "metrics": "KPIs",
+    "objectives": "Objectives",
+    "sentiment": "Department sentiment",
+    "trend": "CEI trend",
+}
+ENTERPRISE_CAUSE = ("An assessment cycle closed. This moves every department's "
+                    "sentiment and CEI trend at once and is not a change to this "
+                    "department's own figures.")
+
+# Absorption tolerance: a source correction rarely lands on the exact float a CXO
+# typed. Deliberately tight — this only decides whether to OFFER retirement, and
+# the CXO confirms. It is not a threshold on invalidation, which §8.5 forbids.
+ABSORB_TOLERANCE = 0.005
+
+
+def _flatten(state):
+    """{(family, key): value-dict} for comparison. Sentiment is a single dict
+    rather than a mapping, so it is normalised to one pseudo-key."""
+    out = {}
+    for fam in ("metrics", "objectives", "trend"):
+        for k, v in (state.get(fam) or {}).items():
+            out[(fam, str(k))] = v
+    sent = state.get("sentiment") or {}
+    if sent:
+        out[("sentiment", "_")] = sent
+    return out
+
+
+def _changed_fields(before, after):
+    keys = set(before or {}) | set(after or {})
+    return {k: {"before": (before or {}).get(k), "after": (after or {}).get(k)}
+            for k in sorted(keys)
+            if (before or {}).get(k) != (after or {}).get(k)}
+
+
+def signoff_diff(db, company_id, department_id, *, current=None):
+    """§8.3 — WHICH values changed and by how much, since the signature.
+
+    Not a bare "awaiting re-sign-off". A CXO who can see what moved will
+    re-review it; one facing an unexplained prompt will just click, and the
+    signature is only worth what the review behind it is worth.
+
+    Grouped BY CAUSE (§8.3, and the presentation lever §8.6 permits):
+      own         this department's KPIs and objectives
+      enterprise  sentiment and CEI trend — moved by a cycle closing, which
+                  shifts every department at once
+    `own_unchanged` makes the common case cheap: when only enterprise-wide
+    families moved, that is true at a glance and friction scales with what
+    actually changed.
+    """
+    sig = active_signoff(db, company_id, department_id)
+    if sig is None:
+        return {"signed": False, "stale": False, "state": "unsigned"}
+
+    now_state = current if current is not None else \
+        signed_dashboard_state(db, company_id, department_id)
+    stale = state_digest(now_state) != sig.state_digest
+
+    before, after = _flatten(sig.signed_state or {}), _flatten(now_state)
+    own, ent = [], []
+    for key in sorted(set(before) | set(after), key=lambda t: (t[0], str(t[1]))):
+        fam, k = key
+        b, a = before.get(key), after.get(key)
+        if b == a:
+            continue
+        entry = {
+            "family": fam,
+            "family_label": FAMILY_LABEL.get(fam, fam),
+            "key": k,
+            "label": (a or b or {}).get("metric") or (a or b or {}).get("objective")
+                     or (a or b or {}).get("cycle") or FAMILY_LABEL.get(fam, fam),
+            "appeared": b is None,
+            "disappeared": a is None,
+            "fields": _changed_fields(b, a),
+        }
+        (own if fam in OWN_FAMILIES else ent).append(entry)
+
+    return {
+        "signed": True,
+        "stale": stale,
+        "state": "needs_resignoff" if stale else "signed",
+        "signed_at": sig.signed_at.isoformat() if sig.signed_at else None,
+        "signer": sig.signer_label,
+        "signer_role": sig.signer_role_label,
+        "own_changes": own,
+        "enterprise_changes": ent,
+        # ⭐ THE CHEAP CASE, stated rather than inferred. A caller must not have
+        # to scan two lists to learn that nothing of the CXO's own moved.
+        "own_unchanged": len(own) == 0,
+        "enterprise_cause": ENTERPRISE_CAUSE if ent else None,
+        "summary": _diff_summary(own, ent, stale),
+        "retirement_candidates": retirement_candidates(db, company_id,
+                                                       department_id,
+                                                       current=now_state),
+    }
+
+
+def _diff_summary(own, ent, stale):
+    if not stale:
+        return "Nothing has changed since this dashboard was signed off."
+    if not own:
+        return (f"{len(ent)} enterprise-wide change(s) since sign-off. None of "
+                f"this department's own figures moved.")
+    if not ent:
+        return f"{len(own)} change(s) to this department's own figures since sign-off."
+    return (f"{len(own)} change(s) to this department's own figures, and "
+            f"{len(ent)} enterprise-wide change(s), since sign-off.")
+
+
+def retirement_candidates(db, company_id, department_id, *, current=None):
+    """§8.4 — THE RETIREMENT PROMPT FIRES HERE.
+
+    An override the source has caught up with is now labelling a number that
+    needs no adjusting. Four quarters of that accumulates stale attributions on
+    correct figures and inverts rare-equals-signal — the whole reason an
+    override is supposed to be conspicuous.
+
+    A source correction that absorbed a CXO's adjustment appears, by
+    definition, in the list of changed values, which is why this belongs on the
+    re-sign-off surface rather than on a surface of its own: the CXO sees what
+    moved and is asked whether the now-redundant override should be retired, in
+    the same act.
+
+    ABSORBED vs WITHDRAWN is the supersession_kind distinction already built:
+    absorbed = the source caught up and the CXO was right; withdrawn = the CXO
+    retracts. Both supersede, never delete — an override that vanishes without
+    trace is a worse artifact than one that stands.
+    """
+    # ⚠ THE LIVE COMPUTED VALUE MUST BE READ FROM SOURCE, NOT FROM THE OVERRIDE.
+    # `provenance_override.computed_value` is deliberately FROZEN — it is what
+    # AXIOM said at the moment of the override, and freezing it is what makes the
+    # audit trail meaningful after a re-upload. Comparing against it would
+    # therefore compare the override to itself and never detect absorption at
+    # all. Absorption is a question about TODAY'S source data, so today's source
+    # data is what gets read. (Caught by the two retirement tests failing.)
+    from .accounts import KpiPlan, _kpi_scope_key, _active_company_dataset
+    live = {}
+    ds = _active_company_dataset(db, company_id)
+    if ds is not None:
+        for k in db.query(KpiPlan).filter_by(company_id=company_id,
+                                             dataset_id=ds.id,
+                                             department_id=department_id).all():
+            if getattr(k, "archived", False):
+                continue
+            live[_kpi_scope_key(department_id, k.kpi_name)] = k.ytd_actual
+    out = []
+    for o in _active_q(db, company_id).filter(
+            MetricOverride.department_id == department_id).all():
+        if o.metric_ref not in live:
+            continue
+        computed_now = live[o.metric_ref]
+        try:
+            absorbed = (computed_now is not None and
+                        abs(float(computed_now) - float(o.override_value))
+                        <= ABSORB_TOLERANCE)
+        except (TypeError, ValueError):
+            absorbed = False
+        if absorbed:
+            out.append({
+                "override_id": o.id,
+                "metric": o.metric_label,
+                "adjusted_to": o.override_value,
+                "computed_at_override": o.computed_value_at_override,
+                "computed_now": computed_now,
+                "author": o.author_label,
+                "suggested_kind": "absorbed",
+                "prompt": (f"The source data now reads {computed_now} — this "
+                           f"adjustment appears absorbed. Retire it?"),
+            })
+    return out
+
+
+def retire_override(db, company_id, department_id, *, user, metric_ref,
+                    kind="absorbed", now=None):
+    """Retire an absorbed override. Supersedes with `absorbed`, distinguishing
+    it from a withdrawal — the CXO was right and the source caught up, which is
+    a different fact from the CXO retracting."""
+    if kind not in ("absorbed", "withdrawn"):
+        raise ValueError("kind must be 'absorbed' or 'withdrawn'.")
+    return withdraw_override(db, company_id, department_id, user=user,
+                             metric_ref=metric_ref, kind=kind, now=now)
 
 
 # ── the write path (§4x Stage 2, stage 3 of 4) ───────────────────────────────
