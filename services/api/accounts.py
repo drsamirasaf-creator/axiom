@@ -1444,7 +1444,19 @@ def require_company_member(company_id: int,
 def require_company_admin(company_id: int,
                           user: User = Depends(get_current_user),
                           db=Depends(get_db)) -> Membership:
-    """The single company admin (or platform staff). Viewers get 403."""
+    """ANY active admin of this company (or platform staff). Viewers get 403.
+
+    ⚠ THIS DOCSTRING SAID "the single company admin". THE CODE HAS NEVER
+    ENFORCED THAT. `ax_memberships` constrains only (user_id, company_id), so
+    several admin rows are legal, and this function checks the CALLER's own
+    membership — it is "any admin", and correct as such. Only the sentence was
+    wrong.
+
+    A stale comment asserting a constraint the code does not enforce is the same
+    false-model hazard as `_operator_bypass`: the next reader trusts it, builds
+    on it, and the assumption fails somewhere else. Corrected 28 Jul alongside
+    the `transfer_admin` fix, which is where the false singular actually bit.
+    """
     if getattr(user, "_token_scope", None):
         raise HTTPException(403, "View-only link cannot administer a company")
     if _operator_bypass_ok(db, user, company_id):
@@ -1802,6 +1814,10 @@ class ActivateIn(BaseModel):
 
 class TransferIn(BaseModel):
     user_id: int
+    # Which admin is being replaced. Optional so the single-admin case is
+    # unchanged; REQUIRED in effect when several admins exist, because the
+    # endpoint refuses to choose rather than demoting an arbitrary row.
+    from_user_id: int | None = None
 
 
 class CreateCompanyIn(BaseModel):
@@ -1813,6 +1829,11 @@ class CreateCompanyIn(BaseModel):
 
 
 def _active_admin(db, company_id: int):
+    """⚠ RETURNS AN ARBITRARY ADMIN when several exist — `.first()` over an
+    unordered query. Kept only for callers that genuinely want "is there any
+    admin". DO NOT use it to NOTIFY (use `_admin_emails`) or to MUTATE (name the
+    row): both were defects, fixed 28 Jul. Multiple admins are legal —
+    ax_memberships constrains only (user_id, company_id)."""
     return db.query(Membership).filter_by(company_id=company_id, role="admin",
                                           status="active").first()
 
@@ -6283,10 +6304,26 @@ def _leader_or_admin(company_id, iid, user, db):
                              "admin may update it")
 
 
+def _admin_emails(db, company_id):
+    """ALL active admins, not an arbitrary one. `_active_admin(...).first()`
+    silently addressed a single admin chosen by query order; with several
+    admins the others simply never heard. A notification that reaches one of
+    N administrators is not a notification, it is a lottery."""
+    rows = db.query(Membership).filter_by(company_id=company_id, role="admin",
+                                          status="active").all()
+    out = []
+    for m in rows:
+        u = db.get(User, m.user_id)
+        if u and u.email:
+            out.append(u.email)
+    return out
+
+
 def _admin_email(db, company_id):
-    m = _active_admin(db, company_id)
-    u = db.get(User, m.user_id) if m else None
-    return u.email if u else None
+    """Back-compat single address (first of _admin_emails). Prefer
+    _admin_emails for anything that NOTIFIES."""
+    emails = _admin_emails(db, company_id)
+    return emails[0] if emails else None
 
 
 def _notify_admin_alert(db, company_id, subject, line):
@@ -11211,12 +11248,12 @@ def join_with_cid(body: JoinIn, user: User = Depends(get_current_user),
                       role="viewer", status="pending"))
     audit(db, user.id, "join_requested", "company", access.company_id)
     db.commit()
-    admin = _active_admin(db, access.company_id)
-    if admin:
-        admin_user = db.get(User, admin.user_id)
-        if admin_user:
-            send_join_notice(admin_user.email, user.email,
-                                     f"company #{access.company_id}")
+    # Every active admin hears about a join request. `_active_admin(...).first()`
+    # told whichever row the query returned first; with several admins the rest
+    # never heard, and a request could sit unapproved while an admin who was
+    # never told wondered why nobody had asked.
+    for _addr in _admin_emails(db, access.company_id):
+        send_join_notice(_addr, user.email, f"company #{access.company_id}")
     return {"ok": True, "status": "pending",
             "message": "Request sent — the company administrator will approve "
                        "your view-only access"}
@@ -11346,11 +11383,42 @@ def rotate_cid(company_id: int, member=Depends(require_company_admin),
 def transfer_admin(company_id: int, body: TransferIn,
                    user: User = Depends(get_current_user), db=Depends(get_db)):
     """Current admin, or platform staff/super, may transfer the admin seat."""
-    current = _active_admin(db, company_id)
+    """⭐ DEMOTES THE NAMED ADMIN, NOT AN ARBITRARY ONE.
+
+    This read `current = _active_admin(db, company_id)` — a `.first()` over
+    active admins — and then `current.role = "viewer"`. With one admin those are
+    the same row. With several, it demoted whichever row the query happened to
+    return first and left the others in place: a silent, wrong mutation of who
+    administers a company.
+
+    Nothing prevents several admins — `ax_memberships` constrains only
+    (user_id, company_id), so multiple admin rows are legal today and the
+    ruling is flat admins with no tier. So the caller must NAME the admin being
+    replaced, and only that row moves.
+
+    `from_user_id` is optional for compatibility and for the single-admin case:
+    when omitted, the transfer is refused if more than one admin exists rather
+    than guessing. REFUSING TO GUESS IS THE POINT — the old code's failure was
+    not that it picked wrongly, but that it picked at all.
+    """
+    admins = db.query(Membership).filter_by(company_id=company_id, role="admin",
+                                            status="active").all()
     is_staff = user.platform_role in ("staff", "super")
-    if not is_staff and (not current or current.user_id != user.id):
+    if not is_staff and not any(a.user_id == user.id for a in admins):
         raise HTTPException(403, "Only the current administrator or AXIOM staff "
                                  "may transfer the admin seat")
+    from_id = getattr(body, "from_user_id", None)
+    if from_id is None:
+        if len(admins) > 1:
+            raise HTTPException(409, "This company has multiple administrators. "
+                                     "Name which one is being replaced "
+                                     "(from_user_id); refusing to choose.")
+        current = admins[0] if admins else None
+    else:
+        current = next((a for a in admins if a.user_id == from_id), None)
+        if current is None:
+            raise HTTPException(404, f"User {from_id} is not an active "
+                                     f"administrator of this company")
     target_user = db.get(User, body.user_id)
     if not target_user:
         raise HTTPException(404, "Target user not found")

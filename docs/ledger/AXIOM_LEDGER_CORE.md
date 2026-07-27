@@ -2907,6 +2907,64 @@ scoped. A refused POST creates nothing — but if the reading of the guard is
 wrong it creates a grant, and "probably refuses" is not a basis for a production
 write.
 
+## §7.18 THE ADMIN MODEL — RULED 28 Jul
+
+### 7.18a FLAT ADMINS. SEVERAL PERMITTED. NO TIER.
+
+**A company may have any number of admins, all equal.** No primary/secondary,
+no owner-admin vs ordinary-admin.
+
+⭐ **THE REASON IS THE RULING'S OWN DISCIPLINE: A TIER NEEDS A DISTINGUISHING
+RULE, AND EVERY VERSION OF THAT RULE IS POLICY INVENTED UNDER A FREEZE.** Who
+outranks whom, who may demote whom, what happens when the senior one leaves —
+each is a product decision, none is in the designed backlog, and inventing one
+mid-build is exactly what the freeze exists to prevent.
+
+The schema already permits it: `ax_memberships` constrains only
+(user_id, company_id). Nothing had to change to allow several admins; what had
+to change was the code that assumed one.
+
+### 7.18b ONE ACCOUNT OWNER, DISTINCT FROM ADMIN
+
+`Account.owner_user_id` — *"One paying customer (the purchasing CFO). Mirrors
+Stripe."* It carries **billing, EID transfer, and cancellation**. It is NOT the
+same field as `Membership.role == "admin"`, and it is not plural.
+
+**Owner and admin coincide at activation and may diverge afterwards, BY
+DESIGN.** `/access/activate` requires the caller to own an Account and makes
+them the first admin — so at birth they are the same person. Nothing keeps them
+in step after that, and nothing should: the person who pays and the person who
+administers are different roles that a real company routinely separates.
+
+### 7.18c THE `.first()` DEFECTS — FIXED, WITH THE MUTATION ONE PROVEN
+
+| site | was | now |
+| --- | --- | --- |
+| `transfer_admin` | `_active_admin(...).first()` then `current.role = "viewer"` — **demoted an arbitrary admin** | demotes the **named** admin (`from_user_id`); refuses **409** rather than choosing when several exist and none is named |
+| join-request notice | told one arbitrary admin | tells **every** active admin |
+| `_admin_email` | one arbitrary admin | `_admin_emails` returns all; the singular helper is kept only for "is there any admin" and documented as arbitrary |
+
+⭐ **REFUSING TO GUESS IS THE POINT.** The old code's failure was not that it
+picked wrongly — it was that it picked at all.
+
+**Proven behaviourally** (`tests/unit/test_transfer_admin_multi.py`, 3 tests):
+the named row moves, the other admin is untouched, an unnamed transfer with two
+admins returns 409 and mutates nothing, and naming a non-admin 404s.
+
+⚠ **AND THE FIRST VERSION OF THAT TEST WAS NOT LOAD-BEARING.** It named `a1`,
+which `.first()` happened to return, so it **passed against the defective
+code**. Rewritten to name `a2` — the admin `.first()` would *not* have picked —
+after which all three fail on the old code and pass on the new. **A test the
+defect can satisfy by luck is not a test of the defect**, and query-order luck is
+precisely what was being tested.
+
+### 7.18d `require_company_admin`'s DOCSTRING SAID "the single company admin"
+
+The code has never enforced that — it checks the caller's own membership, which
+is "any admin", and is correct. **Only the sentence was wrong.** Corrected. A
+stale comment asserting a constraint the code does not enforce is the same
+false-model hazard as `_operator_bypass`.
+
 ## §7.17 ⭐ THE SHADOWED-ROUTE CLASS — CODE WRITTEN, CORRECT, AND NEVER SERVED
 
 **A path declared twice. FastAPI resolves to the first registration; the second
