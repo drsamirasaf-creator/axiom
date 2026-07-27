@@ -12046,6 +12046,10 @@ def include_accounts(app, create_tables: bool = True):
         _backfill_owner_persons()      # §16.2: resolve owner→head person for existing objectives
         _rekey_departments()           # Foundation Lane 1: sha1(name) -> real stable id
         _run_kpi_key_backfill()        # §4m step 1: stable identity for KPIs
+        # §4x Stage 1b: create_all never ALTERs, so the Stage 1 table would keep
+        # its non-binding UniqueConstraint on an already-deployed database.
+        # Refuses loudly rather than dropping if any row exists.
+        _overrides_model.ensure_override_schema(engine)
     for r in (auth_router, oauth_router, company_router, profile_router,
               superadmin_router, stripe_router, prescience_router, decision_router,
               sentinel_router, document_router, forecast_router, planning_router,

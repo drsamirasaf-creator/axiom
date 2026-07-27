@@ -36,8 +36,10 @@ Persistence rides accounts.py's Base/engine (ax_* tables, auto-created by
 """
 from datetime import datetime
 
-from sqlalchemy import (Column, DateTime, Index, Integer, JSON, String, Text,
-                        UniqueConstraint)
+import re
+
+from sqlalchemy import (CheckConstraint, Column, DateTime, Index, Integer, JSON,
+                        String, Text, text)
 
 from .accounts import Base, Department, Membership
 
@@ -55,7 +57,50 @@ REASON_LABEL = {
     "other": "other",
 }
 
-TARGET_SCOPES = ("enterprise", "department")
+# ── target scopes — ONLY what the resolver actually covers (Stage 1b item 3) ──
+# `enterprise` was representable and UNRESOLVED. Determined empirically:
+# resolve_many() has exactly one call site, _serialize_kpis, whose refs are built
+# by _kpi_scope_key(department_id, name). No enterprise surface — kpi_strip,
+# CEI, valuation — passes through the resolver at all. An enterprise-scope row
+# was therefore storable, would satisfy every NOT NULL constraint, and would
+# change nothing on any screen: an override the author believes is in force and
+# that silently is not. That is the same leak as a bare figure, at a
+# higher-visibility surface, so the scope is REMOVED until its read path exists.
+TARGET_SCOPES = ("department",)
+
+# ── metric_ref whitelist (Stage 1b item 2) — LOAD-BEARING, not precautionary ──
+# The resolver covers department KPIs and nothing else. `kpi_strip` financial
+# KPIs DO reach reports, PDF and Ask AXIOM as rendered numbers, and they do NOT
+# pass through the resolver — so an override targeting one of them would render
+# a bare adjusted figure in a board PDF. The export disclosure section is not
+# cover for that: it discloses that SOME figure was adjusted, while the figure
+# itself is printed elsewhere on the page with no marker.
+#
+# Fail closed: a ref that does not match a covered kind is refused at BOTH the
+# schema (CheckConstraint below) and the write path (validate_new).
+METRIC_KINDS = {
+    # Department KPI. Exactly the shape _kpi_scope_key emits:
+    # "{department_id}|{normalised name}", with 0 as the null-department sentinel.
+    "dept_kpi": re.compile(r"^\d+\|.+$"),
+}
+# SQL-side form of the same rule. Deliberately simple and PORTABLE (SQLite and
+# Postgres both honour LIKE): the schema check is the backstop against a direct
+# INSERT, not the full validation. A dialect-specific GLOB would silently become
+# a no-op on the other engine, which is the worst outcome for a fail-closed
+# guard — present in the DDL, enforcing nothing.
+_METRIC_REF_SQL_CHECK = "metric_ref LIKE '%|%'"
+
+
+def metric_kind(metric_ref: str) -> str | None:
+    """Which resolver-covered kind this ref is, or None if it is not covered."""
+    for kind, pat in METRIC_KINDS.items():
+        if pat.match(metric_ref or ""):
+            return kind
+    return None
+
+
+def is_resolver_covered(metric_ref: str) -> bool:
+    return metric_kind(metric_ref) is not None
 
 
 class MetricOverride(Base):
@@ -69,13 +114,43 @@ class MetricOverride(Base):
     """
     __tablename__ = "ax_metric_overrides"
     __table_args__ = (
-        # At most ONE active override per metric. Supersession sets
-        # superseded_at, which releases the slot for the replacement row — so
-        # history accumulates without ever allowing two live assertions about
-        # the same number.
-        UniqueConstraint("company_id", "metric_ref", "superseded_at",
-                         name="uq_active_metric_override"),
+        # ── AT MOST ONE ACTIVE OVERRIDE PER METRIC (Stage 1b items 1 + 2) ─────
+        # This was a UniqueConstraint(company_id, metric_ref, superseded_at) and
+        # it enforced NOTHING on the rows that matter. SQL treats NULLs as
+        # distinct, so every active row (superseded_at IS NULL) inserted
+        # cleanly; two consecutive INSERTs on one metric_ref both committed and
+        # the active count came back 2. The resolver's .first() would then pick
+        # arbitrarily between two contradictory live assertions about the same
+        # board figure.
+        #
+        # THE SAME TRAP _kpi_scope_key ALREADY DEFENDS AGAINST with its literal
+        # 0 sentinel for a null department_id — known, written down in this
+        # codebase, and reintroduced one table later. Rule, generally: any
+        # uniqueness key containing a nullable column is wrong by default.
+        #
+        # A PARTIAL UNIQUE INDEX fixes it properly: the predicate restricts the
+        # index to active rows, so supersession still releases the slot and
+        # history still accumulates, but two live assertions cannot coexist.
+        # department_id is in the key (item 2) so two departments cannot collide
+        # or resolve ambiguously on the same metric_ref, and target_scope is
+        # there so a future scope cannot silently share a slot with this one.
+        Index("uq_active_metric_override",
+              "company_id", "target_scope", "department_id", "metric_ref",
+              unique=True,
+              sqlite_where=text("superseded_at IS NULL"),
+              postgresql_where=text("superseded_at IS NULL")),
         Index("ix_override_lookup", "company_id", "superseded_at"),
+        # ── fail-closed schema backstops ─────────────────────────────────────
+        # These bind a DIRECT INSERT, which is the whole point: validate_new()
+        # protects the write path, and the write path is not the only way rows
+        # arrive (a migration, a console session, a future importer).
+        CheckConstraint(_METRIC_REF_SQL_CHECK, name="ck_override_metric_ref_shape"),
+        CheckConstraint("target_scope = 'department'", name="ck_override_scope"),
+        # department_id is nullable in the column definition only because the
+        # enterprise scope once existed. With that scope removed there is no
+        # legitimate NULL, and a NULL here would also re-open the uniqueness
+        # hole above by making the index key non-comparable.
+        CheckConstraint("department_id IS NOT NULL", name="ck_override_has_department"),
     )
     id = Column(Integer, primary_key=True)
     company_id = Column(Integer, index=True, nullable=False)
@@ -115,6 +190,40 @@ class MetricOverride(Base):
     # CXO retracted it). A withdrawn override still exists in the trail — "this
     # was adjusted and then un-adjusted" is itself board-relevant.
     supersession_kind = Column(String(16), nullable=True)      # superseded | withdrawn
+
+
+def ensure_override_schema(engine):
+    """Rebuild ax_metric_overrides if it predates the partial unique index.
+
+    create_all() never ALTERs an existing table, so the Stage 1 DDL — carrying
+    the non-binding UniqueConstraint and no CheckConstraints — would survive
+    unchanged on an already-deployed database. The guard that matters would then
+    exist in the model and not in the database.
+
+    REBUILD, NOT PATCH, and only when the table is EMPTY. A destructive path is
+    acceptable here for exactly one reason, which is checked rather than
+    assumed: Stage 1 shipped no write endpoint, so there is no way rows could
+    exist. If any row is present the rebuild is REFUSED and the condition is
+    raised — better a loud failure at boot than a silent drop of the one table
+    whose entire purpose is being an immutable audit trail.
+    """
+    from sqlalchemy import inspect as _inspect
+    insp = _inspect(engine)
+    if not insp.has_table("ax_metric_overrides"):
+        return {"action": "none", "reason": "table does not exist yet"}
+    idx = {i["name"] for i in insp.get_indexes("ax_metric_overrides")}
+    if "uq_active_metric_override" in idx:
+        return {"action": "none", "reason": "partial index already present"}
+    with engine.begin() as conn:
+        n = conn.exec_driver_sql("SELECT COUNT(*) FROM ax_metric_overrides").scalar()
+        if n:
+            raise RuntimeError(
+                f"ax_metric_overrides holds {n} row(s) but predates the partial "
+                f"unique index. Refusing to rebuild: this table is an immutable "
+                f"audit trail and must be migrated deliberately, not dropped.")
+        conn.exec_driver_sql("DROP TABLE ax_metric_overrides")
+    MetricOverride.__table__.create(engine)
+    return {"action": "rebuilt", "rows_preserved": 0}
 
 
 # ── the read path ────────────────────────────────────────────────────────────
@@ -284,28 +393,35 @@ def can_author(db, company_id: int, user, target_scope: str, department_id: int 
             "Platform staff cannot author a customer's override — the figure "
             "must be the executive's own.")
     if target_scope not in TARGET_SCOPES:
-        raise AuthorityError(f"Unknown target scope {target_scope!r}.")
-    if target_scope == "department":
-        if department_id is None:
-            raise AuthorityError("A department-scope override needs a department.")
-        dep = db.get(Department, department_id)
-        if dep is None or dep.company_id != company_id:
-            raise AuthorityError("That department does not belong to this company.")
-        if not department_authority(db, company_id, user.id, department_id):
-            raise AuthorityError(
-                f"Not authorised to override {dep.name}'s figures. Department "
-                f"overrides may be authored only by that department's CXO.")
-        return True
-    # Enterprise scope: reserved for the CEO/CFO grant in Stage 2. Fails closed
-    # for now rather than defaulting to "any admin", which would be the exact
-    # hole rule 2 exists to close.
-    raise AuthorityError("Enterprise-scope overrides are not yet delegable.")
+        # `enterprise` lands here now (Stage 1b item 3). It is refused for a
+        # reason worth stating in the error rather than a bare "unknown scope":
+        # nothing on an enterprise surface passes through the resolver, so such
+        # an override would store cleanly, satisfy every NOT NULL column, be
+        # believed in force by its author, and change nothing anyone can see.
+        raise AuthorityError(
+            f"Unsupported target scope {target_scope!r}; only {TARGET_SCOPES} "
+            f"have a read path that resolves.")
+    if department_id is None:
+        raise AuthorityError("A department-scope override needs a department.")
+    dep = db.get(Department, department_id)
+    if dep is None or dep.company_id != company_id:
+        raise AuthorityError("That department does not belong to this company.")
+    if not department_authority(db, company_id, user.id, department_id):
+        raise AuthorityError(
+            f"Not authorised to override {dep.name}'s figures. Department "
+            f"overrides may be authored only by that department's CXO.")
+    return True
 
 
-def validate_new(*, override_value, computed_value, reason_category, author_label):
-    """What the DB constraints cannot express: category membership, and that a
-    label is more than whitespace. Called by the Stage 2 write path; defined
-    here so the rule lives with the model it protects."""
+def validate_new(*, override_value, computed_value, reason_category, author_label,
+                 metric_ref=None, target_scope="department", department_id=None):
+    """What the DB constraints cannot express in full: category membership, a
+    non-whitespace label, and — the load-bearing one — that the metric is
+    actually covered by the resolver.
+
+    Called by the Stage 2 write path. Defined here so the rule lives with the
+    model it protects rather than in the endpoint that happens to call it first.
+    """
     if override_value is None:
         raise ValueError("override_value is required — an override with no value is not one.")
     if computed_value is None:
@@ -316,6 +432,23 @@ def validate_new(*, override_value, computed_value, reason_category, author_labe
         raise ValueError(f"reason_category must be one of {REASON_CATEGORIES}.")
     if not (author_label or "").strip():
         raise ValueError("author_label is required — an override cannot be anonymous.")
+    if target_scope not in TARGET_SCOPES:
+        raise ValueError(
+            f"target_scope must be one of {TARGET_SCOPES}. `enterprise` is not "
+            f"accepted: no enterprise surface passes through the resolver, so "
+            f"such an override would be stored, believed to be in force, and "
+            f"change nothing on any screen.")
+    if department_id is None:
+        raise ValueError("department_id is required — every override is department-scoped.")
+    # THE WHITELIST. Refusing here is what prevents an override on a kpi_strip
+    # metric, which would render as a bare adjusted figure in a board PDF
+    # because that family never passes through the resolver.
+    if not is_resolver_covered(metric_ref or ""):
+        raise ValueError(
+            f"metric_ref {metric_ref!r} is not a resolver-covered metric. Only "
+            f"department KPIs resolve today; overriding anything else would "
+            f"produce an adjusted figure with no provenance marker on the "
+            f"surfaces that render it.")
     return True
 
 

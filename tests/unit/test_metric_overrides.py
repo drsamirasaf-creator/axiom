@@ -108,21 +108,24 @@ def test_reason_note_is_optional_but_the_category_is_not(_app):
 
 def test_validate_new_rejects_every_missing_piece(_app):
     ok = dict(override_value=1, computed_value=2, reason_category="private_info",
-              author_label="CFO — X")
+              author_label="CFO — X", metric_ref="13|ebitda margin %",
+              department_id=13)
     assert validate_new(**ok)
     for bad in ({"override_value": None}, {"computed_value": None},
-                {"reason_category": "nonsense"}, {"author_label": "  "}):
+                {"reason_category": "nonsense"}, {"author_label": "  "},
+                {"metric_ref": "diagnostic.kpi.revenue_growth"},
+                {"department_id": None}):
         with pytest.raises(ValueError):
             validate_new(**{**ok, **bad})
 
 
-def test_only_one_active_override_per_metric(_app):
-    """Two live assertions about one number is a contradiction the UI would have
-    to resolve arbitrarily. Supersession releases the slot; history accumulates."""
-    uq = [c for c in MetricOverride.__table__.constraints
-          if getattr(c, "name", "") == "uq_active_metric_override"]
-    assert uq, "the active-override uniqueness constraint is missing"
-    assert {c.name for c in uq[0].columns} == {"company_id", "metric_ref", "superseded_at"}
+# NOTE: the original version of this test asserted the presence of
+# UniqueConstraint(company_id, metric_ref, superseded_at) and PASSED against a
+# constraint that enforced nothing — it checked that the constraint existed, not
+# that it bound anything. Superseded by
+# test_active_uniqueness_is_a_partial_index_not_a_plain_constraint below, which
+# asserts the predicate. Kept as a comment because "the test passed" was part of
+# how the defect survived review.
 
 
 def test_the_model_has_no_update_path_only_supersession(_app):
@@ -164,11 +167,13 @@ def test_a_department_override_requires_a_department(_app):
         can_author(None, 20, user, "department", None)
 
 
-def test_enterprise_scope_is_not_yet_delegable(_app):
-    """Rather than defaulting to 'any admin', which is the hole the
-    admin-cannot-author rule exists to close."""
+def test_enterprise_scope_is_refused_because_it_does_not_resolve(_app):
+    """Stage 1b item 3. Determined empirically: resolve_many has exactly one
+    call site, _serialize_kpis, and no enterprise surface passes through it. An
+    enterprise-scope override would store cleanly, satisfy every NOT NULL
+    column, be believed in force by its author, and change nothing on screen."""
     user = type("U", (), {"id": 7, "is_staff": False})
-    with pytest.raises(AuthorityError, match="not yet delegable"):
+    with pytest.raises(AuthorityError, match="Unsupported target scope"):
         can_author(None, 20, user, "enterprise", None)
 
 
@@ -282,9 +287,142 @@ def test_reason_categories_match_the_spec(_app):
                                       "private_info", "other"}
 
 
-def test_stage_1_exposes_no_write_endpoint(_app):
-    """The write path is Stage 2, after review. A router shipped early is a
-    write path nobody agreed to."""
+def test_no_write_endpoint_resolves_to_an_override_path(_app):
+    """Stage 1b item 5. This WAS a grep over overrides.py, which said nothing
+    about a write path added anywhere else — accounts.py, a new module, a
+    router mounted later. Assert against the app\'s ACTUAL route table
+    instead, which is the only thing that can answer the question being asked.
+    """
+    from services.api.main import app as _app_obj
+    offenders = []
+    for r in _app_obj.routes:
+        path = getattr(r, "path", "") or ""
+        methods = getattr(r, "methods", set()) or set()
+        if not ({"POST", "PATCH", "PUT", "DELETE"} & set(methods)):
+            continue
+        endpoint = getattr(r, "endpoint", None)
+        mod = getattr(endpoint, "__module__", "") or ""
+        name = getattr(endpoint, "__name__", "") or ""
+        if ("override" in path.lower() or mod.endswith(".overrides")
+                or "override" in name.lower()):
+            offenders.append(f"{sorted(methods)} {path} -> {mod}.{name}")
+    assert not offenders, (
+        "a write path to overrides exists before Stage 2 authority "
+        f"enforcement: {offenders}")
+
+
+def test_the_route_assertion_would_actually_catch_one(_app):
+    """A negative assertion that can never fail is not a test. This proves the
+    detector fires by building a route of the shape it is meant to catch."""
+    from fastapi import FastAPI
+    probe = FastAPI()
+
+    @probe.post("/companies/{cid}/metric-overrides")
+    def _create_override(cid: int):
+        return {}
+
+    hits = [r for r in probe.routes
+            if "override" in (getattr(r, "path", "") or "").lower()
+            and ({"POST", "PATCH", "PUT", "DELETE"} & set(getattr(r, "methods", set()) or set()))]
+    assert hits, "the detector missed a route it must catch"
+
+
+# ── Stage 1b items 1 + 2: the constraint that actually binds ─────────────────
+
+def test_active_uniqueness_is_a_partial_index_not_a_plain_constraint(_app):
+    """ITEM 1. The old UniqueConstraint(company_id, metric_ref, superseded_at)
+    enforced nothing on the rows that matter: SQL treats NULLs as distinct, so
+    every active row inserted cleanly. Two consecutive INSERTs on one metric_ref
+    both committed and the active count came back 2 — verified empirically
+    before this fix, not merely suspected."""
+    idx = {i.name: i for i in MetricOverride.__table__.indexes}
+    assert "uq_active_metric_override" in idx, "the partial unique index is missing"
+    ix = idx["uq_active_metric_override"]
+    assert ix.unique is True
+    where = ix.dialect_options.get("sqlite", {}).get("where")
+    assert where is not None, "no partial predicate: the index would bind superseded rows too"
+    assert "superseded_at IS NULL" in str(where)
+    # And the dead constraint must be gone, not merely supplemented.
+    from sqlalchemy import UniqueConstraint
+    names = {getattr(c, "name", "") for c in MetricOverride.__table__.constraints
+             if isinstance(c, UniqueConstraint)}
+    assert "uq_active_metric_override" not in names, \
+        "the non-binding UniqueConstraint is still present"
+
+
+def test_the_index_key_includes_scope_and_department(_app):
+    """ITEM 2. Without department_id in the key, two departments overriding the
+    same metric_ref collide or resolve ambiguously."""
+    ix = {i.name: i for i in MetricOverride.__table__.indexes}["uq_active_metric_override"]
+    assert [c.name for c in ix.columns] == [
+        "company_id", "target_scope", "department_id", "metric_ref"]
+
+
+def test_schema_backstops_bind_a_direct_insert(_app):
+    """validate_new guards the write path, and the write path is not the only
+    way rows arrive — a migration, a console session, a future importer."""
+    from sqlalchemy import CheckConstraint
+    checks = {c.name for c in MetricOverride.__table__.constraints
+              if isinstance(c, CheckConstraint)}
+    assert {"ck_override_metric_ref_shape", "ck_override_scope",
+            "ck_override_has_department"} <= checks
+
+
+def test_the_sql_check_is_portable_across_both_engines(_app):
+    """A dialect-specific predicate silently becomes a no-op on the other
+    engine — present in the DDL, enforcing nothing, which is the worst possible
+    state for a fail-closed guard."""
+    assert "GLOB" not in ov._METRIC_REF_SQL_CHECK
+    assert "LIKE" in ov._METRIC_REF_SQL_CHECK
+
+
+# ── Stage 1b item 2: the whitelist ───────────────────────────────────────────
+
+def test_only_department_kpis_are_resolver_covered(_app):
+    assert ov.is_resolver_covered("13|ebitda margin %") is True
+    assert ov.metric_kind("13|ebitda margin %") == "dept_kpi"
+    assert ov.is_resolver_covered("0|unassigned kpi") is True, "0 is the null-dept sentinel"
+
+
+def test_a_kpi_strip_metric_is_refused(_app):
+    """LOAD-BEARING, not precautionary. kpi_strip financial KPIs DO reach
+    reports, PDF and Ask AXIOM as rendered numbers and do NOT pass through the
+    resolver — so an override on one renders a bare adjusted figure in a board
+    PDF. The export disclosure is not cover: it says SOME figure was adjusted
+    while the figure itself is printed elsewhere with no marker."""
+    for ref in ("diagnostic.kpi.revenue_growth", "summary.health_index",
+                "ebitda_margin", "", "no-pipe-here"):
+        assert ov.is_resolver_covered(ref) is False, ref
+        with pytest.raises(ValueError, match="not a resolver-covered metric"):
+            validate_new(override_value=1, computed_value=2,
+                         reason_category="private_info", author_label="CFO — X",
+                         metric_ref=ref, department_id=13)
+
+
+def test_write_path_refuses_the_unresolved_enterprise_scope(_app):
+    with pytest.raises(ValueError, match="target_scope must be one of"):
+        validate_new(override_value=1, computed_value=2,
+                     reason_category="private_info", author_label="CFO — X",
+                     metric_ref="13|x", target_scope="enterprise", department_id=None)
+
+
+def test_write_path_requires_a_department(_app):
+    with pytest.raises(ValueError, match="department_id is required"):
+        validate_new(override_value=1, computed_value=2,
+                     reason_category="private_info", author_label="CFO — X",
+                     metric_ref="13|x", department_id=None)
+
+
+def test_enterprise_is_no_longer_a_representable_scope(_app):
+    """ITEM 3. Representable-but-unresolved is the same leak at a
+    higher-visibility surface."""
+    assert ov.TARGET_SCOPES == ("department",)
+
+
+def test_the_rebuild_refuses_rather_than_dropping_a_populated_table(_app):
+    """The one destructive path in this module. Acceptable only because Stage 1
+    shipped no write endpoint — and that is CHECKED, not assumed."""
     import inspect
-    src = inspect.getsource(ov)
-    assert "APIRouter" not in src and "@router" not in src
+    src = inspect.getsource(ov.ensure_override_schema)
+    assert "SELECT COUNT(*)" in src
+    assert "Refusing to rebuild" in src
