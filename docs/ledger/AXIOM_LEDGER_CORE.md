@@ -2810,6 +2810,43 @@ That would make it the second *preventing* guard alongside
 `check-single-dataset-owner.mjs`, which is the only guard in this sequence that
 prevents rather than detects.
 
+### 7.15p ⭐ A GUARD THAT NAMED A CAUSE IT HAD NOT ESTABLISHED (27 Jul)
+
+The crawler's sanity gate reported:
+
+```
+[sanity gate] ABORT — Authorization was NEVER sent (token not primed / app ignored it)
+```
+
+**Both named causes were false.** The token was in `localStorage` exactly as
+primed, and the app had not ignored anything — **it had never run.** The
+frontend host was refusing HTTP/2 streams, the JS chunks never loaded, and the
+page made **zero backend calls of any kind**. Measured: `calls WITH auth: 0`,
+`calls WITHOUT auth: 0`, `body length: 900`, console full of
+`ERR_HTTP2_SERVER_REFUSED_STREAM`.
+
+The gate observed **"no authed call"** and reported **"the token was not primed
+or was ignored"** — a cause it had no evidence for, and one that sends the
+reader to debug a credential that was fine.
+
+⭐ **THE RULE: A GUARD MAY REPORT ONLY WHAT IT HAS OBSERVED.** Absence of a
+signal is not evidence of a mechanism. Where several conditions produce the same
+absence, the guard must either distinguish them or say it cannot.
+
+**Three states, now distinguished and each PROVEN BEHAVIOURALLY by forcing it:**
+
+| forced condition | gate reports |
+| --- | --- |
+| chunks blocked — app never runs | `NO BACKEND CALLS AT ALL — the app never ran … HOST/BUNDLE failure, not an auth failure` |
+| app runs, no token primed | `requests fired but NONE carried Authorization … priming/app failure` |
+| app runs, token primed | PASS — `identity 2xx: /access/my-companies` |
+
+This is the same class as the earlier instrument findings — the gate graded
+something adjacent to its claim — but with a distinct edge worth keeping:
+**it did not merely fail to detect, it actively misdirected.** A silent gap
+wastes a run; a confidently wrong cause wastes a diagnosis. The 27 Jul run cost
+five operator aborts read as an auth regression before the host was suspected.
+
 ### 7.15f THE FIX AS SHIPPED (27 Jul)
 
 Client-side only. **No server change, no ADR amendment** — the server was doing
