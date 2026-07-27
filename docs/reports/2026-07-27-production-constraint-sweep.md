@@ -106,8 +106,47 @@ a test.
 
 ---
 
-## Status
+## Status — Stage 1b closed except item 6
 
-Item 6 is unblocked on the schema side. Remaining dependency: a fresh admin
-token, for populating company 38 through the application code path and for the
-operator crawler baseline.
+| Item | State |
+|---|---|
+| 1 — partial unique index | **Complete**, verified behaviourally in production |
+| 2 — scope in key + `metric_ref` whitelist | **Complete**, verified behaviourally |
+| 3 — enterprise scope | **Complete** — removed; verified refused in production |
+| 4 — reason-category ruling | **Complete** — `private_info` removed; verified refused |
+| 5 — route-table assertion | **Complete**, with a test proving the detector fires |
+| 6 — production surface proof | **DEFERRED, not cancelled** |
+
+## Item 6 — deferred and re-gated
+
+Blocked on an admin token. Steps 2–5 not attempted; **no direct-`INSERT`
+workaround was used**, per instruction — a hand-written row can make verification
+pass for the wrong reason, which on this feature would be worse than no
+verification.
+
+**Re-gated: item 6 must complete before Stage 2 SHIPS TO A CUSTOMER, not before
+Stage 2 is built.** The schema is now certified behaviourally against production,
+which is what makes building safe; what remains unproven is the rendered
+behaviour of an override across live surfaces, which is what makes shipping safe.
+
+### What the deferral leaves open
+
+1. **The `FinancialDataset`-on-`core.db.Base` fixture caveat is UNCLOSED.**
+   Closing it was item 6's other purpose, distinct from the surface proof. The
+   travel proof stubs `_active_company_dataset` because `FinancialDataset` sits
+   on a different engine bind. That seam produced the last eight bugs; a stub
+   across it is where a ninth would live. **No amount of unit testing closes
+   this** — only a run against a real dataset row does.
+2. **No production surface proof.** Proven: value+provenance as one object on the
+   department card/drill-down, and a disclosure block reaching exports — against
+   a local database. Not proven: a rendered number on a live PDF or a live Ask
+   AXIOM answer carrying its marker.
+3. **No before/after crawler diff.** Silent-empty is the primary failure mode and
+   sidebar-presence assertions are what catch it. The operator crawl aborted on
+   its own sanity gate (expired token), leaving no operator baseline.
+
+### Target, confirmed for when the token arrives
+
+Populate **company 38, "AXIOM Test Fixture Co"** — existing, non-showcase, not
+Meridian, 0 departments and 0 KPIs — through the application code path. Restore
+to 0/0 in Step 5. No fresh company; no direct `INSERT`.

@@ -33,10 +33,41 @@ genuinely shipped and verified.
 ## IMMEDIATE STATE
 
 **CXO Override & Sign-off (#3) — Stage 1 BUILT (638bd3a model+read path, 5932c41
-proof) and REVIEWED 27 Jul (PASS ON INTENT, NOT CERTIFIED). STAGE 1b ITEMS 1–5
-COMPLETE (7969f48 items 1/2/3/5; 3f7ac0e item 4 + rulings). 455 passed, exit 0.
-ITEM 6 — production proof on a throwaway company — IS THE ONLY REMAINING GATE on
-Stage 2 (write UI + sign-off button).**
+proof) and REVIEWED 27 Jul (PASS ON INTENT, NOT CERTIFIED). ⭐ STAGE 1b ITEMS 1–5
+COMPLETE (7969f48 items 1/2/3/5 · 5708729 item 4 + rulings · c40269e production
+constraint sweep). 455 passed, exit 0.**
+
+**⭐ ITEM 6 — DEFERRED, NOT CANCELLED. RE-GATED.** The production surface proof
+on a throwaway company is outstanding, blocked on an admin token. It no longer
+gates Stage 2 being BUILT; **it gates Stage 2 SHIPPING TO A CUSTOMER.** The
+distinction is deliberate: the schema is now certified behaviourally against
+production (c40269e), which is what made building safe; what remains unproven is
+the RENDERED behaviour of an override across live surfaces, which is what makes
+*shipping* safe.
+
+**⚠ WHAT THE DEFERRAL LEAVES OPEN — recorded so it is not lost with the item.**
+
+1. **The `FinancialDataset`-on-`core.db.Base` fixture caveat is UNCLOSED.**
+   Closing it was item 6's *other* purpose, separate from the surface proof. The
+   Stage 1 travel proof stubs `_active_company_dataset` because
+   `FinancialDataset` sits on a different engine bind and cannot be created
+   through the accounts session. That accounts-world/legacy-identity seam
+   produced the last eight bugs; a stub across it is exactly where a ninth would
+   live. **No amount of unit testing closes this** — only a run against a real
+   dataset row does.
+2. **No production surface proof.** Proven so far: value+provenance as ONE
+   OBJECT on the department card/drill-down, and a disclosure block reaching
+   exports — both against a local database. NOT proven: that a rendered number
+   on a live PDF or a live Ask AXIOM answer carries its marker.
+3. **No before/after crawler diff.** Silent-empty is the primary failure mode and
+   the sidebar-presence assertions are what catch it. The operator crawl ABORTED
+   this session on its own sanity gate (expired `OPERATOR_TOKEN`) — the gate
+   working correctly, refusing to report a silently-anonymous run as
+   authenticated, but leaving no operator baseline.
+
+**CONSEQUENCE: Stage 2 may be built. Stage 2 must not reach a customer until
+item 6 completes.** Anyone picking this up must treat item 6 as a release gate,
+not a backlog item.
 
 **Stage 1b outcomes:** (1) partial unique index — defect confirmed empirically
 first, fix verified by re-running the failing test. (2) index key now carries
@@ -1299,7 +1330,13 @@ fires. The whole loop closes on machinery that already exists. PENDING USER LOCK
    `overrides.py` contains no router. That is a grep, not a guarantee — it says
    nothing about a write path added elsewhere. Assert against the app's actual
    route table: no POST/PATCH/DELETE resolving to an override path.
-6. **Production proof on a THROWAWAY COMPANY — NOT MERIDIAN.** Anonymous visitors
+6. **[DEFERRED 27 Jul — blocked on an admin token. RE-GATED: must complete
+   before Stage 2 SHIPS TO A CUSTOMER, not before Stage 2 is built. Leaves the
+   FinancialDataset fixture caveat UNCLOSED — see IMMEDIATE STATE. Target
+   confirmed: populate company 38 "AXIOM Test Fixture Co" (existing, non-
+   showcase, 0 departments / 0 KPIs) through the application code path — do NOT
+   create a fresh company and do NOT direct-INSERT; restore it to 0/0
+   afterwards.]** **Production proof on a THROWAWAY COMPANY — NOT MERIDIAN.** Anonymous visitors
    land directly in Meridian; a test override in the flagship violates the
    few-or-zero rule in front of live traffic. Run as a one-off script in the
    Railway environment using the existing backend session. Insert → verify all
