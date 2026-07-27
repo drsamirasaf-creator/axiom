@@ -217,6 +217,38 @@ Found by mounting five read endpoints and noticing they never appeared in the
 list the guard walks, though the app answered them. **Not by review** — the guard
 had been read twice and looked correct both times.
 
+**⭐⭐ THE CASE THAT PROVES SERVED-BUNDLE-IS-TRUTH (27 Jul). A SERVED BUNDLE CAN
+LAG `origin/main` SILENTLY WHILE LOVABLE REPORTS UP TO DATE.**
+
+A Publish landed **2 of 3 commits**. `544aa1c` and `259471a` were served;
+`f165d10` was not — and **Lovable showed the Publish button disabled with nothing
+pending.** No error surfaced anywhere. GitHub had the commit, Lovable believed it
+was current, and the live app was one commit behind.
+
+**VERIFICATION STOPPING AT "THE COMMIT IS PUSHED" WOULD HAVE RECORDED THE
+AFFORDANCE FIX AS SHIPPED WHEN IT WAS NOT.** Every ordinary check passed:
+committed, pushed, `ls-remote` confirming it as the branch tip, clean tree, zero
+commits ahead. The only thing that caught it was grepping the SERVED artifact for
+a string the fix introduces.
+
+**THIS IS WHY THE RULE IS "SERVED BUNDLE IS TRUTH" AND NOT "PUSHED IS TRUTH".**
+Until today the rule had been treated as guarding against forgetting to publish.
+It also guards against a publish that silently partially succeeds — a failure
+mode with no error, no warning, and a tool actively reporting success.
+
+**HOW THE SERVED COMMIT WAS IDENTIFIED**, since "it's missing" does not say what
+IS deployed: build the repo at the suspected commit in a detached worktree and
+compare against the served asset. Here the result was **40152 bytes, identical to
+the served chunk**, matching on every content marker, with **48 of 40152 bytes
+differing (0.12%) — all of them sibling-chunk import filename hashes**, which
+differ between build environments by construction. Application code identical ⇒
+the served build was `259471a`. **Filename hashes cannot be compared across
+environments; content and byte-length can.**
+
+**STANDING ADDITION:** after any Publish, verify EACH commit in the queue by a
+string only that commit introduces. A deployment-hash change proves *a* deploy
+happened; it does not prove *which* commits it carried.
+
 **⭐⭐ STANDING PRINCIPLE — ASSERT BEHAVIOUR AGAINST THE LIVE SYSTEM, NEVER
 DECLARATION. (Generalised 27 Jul; this is the THIRD instance of one principle,
 not a third unrelated lesson.)**
