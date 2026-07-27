@@ -362,27 +362,59 @@ def test_every_remaining_category_is_substantive_and_stateable(_app):
 
 
 def test_no_write_endpoint_resolves_to_an_override_path(_app):
-    """Stage 1b item 5. This WAS a grep over overrides.py, which said nothing
-    about a write path added anywhere else — accounts.py, a new module, a
-    router mounted later. Assert against the app\'s ACTUAL route table
-    instead, which is the only thing that can answer the question being asked.
+    """Stage 1b item 5 — and the guard itself was VACUOUS until 27 Jul.
+
+    It iterated `app.routes`, which in this app contains 7 entries: the
+    included routers appear as opaque `_IncludedRouter` objects with `path=None`
+    and their real routes are not reachable that way. So the guard inspected
+    SEVEN routes, none carrying a write method and none containing "companies",
+    while the app serves 292 paths. It passed by looking at almost nothing —
+    the same declared-but-unbound class it was written to replace a grep for.
+
+    Found by mounting the read endpoints and noticing they never appeared in the
+    list the guard walks, even though the app answered them.
+
+    `app.openapi()` is the definitive enumeration: every path and method the app
+    actually serves, flattened.
     """
     from services.api.main import app as _app_obj
-    offenders = []
-    for r in _app_obj.routes:
-        path = getattr(r, "path", "") or ""
-        methods = getattr(r, "methods", set()) or set()
-        if not ({"POST", "PATCH", "PUT", "DELETE"} & set(methods)):
-            continue
-        endpoint = getattr(r, "endpoint", None)
-        mod = getattr(endpoint, "__module__", "") or ""
-        name = getattr(endpoint, "__name__", "") or ""
-        if ("override" in path.lower() or mod.endswith(".overrides")
-                or "override" in name.lower()):
-            offenders.append(f"{sorted(methods)} {path} -> {mod}.{name}")
+    paths = _app_obj.openapi().get("paths", {})
+    assert len(paths) > 100, (
+        f"only {len(paths)} paths enumerated — the guard is inspecting a "
+        f"partial view again and would pass vacuously")
+    # Match on PATH and on the router's TAG. An earlier version also matched
+    # `operationId` containing "override" and flagged
+    # POST /admin/pilots/{company_id}/status, whose generated id contains
+    # "override" for unrelated reasons — a false positive from an over-broad
+    # matcher. The tag catches a write added to signoff_api.py under any path;
+    # the path catches one added elsewhere.
+    offenders = [
+        f"{m.upper()} {path}"
+        for path, ops in paths.items()
+        for m, op in ops.items()
+        if m.upper() in ("POST", "PUT", "PATCH", "DELETE")
+        and ("/overrides" in path.lower()
+             or "signoff" in path.lower()
+             or path.lower().endswith("/authority")
+             or "cxo-signoff" in [t.lower() for t in (op.get("tags") or [])])
+    ]
     assert not offenders, (
-        "a write path to overrides exists before Stage 2 authority "
-        f"enforcement: {offenders}")
+        "a write path to overrides/sign-off exists before its lane: "
+        f"{offenders}")
+
+
+def test_the_route_guard_sees_the_whole_app(_app):
+    """The positive control the vacuous version lacked. A guard that cannot see
+    the routes it is meant to police is not a guard — assert it can see known
+    write endpoints elsewhere in the app, so 'no offenders' means 'looked and
+    found none' rather than 'looked at nothing'."""
+    from services.api.main import app as _app_obj
+    paths = _app_obj.openapi().get("paths", {})
+    writes = [f"{m.upper()} {p}" for p, ops in paths.items() for m in ops
+              if m.upper() in ("POST", "PUT", "PATCH", "DELETE")]
+    assert len(writes) > 20, "the enumeration is not reaching the app's write routes"
+    assert any("/companies/" in w for w in writes), \
+        "company-scoped routes are invisible to the guard"
 
 
 def test_the_route_assertion_would_actually_catch_one(_app):

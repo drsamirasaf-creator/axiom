@@ -12040,6 +12040,9 @@ def include_accounts(app, create_tables: bool = True):
     # same pass. NO ROUTER: Stage 1 is the model and the read path only, and the
     # write endpoint is deliberately absent until provenance-travel is reviewed.
     from . import overrides as _overrides_model      # noqa: F401  (table registration)
+    # §4x Stage 2 — READ-ONLY HTTP surface. No write endpoint exists here; the
+    # route-table test asserts that against the real app, not against this file.
+    from .signoff_api import signoff_router
     if create_tables:
         Base.metadata.create_all(engine)
         _ensure_ax_columns(engine)
@@ -12053,7 +12056,7 @@ def include_accounts(app, create_tables: bool = True):
     for r in (auth_router, oauth_router, company_router, profile_router,
               superadmin_router, stripe_router, prescience_router, decision_router,
               sentinel_router, document_router, forecast_router, planning_router,
-              changeset_router, template_changeset_router):
+              changeset_router, template_changeset_router, signoff_router):
         app.include_router(r)
     if create_tables:
         spawn_nightly()   # no-op unless AXIOM_DECISION_NIGHTLY is enabled
