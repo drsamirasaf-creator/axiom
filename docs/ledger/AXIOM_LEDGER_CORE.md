@@ -110,6 +110,47 @@ enterprise surface resolves, so the scope was representable-but-unresolved.
 runs against the app's real route table, with a companion test proving the
 detector fires.
 
+**⭐⭐ SIXTH INSTANCE — AND I WROTE IT WHILE FIXING THE FIFTH (27 Jul).**
+
+Fixing the `is_staff` mismatch, I wrote `_is_platform_staff()` with a third
+clause: `getattr(u, "_operator_bypass", False)`. **Read once, assigned nowhere in
+the codebase, always False.** The audit found it **in the same lane that
+introduced it**.
+
+**THE ROOT CAUSE IS IDENTICAL TO THE BUG BEING FIXED:** reasoning about an
+interface instead of checking it. I knew there was an operator bypass, inferred a
+per-user flag, and wrote a guard around it — while repairing a guard that failed
+for exactly that reason.
+
+**THIS IS THE SESSION'S CLEAREST EVIDENCE THAT THE FAILURE MODE IS NOT
+CARELESSNESS.** Plausible-looking reasoning about an interface produces code that
+LOOKS CORRECT AND ENFORCES NOTHING. It reads well, it reviews well, and it is
+inert. Six times today.
+
+**THE DISTINCTION THAT DECIDES WHAT STAYS:**
+
+  `is_staff` — a **knowingly-supported alternative spelling**. It exists on no
+  model, and that is fine: it is documented at the call site as a test affordance,
+  deliberately honoured so the lightweight service doubles keep working. Kept.
+
+  `_operator_bypass` — a **guess at a non-existent API**. Removed.
+
+**AND THE REMOVAL MATTERS BEYOND DEAD CODE. A BOOLEAN CANNOT EXPRESS A
+PER-COMPANY BYPASS.** The real mechanism is
+`_operator_bypass_ok(db, user, company_id)` — a function taking a company,
+because the bypass is suppressed for a transferred pilot. The answer depends on
+WHICH company is being accessed, so no per-user flag could ever be correct.
+Leaving the clause would invite a future guard built on a wrong model of the
+system — worse than dead code, because dead code misleads no one.
+
+**⭐ THE ARGUMENT FOR AUDITING THE CLASS RATHER THAN WAITING.** This was found by
+grepping every `getattr` on a user-like subject and checking each attribute
+against the real model — not by it failing, because it never would have failed.
+It sat behind a `platform_role` check that fires first. **A guard that is inert
+AND unreachable produces no symptom at all**, so waiting for the next instance to
+surface would have waited forever. The audit cost one grep and found it in the
+lane that created it.
+
 **⭐⭐ FIFTH INSTANCE OF DECLARED-BUT-UNBOUND — ATTRIBUTE-NAME MISMATCH BETWEEN
 GUARD AND MODEL (27 Jul). A distinct variant, and the most dangerous so far.**
 

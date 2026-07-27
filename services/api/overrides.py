@@ -327,13 +327,31 @@ def _is_platform_staff(u) -> bool:
     the declared-but-unbound class again, this time as an attribute-name
     mismatch rather than a missing constraint.
 
-    Both spellings are honoured — `platform_role` for real users, `is_staff` for
-    the lightweight doubles the service tests use — so neither layer can pass
-    for the wrong reason again.
+    Two spellings are honoured, and the difference between them is the point:
+
+      `platform_role`  what the real User model carries. THE authoritative check.
+      `is_staff`       a KNOWINGLY-SUPPORTED ALTERNATIVE SPELLING for the
+                       lightweight doubles the service tests use. It exists on no
+                       model, and that is fine because it is documented here as a
+                       test affordance rather than believed to be a model field.
+
+    A third clause — `_operator_bypass` — was REMOVED. It was read here and
+    assigned nowhere in the codebase, so it was always False. Dead, but the
+    reason it had to go is not deadness:
+
+      ⭐ A BOOLEAN CANNOT EXPRESS A PER-COMPANY BYPASS. The real mechanism is
+      `_operator_bypass_ok(db, user, company_id)` — a FUNCTION taking a company,
+      because the bypass is suppressed for a transferred pilot. The answer
+      depends on WHICH company is being accessed, so no per-user flag could ever
+      be correct. Leaving the clause would invite a future guard built on a model
+      of the system that is wrong.
+
+    That clause was written in the same lane that fixed the `is_staff` defect, by
+    reasoning about an API instead of checking it — the identical root cause as
+    the bug being fixed. See CORE, sixth instance.
     """
     return (getattr(u, "platform_role", None) in ("staff", "super")
-            or bool(getattr(u, "is_staff", False))
-            or bool(getattr(u, "_operator_bypass", False)))
+            or bool(getattr(u, "is_staff", False)))
 
 
 class GrantError(Exception):
