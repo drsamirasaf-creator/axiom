@@ -69,6 +69,16 @@ the RENDERED behaviour of an override across live surfaces, which is what makes
 item 6 completes.** Anyone picking this up must treat item 6 as a release gate,
 not a backlog item.
 
+**⭐ SIGN-OFF INVALIDATION LOCKED 27 Jul — see §4x §8 below. DESIGN ONLY, NOT
+BUILT.** Trigger is DISPLAYED VALUES ONLY (too broad and executives click without
+reviewing, which destroys the feature more quietly than a bug; too narrow and a
+signed number changes silently). The dependency set is COMPUTED from the
+resolver, never hand-maintained — a hand-kept list goes stale silently, the same
+defect class as a declared-but-unbound constraint. The re-sign-off prompt SHOWS
+THE DIFF, and is where the override retirement prompt fires. **No magnitude
+threshold** — a threshold selects which silent changes are permitted, and it
+selects the small ones.
+
 **⭐ STAGE 2 GRANT MODEL LOCKED 27 Jul — see §4x §7 below. DESIGN ONLY, NOT
 BUILT.** Admin grants and may never exercise; grants are rows with `revoked_at`
 timestamps, never a role field; one person may hold multiple departments;
@@ -1529,6 +1539,96 @@ admin's own name.
 - Stage 1's `department_authority()` already reads a grant model through
   `Base._department_authority_model` and fails closed when absent — this design
   is what fills that slot.
+
+---
+
+## 8. SIGN-OFF INVALIDATION — ⭐ LOCKED 27 Jul (user ruling). DESIGN ONLY, NOT BUILT.
+
+How a sign-off stops being valid. Spec B.7 said new data un-signs an affected
+KPI; these five rulings settle what "affected" means, which is the whole
+difficulty. **Recorded, not built.**
+
+### 8.1 THE TRIGGER — DISPLAYED VALUES ONLY
+
+**A sign-off is invalidated by a change to any value the signed dashboard
+actually displays, and nothing else.**
+
+A correction to a department head's email — or any other artifact not rendered
+on that dashboard — does **NOT** invalidate a CFO's attestation to the
+financials.
+
+**Rationale, recorded because this failure mode is quiet rather than loud:**
+
+- **Too broad** and executives re-sign constantly for reasons they cannot see.
+  The button becomes noise, and they click it without reviewing. **This destroys
+  the feature more subtly than a bug would**: every signature still exists, the
+  audit trail still looks complete, and not one of them means anything. Nothing
+  in the system reports a fault.
+- **Too narrow** and the original trap returns: a signed-off number that
+  silently changed, with an attestation still attached to it.
+
+The rule is therefore neither "any write to the company" nor "only this KPI
+row" — it is exactly the set the signature actually covered, because sign-off
+attests to the dashboard **as shown** (the same premise that made variance
+recompute on the displayed value, §4x §5(A)).
+
+### 8.2 THE DEPENDENCY SET IS COMPUTED, NEVER HAND-MAINTAINED
+
+The resolver already knows which artifacts feed which surface. **The set of
+values a signed dashboard depends on must be DERIVED from that machinery**, so
+it cannot drift as the dashboard grows.
+
+**A hand-maintained list of "things that invalidate" is a list that goes stale
+silently — the same defect class as a declared-but-unbound constraint.** It would
+be correct on the day it was written, and every subsequent panel added to the
+department dashboard would be a value that changes without invalidating anything,
+discovered only when a board asks why a signed figure moved. Nothing would fail;
+the list would simply be incomplete.
+
+This is the third application of the standing principle (see IMMEDIATE STATE):
+derive the guard from the system, never restate the system in a second place
+that can disagree with it.
+
+### 8.3 SHOW THE DIFF AT RE-SIGN-OFF
+
+**Not a bare "awaiting re-sign-off" — show which values changed and by how much
+since the signature.**
+
+This converts a chore back into the review it is supposed to be. A CXO who can
+see what moved will re-review it; one facing an unexplained prompt will just
+click. **The signature is only worth what the review behind it is worth**, and a
+prompt with no diff is a prompt engineered to be dismissed.
+
+### 8.4 THE RETIREMENT PROMPT FIRES HERE
+
+The re-sign-off diff is the natural home for the **override retirement prompt**
+(§4x §2, "override retirement lifecycle").
+
+A source correction that absorbed a CXO's adjustment appears **in exactly that
+list of changed values** — it is, definitionally, a displayed value that moved.
+**One surface, both purposes:** the CXO sees what moved and is asked whether the
+now-redundant override should be retired, in the same act.
+
+This also closes the stale-attribution problem the retirement lifecycle was
+opened for: without it, an absorbed override keeps labelling a number that no
+longer needs adjusting, and four quarters of that inverts rare-equals-signal.
+
+### 8.5 NO THRESHOLD
+
+**Do NOT gate invalidation on magnitude.** No "only if the change exceeds X%".
+
+Two reasons, both recorded:
+
+1. **A silent small change to a signed figure is precisely the trap the
+   mechanism exists to prevent.** A threshold does not reduce noise; it selects
+   which silent changes are permitted, and it selects the small ones — which are
+   the ones a reviewer would never catch unaided.
+2. **Any threshold is a number someone will later have to defend to a board.**
+   "Why did the CFO's attestation survive this change?" has no good answer that
+   begins with an arbitrary percentage.
+
+Noise is managed by 8.1 (scope the trigger correctly) and 8.3 (make the prompt
+worth reading), **not** by suppressing invalidations.
 
 ---
 
