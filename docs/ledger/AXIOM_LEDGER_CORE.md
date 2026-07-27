@@ -2077,6 +2077,31 @@ This also closes the stale-attribution problem the retirement lifecycle was
 opened for: without it, an absorbed override keeps labelling a number that no
 longer needs adjusting, and four quarters of that inverts rare-equals-signal.
 
+### 7.9 REMAINING STAGE 2 SURFACE — THE GRANT/REVOKE ADMIN UI (logged, not built)
+
+**Nothing in the product can issue or revoke department authority.** The
+endpoints exist, are admin-gated and are proven; there is no UI reaching them.
+
+**The consequence is the whole feature being inert on a live company.** No
+grant means `can_author()` refuses everyone, `/may-author` answers false for
+every caller, and **no CXO ever sees the adjust affordance or the sign-off
+action.** Every department reports `never_assigned` — which the surfaces render
+correctly as *vacant*, so the product is honest about it, but the honest state is
+"nobody can use this".
+
+**Authority can currently be granted only by calling the API directly.** That is
+acceptable for a verification tenant and unacceptable as a shipping condition:
+it makes the first step of the feature an operator task on a customer's behalf,
+which is precisely the admin-acting-for-a-CXO shape §7.1 exists to prevent.
+
+**SCOPED FOR ITS OWN LANE.** It is an admin surface: list departments with their
+authority state (§7.6's three states already come back from
+`/companies/{id}/authority`), grant to a user, revoke with a reason, and show the
+history that revocation never erases. The riskiest part is not the UI — it is
+that **granting is how authoring is obtained**, so the surface must carry the same
+refusals the endpoint does, including platform staff, and must not offer the
+admin a path to grant themselves.
+
 ### 7.8 ⭐ THE ADJUST AFFORDANCE KEYS ON THE LIVE GRANT, NEVER ON THE ROLE
 
 An override affordance gated on `isAdmin` — the app's existing company-admin
