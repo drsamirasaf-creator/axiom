@@ -11234,18 +11234,45 @@ def get_access(company_id: int, member=Depends(require_company_admin),
                                   "'Join with CID', and you approve them below."}
 
 
-@router.get("/companies/{company_id}/roster")
-def roster(company_id: int, member=Depends(require_company_admin),
-           db=Depends(get_db)):
+@router.get("/companies/{company_id}/members")
+def company_members(company_id: int, member=Depends(require_company_admin),
+                    db=Depends(get_db)):
+    """WHO ACTUALLY HOLDS ACCESS to this company — account memberships only.
+
+    ⭐ THIS WAS REGISTERED AT `/companies/{company_id}/roster` AND NEVER SERVED.
+    An earlier `/roster` (accounts.py ~10433) returning viewer INVITATIONS and
+    assessment participants is declared first, and FastAPI resolves to the first
+    registration. So this function — correct, and the only place that answers
+    "who can see this company's financials" — was unreachable, on real customer
+    tenants, silently. Measured 28 Jul: Milliner had an active admin and an
+    active viewer, and NEITHER appeared on the roster screen.
+
+    ⭐ THE STRICTER GATE WENT WITH IT. This requires `require_company_admin`;
+    the route that shadowed it uses the looser `_roster_access`.
+
+    Now on its own path, because the two answer DIFFERENT QUESTIONS and merging
+    them is what caused the defect:
+      · /roster  — who was ASKED (viewer invitations + assessment participants),
+                   with the anonymity-safe participant handling, untouched.
+      · /members — who HOLDS access (account memberships), admin-gated.
+
+    `membership_id` is returned here and nowhere else, which matters: the
+    approve/pause actions are keyed on it, and the roster could never supply it.
+    """
     rows = db.query(Membership, User).join(User, User.id == Membership.user_id) \
              .filter(Membership.company_id == company_id).all()
-    return {"roster": [{
+    return {"members": [{
         "membership_id": m.id, "user_id": u.id, "email": u.email, "name": u.name,
         "role": m.role, "status": m.status, "link_only": u.link_only,
         "joined_at": m.created_at, "approved_at": m.approved_at,
         "last_seen_at": m.last_seen_at} for m, u in rows]}
 
 
+# ⭐ THESE ACT ON A `membership_id`, WHICH ONLY /members RETURNS. They used to
+# hang off /roster — a list that returns `invite_id` and never `membership_id`,
+# because a different endpoint shadowed the membership view. An action keyed to
+# an id its own list cannot supply is the surface-readable signature of that
+# defect class; moving them here removes the signature and the cause together.
 def _get_viewer_row(db, company_id: int, membership_id: int) -> Membership:
     m = db.get(Membership, membership_id)
     if not m or m.company_id != company_id:
@@ -11255,7 +11282,7 @@ def _get_viewer_row(db, company_id: int, membership_id: int) -> Membership:
     return m
 
 
-@router.post("/companies/{company_id}/roster/{membership_id}/approve")
+@router.post("/companies/{company_id}/members/{membership_id}/approve")
 def approve(company_id: int, membership_id: int,
             member=Depends(require_company_admin), db=Depends(get_db)):
     m = _get_viewer_row(db, company_id, membership_id)
@@ -11267,7 +11294,7 @@ def approve(company_id: int, membership_id: int,
     return {"ok": True, "status": "active"}
 
 
-@router.post("/companies/{company_id}/roster/{membership_id}/pause")
+@router.post("/companies/{company_id}/members/{membership_id}/pause")
 def pause(company_id: int, membership_id: int,
           member=Depends(require_company_admin), db=Depends(get_db)):
     m = _get_viewer_row(db, company_id, membership_id)

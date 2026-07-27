@@ -2907,6 +2907,66 @@ scoped. A refused POST creates nothing — but if the reading of the guard is
 wrong it creates a grant, and "probably refuses" is not a basis for a production
 write.
 
+## §7.17 ⭐ THE SHADOWED-ROUTE CLASS — CODE WRITTEN, CORRECT, AND NEVER SERVED
+
+**A path declared twice. FastAPI resolves to the first registration; the second
+is unreachable.** Nothing in either function is wrong. Reading either one in
+isolation shows no defect. **Only the PAIR is the defect**, which is why review
+does not catch it and a mechanical check does.
+
+### THE SURFACE-READABLE SIGNATURE
+
+⭐ **AN ACTION KEYED TO AN ID ITS OWN LIST CANNOT SUPPLY.**
+`POST /companies/{id}/roster/{membership_id}/approve` took a `membership_id`;
+the reachable `/roster` returned `invite_id` and never `membership_id`. That
+mismatch is visible from outside the code, without reading either handler, and
+it is the cheapest tell for this class.
+
+### THE ACCESS-CONTROL CONSEQUENCE
+
+**A shadowed route takes its gate with it.** The shadowed membership view
+required `require_company_admin`; the route that shadowed it uses the looser
+`_roster_access`. So the stricter gate was never applied — a silent widening of
+who could read the surface, caused by route ordering rather than by any
+authorization change.
+
+### IT IS A CLASS, NOT A ONE-OFF — WHICH IS THE ARGUMENT FOR THE GUARD
+
+`scripts/check-route-shadowing.py` scanned **335 registrations and found THREE**:
+
+| path | served | shadowed |
+| --- | --- | --- |
+| `GET /companies/{id}/roster` | accounts.py:10433 (invitations) | accounts.py:11237 (memberships) |
+| `POST /companies/{id}/kpis` | accounts.py:4032 (`KpiPlan`) | planning.py:234 (`KpiDefinition`) |
+| `DELETE /companies/{id}/kpis/{kpi_id}` | accounts.py:4079 (`KpiPlan`) | planning.py:268 (`KpiDefinition`) |
+
+**Three instances is a codebase that PRODUCES this class, not a codebase that
+had an accident.** Fixing the three individually leaves the fourth to be found
+by a customer. The guard is the deliverable; the fixes are consequences of it.
+
+Cross-file precedence was **verified, not assumed** — the inclusion tuple at
+`accounts.py:12057` puts `company_router` before `planning_router`.
+
+### HOW IT WAS FOUND
+
+A fixture discrepancy — company 38's membership table disagreed with its roster
+— which was easy to dismiss as fixture noise. **Asking whether it generalized is
+what landed it on a real customer's tenant**: Milliner has an active admin and an
+active viewer, and neither appeared on the screen an administrator uses to check
+who can see their financials.
+
+### DISPOSITION
+
+- **Roster: FIXED.** The membership view moved to `/companies/{id}/members`,
+  keeping `require_company_admin`. The invitations roster and its anonymity-safe
+  participant handling are untouched. `approve`/`pause` re-pathed onto
+  `/members/{membership_id}/…`, so the action and the list that supplies its key
+  are the same surface.
+- **KPI pair: OPEN**, in the check's dated allowlist, each entry naming why it is
+  exempt and that it is pending the `KpiDefinition` lane. **Visible exceptions,
+  not a suppressed guard** — a guard that fails on known-open items teaches
+  everyone to skip it.
+
 ## §7.16 SWEEP SEGMENT 1 — FINDINGS (28 Jul, read-only)
 
 ### 7.16a ⭐ THE ROSTER SCREEN AND THE MEMBERSHIP TABLE DISAGREE ABOUT WHO HAS ACCESS
