@@ -2427,6 +2427,33 @@ company — which is why it folds into the §7.14 customer-journey sweep **as a
 known defect to be confirmed fixed**, not as something for the sweep to
 discover.
 
+**PAIRED WITH §7.15g. THE SWEEP MUST CONFIRM BOTH FIXED, NOT ONE.**
+
+### 7.15g ⭐ THE SECOND HALF OF THE SAME JOURNEY — SELECTION DOES NOT SURVIVE NAVIGATION
+
+Found 27 Jul immediately after §7.15 was fixed and published, by the company
+pin, which stayed red.
+
+**A customer who selects their own company is returned to the sample workspace
+on the next navigation.** Observed against the live deployment: selecting the
+company writes `axiom.lastOpenedCompanyId = '38'` correctly, and after a fresh
+page load the app binds active to the showcase default and fires its content
+calls against company 20.
+
+⭐ **RECORD THESE TWO AS A PAIR. TOGETHER THEY MEAN A POST-TRANSFER CUSTOMER
+CANNOT RELIABLY REACH THEIR OWN DATA.**
+
+- **§7.15c** — they could not *list* their company (fixed, `131681b`).
+- **§7.15g** — having selected it, they do not *stay* there.
+
+Fixing either alone leaves the journey broken, and either fix alone looks like
+success when tested in isolation: after §7.15c the switcher demonstrably lists
+and selects the right company, and only a check that navigates afterwards
+catches §7.15g. **This is exactly why the pin asserts across the gate
+navigation rather than at the moment of selection.**
+
+Both go on the §7.14 sweep as known defects to confirm fixed.
+
 ### 7.15d ⭐ TWO LIVE PRECEDENCE RULES, DELIBERATELY OPPOSITE — A READER TRAP
 
 **Both of these are live, in different functions, and they specify the
