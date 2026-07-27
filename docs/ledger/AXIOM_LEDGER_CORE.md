@@ -48,6 +48,46 @@ enterprise surface resolves, so the scope was representable-but-unresolved.
 runs against the app's real route table, with a companion test proving the
 detector fires.
 
+**⭐⭐ STANDING PRINCIPLE — ASSERT BEHAVIOUR AGAINST THE LIVE SYSTEM, NEVER
+DECLARATION. (Generalised 27 Jul; this is the THIRD instance of one principle,
+not a third unrelated lesson.)**
+
+A test that checks a constraint is *declared* certifies the **model file**. Only
+a test that attempts the forbidden operation and watches it **fail** certifies
+the **database**. The gap between those two is where every defect in this session
+lived: the constraint was declared, the test passed, and nothing was enforced.
+
+The three instances are the same principle wearing different clothes:
+
+| Instance | Declaration (insufficient) | Behaviour (sufficient) |
+|---|---|---|
+| Verification | hand-clicking a route | `scripts/auth-regression.py`, 92 routes, sidebar-presence asserted |
+| Deploy truth | a pushed commit hash | the **served bundle hash** |
+| Schema truth | a constraint declared on the model | an INSERT attempted and **refused by the database** |
+
+Applies beyond schemas: wherever a guard is claimed, the test must attempt the
+thing the guard forbids. `test_the_route_assertion_would_actually_catch_one`
+exists for the same reason — a negative assertion that can never fail is not a
+test.
+
+**VERIFICATION SWEEP RUN 27 Jul, against PRODUCTION, behaviourally.** Every
+NOT NULL on `ax_metric_overrides` was tested by attempting a direct INSERT that
+omits it; every session-added guard was tested by attempting the operation it
+forbids. All inside transactions, all rolled back, residue confirmed 0 rows.
+
+- `override_value`, `computed_value_at_override`, `reason_category`,
+  `author_user_id`, `author_label`, `created_at` — **all six genuinely bound**,
+  none declaration-only. The Stage 1 report's claim survives scrutiny.
+- A **control insert of a complete row was ACCEPTED**, which is what makes the
+  six refusals evidence: they are the omission failing, not the probe being
+  malformed. A sweep without a positive control proves nothing.
+- `private_info` · `enterprise` scope · NULL `department_id` · pipe-less
+  `metric_ref` · a second ACTIVE row on one `metric_ref` — **all refused**.
+- Supersession still releases the slot (one superseded + one active accepted) —
+  the index is correct, not merely strict.
+
+**VERDICT: ALL GUARDS BIND IN PRODUCTION.** Nothing needed fixing before item 6.
+
 **⭐ A SECOND INSTANCE OF THE SAME CLASS, found during 1b and worth recording.**
 `ensure_override_schema` initially checked only for the partial index. When the
 reason-category CheckConstraint landed one commit later the index was already
