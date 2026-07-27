@@ -260,6 +260,144 @@ def ensure_override_schema(engine):
     return {"action": "rebuilt", "rows_preserved": 0, "was_missing": sorted(missing)}
 
 
+# ── the grant model (§4x §7, Stage 2) ────────────────────────────────────────
+
+class DepartmentAuthority(Base):
+    """Who may speak for a department. §4x §7, built to the locked design.
+
+    GRANTS ARE ROWS, NOT A ROLE FIELD (§7.2). Each grant carries its own
+    lifecycle — granted_by, granted_at, revoked_at — and REVOCATION IS A
+    TIMESTAMP, NOT A DELETION. Two consequences fall out for free rather than
+    needing code: history is untouched BY CONSTRUCTION, and one person holding
+    several departments (§7.3) is simply several rows, so revoking one cannot
+    disturb another.
+
+    ⭐ REVOCATION NEVER TOUCHES HISTORY (§7.4). Nothing here cascades. Past
+    sign-offs and overrides keep their frozen author_label exactly as made. A
+    board figure that LOSES its attester is worse than one that never had an
+    attester — the first reads as covered-up authorship, the second merely as
+    unsigned. Test-pinned behaviourally: revoke, then assert prior rows are
+    byte-identical.
+
+    NO UNIQUE CONSTRAINT ON (company, user, department). Deliberate: the same
+    person may be granted a department, revoked, and granted again later, and
+    each of those is a distinct historical fact. The ACTIVE-row uniqueness that
+    matters is enforced by grant_department() refusing to issue a second live
+    grant, not by a constraint that would also forbid the history.
+    """
+    __tablename__ = "ax_department_authority"
+    __table_args__ = (
+        Index("ix_dept_authority_lookup", "company_id", "user_id",
+              "department_id", "revoked_at"),
+    )
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    department_id = Column(Integer, index=True, nullable=False)
+    user_id = Column(Integer, index=True, nullable=False)
+    # cxo | delegate. Reserved for §7.5's "then CHRO" display: the title is
+    # frozen at grant time for the same reason author_label is frozen on an
+    # override — a board reading a two-year-old sign-off needs the role AS IT
+    # WAS, not as the org chart is now.
+    role = Column(String(24), default="cxo", nullable=False)
+    role_label = Column(String(160), nullable=True)
+    granted_by = Column(Integer, nullable=False)
+    granted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+    revoked_by = Column(Integer, nullable=True)
+    revoke_reason = Column(String(32), nullable=True)   # replaced | departed | corrected
+
+
+# Fill the slot Stage 1 already reads. department_authority() looks this up on
+# Base and fails closed when absent — it is now present, so the fail-closed
+# default becomes a real lookup without that function changing.
+Base._department_authority_model = DepartmentAuthority
+
+
+class GrantError(Exception):
+    """Refused grant/revoke. Distinct from AuthorityError, which is about
+    EXERCISING authority; this is about ISSUING it."""
+
+
+def grant_department(db, company_id, department_id, *, user_id, granted_by,
+                     role="cxo", role_label=None, actor=None):
+    """Issue a grant. §7.1: THE COMPANY ADMIN GRANTS.
+
+    `actor` is the granting user, checked so the admin-may-grant-but-never-
+    exercise rule cannot be inverted by a caller that forgets it. Platform staff
+    are refused here too — being unable to AUTHOR is worthless if we can grant
+    ourselves authority a moment earlier.
+    """
+    if actor is not None and getattr(actor, "is_staff", False):
+        raise GrantError(
+            "Platform staff cannot issue department authority — granting is how "
+            "authoring is obtained, so the exclusion has to hold at both steps.")
+    dep = db.get(Department, department_id)
+    if dep is None or dep.company_id != company_id:
+        raise GrantError("That department does not belong to this company.")
+    live = (db.query(DepartmentAuthority)
+              .filter_by(company_id=company_id, department_id=department_id,
+                         user_id=user_id, revoked_at=None).first())
+    if live:
+        return live                       # idempotent: re-granting is a no-op
+    row = DepartmentAuthority(
+        company_id=company_id, department_id=department_id, user_id=user_id,
+        role=role, role_label=role_label, granted_by=granted_by)
+    db.add(row)
+    db.flush()
+    return row
+
+
+def revoke_department(db, company_id, department_id, *, user_id, revoked_by,
+                      reason="departed", now=None):
+    """Retire a grant. §7.4: A TIMESTAMP, NOT A DELETION.
+
+    Touches the grant row and NOTHING ELSE — no cascade to sign-offs, no cascade
+    to overrides. That is the whole point, and it is a property of what this
+    function does not do."""
+    row = (db.query(DepartmentAuthority)
+             .filter_by(company_id=company_id, department_id=department_id,
+                        user_id=user_id, revoked_at=None).first())
+    if row is None:
+        raise GrantError("No live grant to revoke.")
+    row.revoked_at = now or datetime.utcnow()
+    row.revoked_by = revoked_by
+    row.revoke_reason = reason
+    db.flush()
+    return row
+
+
+def grants_for(db, company_id, *, department_id=None, user_id=None,
+               include_revoked=False):
+    q = db.query(DepartmentAuthority).filter_by(company_id=company_id)
+    if department_id is not None:
+        q = q.filter_by(department_id=department_id)
+    if user_id is not None:
+        q = q.filter_by(user_id=user_id)
+    if not include_revoked:
+        q = q.filter(DepartmentAuthority.revoked_at.is_(None))
+    return q.order_by(DepartmentAuthority.granted_at.asc()).all()
+
+
+def department_state(db, company_id, department_id):
+    """§7.6: VACANT and UNSIGNED are DIFFERENT STATES and must render
+    differently. This is the source of that distinction — a department with
+    nobody accountable is not a department whose CXO simply has not acted yet,
+    and an unsigned dashboard identical in both cases silently converts an
+    organisational gap into an apparent individual failure."""
+    live = grants_for(db, company_id, department_id=department_id)
+    if live:
+        return {"state": "assigned", "holders": len(live),
+                "user_ids": [g.user_id for g in live]}
+    ever = grants_for(db, company_id, department_id=department_id,
+                      include_revoked=True)
+    if ever:
+        last = max(ever, key=lambda g: g.revoked_at or g.granted_at)
+        return {"state": "vacant", "holders": 0,
+                "since": last.revoked_at.isoformat() if last.revoked_at else None,
+                "reason": last.revoke_reason}
+    return {"state": "never_assigned", "holders": 0}
+
+
 # ── the read path ────────────────────────────────────────────────────────────
 
 class Resolved:

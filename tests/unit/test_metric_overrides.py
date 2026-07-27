@@ -149,16 +149,35 @@ def test_platform_staff_can_never_author_a_customers_figure(_app):
         can_author(None, 20, staff, "department", 13)
 
 
-def test_authority_fails_closed_before_stage_2_grants_exist(_app):
-    """No grant table yet → nobody can author anything. Fail closed is the only
-    safe default for a feature that alters numbers a board sees."""
-    user = type("U", (), {"id": 7, "is_staff": False})
+def test_authority_fails_closed_without_a_grant(_app):
+    """SUPERSEDED PREMISE, SAME PROPERTY. This asserted fail-closed because the
+    grant MODEL was absent (Stage 1). Stage 2 added it, so that premise is gone —
+    but the property it protected is the one that actually matters and is now
+    stronger: with the table present and NO GRANT ROW, nobody can author.
 
-    class _DB:
-        def get(self, model, pk):
-            return type("D", (), {"id": pk, "company_id": 20, "name": "Finance"})
-    with pytest.raises(AuthorityError, match="Not authorised"):
-        can_author(_DB(), 20, user, "department", 13)
+    Kept rather than deleted because "no grant" is the state every department
+    starts in and the state a revocation returns it to, so this is the default
+    path, not an edge case."""
+    from services.api.overrides import DepartmentAuthority
+    from services.api.accounts import SessionLocal, Department
+    CO = 770077
+    user = type("U", (), {"id": 770078, "is_staff": False})
+    s = SessionLocal()
+    try:
+        s.query(DepartmentAuthority).filter_by(company_id=CO).delete()
+        s.query(Department).filter_by(company_id=CO).delete()
+        dep = Department(company_id=CO, dept_key="noauth", name="Finance")
+        s.add(dep); s.commit()
+        # A REAL department of this company, so the refusal below is the
+        # AUTHORITY check rather than the ownership check one step earlier.
+        assert s.query(DepartmentAuthority).filter_by(
+            company_id=CO, user_id=770078, department_id=dep.id).count() == 0
+        with pytest.raises(AuthorityError, match="Not authorised"):
+            can_author(s, CO, user, "department", dep.id)
+    finally:
+        s.query(DepartmentAuthority).filter_by(company_id=CO).delete()
+        s.query(Department).filter_by(company_id=CO).delete()
+        s.commit(); s.close()
 
 
 def test_a_department_override_requires_a_department(_app):
