@@ -2633,6 +2633,97 @@ oscillation *more* reachable than it is today — the same trade the ruling on
 previously-wrong value correct, ask what was *depending* on it being wrong.
 The answer is rarely nothing.
 
+### 7.15k AXIS 1 PROVEN, OPTION TWO MEASURED CLOSED (27 Jul)
+
+**What was scoped:** ship axis 1 with a deliberate guard standing in for the
+accidental one. **What happened:** axis 1 is proven; the guard is installed and
+documented; and the guard was measured **insufficient**. Axis 1 stays on
+`wip/pending-state-tri-state` and ships with mechanism 2.
+
+#### Axis 1 — PROVEN
+
+```
+A_session_before_showcase  bound ['38']  loops 0
+B_showcase_before_session  bound ['38']  loops 0
+D_same_tick                bound ['38']  loops 0
+A/B/D AGREEMENT True · invariant True · fuzz 0/20 · clause 3 pass
+C_token_rejected redirects to /login (correct)
+```
+
+Determinism **earned, not sampled**: the input that previously split 4/4 across
+eight trials is now forced both ways and agrees.
+
+#### Option two — attempted, both positions fail
+
+| guard position | result |
+| --- | --- |
+| keyed as the accident was (`unknown ‖ isShowcase`) | loop still runs on selection — 416 requests, 3 loop errors |
+| unconditional | **company bar never renders** — `local→store` publishes the active company's name |
+
+**There is no position between them.** "Axis 1 working" and "mechanism 2 no
+worse than today" are mutually exclusive until mechanism 2 is fixed.
+
+#### ⭐ THE PREMISE CORRECTION — READ THIS BEFORE REASONING FROM THE NUMBERS
+
+**Today's low request count is the feature being broken, not a guard holding.**
+
+```
+main   : selection -> 13 requests, loops 0, bound ['20']  <- the selection NEVER BINDS
+branch : selection -> 416 requests, loops 3, bound ['25']
+```
+
+On `main` the selection falls back to the showcase — which **is §7.15g's own
+symptom** — so the oscillation never gets the chance to run. **13 → 416 is a
+defect becoming REACHABLE because the feature above it started working. It is
+not a regression.**
+
+⭐ **AND THE EARLIER "164 → 416" COMPARISON WAS NOT LIKE-FOR-LIKE** — different
+script, different scenario, different company. A ruling was built on it (that
+the auth fix made the loop *worse*), and **that ruling was wrong**. The error was
+the assistant's in producing the comparison and the user's in accepting it; it
+survived because both sides reasoned from a number nobody had re-measured
+under identical conditions. **Two numbers are not a comparison unless the same
+instrument produced both.**
+
+#### ⭐ THE §7.15g INVERSION
+
+§7.15g ruled that **a crash beats a quiet failure** — an absent menu row is
+quieter, not safer. **That ruling does not transfer here, and the difference is
+which failure is being INTRODUCED.**
+
+- §7.15g: the quiet failure would have been *newly introduced* by reverting.
+- Here: the quiet failure is the *status quo*, and the crash would be new.
+
+**Shipping a crash to remove a quiet failure is a different trade from refusing
+to introduce a quiet failure to hide a crash.** The direction of introduction is
+the deciding fact, not the relative loudness of the two failures.
+
+#### THE THREE DISPROVED MECHANISM-2 HYPOTHESES — DO NOT RE-PROPOSE
+
+1. **The page default (`pickDatasetId`) is the second writer.** Disproved by
+   instrumentation: it fires once, at boot, with `company null`, and never
+   participates in the cycle.
+2. **The id-space collision causes it.** Disproved at `b46a418~1`: `BRANCH-OLD`
+   never fires for company 25, which collides with no dataset id. The id-space
+   defect and this loop were always separate.
+3. **Competing primaries / stale-company `datasetId`.** Disproved twice — the
+   `active.datasetId != null` guard did not stop Milliner *and* broke
+   restore-across-navigation; per-company `datasetCompanyId` tracking with
+   mutually-exclusive branches did not stop it either.
+
+**Three plausible hypotheses, three disproved by measurement. That is the signal
+that the model is wrong at a level reading will not fix.** Mechanism 2's lane
+therefore **begins with instrumentation, not a hypothesis**, and no fix is to be
+proposed until the actual interleaving is measured under the branch's code.
+
+#### THE HARNESS DEFECT (eighth instrument error of the day)
+
+Verification case C expected a rejected token to bind the showcase. It does not
+— `fetchMe` redirects to `/login`, which is correct. **The expectation was
+wrong, not the app.** Eighth measurement error of 27 Jul, and the eighth in the
+instrument rather than the product. The instruments have now been wrong more
+often than the code they grade.
+
 ### 7.15f THE FIX AS SHIPPED (27 Jul)
 
 Client-side only. **No server change, no ADR amendment** — the server was doing
