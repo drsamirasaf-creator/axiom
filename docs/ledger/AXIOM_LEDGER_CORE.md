@@ -1970,6 +1970,32 @@ This also closes the stale-attribution problem the retirement lifecycle was
 opened for: without it, an absorbed override keeps labelling a number that no
 longer needs adjusting, and four quarters of that inverts rare-equals-signal.
 
+### 8.6 ⭐ NO FAMILY MAY BE EXCLUDED FROM THE SIGNED SET (user ruling, 27 Jul)
+
+The trigger scopes to displayed values — **all four families, no exclusions**:
+KPIs, objectives/attainment, sentiment, CEI trend.
+
+**Rationale, recorded because the tempting exclusion is the worst one.** Any
+excluded family is a **category of change that silently does not invalidate** —
+which is the original trap, not a mitigation of it. And the family most likely to
+be excluded on noise grounds is **sentiment**, which is precisely the signal a
+CXO most needs to notice moving.
+
+**Where the noise IS addressed: §8.3's PRESENTATION, never the trigger.** The
+diff groups by cause — enterprise-wide changes (a cycle closing, which moves
+every department at once) presented distinctly from changes to the department's
+own figures — and the untouched case is made cheap, so friction scales with what
+actually changed.
+
+**⭐ IF RE-SIGN-OFF LOAD PROVES INTOLERABLE IN PRACTICE, THE PERMITTED LEVERS ARE
+BATCHING OR TIMING — NEVER EXCLUDING A FAMILY.** Same reasoning as §8.5's
+no-threshold rule: **a noisy prompt is not fixed by permitting silent changes.**
+A threshold selects which silent changes are allowed and picks the small ones; an
+exclusion selects which silent changes are allowed and picks an entire category.
+Both trade a visible annoyance for an invisible failure, which is the wrong
+direction on a feature whose whole purpose is that nothing changes unnoticed
+under a signature.
+
 ### 8.5 NO THRESHOLD
 
 **Do NOT gate invalidation on magnitude.** No "only if the change exceeds X%".
