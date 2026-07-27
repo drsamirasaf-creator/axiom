@@ -372,6 +372,23 @@ def grant_department(db, company_id, department_id, *, user_id, granted_by,
         raise GrantError(
             "Platform staff cannot issue department authority — granting is how "
             "authoring is obtained, so the exclusion has to hold at both steps.")
+    # ⭐ AN ADMIN CANNOT GRANT THEMSELVES. §7.1's separation — the admin decides
+    # who speaks for a department and can never speak for one — is the spine the
+    # whole feature rests on, and self-granting routes around it in one request:
+    # grant, then sign. Verified as a real hole before this line existed: the
+    # endpoint returned 201 and can_author() then permitted that admin to sign
+    # and override.
+    #
+    # Only admins can reach the grant path at all, so `user_id == granted_by` IS
+    # the self-grant case; there is no legitimate reading of it.
+    #
+    # This lived only in the UI's candidate filter until now. A rule enforced in
+    # the UI alone is not enforced — it is merely not offered.
+    if user_id == granted_by:
+        raise GrantError(
+            "You cannot assign department authority to yourself. An administrator "
+            "decides who speaks for a department and never speaks for one — that "
+            "separation is what makes a signed figure the executive's own.")
     dep = db.get(Department, department_id)
     if dep is None or dep.company_id != company_id:
         raise GrantError("That department does not belong to this company.")

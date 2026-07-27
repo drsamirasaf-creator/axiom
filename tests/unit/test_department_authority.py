@@ -279,3 +279,29 @@ def test_role_label_is_frozen_at_grant_time(env):
                          role_label="CHRO"); s.commit()
     assert g.role_label == "CHRO"
     assert DepartmentAuthority.__table__.columns["role_label"].nullable is True
+
+
+# ── §7.1 — an admin cannot grant themselves ─────────────────────────────────
+
+def test_an_admin_cannot_grant_authority_to_themselves(env):
+    """⭐ VERIFIED AS A REAL HOLE BEFORE THIS EXISTED. The endpoint returned 201
+    and can_author() then permitted that admin to sign and override — §7.1's
+    separation defeated in one request: grant, then sign.
+
+    It had been enforced only by the UI filtering the admin out of the candidate
+    list. A rule enforced in the UI alone is not enforced; it is merely not
+    offered."""
+    s, fin, _ = env
+    with pytest.raises(GrantError, match="cannot assign department authority to yourself"):
+        grant_department(s, CO, fin.id, user_id=ADMIN, granted_by=ADMIN)
+    assert grants_for(s, CO, department_id=fin.id) == []
+    with pytest.raises(AuthorityError):
+        can_author(s, CO, U(ADMIN), "department", fin.id)
+
+
+def test_granting_to_someone_else_is_still_permitted(env):
+    """The control: the refusal must be about SELF-granting, not about granting."""
+    s, fin, _ = env
+    g = grant_department(s, CO, fin.id, user_id=CFO, granted_by=ADMIN); s.commit()
+    assert g.granted_by == ADMIN and g.user_id == CFO
+    assert can_author(s, CO, U(CFO), "department", fin.id) is True

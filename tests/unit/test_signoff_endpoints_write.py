@@ -346,3 +346,18 @@ def test_may_author_says_no_for_platform_staff(env, client):
     r = client.get(f"/companies/{CO}/departments/{fin.id}/may-author", headers=_h(stf))
     assert r.json()["may_author"] is False
     assert "Platform staff" in (r.json()["reason"] or "")
+
+
+def test_an_admin_cannot_grant_themselves_over_http(env, client):
+    """The same rule at the route. Proven here as well as in the service,
+    because this is the one that a UI-only guard would have left open."""
+    s, fin, _, cxo, adm, _ = env
+    r = client.post(f"/companies/{CO}/departments/{fin.id}/authority",
+                    json={"user_id": adm.id, "role_label": "CFO"}, headers=_h(adm))
+    assert r.status_code == 403, "an admin granted themselves authority"
+    assert "yourself" in r.json()["detail"]
+    assert grants_for(s, CO, department_id=fin.id) == []
+    # And the admin still cannot author — the whole point of refusing.
+    r2 = client.post(f"/companies/{CO}/departments/{fin.id}/signoff",
+                     json={"signer_label": "Admin"}, headers=_h(adm))
+    assert r2.status_code == 403
