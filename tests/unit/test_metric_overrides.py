@@ -361,46 +361,40 @@ def test_every_remaining_category_is_substantive_and_stateable(_app):
     assert MetricOverride.__table__.columns["reason_note"].nullable is True
 
 
-def test_no_write_endpoint_resolves_to_an_override_path(_app):
-    """Stage 1b item 5 — and the guard itself was VACUOUS until 27 Jul.
+def test_the_write_surface_is_exactly_what_was_authorised(_app):
+    """SUPERSEDED PREMISE, STRONGER PROPERTY.
 
-    It iterated `app.routes`, which in this app contains 7 entries: the
-    included routers appear as opaque `_IncludedRouter` objects with `path=None`
-    and their real routes are not reachable that way. So the guard inspected
-    SEVEN routes, none carrying a write method and none containing "companies",
-    while the app serves 292 paths. It passed by looking at almost nothing —
-    the same declared-but-unbound class it was written to replace a grep for.
+    This was "no write endpoint resolves to an override path" — correct while
+    the write lane was unauthorised, and meaningless once it was. Deleting it
+    would lose the guard entirely, so it becomes an ALLOWLIST: these five
+    endpoints and no others. A sixth appearing is now a test failure rather than
+    a thing nobody notices.
 
-    Found by mounting the read endpoints and noticing they never appeared in the
-    list the guard walks, even though the app answered them.
-
-    `app.openapi()` is the definitive enumeration: every path and method the app
-    actually serves, flattened.
+    The enumeration comes from app.openapi(). The previous version walked
+    `app.routes` — 7 entries here, none company-scoped — and passed vacuously
+    against an app serving 292 paths.
     """
     from services.api.main import app as _app_obj
     paths = _app_obj.openapi().get("paths", {})
     assert len(paths) > 100, (
         f"only {len(paths)} paths enumerated — the guard is inspecting a "
         f"partial view again and would pass vacuously")
-    # Match on PATH and on the router's TAG. An earlier version also matched
-    # `operationId` containing "override" and flagged
-    # POST /admin/pilots/{company_id}/status, whose generated id contains
-    # "override" for unrelated reasons — a false positive from an over-broad
-    # matcher. The tag catches a write added to signoff_api.py under any path;
-    # the path catches one added elsewhere.
-    offenders = [
+    writes = sorted(
         f"{m.upper()} {path}"
         for path, ops in paths.items()
         for m, op in ops.items()
         if m.upper() in ("POST", "PUT", "PATCH", "DELETE")
         and ("/overrides" in path.lower()
              or "signoff" in path.lower()
-             or path.lower().endswith("/authority")
-             or "cxo-signoff" in [t.lower() for t in (op.get("tags") or [])])
-    ]
-    assert not offenders, (
-        "a write path to overrides/sign-off exists before its lane: "
-        f"{offenders}")
+             or "/authority" in path.lower()
+             or "cxo-signoff" in [t.lower() for t in (op.get("tags") or [])]))
+    assert writes == [
+        "POST /companies/{company_id}/departments/{department_id}/authority",
+        "POST /companies/{company_id}/departments/{department_id}/authority/revoke",
+        "POST /companies/{company_id}/departments/{department_id}/overrides",
+        "POST /companies/{company_id}/departments/{department_id}/overrides/withdraw",
+        "POST /companies/{company_id}/departments/{department_id}/signoff",
+    ], writes
 
 
 def test_the_route_guard_sees_the_whole_app(_app):

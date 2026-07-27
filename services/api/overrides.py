@@ -315,6 +315,27 @@ class DepartmentAuthority(Base):
 Base._department_authority_model = DepartmentAuthority
 
 
+def _is_platform_staff(u) -> bool:
+    """⚠ THE REAL User MODEL HAS NO `is_staff`. It carries `platform_role`
+    ('staff' | 'super'). The original check read only `is_staff`, which is
+    False for every genuine User object — so the platform-staff carve-out
+    NEVER FIRED IN PRODUCTION, and the service tests passed because their test
+    double happened to expose `is_staff`.
+
+    Caught only at the HTTP layer: platform staff authored an override and got
+    201 Created. A guard that reads a field the real object does not have is
+    the declared-but-unbound class again, this time as an attribute-name
+    mismatch rather than a missing constraint.
+
+    Both spellings are honoured — `platform_role` for real users, `is_staff` for
+    the lightweight doubles the service tests use — so neither layer can pass
+    for the wrong reason again.
+    """
+    return (getattr(u, "platform_role", None) in ("staff", "super")
+            or bool(getattr(u, "is_staff", False))
+            or bool(getattr(u, "_operator_bypass", False)))
+
+
 class GrantError(Exception):
     """Refused grant/revoke. Distinct from AuthorityError, which is about
     EXERCISING authority; this is about ISSUING it."""
@@ -329,7 +350,7 @@ def grant_department(db, company_id, department_id, *, user_id, granted_by,
     are refused here too — being unable to AUTHOR is worthless if we can grant
     ourselves authority a moment earlier.
     """
-    if actor is not None and getattr(actor, "is_staff", False):
+    if actor is not None and _is_platform_staff(actor):
         raise GrantError(
             "Platform staff cannot issue department authority — granting is how "
             "authoring is obtained, so the exclusion has to hold at both steps.")
@@ -841,7 +862,7 @@ def can_author(db, company_id: int, user, target_scope: str, department_id: int 
        to author a customer's signed board figure; that would be indefensible
        if discovered, whatever the intent.
     """
-    if getattr(user, "is_staff", False) or getattr(user, "_operator_bypass", False):
+    if _is_platform_staff(user):
         raise AuthorityError(
             "Platform staff cannot author a customer's override — the figure "
             "must be the executive's own.")

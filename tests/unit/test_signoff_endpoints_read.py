@@ -216,13 +216,19 @@ def test_audit_endpoint_includes_superseded_by_default(env, client):
 
 # ── no write path exists yet ─────────────────────────────────────────────────
 
-def test_the_read_lane_added_no_write_endpoint(env, client):
-    """Read paths first, writes second. Asserted over the app's real path list
-    (openapi), not over app.routes — which enumerates 7 entries and would pass
-    vacuously."""
+def test_every_write_endpoint_is_authority_gated(env, client):
+    """SUPERSEDED PREMISE. This asserted the read lane added no write endpoint —
+    true then, meaningless now that the write lane is authorised. Replaced with
+    the property that still matters: every write endpoint on this surface
+    refuses an unauthenticated caller, so a new one cannot be added ungated
+    without failing here.
+    """
     paths = app.openapi().get("paths", {})
-    offenders = [f"{m.upper()} {p}" for p, ops in paths.items() for m in ops
-                 if m.upper() in ("POST", "PUT", "PATCH", "DELETE")
-                 and ("signoff" in p.lower() or "override" in p.lower()
-                      or "authority" in p.lower())]
-    assert not offenders, offenders
+    writes = [(m.upper(), p) for p, ops in paths.items() for m in ops
+              if m.upper() in ("POST", "PUT", "PATCH", "DELETE")
+              and ("signoff" in p or "/overrides" in p or "/authority" in p)]
+    assert writes, "no write endpoints found — the enumeration is not reaching them"
+    for method, path in writes:
+        url = path.replace("{company_id}", str(CO)).replace("{department_id}", "1")
+        r = client.request(method, url, json={})
+        assert r.status_code in (401, 403), f"{method} {url} -> {r.status_code}"
