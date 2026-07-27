@@ -928,10 +928,63 @@ wrong\") into generative (\"what could we do\").
 document-synthesis proposals --- accepted proposal becomes an
 Initiative; here the source is a human stakeholder instead of the AI).
 
+### ⭐ SUBMISSION CATCHMENT — EXPLICIT ENUMERATION (user confirmation, 27 Jul). DESIGN ONLY, NOT BUILT.
+
+The concept above says ideas come from "ALL internal AND external
+stakeholders". That intent is now **enumerated so it cannot be narrowed at build
+time**:
+
+**EVERY USER OF THE APP MAY SUBMIT AN IDEA** — CEO, CXOs, admins, assessors, and
+**view-only users** — plus external stakeholders per the existing concept
+(customers/partners, subject to the light-moderation open question below).
+
+**⭐ SUBMISSION IS NOT GATED ON ASSESSMENT PARTICIPATION.** This is the specific
+risk being closed, and it is a build-time risk rather than a design
+disagreement. §4p as written puts the submission side in Stakeholder Engagement,
+which **is the assessment path** — so a reasonable builder could implement
+"assessment participants can submit" and silently exclude a view-only board
+member, an admin, or a CEO who never takes the survey. **Those are precisely the
+people whose ideas matter most.**
+
+**The questionnaire is ONE submission door, not the only one.** Idea submission
+must also be reachable **from the app itself**, independent of any assessment
+cycle, and **open when no cycle is running**.
+
+**Rationale, recorded because the narrowing would be invisible:** the feature's
+value is **catchment breadth**. A hub that only catches survey-takers is a
+survey feature, not an innovation hub. And nothing would fail — no error, no
+empty state, no one reporting a fault; the hub would simply receive fewer ideas
+than it should, from a narrower set of people, forever. **Same shape as the
+declared-but-unbound class recorded earlier today: the intent is stated, the
+enforcement is absent.** The enumeration above is the enforcement.
+
+### CARRY TO THE SHARED SPINE (§4j ↔ §4p)
+
+The standing instruction — §4j and §4p overlap and must **share one
+ticket/disposition/notification spine** rather than two parallel systems — means
+**this role enumeration belongs to the spine, not to §4p alone**, and it must
+match §4j's already-stated catchment (**any user — member / CXO / viewer**).
+
+**Both entry points feed ONE spine with different content types and
+destinations**, and **NEITHER MAY GATE SUBMISSION ON A ROLE THE OTHER ADMITS.**
+Two submission surfaces with two different eligibility rules is the same
+"two surfaces, one concept" bug class already flagged for Department Dashboard
+and Dataroom naming — and here it would be worse, because the divergence is in
+*who is allowed to speak* rather than in what a thing is called.
+
+**UNCHANGED — the anonymity rule stands exactly as recorded below:** assessment
+is anonymous with a k-floor; ideas are **attributed by default** because reward
+needs to know who; anonymous submission is **permitted but cannot be rewarded**;
+and the separation must be **explicit and clearly marked** wherever both appear
+on one surface. The catchment enumeration widens WHO may submit; it does not
+touch HOW submissions are attributed.
+
 **Design shape (locked concept):**
 
 -   **Two-sided:** SUBMISSION side lives in Stakeholder Engagement (+
-    optionally a questionnaire section --- see anonymity rule);
+    optionally a questionnaire section --- see anonymity rule) **AND, per the
+    catchment ruling above, in an app-native entry point that does not depend on
+    an assessment cycle**;
     REVIEW/ACT side is a management queue near Initiatives (view /
     accept→convert-to-Initiative attributed / defer /
     decline-with-reason / recognize-reward). Whether 1 tab or 2 surfaces
