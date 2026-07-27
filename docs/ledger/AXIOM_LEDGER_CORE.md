@@ -2077,6 +2077,40 @@ This also closes the stale-attribution problem the retirement lifecycle was
 opened for: without it, an absorbed override keeps labelling a number that no
 longer needs adjusting, and four quarters of that inverts rare-equals-signal.
 
+### 7.8 ⭐ THE ADJUST AFFORDANCE KEYS ON THE LIVE GRANT, NEVER ON THE ROLE
+
+An override affordance gated on `isAdmin` — the app's existing company-admin
+signal — would have shipped the feature offering its central act to **the one
+actor §7.1 exists to exclude.**
+
+**WHY THAT IS WORSE THAN AN ORDINARY UI-HONESTY GAP.** The usual cost of
+offering an action the server refuses is a confusing 403. Here the refused
+actor is the **company admin**, and §7.1's separation — *the admin decides who
+speaks for a department and can never speak for one* — is the spine the whole
+feature rests on. So the UI would be **inviting precisely the person the design
+keeps out**, and their 403 would read as **a bug rather than as the design**.
+An admin who hits it concludes the product is broken and asks for it to be
+"fixed"; the fix they would ask for is the removal of the guarantee.
+
+**A guard that looks like a defect is a guard under pressure to be removed.**
+
+**RESOLVED** by a new endpoint, `GET …/departments/{id}/may-author`, gated on
+`require_company_member` rather than admin. The distinction is deliberate and
+matches the read-surface split already recorded:
+
+  `/authority`   ADMIN — names people and what they may do (like `/roster`)
+  `/may-author`  MEMBER — answers only "may I act", the caller's OWN fact,
+                 exposing nobody else's
+
+Without the second endpoint the signal the UI needs would be **unreachable by
+the person it is about**: a CXO who is not a company admin cannot read
+`/authority`, and so could not learn their own standing.
+
+**Advisory only.** The write endpoints re-check `can_author()` themselves — this
+exists so the UI does not offer an action the system will refuse, not as a
+substitute for refusing it. The client hook **fails closed**: an unreadable
+answer is not permission, and a 403 there means exactly "no".
+
 ### 8.6 ⭐ NO FAMILY MAY BE EXCLUDED FROM THE SIGNED SET (user ruling, 27 Jul)
 
 The trigger scopes to displayed values — **all four families, no exclusions**:

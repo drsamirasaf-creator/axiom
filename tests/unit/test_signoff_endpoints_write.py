@@ -294,3 +294,55 @@ def test_the_write_surface_is_exactly_the_five_authorised_endpoints(env, client)
         "POST /companies/{company_id}/departments/{department_id}/overrides/withdraw",
         "POST /companies/{company_id}/departments/{department_id}/signoff",
     ], writes
+
+
+# ── may-author: the affordance signal ────────────────────────────────────────
+
+def test_may_author_says_no_for_the_company_admin(env, client):
+    """⭐ THE POINT OF THIS ENDPOINT. A UI keyed on the company-admin ROLE would
+    offer the adjust affordance to the exact actor §7.1 excludes — the admin,
+    who grants authority and may never exercise it — and the resulting 403 would
+    read as a bug rather than as the design."""
+    s, fin, _, cxo, adm, _ = env
+    grant_department(s, CO, fin.id, user_id=cxo.id, granted_by=adm.id); s.commit()
+    r = client.get(f"/companies/{CO}/departments/{fin.id}/may-author", headers=_h(adm))
+    assert r.status_code == 200
+    assert r.json()["may_author"] is False
+    assert "Not authorised" in (r.json()["reason"] or "")
+
+
+def test_may_author_says_yes_for_the_granted_cxo(env, client):
+    s, fin, _, cxo, adm, _ = env
+    grant_department(s, CO, fin.id, user_id=cxo.id, granted_by=adm.id); s.commit()
+    r = client.get(f"/companies/{CO}/departments/{fin.id}/may-author", headers=_h(cxo))
+    assert r.json()["may_author"] is True and r.json()["reason"] is None
+
+
+def test_may_author_tracks_revocation(env, client):
+    s, fin, _, cxo, adm, _ = env
+    grant_department(s, CO, fin.id, user_id=cxo.id, granted_by=adm.id); s.commit()
+    assert client.get(f"/companies/{CO}/departments/{fin.id}/may-author",
+                      headers=_h(cxo)).json()["may_author"] is True
+    revoke_department(s, CO, fin.id, user_id=cxo.id, revoked_by=adm.id); s.commit()
+    assert client.get(f"/companies/{CO}/departments/{fin.id}/may-author",
+                      headers=_h(cxo)).json()["may_author"] is False
+
+
+def test_may_author_is_readable_without_being_a_company_admin(env, client):
+    """The /authority listing is admin-gated because it names people. A CXO who
+    is not an admin must still be able to learn their OWN standing — otherwise
+    the signal the UI needs is unreachable by the person it is about."""
+    s, fin, _, cxo, adm, _ = env
+    import inspect
+    from services.api import signoff_api
+    src = inspect.getsource(signoff_api.get_may_author)
+    assert "require_company_member" in src
+    assert "require_company_admin" not in src
+
+
+def test_may_author_says_no_for_platform_staff(env, client):
+    s, fin, _, cxo, adm, stf = env
+    grant_department(s, CO, fin.id, user_id=stf.id, granted_by=adm.id); s.commit()
+    r = client.get(f"/companies/{CO}/departments/{fin.id}/may-author", headers=_h(stf))
+    assert r.json()["may_author"] is False
+    assert "Platform staff" in (r.json()["reason"] or "")

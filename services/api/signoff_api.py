@@ -24,7 +24,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .accounts import (Department, _summary_access, get_db,
-                       require_company_admin, get_current_user, User)
+                       require_company_admin, require_company_member,
+                       get_current_user, User)
 from .overrides import (signoff_state, signoff_diff, grants_for, audit_rows,
                         department_state, active_signoff, department_authority,
                         can_author, AuthorityError, GrantError, sign_off,
@@ -139,6 +140,35 @@ def get_signoff_diff(company_id: int, department_id: int,
     """
     _dept_or_404(db, company_id, department_id)
     return signoff_diff(db, company_id, department_id)
+
+
+@signoff_router.get("/companies/{company_id}/departments/{department_id}/may-author")
+def get_may_author(company_id: int, department_id: int,
+                   member=Depends(require_company_member),
+                   user: User = Depends(get_current_user), db=Depends(get_db)):
+    """May THIS caller author on this department?
+
+    ⭐ DELIBERATELY NOT the /authority listing. That one is admin-gated because
+    it names people and what they may do; a CXO who is not a company admin
+    cannot read it, and would have no way to learn their own standing. This
+    answers only "may I act", which is the caller's own fact and exposes nobody
+    else's.
+
+    The distinction matters for what the client may do with it: a UI that
+    offered the adjust affordance based on the company-admin ROLE would invite
+    the exact actor §7.1 excludes — the admin, who grants authority and may
+    never exercise it. The resulting 403 would read as a bug rather than as the
+    design, and the design is the whole point.
+
+    Advisory only. The write endpoints re-check can_author() themselves; this
+    exists so the UI does not offer an action the system will refuse.
+    """
+    _dept_or_404(db, company_id, department_id)
+    try:
+        can_author(db, company_id, user, "department", department_id)
+        return {"may_author": True, "reason": None}
+    except AuthorityError as e:
+        return {"may_author": False, "reason": str(e)}
 
 
 @signoff_router.get("/companies/{company_id}/departments/{department_id}/authority")
