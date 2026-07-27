@@ -150,6 +150,54 @@ forbids. All inside transactions, all rolled back, residue confirmed 0 rows.
 
 **VERDICT: ALL GUARDS BIND IN PRODUCTION.** Nothing needed fixing before item 6.
 
+**⭐ (D) REFUTED BY MEASUREMENT — the persisted-id replay was NOT the source
+(27 Jul). Recorded because a refuted hypothesis is worth as much as a confirmed
+one, and this one was mine.**
+
+I proposed that `useAutoResolveCompany`'s platform-elevated shortcut replayed a
+stale `axiom.lastOpenedCompanyId` written by pre-(C) code, and that this
+explained the denylist firing on dataset id 48. **Measurement refutes it:**
+
+- fresh browser context, `localStorage` **empty at start** — the crawler creates
+  a new context per run, so no value can survive between runs;
+- after navigation `axiom.lastOpenedCompanyId = '20'` — the SHOWCASE company id,
+  i.e. the correct id-space, not a dataset id;
+- only company **20** was called on a plain authenticated load.
+
+And the write path was **already guarded**: `use-auto-resolve-company.ts:90`
+reads *"Persist last-opened — only after we've confirmed the id resolves"*, and
+the write is gated on `active.id != null` having resolved. **The defect I
+proposed does not exist.** No fix was made.
+
+**WHERE 48 COMES FROM REMAINS UNKNOWN.** Two probe attempts could not reproduce
+it: the company switcher never rendered in its interactive form in the probe
+context, so the interaction that produces 48 was never exercised. Bounded
+verification stopped there rather than continuing.
+
+**THE PATTERN THAT SURVIVES THE REFUTATION.** (C) and the hypothesised (D) were
+the same shape at different layers — *an identifier trusted without establishing
+its world*, (C) at mint time, (D) at replay time. (C) was real; (D) was not,
+**because the replay path already validates**. That is worth recording as a
+positive: the guard the hypothesis assumed missing is present, and it is the
+reason a whole class of stale-id bugs has not occurred here.
+
+**OBSERVATION, NOT A LANE — other persisted identifiers.** `axiom.auth.token`
+and the per-company dataset picker keys (`axiom.dashboard.dataset.company.<id>`)
+are also persisted client-side and replayed. The picker keys are already
+per-company-scoped and validated against the fetched list (`dataset-selection.ts`
+rule (b): *"a persisted id is only applied if it appears in the currently fetched
+dataset list"*), so they carry the same guard. **No other unguarded persisted
+identifier was found.** Recorded so the question is answered rather than left
+open, not as work.
+
+**SECONDARY OBSERVATION, OBSERVED TWICE, NOT ESTABLISHED.** `CompanySelector`
+renders its non-interactive label when `useAuth()` reports no session, and in
+both probe runs it did so even though API calls authenticated normally (the
+crawler's sanity gate passes on `/me` in the same conditions). If a
+localStorage-primed token satisfies the API layer but not `useAuth()`, that
+would also explain why `select_verify_company` is unreliable. **Not measured to a
+conclusion** — flagged for whoever picks up the pin.
+
 **⭐ THIRD DEFECT FROM ONE NULLABLE COLUMN — THE ALLOWLIST BYPASS (recorded
 27 Jul, NOT acted on. Its own lane, not now.)**
 
