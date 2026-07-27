@@ -2847,6 +2847,45 @@ something adjacent to its claim — but with a distinct edge worth keeping:
 wastes a run; a confidently wrong cause wastes a diagnosis. The 27 Jul run cost
 five operator aborts read as an auth regression before the host was suspected.
 
+### 7.9-MEASURED ⭐ THE FEATURE'S PRECONDITION IS PEOPLE (28 Jul)
+
+§7.9 predicted, from reading the candidate filter, that *"a company with exactly
+one active user cannot use the feature at all — a lone admin opens the panel to
+an empty dropdown."* That prediction is now **measured against production**, and
+it is stronger than predicted.
+
+Company 38, the standing verification tenant:
+
+```
+departments : 2 — both never_assigned
+roster      : 1 entry — a viewer INVITE, user_id = None (an invitation, not an account)
+accounts    : ZERO
+```
+
+⭐ **A COMPANY WITHOUT ACCOUNTS CANNOT EXERCISE STAGE 2 AT ALL, REGARDLESS OF
+WHETHER STAGE 2 IS CORRECT.** Every populated state in the feature is a
+statement about people:
+
+- a grant needs a `user_id` to grant **to**;
+- issuing it needs a **company admin** (§7.1 refuses platform staff, so we
+  cannot stand in);
+- a sign-off needs a holder to **sign**;
+- an override needs an author whose **role at the time** is recorded.
+
+None of these is reachable by correctness. **The precondition is population.**
+
+**Consequence recorded for the launch gates:** Stage 2 cannot be verified in its
+populated states on a tenant that has never been through the customer journey.
+Verification of §7.9 and of the ten Stage 2 components is therefore **downstream
+of the §7.14 sweep**, not independent of it — the sweep is not merely the
+higher-priority lane, it is the *prerequisite* one.
+
+**Also standing (28 Jul): the platform-staff grant refusal stays UNPROBED** until
+it can be exercised inside the Stage 2 write half, where teardown is already
+scoped. A refused POST creates nothing — but if the reading of the guard is
+wrong it creates a grant, and "probably refuses" is not a basis for a production
+write.
+
 ### 7.15f THE FIX AS SHIPPED (27 Jul)
 
 Client-side only. **No server change, no ADR amendment** — the server was doing
