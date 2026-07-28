@@ -12,4 +12,16 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements-dev.txt
+      # ⭐ STATIC GATES RUN BEFORE THE SUITE, because the suite is what missed
+      # the defect they exist to catch: three functions lost a local import and
+      # a binding, 611 tests stayed green, and production returned HTTP 500.
+      - name: unbound names (closure-aware; blind to conditional binding)
+        run: python scripts/check-unbound-names.py
+      - name: route shadowing
+        run: python scripts/check-route-shadowing.py
       - run: pytest -q
+      # Proves the tests guarding the assessment read path are not vacuous, by
+      # reintroducing a plausible defect per test and requiring each to fail.
+      # A test never observed failing is not evidence.
+      - name: mutation check
+        run: python scripts/mutation_check.py
