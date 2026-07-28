@@ -3675,6 +3675,35 @@ Weak evidence is worth surfacing. It is not worth blocking on. The failure here
 was not the detection; it was **letting the confidence of the response outrun the
 confidence of the finding.**
 
+## §7.40 THE THIRD SIGHTING WAS BROWSER CACHE — AND THE METHOD WAS RIGHT ANYWAY
+
+After both gates were genuinely removed and both deploys verified, the customer
+still saw the message. **It was cached JavaScript. Incognito cleared it and the
+upload succeeded.**
+
+⭐ **"INCOGNITO BEFORE ANY FAILURE VERDICT" APPLIES TO A CUSTOMER-REPORTED
+SYMPTOM, NOT ONLY TO CRAWLER RESULTS.** The rule was already standing and was
+applied faithfully to automated runs all session — and not reached for when a
+human reported the same symptom. **This is where an hour went.**
+
+**The method held even though the answer was elsewhere**, and that is the part
+worth keeping:
+
+- **Capturing the live API response instead of a fourth grep.** Two greps had
+  already missed the string; a third was worth less than one observation. The
+  capture proved the payload contained no version-keyed message in `errors`,
+  `warnings`, or anywhere else.
+- **Verifying chunk coverage rather than assuming the sweep reached the code.**
+  `"Decision Makers"` and `"participants/preview"` were confirmed present in the
+  fetched chunks *before* concluding the string was absent from them — the exact
+  check missing from the earlier route-shell sweep that produced a false
+  "ABSENT".
+- **Testing by absence of the OLD string**, not presence of the new one.
+
+**Sequence for a customer-reported UI symptom, in order:** incognito → served
+bundle (old string absent) → live API response → source. Cache is the cheapest
+to rule out and was tried last.
+
 ## §7.38 ⭐ A FIELD EVERY CONSUMER BRANCHES ON IS A GATE WITH A DISCLAIMER
 
 `version_ok` was left in the API response and called **informational**. Three
