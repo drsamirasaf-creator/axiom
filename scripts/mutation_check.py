@@ -60,9 +60,12 @@ MUTATIONS = [
      "    if latest is None or not (latest.snapshot or {}).get(\"sentiment_available\"):",
      f"{READ}::test_department_sentiment_map_body_executes"),
 
+    # ⭐ ANCHORED ON CODE ONLY. This anchor used to include the two comment lines
+    # above the assignment, so rewording a comment — a change with no behavioural
+    # meaning whatsoever — would have gone stale and silently unvouched the test.
+    # Comments are the least stable text in a file and the least informative to
+    # match on.
     ("item_drill reverts to newest-closed regardless of results", ACC,
-     "    # ⭐ CLOSED IS NOT THE SAME AS HAS-RESULTS. This took the newest closed cycle\n"
-     "    # whatever it contained — the same defect as _dept_coverage, one surface away.\n"
      "    closed = closed_cycles_with_results(db, company_id)\n"
      "    if not closed:\n        return {\"has_data\": False, \"item_code\": item_code,",
      "    closed = []\n"
@@ -89,14 +92,23 @@ def run(node):
     return r.returncode == 0, (r.stdout + r.stderr)
 
 
+# ⭐ A STALE ANCHOR IS NOT A PASS. When a refactor moves the code an anchor
+# points at, the mutation silently stops testing anything — the harness would
+# print SKIP, exit 0, and the test it was vouching for becomes unvouched without
+# anyone noticing. One stale anchor after a refactor is normal. Three is rot, and
+# the difference has to be enforced rather than left to whoever reads the log.
+MAX_STALE = 2
+
+
 def main():
     print(f"MUTATION CHECK — {len(MUTATIONS)} plausible defects\n")
     survived, killed, skipped = [], [], []
     for label, path, find, repl, node in MUTATIONS:
         src = open(path).read()
         if find not in src:
-            skipped.append(label)
-            print(f"  SKIP   {label}\n         (anchor not found — the code moved; mutation needs updating)")
+            skipped.append((label, node))
+            print(f"  ⚠ STALE  {label}\n           anchor no longer present in {os.path.relpath(path, ROOT)}"
+                  f"\n           -> {node.split('::')[-1]} is currently UNVOUCHED")
             continue
         backup = tempfile.mktemp(suffix=".bak")
         shutil.copy(path, backup)
@@ -113,12 +125,36 @@ def main():
             killed.append(label)
             print(f"  killed  {label}")
 
-    print(f"\n  killed {len(killed)} / survived {len(survived)} / skipped {len(skipped)}")
+    # ⭐ ALWAYS PRINTED, PASS OR FAIL. The summary is the thing a reader scans;
+    # burying "skipped 3" behind a green exit code is how the harness would come
+    # to vouch for nothing while still looking like it works.
+    print(f"\n  SUMMARY: {len(killed)} killed / {len(survived)} survived / "
+          f"{len(skipped)} STALE-ANCHOR   (of {len(MUTATIONS)})")
+
+    if skipped:
+        print(f"\n  ⚠ STALE ANCHORS ({len(skipped)}) — these mutations tested NOTHING this run:")
+        for l, n in skipped:
+            print(f"    · {l}\n      unvouched test: {n}")
+
     if survived:
         print("\n  ⚠ THESE TESTS PROVE NOTHING ABOUT THEIR MUTATION:")
         for l, n in survived:
             print(f"    {n}\n      survives: {l}")
-    return 1 if survived else 0
+
+    fail = bool(survived)
+    if len(skipped) > MAX_STALE:
+        print(f"\n  FAIL — {len(skipped)} stale anchors exceeds the limit of {MAX_STALE}. "
+              f"One after a refactor is normal; this is rot. Re-anchor them or delete "
+              f"the mutations that no longer describe a plausible defect.")
+        fail = True
+    elif skipped:
+        print(f"\n  (within the limit of {MAX_STALE} — re-anchor before it grows)")
+
+    if survived:
+        print(f"\n  FAIL — {len(survived)} mutation(s) survived.")
+    if not fail:
+        print("\n  PASS")
+    return 1 if fail else 0
 
 
 if __name__ == "__main__":
