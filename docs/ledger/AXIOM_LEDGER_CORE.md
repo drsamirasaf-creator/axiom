@@ -2965,6 +2965,66 @@ is "any admin", and is correct. **Only the sentence was wrong.** Corrected. A
 stale comment asserting a constraint the code does not enforce is the same
 false-model hazard as `_operator_bypass`.
 
+## §7.21 ⭐ THE CUSTOMER PATH CANNOT BE WALKED WITHOUT A REAL STRIPE PAYMENT
+
+**Seeding paused before the first write. Nothing was created.**
+
+Both routes to *"a company with an admin who is not platform staff"* pass
+through a completed Stripe checkout:
+
+```
+POST /access/create-company
+    "(1) seat gate — accounts system only"
+    account = Account.filter_by(owner_user_id=user.id).first()
+    if not account or account.status != "active":
+        402 "No active company license. Purchase a company license…"
+
+pilot -> customer transfer
+    _execute_transfer(db, offer, buyer_user, buyer_account)
+    called from EXACTLY ONE place: accounts.py:11913 — inside @router.post("/webhooks/stripe")
+```
+
+⭐ **`Account` IS CREATED IN ONE PLACE ONLY — THE STRIPE WEBHOOK.** There is no
+in-app purchase, no manual grant, no test path. And the pilot→customer transfer
+does not have an in-app accept at all: **it executes inside the webhook handler**,
+so a customer accepting a transferred pilot IS a Stripe event.
+
+Forging the webhook would need the signing secret and would fabricate a
+purchase. That is not a customer path and was not attempted.
+
+### AGAINST THE THREE PREREQUISITES FOR THE STAGE 2 WRITE HALF
+
+| prerequisite | creatable via the customer path? |
+| --- | --- |
+| three departments | yes (admin-gated) |
+| a user account able to hold a grant | yes — register, invite, accept → viewer with a real `user_id` |
+| **an admin who is NOT platform staff** | ❌ **NO — requires Stripe** |
+
+### ⭐ IT ALSO EXPLAINS COMPANY 38 — §7.16c IS A DESIGNED STATE, NOT AN ANOMALY
+
+`create_pilot` adds `Membership(user_id=actor.id, role="admin")` where the actor
+is the **super-admin**. **A Free Pilot company is BORN with the platform operator
+as its admin** and stays that way until a Stripe-completed transfer moves the
+seat.
+
+So company 38 — admin = user 1 = platform-super, §7.1 refusing that admin from
+granting — is **the ordinary intermediate state of the Free Pilot motion**, not a
+corrupted fixture. §7.16c is upgraded accordingly: it describes every
+untransferred pilot, not one tenant.
+
+**And that makes it a launch-path question, not a fixture question:** every Free
+Pilot company in the field has an admin who cannot exercise Stage 2's admin
+authority until the customer pays.
+
+### WHAT THIS BLOCKS AND WHAT IT DOES NOT
+
+- **Blocked:** the Stage 2 write half, on any company, until either a real
+  purchase exists or a non-Stripe route to an `Account` is authorised.
+- **Not blocked:** everything read-only, and the other three regression passes.
+
+**Logged, not chased. The lane paused rather than pushing through to a green
+result.**
+
 ## §7.19 ⭐ THE HALF-DONE-SUPERSESSION CLASS — WRITES MIGRATED, READS LEFT BEHIND
 
 **Beside two-owners (§7.15g) and shadowed-route (§7.17). A third way for a
