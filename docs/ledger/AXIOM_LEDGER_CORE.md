@@ -4738,7 +4738,7 @@ clamp as an estimate.**
 
 Full working: `docs/reports/2026-07-28-b1-convergence.md` (B1) and this entry.
 
-## L.2h ⚠ OPEN DEFECT — THE FRONTEND HOST REFUSES HTTP/2 STREAMS UNDER LOAD (28 Jul)
+## L.2h ⚠ HTTP/2 STREAM REFUSAL — DOWNGRADED ON EVIDENCE, NOT CLOSED (28 Jul)
 
 **Found while running V7 of the quarterly lane. Independent of that lane, and
 more serious than it.**
@@ -4772,6 +4772,52 @@ right layer: *"This is a HOST/BUNDLE failure (chunks refused or never served),
 not an auth failure. Check the frontend host before touching the credential."*
 The word *refused* is literally what the network reported. That gate was built
 earlier the same day, and it paid for itself here.
+
+### ⭐ INVESTIGATED 28 Jul — THE FAN-OUT HYPOTHESIS IS DEAD, AND IT WILL NOT REPRODUCE
+
+**Serving layer: Cloudflare** (`server: cloudflare`, `cf-ray`, `__cf_bm` bot-
+management cookie), not Railway edge and not the app.
+
+**`SETTINGS_MAX_CONCURRENT_STREAMS = 100`, measured off the wire** (raw h2
+SETTINGS frame, `scripts/h2_settings.py` — the documented Cloudflare default is
+not evidence about our zone). **We request 57 chunks. The limit is 100.**
+
+⭐ **SO FAN-OUT IS NOT THE CAUSE, AND `manualChunks` WOULD NOT HAVE FIXED IT.**
+It was the intuitive candidate and it is arithmetically excluded. Had it been
+"fixed" that way, the change would have been credited with a recovery it did not
+cause — and the real trigger would still be live.
+
+**52 cold-cache loads across four patterns: ZERO refusals.**
+
+| pattern | loads | refusals |
+| --- | --- | --- |
+| paced sequential, anonymous | 12 | 0 |
+| rapid 14-route sweep, one context (the crawler's shape) | 14 | 0 |
+| 6 concurrent cold contexts | 6 | 0 |
+| paced sequential, authenticated | 20 | 0 |
+
+Every load asked for the same 57 chunks and booted (12–23 API calls).
+
+**⭐ THE OBSERVATIONS CLUSTERED IN THE PUBLISH WINDOW.** Every refusal and every
+`ERR_CONNECTION_CLOSED` happened while the frontend was being republished — the
+same window in which a chunk fetched by content hash 404'd. **The most probable
+cause is deploy propagation, not a standing host limit**: during a rollout the
+edge briefly holds references to assets it can no longer serve.
+
+**Disposition: DOWNGRADED from launch blocker to watch item.** Not closed —
+absence of reproduction is not proof of absence, and the failure mode (a blank
+app on a cold cache, no error shown) is severe enough that it must be re-checked
+after any future publish rather than assumed gone.
+
+**⭐ NO RETRY LOGIC WAS ADDED TO THE CRAWLER.** A retry would have reported the
+reassuring number and hidden a user-visible failure — the tool lying in the
+direction that feels like progress. The measurement harness
+(`scripts/measure_h2_refusals.py`) counts every load exactly once, refused or
+not, and is retained precisely so the next occurrence is measured rather than
+described as "intermittent".
+
+**Standing consequence, unchanged:** a red crawler run taken during a publish is
+not evidence. Re-run it clean before believing it.
 
 **Not fixed — recorded as an open defect.** Likely levers: the host's HTTP/2
 concurrent-stream limit, or reducing chunk count / adding preload hints so a cold
