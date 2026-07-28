@@ -9466,6 +9466,26 @@ def assessment_summary(company_id: int, department: int | None = None,
             "trend": trend, "cadence": cadence_block}
 
 
+def _cycle_has_results(c) -> bool:
+    """Does this closed cycle actually carry SCORES?
+
+    ⭐ `l1_subscores` NON-EMPTY IS NOT THAT TEST, AND WAS USED AS IF IT WERE.
+    `_cycle_cei` returns the framework's 13 axes whatever the response count, so a
+    cycle with ZERO responses still yields a 13-entry `l1_subscores` list — every
+    entry scoreless. Selecting "the latest closed cycle with l1_subscores" therefore
+    preferred a NEWER EMPTY cycle over an OLDER POPULATED one, on every surface
+    using it (measured 28 Jul on company 39: cycle 54, n=0, shadowed cycle 53,
+    n=9, and Sentiment reported has_data=false while cycle 53's snapshot held 22
+    item sentiments).
+
+    `cei is not None` is the meaningful test: `apply_kfloor` and `_cycle_cei` both
+    leave `cei` null when there is nothing to report, so a non-null CEI means the
+    cycle was scored AND cleared the floor.
+    """
+    snap = c.snapshot or {}
+    return snap.get("cei") is not None
+
+
 @router.get("/companies/{company_id}/assessment/seniority-gap")
 def assessment_seniority_gap(company_id: int, member=Depends(_summary_access),
                              db=Depends(get_db)):
@@ -9536,7 +9556,7 @@ def _department_sentiment_map(db, company_id):
     deps = db.query(Department).filter_by(company_id=company_id).all()
     cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
                 .order_by(AssessmentCycle.opened_at).all())
-    closed = [c for c in cycles if c.closed_at and (c.snapshot or {}).get("l1_subscores")]
+    closed = [c for c in cycles if c.closed_at and _cycle_has_results(c)]
     latest = closed[-1] if closed else None
     if latest is None or not (latest.snapshot or {}).get("sentiment_available"):
         return {d.id: {"score": None, "rag": None, "n": 0, "below_floor": True,
@@ -9653,7 +9673,7 @@ def assessment_sentiment(company_id: int, department: int | None = None,
     from .assessment_engine import KFLOOR
     cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
                 .order_by(AssessmentCycle.opened_at).all())
-    closed = [c for c in cycles if c.closed_at and (c.snapshot or {}).get("l1_subscores")]
+    closed = [c for c in cycles if c.closed_at and _cycle_has_results(c)]
     latest = closed[-1] if closed else None
     prior = closed[-2] if len(closed) > 1 else None
     empty = {"company_id": company_id, "has_data": False, "cycle_id": None,

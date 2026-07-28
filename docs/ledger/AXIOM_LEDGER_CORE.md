@@ -3350,6 +3350,83 @@ Same shape as the company-name split: a value copied at a moment, with no
 forcing function afterwards. **Slices read the response rows**, so the response
 copy is the one that decides what the customer sees.
 
+## §7.28 ⭐ A STRUCTURAL TEST WHERE A SEMANTIC ONE WAS MEANT — AND A MASK REMOVED BY A CORRECT FIX
+
+Two surfaces selected "the latest closed cycle that has results" with:
+
+```python
+closed = [c for c in cycles if c.closed_at and (c.snapshot or {}).get("l1_subscores")]
+```
+
+⭐ **`l1_subscores` NON-EMPTY IS NOT "HAS RESULTS".** `_cycle_cei` returns the
+framework's **13 axes whatever the response count**, so a cycle with **zero
+responses still yields a 13-entry list** — every entry scoreless. The filter
+tested **shape**, and shape is identical either way.
+
+Consequence: **a newer EMPTY cycle shadows an older POPULATED one**, on every
+surface using the filter. Measured on company 39 — cycle 54 (n=0) shadowed cycle
+53 (n=9), and Sentiment reported `has_data:false` while cycle 53's snapshot held
+**22 item sentiments**.
+
+**Copied once, as suspected:** `accounts.py:9539` (seniority-gap) and `:9656`
+(sentiment). Both rebound to `_cycle_has_results(c)` → `snap.get("cei") is not
+None`. `cei` is null wherever there is nothing to report — `_cycle_cei` leaves it
+null with no responses, `apply_kfloor` nulls it below the floor — so a non-null
+CEI means **scored AND above the floor**.
+
+**Proved both directions on the real snapshots**, then as a regression test that
+**fails 3/5 against the old filter**:
+
+```
+DIRECTION 1  cycles 53 (cei=6.4499) + 54 (cei=None)
+             OLD picks 54   <- empty shadows populated
+             NEW picks 53
+DIRECTION 2  only cycle 54 (genuinely empty)
+             OLD picks 54   <- PHANTOM result
+             NEW picks None <- correctly reports no results
+```
+
+### ⭐ THE MASK — SECOND INSTANCE TODAY OF A CORRECT FIX EXPOSING A LATENT DEFECT
+
+**This defect was always present and could not be reached.** Empty cycles
+previously carried **empty snapshots**, which failed the old filter for the wrong
+reason and hid the flaw. Recomputing cycle 54's snapshot — so the retained
+evidence row would stop claiming a respondent it no longer had (a correct fix,
+ruled and right) — gave it the full 13-axis shape, and **the mask came off**.
+
+**Second time today.** The first: fixing the auth tri-state made `isDemo` correct
+at boot, which switched on a `local→store` writer that an accident had been
+suppressing (§7.15j, the accidental guard).
+
+**The pattern: a correct fix removes an accidental condition that was standing in
+for a guard nobody wrote.** Neither fix caused its defect; both made a latent one
+reachable. The detection heuristic from §7.15j applies again — *when a fix makes
+a previously-wrong value correct, ask what was depending on it being wrong* — and
+it earned its second confirmation the same day it was written.
+
+## §7.29 COMPLEMENT INFERENCE MEANS UNBANDED RESPONDENTS SUPPRESS BANDED SLICES
+
+Measured on company 39 at n=9:
+
+```
+DEPARTMENTS   Finance n=4 SHOWN | Operations n=3 SUPPRESSED | (unassigned) n=2 SUPPRESSED
+SENIORITIES   Mid-level n=4 SHOWN | Senior mgmt n=3 SUPPRESSED | (unassigned) n=2 SUPPRESSED
+```
+
+**Operations clears KFLOOR=3 on its own and is still suppressed.** With
+`(unassigned)` at n=2 hidden, showing both Finance and Operations would make the
+hidden slice derivable by subtraction, so the smallest shown slice is suppressed
+too. The rule is working correctly.
+
+⭐ **THE PRODUCT CONSEQUENCE: A HANDFUL OF UNASSIGNED PEOPLE COSTS A CUSTOMER
+THEIR ENTIRE DEPARTMENTAL BREAKDOWN.** Two unbanded respondents out of nine
+suppressed one of two qualifying departments and one of two qualifying bands.
+**Two slices above the floor is not sufficient when a third sits below it.**
+
+**Argument for mandatory department and seniority at invite time** — for the
+customer-journey pass. The cost of leaving them optional is not the unassigned
+slice; it is the *assigned* ones that get suppressed to protect it.
+
 ## §7.19 ⭐ THE HALF-DONE-SUPERSESSION CLASS — WRITES MIGRATED, READS LEFT BEHIND
 
 **Beside two-owners (§7.15g) and shadowed-route (§7.17). A third way for a
