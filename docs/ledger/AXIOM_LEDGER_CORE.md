@@ -3302,6 +3302,54 @@ Same family as the other 27–28 Jul instrument failures — *the instrument
 measured something adjacent to the claim* — with the distinguishing feature that
 here the instrument **discarded** the evidence rather than mis-reading it.
 
+## §7.26 CLOSING A CYCLE IS IRREVERSIBLE AND THERE IS NO RECOVERY (product gap)
+
+**`closed_at` is never cleared anywhere in the codebase.** No reopen endpoint;
+`PATCH /assessment/cycles/{cid}` handles depth only. Afterwards the cid-scoped
+invite returns `409 "cycle is closed"` and the company-level invite silently
+auto-opens a NEW cycle (§7.24a).
+
+⭐ **AN ADMIN WHO CLOSES EARLY HAS NO RECOVERY.** Combined with the absent
+k-floor warning (§7.24b), an admin can close at n=2 — told "the CEI is computed
+from whoever responded" — and be left with a permanently unreportable cycle and
+no way back. **The two defects are only survivable together if neither happens.**
+
+For the customer-journey pass. The fix is a product decision (reopen endpoint?
+undo window? warn-and-confirm at the floor?), not a bug fix.
+
+### AUTHORISED WRITE, 28 Jul — STANDING IN FOR THE MISSING ENDPOINT
+
+`closed_at` cleared on **cycle 53, company 39 only**, by explicit user
+authorisation, to allow further assessors to be collected into the existing
+cycle rather than splitting them into a new one.
+
+**Recorded as a write standing in for an endpoint that does not exist.** Every
+other step of that run went through the application path. This one could not,
+because there is no path — which is itself the finding above.
+
+## §7.27 TWO-OWNERS AGAIN — DEPARTMENT AND SENIORITY ON INVITE *AND* ON EVERY RESPONSE
+
+Fourth instance of the class (§7.15g, §7.19, §7.22).
+
+`_submit_responses(..., department=inv.department, seniority=inv.seniority)`
+**stamps the invite's department and seniority onto every response row at
+submission time.** So the pair lives in two places:
+
+| owner | where | when written |
+| --- | --- | --- |
+| `ax_assessment_invites.department` / `.seniority` | one row per participant | at invite |
+| `ax_assessment_responses.department` / `.seniority` | **every response row** (78 per participant) | at submit, copied from the invite |
+
+**Nothing reconciles them.** There is no PATCH on assessment invites, so an
+invite's band cannot be corrected through the application at all — and if it
+could, the responses already written would keep the old value. Correcting a
+participant's department retroactively means writing both owners, and the copy
+is per-row.
+
+Same shape as the company-name split: a value copied at a moment, with no
+forcing function afterwards. **Slices read the response rows**, so the response
+copy is the one that decides what the customer sees.
+
 ## §7.19 ⭐ THE HALF-DONE-SUPERSESSION CLASS — WRITES MIGRATED, READS LEFT BEHIND
 
 **Beside two-owners (§7.15g) and shadowed-route (§7.17). A third way for a
