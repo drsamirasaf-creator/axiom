@@ -3025,6 +3025,61 @@ authority until the customer pays.
 **Logged, not chased. The lane paused rather than pushing through to a green
 result.**
 
+## §7.22 ⭐ TWO-OWNERS AT A NEW SITE — THE COMPANY NAME (28 Jul)
+
+**Third instance of the two-owners class (§7.15g, §7.19), and the first that
+reaches an exported board document.**
+
+Two legitimate sources, no reconciliation:
+
+| source | field | set by |
+| --- | --- | --- |
+| profile | `enterprises.name` | the company profile at creation |
+| template | `data["company"]["name"]` | row 2 of the Excel *Company* sheet — `("name", "Company Name", "all")` |
+
+Observed live: a user typed **"Inc."** in the profile and **"Ltd."** in the
+template. Both were accepted. Nothing compared them.
+
+### WHICH SURFACE READS WHICH — AND IT IS INCIDENTAL, NOT PRINCIPLED
+
+**Profile**, via `_company_name(db, company_id)` — a resolver that reads
+`Enterprise` and never consults the dataset:
+- **PDF board report** meta, **and the download filename** (`report_filename`)
+- report-share, invite and assessor emails
+
+**Template**, via the canonical dataset:
+- **Valuation** — `engines.py:675`, `:702` return `{"subject": data["company"]["name"]}`
+- dataset naming at ingest (`financials/router.py:123`)
+
+⭐ **A BOARD PACK THEREFORE CARRIES BOTH NAMES: the cover and filename say one
+entity, the valuation subject says another.** That is an accuracy problem in a
+document a board relies on, not a cosmetic one.
+
+**The split is incidental.** `_company_name()` has no dataset fallback; the
+valuation engines never consult `Enterprise`. Each reader took the source
+nearest to hand — the accounts world reaches for `Enterprise`, the financials
+world for the dataset already in memory. **No arbitration exists because none
+was ever written.** Two coherent halves, nothing forcing agreement.
+
+*Not verified:* every section of the rendered PDF, and the financial-statements
+export specifically. Those render from the canonical dataset and so most likely
+follow the template name, but that was not confirmed.
+
+### PROPOSED RESOLUTION — FOR RULING, NOT BUILT
+
+1. **The profile name is authoritative for display**, everywhere — including the
+   valuation subject and every exported artifact.
+2. **A template/profile mismatch is SURFACED AT UPLOAD for human resolution**,
+   per the standing collision philosophy: *surface collisions, never
+   auto-resolve*. The uploader is told the template says X and the profile says
+   Y, and chooses.
+3. **NEVER SILENTLY OVERRIDDEN in either direction.** Silently preferring the
+   profile would discard a deliberate correction typed into the template;
+   silently preferring the template would let a spreadsheet rename a company.
+
+This is a ruling for the user, recorded here so the decision is made once rather
+than re-derived at each reading site.
+
 ## §7.19 ⭐ THE HALF-DONE-SUPERSESSION CLASS — WRITES MIGRATED, READS LEFT BEHIND
 
 **Beside two-owners (§7.15g) and shadowed-route (§7.17). A third way for a
