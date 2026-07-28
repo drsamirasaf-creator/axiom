@@ -40,15 +40,13 @@ GREEN = colors.HexColor("#1FA971"); AMBER = colors.HexColor("#E0A82E"); RED = co
 RAGHEX = {"green": "#1FA971", "amber": "#E0A82E", "red": "#D9534F", "A": "#1FA971",
           "B": "#1FA971", "C": "#E0A82E", "D": "#D9534F", "E": "#D9534F"}
 SEVCOL = {"opportunity": TEAL, "insight": NAVY, "risk": RED, "strength": GREEN, "action": AMBER}
-_SYM = {"USD": "$", "EUR": "€", "GBP": "£", "JPY": "¥", "CHF": "CHF ", "CAD": "$", "AUD": "$"}
+# Symbols, money, percent, number, KPI selection and plan selection all live in
+# report_format so the PPTX cannot drift from the PDF. See that module.
+from .report_format import (currency_symbol as _sym_for, money as _money,
+                            percent as _pc, number as _num,
+                            kpi_value as _kpi_value, plan_value as _plan_value)
 
 
-def _pc(x, d=1):
-    return "—" if x is None else f"{x*100:.{d}f}%"
-
-
-def _num(x, d=2):
-    return "—" if x is None else f"{x:,.{d}f}"
 
 
 # ---------- chart helpers (theme-matched, ~150 DPI) ----------
@@ -122,18 +120,14 @@ def build_board_pdf(report: dict, extras: dict, meta: dict) -> bytes:
     R = report
     sec = {s["id"]: s for s in R["sections"]}
     company = R["company"]
-    sym = _SYM.get((company.get("currency") or "").upper(), (company.get("currency") or "") + " ")
+    sym = _sym_for(company.get("currency"))
     issued = meta.get("issued_at")
     dsv = meta.get("dataset_version")
     logo = (meta or {}).get("logo")           # (bytes, content_type) or None
     units_note = f"Figures in {sym.strip() or company.get('currency','')} millions unless otherwise noted."
 
     def M(x):
-        if x is None:
-            return "—"
-        if abs(x) >= 1000:
-            return f"{sym}{x/1000:,.2f}B"
-        return f"{sym}{x:,.1f}M"
+        return _money(x, sym)
 
     PC, NUM = _pc, _num
     KF = R.get("key_findings", [])
@@ -317,8 +311,7 @@ def build_board_pdf(report: dict, extras: dict, meta: dict) -> bytes:
     story += kicker("Question 1 · Diagnostic", "Where the Company Stands Today", s["takeaway"])
 
     def fmtkpi(k):
-        f = k["format"]; v = k["current"]
-        return PC(v) if f == "percent" else NUM(v, 3) if f == "ratio" else M(v)
+        return _kpi_value(k, sym)
     kp = s["kpi_strip"]
     krows = [[k["kpi"], fmtkpi(k), (f"{k['trend']*100:+.1f}%" if k.get("trend") is not None else "—")] for k in kp]
     half = (len(krows) + 1) // 2
@@ -413,7 +406,7 @@ def build_board_pdf(report: dict, extras: dict, meta: dict) -> bytes:
                 if _pf_truncated else None)
 
     def _plan(st, key, kind):
-        return st["stochastic"][key]["plan"] if kind == "stoch" else st["deterministic"][key]
+        return _plan_value(st, key, kind)
 
     def stmt_page(kicker_txt, title, take, lines, note=None, extra=None):
         loc = kicker(kicker_txt, title, take)

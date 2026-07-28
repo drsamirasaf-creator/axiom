@@ -481,18 +481,23 @@ def _chart_rail(d, kicker, headline, png, rail_cards=None, rail_bullets=None, in
     return s
 
 
+# ⭐ `_big` AND `_fmt` ARE DELETED, NOT ALIGNED. `_big` rendered "$4M" where the
+# PDF rendered "$4.1M" for the same payload, and its zero decimals collapsed 3.6,
+# 4.0 and 4.4 into one figure. `_fmt` agreed with the PDF's percent formatter,
+# which made it the next instance of this class rather than a safe one.
+from .report_format import (money as _big_money, percent as _pct, number as _plain,
+                            currency_symbol as _currency_symbol)
+
+
 def _fmt(v, pct=False):
-    if v is None:
-        return "—"
-    return f"{v*100:.1f}%" if pct else f"{v:,.1f}"
+    return _pct(v) if pct else _plain(v, 1)
 
 
-def _big(v, sym=""):
-    if v is None:
-        return "—"
-    if abs(v) >= 1000:
-        return f"{sym}{v/1000:,.2f}B"
-    return f"{sym}{v:,.0f}M"
+# ⭐ A DIRECT ALIAS, NOT A WRAPPER. A wrapper is a second place the formatting
+# could come back: its body can be rewritten while the import above still looks
+# right, which is exactly how a mutation slipped past the identity test. The
+# signatures match, so nothing needs wrapping.
+_big = _big_money
 
 
 def _rag_accent(rag):
@@ -511,7 +516,7 @@ def build_pptx_comprehensive(report, extras, meta, data=None) -> bytes:
     prs = Presentation(); prs.slide_width = Emu(int(SW * EMU_IN)); prs.slide_height = Emu(int(SH * EMU_IN))
     S = {s["id"]: s for s in report.get("sections", [])}
     company = report.get("company", {}); cur = company.get("currency", "")
-    sym = {"USD": "$", "EUR": "€", "GBP": "£"}.get(cur, "")
+    sym = _currency_symbol(cur)   # one map; this one knew only three codes
     cname = meta.get("company_name", company.get("name", "Company"))
     d = Deck(prs, cname, meta["issued_at"], meta.get("dataset_version"), _logo_from_meta(meta))
 

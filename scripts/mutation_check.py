@@ -17,12 +17,15 @@ The source file is restored after every mutation, including on failure.
 import subprocess, sys, shutil, os, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RF = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services/api/report_format.py")
+REP = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services/api/reporting.py")
 PU = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services/api/participant_upload.py")
 PRO = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services/api/modules/financials/proforma.py")
 ACC = os.path.join(ROOT, "services/api/accounts.py")
 VAL = os.path.join(ROOT, "services/api/modules/valuation/engines.py")
 READ = "tests/unit/test_assessment_read_path_execution.py"
 PUT = "tests/unit/test_participant_upload.py"
+RFT = "tests/unit/test_report_format.py"
 COV = "tests/unit/test_coverage_rename_and_suppression.py"
 
 # (label, file, find, replace, test-node-id)
@@ -158,6 +161,52 @@ MUTATIONS = [
      '    except Exception as e:\n        raise',
      f"{PUT}::test_a_file_that_is_not_a_workbook_is_reported_not_raised"),
 
+
+    # ── board pack §7.31 ─────────────────────────────────────────────────────
+    ("money drops back to zero decimals (3.6/4.0/4.4 collapse again)", RF,
+     '    return f"{sym}{x:,.{MONEY_DECIMALS}f}M"',
+     '    return f"{sym}{x:,.0f}M"',
+     f"{RFT}::test_the_three_collapsed_values_are_now_three_strings"),
+
+    ("the PPTX re-grows its own money formatter, agreeing by luck not design", REP,
+     "_big = _big_money",
+     "def _big(v, sym=\"\"):\n    if v is None:\n        return \"—\"\n"
+     "    if abs(v) >= 1000:\n        return f\"{sym}{v/1000:,.2f}B\"\n"
+     "    return f\"{sym}{v:,.2f}M\"",
+     f"{RFT}::test_both_artifacts_use_the_same_function_object"),
+
+    ("the PPTX money formatter drifts by one decimal", REP,
+     "_big = _big_money",
+     "def _big(v, sym=\"\"):\n    if v is None:\n        return \"—\"\n"
+     "    if abs(v) >= 1000:\n        return f\"{sym}{v/1000:,.2f}B\"\n"
+     "    return f\"{sym}{v:,.1f}M\"",
+     f"{RFT}::test_pdf_and_pptx_render_the_same_money_string"),
+
+    ("the billion tier stops dividing by a thousand", RF,
+     '        return f"{sym}{x/1000:,.{MONEY_DECIMALS}f}B"',
+     '        return f"{sym}{x:,.{MONEY_DECIMALS}f}B"',
+     f"{RFT}::test_the_billion_tier_divides_by_a_thousand_because_input_is_millions"),
+
+    ("an unknown currency goes back to rendering bare", RF,
+     '    return CURRENCY_SYMBOLS.get(c, (c + " ") if c else "")',
+     '    return CURRENCY_SYMBOLS.get(c, "")',
+     f"{RFT}::test_an_unknown_currency_is_labelled_not_left_bare"),
+
+    ("KPI percent selection falls through to money", RF,
+     '    if fmt == "percent":\n        return percent(v)',
+     '    if False:\n        return percent(v)',
+     f"{RFT}::test_kpi_selection_routes_each_declared_format_to_its_own_shape"),
+
+    ("KPI ratio loses its third decimal", RF,
+     '    if fmt == "ratio":\n        return number(v, 3)',
+     '    if fmt == "ratio":\n        return number(v, 2)',
+     f"{RFT}::test_ratio_keeps_three_decimals_and_percent_one"),
+
+    ("plan selection reads the wrong block", RF,
+     '    if kind == "stoch":\n        return statement["stochastic"][key]["plan"]',
+     '    if kind != "stoch":\n        return statement["stochastic"][key]["plan"]',
+     f"{RFT}::test_plan_selection_reads_the_block_its_kind_names"),
+
     ("sigma reports the clamp as an estimate again", VAL,
      '            if sd < 0.15:\n                return 0.15, ("floor (0.15) — this company\'s historical revenue is too "\n'
      '                              "smooth to estimate volatility from")',
@@ -172,9 +221,29 @@ MUTATIONS = [
 ]
 
 
+def _purge_pycache():
+    """⭐ A MUTATION THAT PRESERVES FILE SIZE CAN BE MASKED BY A STALE .pyc.
+
+    Python invalidates cached bytecode on (mtime, size). `==` -> `!=` and
+    `,.2f` -> `,.1f` are byte-for-byte the same length, so a rewrite inside the
+    same mtime second is invisible and the ORIGINAL module is imported. Two real
+    mutations were reported SURVIVED for exactly this reason, which would have
+    been read as two weak tests rather than a broken harness.
+
+    It fails in the loud direction — survivors are over-reported, never
+    under-reported — but it is still wrong, so the caches go."""
+    for base in ("services", "tests"):
+        for dirpath, dirnames, _ in os.walk(os.path.join(ROOT, base)):
+            for d in list(dirnames):
+                if d == "__pycache__":
+                    shutil.rmtree(os.path.join(dirpath, d), ignore_errors=True)
+
+
 def run(node):
+    _purge_pycache()
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
     r = subprocess.run([sys.executable, "-m", "pytest", node, "-q", "--no-header", "-x"],
-                       cwd=ROOT, capture_output=True, text=True, timeout=900)
+                       cwd=ROOT, capture_output=True, text=True, timeout=900, env=env)
     return r.returncode == 0, (r.stdout + r.stderr)
 
 

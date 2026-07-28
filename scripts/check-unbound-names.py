@@ -42,6 +42,10 @@ TARGETS = [
     "services/api/modules/financials/proforma.py",
     "services/api/modules/intelligence/engines.py",
     "services/api/modules/twin/engines.py",
+    "services/api/report_pdf.py",
+    "services/api/reporting.py",
+    "services/api/report_format.py",
+    "services/api/participant_upload.py",
 ]
 BUILTINS = set(dir(builtins)) | {"__file__", "__name__", "__doc__", "self", "cls"}
 
