@@ -10695,12 +10695,16 @@ async def participant_preview(company_id: int, file: UploadFile = File(...),
     from . import participant_upload as PU
     content = await file.read()
     parsed = PU.parse_participant_workbook(content, _company_department_names(db, company_id))
-    recon = _reconcile_participants(db, company_id, parsed) if parsed.get("version_ok") else None
+    # ⭐ NO VERSION GATE (user policy, 28 Jul). Reconciliation runs on whatever
+    # parsed, and `committable` depends on the parse succeeding — never on a
+    # version stamp. Gating the PREVIEW was the same block wearing a different
+    # coat: it left the customer a preview they could not commit.
+    recon = _reconcile_participants(db, company_id, parsed)
     return {"version": parsed.get("version"), "version_ok": parsed.get("version_ok"),
             "counts": parsed.get("counts", {}), "errors": parsed.get("errors", []),
             "warnings": parsed.get("warnings", []), "collisions": parsed.get("collisions", []),
             "reconciliation": recon,
-            "committable": bool(parsed.get("version_ok"))}
+            "committable": bool(parsed.get("participants"))}
 
 
 @router.post("/companies/{company_id}/participants/commit", status_code=201)
@@ -10715,8 +10719,9 @@ async def participant_commit(company_id: int, resolve: str = "keep",
     from . import participant_upload as PU
     content = await file.read()
     parsed = PU.parse_participant_workbook(content, _company_department_names(db, company_id))
-    if not parsed.get("version_ok"):
-        raise HTTPException(422, "Template version stamp invalid — download a fresh template.")
+    # ⭐ NO VERSION GATE. Recorded, never gated (user policy, 28 Jul): any template
+    # that parses is accepted. `parsed["version"]` remains available as forensic
+    # metadata; nothing branches on it.
     existing = {p.email: p for p in db.query(Participant).filter_by(company_id=company_id).all()}
     file_emails = set(parsed["participants"].keys())
     created = updated = kept = 0

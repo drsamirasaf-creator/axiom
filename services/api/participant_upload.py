@@ -133,13 +133,25 @@ def parse_participant_workbook(content: bytes, valid_departments: list[str]) -> 
             ver = _cell(wb[title][coord].value); break
     except Exception:
         ver = None
+    # ⭐ RECORDED, NEVER GATED (user policy, 28 Jul).
+    #
+    # AXIOM does not track or control template versions as a precondition for
+    # upload. A customer downloads a template, fills it, uploads it; any template
+    # that PARSES is accepted. This parser keys on sheet and column labels, so it
+    # does not need the stamp to work — the stamp is forensic metadata for
+    # answering later questions, nothing more.
+    #
+    # This block used to append an error and `return out`, abandoning the parse.
+    # It rejected a customer's real, complete file over a named cell that their
+    # spreadsheet application had dropped. Measured: the writer stamps correctly
+    # and a Python round-trip preserves `PLU_VERSION`, so the loss happens in
+    # whatever tool the customer edited with — something AXIOM neither controls
+    # nor can require.
+    #
+    # `version_ok` is retained as an informational field only. NOTHING may branch
+    # on it.
     out["version"] = ver
     out["version_ok"] = (ver == VERSION)
-    if not out["version_ok"]:
-        out["errors"].append({"tab": None, "row": None,
-                              "message": f"Template version stamp is '{ver or 'missing'}', expected '{VERSION}'. "
-                                         f"Download a fresh template."})
-        return out
 
     dep_lookup = {d.strip().lower(): d for d in (valid_departments or [])}
     parts = {}                       # email -> unioned participant

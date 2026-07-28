@@ -3675,6 +3675,87 @@ Weak evidence is worth surfacing. It is not worth blocking on. The failure here
 was not the detection; it was **letting the confidence of the response outrun the
 confidence of the finding.**
 
+## §7.37 ⭐⭐ POLICY — REJECT ONLY ON WHAT MAKES THE FILE UNUSABLE. EVERYTHING ELSE WARNS.
+
+**User ruling, 28 Jul.** *AXIOM does not track or control template versions as a
+precondition for upload. A customer downloads a template, fills it, uploads it.
+Any template that parses is accepted. Version is never a gate — on either path.*
+
+⭐ **THE PARSER KEYS ON SHEET AND ROW LABELS, SO IT DOES NOT NEED A VERSION STAMP
+TO WORK. THE STAMP IS FORENSIC METADATA, NOT A PRECONDITION.**
+
+**Second reversal in one lane.** The sample-data check blocked on an inference it
+could not prove (§7.36); the version stamp blocked on metadata the parser never
+needed. Both rejected real customer files for reasons unrelated to whether the
+file could be read.
+
+### WHAT WAS REMOVED — FOUR GATES, NOT ONE
+
+| site | was |
+| --- | --- |
+| `participant_upload.py:138` | appended an error **and `return out`** — abandoned the parse entirely |
+| `accounts.py` commit | `raise HTTPException(422, "Template version stamp invalid…")` |
+| `accounts.py` preview | `recon = … if parsed.get("version_ok") else None` — no reconciliation |
+| `accounts.py` preview | `"committable": bool(parsed.get("version_ok"))` — **the commit button** |
+
+The last two matter: **gating the PREVIEW was the same block wearing a different
+coat.** It handed the customer a preview they could not commit. A guard removed
+from the obvious place and left in the adjacent one is not removed.
+
+`version_ok` survives as an informational field. **Nothing branches on it** —
+verified by grep across `services/api`.
+
+⚠ **`ACCEPTED_TEMPLATE_VERSIONS` (ingest.py:48) is defined and NEVER USED** —
+another declared-but-unbound. It was never a gate; had anyone "activated" it, it
+would have become this same defect on the financial path.
+
+### WHY THE FILE FAILED — THE WRITER IS FINE
+
+```
+fresh template     -> version='v1'  version_ok=True
+defined names (wb) -> ['PLU_VERSION','DEPARTMENTS','SENIORITY','YESNO']
+after re-save      -> version='v1'  version_ok=True
+```
+
+Writer and reader agree, and a Python round-trip preserves `PLU_VERSION`. **So
+the stamp was lost in whatever application the customer edited with** — Excel and
+Google Sheets both re-scope or drop workbook-global defined names pointing at
+hidden sheets. Not reproducible here without their file, and **that is the
+point**: the check depended on a fragile spreadsheet artifact surviving a tool
+AXIOM neither controls nor can require.
+
+### AUDIT OF EVERY UPLOAD PATH — the classification
+
+Seven upload endpoints. Rejections that remain, and why they are **legitimate**:
+
+| rejection | verdict |
+| --- | --- |
+| `missing sheet '<name>'` | **unusable** — nothing to parse |
+| `period must be an integer` / `mark this column Historical or Forecast` | **unusable** — the column cannot be placed in time |
+| `'<label>' must be numeric` | **unusable** — the value cannot be computed with |
+| `period columns must match the Income Statement` | **unusable** — statements cannot be aligned |
+| `period <y> is duplicated` | **unusable** — ambiguous which column wins |
+| `balance sheet does not balance in <y>` | **borderline — FLAGGED, NOT CHANGED** |
+| `file exceeds 5 MB` (changeset) | **unusable** — resource limit |
+| `Not a readable .xlsx file` | **unusable** |
+
+⚠ **THE ONE WORTH A RULING: the balance-sheet identity.** Marked in the source as
+*"a HARD error on upload"*. It is a statement about the customer's **data
+quality**, not about whether the file can be read — AXIOM could ingest it and
+warn loudly. It is the last rejection on this path that is an inference about
+correctness rather than a fact about usability. **Left as-is pending a ruling**,
+because unlike the other two it may be deliberate: an unbalanced balance sheet
+makes every derived figure wrong, and warning may be too quiet.
+
+### THE GENERAL RULE
+
+> **ON CUSTOMER-FACING INGEST, REJECT ONLY ON WHAT MAKES THE FILE UNUSABLE.
+> EVERYTHING ELSE WARNS.**
+
+Test: *can the parser produce a dataset from this file?* If yes, accept it and
+say what looks wrong. If no, reject and say what is missing. **"Looks wrong" is
+never "cannot be read."**
+
 ## §7.32 ⭐ A SIGNAL THAT SURVIVES THE THING IT DETECTS IS NOT A SIGNAL
 
 **The watermark check is REJECTED. Recorded with the audit as evidence.**
