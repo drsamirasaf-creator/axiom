@@ -4370,15 +4370,26 @@ horizon, a different path count, an added stochastic line — shifts the entire
 stream. **Same seed ≠ same paths across configurations**, and the 1000-path and
 3000-path runs are *not* nested subsamples of one another.
 
-### QUEUE — ORDERED (user, 28 Jul). METHODOLOGY PAGE COMES LAST.
+### QUEUE — ⚠ SUPERSEDED. THE CANONICAL ORDER IS IN L.2e.
 
-| # | Item |
+The order first recorded here (σ → convergence → fit-or-declare → correlation)
+was **revised by the user on 28 Jul** and two of its items were **answered** by
+the L.2e rulings rather than left open. **CORE must not hold two queues**, so the
+single canonical sequence lives in **L.2e § QUEUE**. This note is kept rather
+than deleted so a reader who remembers the old order finds out it moved, instead
+of finding it silently gone.
+
+Disposition of the original four items:
+
+| Original item | Now |
 | --- | --- |
-| 1 | **Resolve the σ inconsistency** — one answer for one firm |
-| 2 | **Convergence test** — does 3,000 give stable percentiles, and why do five path counts exist |
-| 3 | **Decide: fit volatility per customer, or state plainly that it is assumed** |
-| 4 | **Correlation structure** |
-| — | **Only then the methodology page.** It cannot be written before we know what is true. |
+| 1 · Resolve the σ inconsistency | still open — **now position 2** |
+| 2 · Convergence test | still open — **now position 1** (it establishes the baseline everything else is measured against) |
+| 3 · Fit volatility per customer, or declare it assumed | **ANSWERED by L.2e** — fit, via shrinkage toward a sector prior with ensemble-fit residuals as the data term |
+| 4 · Correlation structure | **ANSWERED by L.2e** — constrained parameterisation, two or three economically-motivated correlations |
+
+**Only then the methodology page.** It cannot be written before we know what is
+true — and per L.2e it must carry the estimation caveats explicitly.
 
 Full working: `docs/reports/2026-07-28-stochastic-proforma-framing.md`.
 
@@ -4547,11 +4558,70 @@ to any of this.** A parameter-estimation programme cannot be specified while the
 product holds two order-of-magnitude-different answers for the same firm's
 volatility.
 
-### QUEUE POSITION
+### ⭐ CORRELATION — RULED 28 Jul: CONSTRAINED PARAMETERISATION, NOT A FREE MATRIX
 
-Sits behind the L.2b queue and inherits it: σ contradiction → convergence test →
-fit-or-declare volatility → correlation structure → **then this engine work** →
-methodology page last.
+**Two or three economically-motivated correlations, each stateable in a sentence
+and defensible — not fifteen free parameters estimated from five growth rates.**
+
+**The reasoning, recorded because it is the transferable part:** this is **the
+same identifiability constraint that rejected rough volatility, applied to
+PARAMETERS rather than to PROCESS CLASS.** A 6×6 correlation matrix has 15 free
+off-diagonal parameters; six annual observations yield five growth rates. The
+matrix is no more identifiable than a Hurst exponent, and admitting it because it
+*looks* like a modelling detail rather than a modelling choice would smuggle back
+in exactly what the principle excludes.
+
+**Recorded as the user recorded it:** *"I ruled inconsistently by asking for a
+defensible matrix without saying where it comes from, and you were right to flag
+it."* Kept in the ledger because a ruling that names its own gap is the reason
+the next gap gets flagged rather than quietly filled with a default.
+
+**A sector prior can later supply better VALUES within the same STRUCTURE.** The
+constrained form is not a placeholder to be replaced — it is the shape, and more
+data improves its numbers without loosening it.
+
+### ⭐ QUEUE — CANONICAL ORDER (user, confirmed 28 Jul). Supersedes the L.2b list.
+
+| # | Item | Why here |
+| --- | --- | --- |
+| 1 | **Convergence test** | **first, because it establishes the baseline everything else is measured against** — and going from 2 factors to 6+ **invalidates every seed**, so the re-baseline must land against a known-stable target rather than against whatever the new engine produces |
+| 2 | **Resolve the Real Options / pro forma σ contradiction** | a parameter-estimation programme cannot be specified while two order-of-magnitude answers stand |
+| 3 | **The shared sampler** | **a precondition, not an optimisation** — ten independent path loops exist with no shared sampler, and stochastic WACC/TV requires the statement and valuation engines to consume the SAME factor paths |
+| 4 | **Per-line-item processes** | GBM, OU, mean-reverting ratios — on top of the sampler |
+| — | **Methodology page last** | and it must carry the estimation caveats below explicitly |
+
+### ⭐ DEBT-AS-A-SCHEDULE IS A DATA-MODEL LANE, NOT AN ENGINE LANE
+
+It needs **amortisation, covenant or facility structure as NEW TEMPLATE INPUT** —
+none exists today (`st_debt`/`lt_debt` are read from the plan balance sheet and
+`net_borrowing` from the plan cash flow, constant across every path). So it
+carries a template change, an ingest change and a migration, and must not be
+scoped as an engine edit because it reads as the simplest row in the
+specification table.
+
+**It is what closes the cash-is-the-plug gap** (L.2b): today the balance sheet
+balances because cash absorbs the residual while debt never reacts, so downside
+paths understate distress and overstate equity. That is its value, and it is why
+the lane is worth its cost despite sitting outside the engine.
+
+### ⭐ ESTIMATION CAVEATS — MUST APPEAR ON THE METHODOLOGY PAGE, NOT BE IMPLIED
+
+The ensemble-fit residuals are a **real but thin** data term, and the page must
+say so in both respects:
+
+* **Two holdout points per method.** `_backtest_mae` holds out the last two
+  historical years. A variance estimate on 2 observations is very weak alone.
+* **It is a LEVEL error on revenue, not growth-rate dispersion.** Converting
+  MAE → σ requires a stated distributional assumption (for a normal,
+  `MAE ≈ 0.8σ`), and mapping a revenue-level error onto a growth-rate σ requires
+  the base to be explicitly divided out.
+
+Both point the same way and both **support** the ruled approach: thin-but-real is
+precisely the condition shrinkage toward a sector prior is designed for. The
+consequence to state plainly on the page is that **the prior does most of the
+work early, and the data term gains weight as history accumulates** — implying
+otherwise would repeat the L.2b failure of describing an assumed parameter as an
+estimated one.
 
 Scope analysis (parameter change vs rewrite, and the structural prerequisites):
 `docs/reports/2026-07-28-stochastic-engine-scope.md`. **Summary: engine rewrite

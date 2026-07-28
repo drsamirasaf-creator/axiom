@@ -172,31 +172,49 @@ approach rather than undermining it — and it means the sector prior is doing m
 of the work early on, with the data term gaining weight as history accumulates.
 That should be stated on the methodology page rather than implied.
 
-## 5. Ordering implication
+## 5. Ordering — CANONICAL (user, confirmed 28 Jul)
 
-The ruling's prerequisite (resolve the σ contradiction first) is confirmed
-necessary by the architecture, and one more ordering constraint emerges from it:
+The order below supersedes the one first proposed in this section, which put the
+σ contradiction ahead of the convergence test. **The convergence test goes
+first**: it establishes the baseline everything else is measured against, and
+§3.4 is the reason — going from 2 factors to 6+ invalidates every seed, so the
+re-baseline must land against a known-stable target rather than against whatever
+the new engine happens to produce.
 
-1. **σ contradiction** (L.2b) — cannot specify estimation while two answers exist.
-2. **Convergence test** (L.2b) — must precede the rewrite, so re-baselining lands
-   against a known-stable target (§3.4).
-3. **Shared sampler + factor layer** — the precondition for stochastic WACC/TV,
-   the highest-value item (§3.2).
+1. **Convergence test** — establishes the baseline; must precede the rewrite (§3.4).
+2. **σ contradiction** — cannot specify estimation while two answers exist.
+3. **Shared sampler + factor layer** — a precondition, not an optimisation:
+   stochastic WACC/TV is the highest-value item and requires the statement and
+   valuation engines to consume the same factor paths (§3.2).
 4. **Per-line processes** — GBM, OU, mean-reverting ratios, on top of the sampler.
-5. **Correlation matrix** — needs the factor layer to exist first.
-6. **Debt schedule** — scope as a **data-model** lane, not an engine lane (§3.5).
+5. **Correlation** — **RULED: constrained parameterisation**, two or three
+   economically-motivated correlations stateable in a sentence, not a free 6×6.
+   §6 below is answered by that ruling.
+6. **Debt schedule** — a **data-model** lane, not an engine lane (§3.5).
 7. **Capex regime-switching** — flagged in the ruling as needing its own decision;
    it is the only member that is not a diffusion and does not fit the sampler
    shape the other factors share.
 8. **Methodology page** — last, per L.2b.
 
-## 6. What this does not answer
+## 6. The open question this raised — now RULED
 
-The correlation matrix itself. The ruling requires it be *"stateable and
-defensible"*, and nothing in the current data supports estimating a 6×6
-correlation from six annual observations — that is the same identifiability
-problem that rejected rough volatility, applied to a different object. Whether it
-comes from a sector prior, from a small set of structural assumptions stated in
-prose, or from a constrained parameterisation is an open design question and
-should be ruled explicitly before the sampler is built, because the sampler's
-shape depends on the answer.
+This section originally flagged the correlation matrix as unanswered: nothing in
+six annual observations supports estimating a 6×6 correlation, which is the same
+identifiability problem that rejected rough volatility applied to a different
+object. A 6×6 matrix carries **15 free off-diagonal parameters** against **five
+growth rates**.
+
+**Ruled 28 Jul: constrained parameterisation.** Two or three
+economically-motivated correlations, each stateable in a sentence and defensible
+— not fifteen free parameters. **A sector prior can later supply better values
+within the same structure**; the constrained form is the shape, not a
+placeholder.
+
+The user recorded the reasoning as a correction to their own earlier ruling —
+asking for a "defensible matrix" without saying where it comes from was
+inconsistent with the identifiability principle. Recorded in CORE L.2e, because
+the transferable lesson is that the principle governs **parameters** as well as
+**process class**.
+
+This resolves the dependency noted above: the sampler's shape depended on this
+answer, and it now has one.
