@@ -3708,6 +3708,50 @@ INVESTIGATION OF EVERY INGEST DEFECT, PAST AND FUTURE.** It is why the
 value-comparison approach is strictly better than any originals-based one — and
 why the retention gap should be closed regardless of this lane.
 
+### ⭐ SCOPE RULED (user, 28 Jul) — ALL FIVE, INCLUDING REJECTED UPLOADS
+
+**What must be retained on every upload, so a future ingest question is
+answerable:**
+
+1. **`original_r2_key`** — today conditional on three things and **silent when
+   any fails**: `if content:`, `_r2_client()` returning non-None, and the
+   `put_object` succeeding inside a bare `except Exception: pass`. The comment
+   calls it *"best-effort — a storage outage never blocks the upload"*, which is
+   right as a availability decision and wrong as a retention one: **the failure
+   leaves no trace at all**, so "why has this dataset no original?" is
+   unanswerable even in principle.
+2. **`template_version`** — read from the workbook's own meta sheet
+   (`ws["B4"]`), so null whenever the file predates or omits it. Cannot always
+   be *set*, but **absence can be recorded explicitly** rather than left as a
+   null indistinguishable from "never looked".
+3. **Parser version / code revision** — **nothing records it today.** A
+   re-parse only reproduces the original if you know which parser ran, so
+   without it the stored workbook is necessary but not sufficient.
+4. **`uploaded_by_user_id`** — written unconditionally at creation
+   (`getattr(user, "id", None)`), so the field is always present; it is null
+   only when the caller carries no user. Confirmed rather than assumed.
+5. **⭐ REJECTED UPLOADS — SAME STORAGE, MARKED REJECTED, WITH THE VALIDATION
+   OUTPUT THAT CAUSED THE REJECTION.**
+
+**The reasoning for (5), recorded because it inverts the intuition:** the
+sample-data guard shipped in this lane is **the first thing in the product that
+blocks a customer upload**, and **a blocked upload currently leaves no trace
+whatsoever** — no row, no file, no record that it happened.
+
+⭐ **A REJECTED FILE IS WORTH MORE THAN AN ACCEPTED ONE.** The accepted upload
+produced an inspectable dataset; the rejected one produced *nothing*. So the
+moment a customer asks "why was my upload refused?" — the moment retention
+matters most — is precisely the moment nothing was kept. The guard we just
+shipped makes that question newly likely.
+
+### ⭐ THE 12 EXISTING DATASETS ARE UNRECOVERABLE BY ANY CHANGE
+
+This is the monotonic-cost argument made concrete, and it is why this was not
+deferred. **No fix, now or later, can produce an original workbook that was
+never stored.** Twelve datasets — including nine on a real customer — are
+permanently beyond retroactive investigation, for this defect and every future
+one. Every day the gap stays open adds to that set irreversibly.
+
 ⭐ **LAUNCH-BLOCKING IN ITS OWN RIGHT. CLOSING IT IS CHEAP NOW AND IMPOSSIBLE
 RETROACTIVELY.** Every day of uploads without a stored original is a day that can
 never be investigated. This lane needed the originals and could not have them for
