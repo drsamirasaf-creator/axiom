@@ -3675,6 +3675,144 @@ Weak evidence is worth surfacing. It is not worth blocking on. The failure here
 was not the detection; it was **letting the confidence of the response outrun the
 confidence of the finding.**
 
+## §7.41 ⭐⭐ THE DROPPED-DECLARATION CLASS — THE VALUES SURVIVE, THE DECLARATION DOES NOT
+
+**Second sighting. The first was `statement_units` (ed7e85a): stored on every
+dataset, never consumed, the pipeline hardcoding millions.**
+
+**28 Jul.** `_historicals_only` strips a committed pro forma so a trend forecast
+can be regenerated from history. It rebuilt the periods dict as
+`{"historical": [...], "forecast": []}` — carrying every VALUE untouched and
+dropping `frequency`. Every reader downstream then took its default, `"annual"`,
+and did year arithmetic on quarterly periods. Historical `20224` produced
+forecast `20225 … 20229`: Q5 through Q9.
+
+### ⭐ WHY THIS CLASS IS WORSE THAN A WRONG VALUE
+
+**The output is internally coherent.** Nothing is null, nothing is malformed,
+no exception is raised, and the arithmetic is correct *for the frequency the code
+believes it has*. There is no ragged edge for a guard to catch. `statement_units`
+behaved identically — every figure was a plausible number, just uniformly wrong
+by a factor of a million.
+
+**And the default is what does the damage.** A missing declaration would be
+catchable; a missing declaration WITH A SENSIBLE DEFAULT AT THE READ SITE is not,
+because the reader cannot distinguish "annual" from "nobody said". The default is
+the mechanism, not the mitigation.
+
+### ⭐ THE REMEDY, AND WHY THE OBVIOUS TEST MISSES IT
+
+**Any function that rebuilds a dict carrying a declaration must assert the
+DECLARATION survives, not merely the values.**
+
+Tests for `_historicals_only` had been written two commits earlier, deliberately,
+to execute a function at 1/9 coverage. They assert that forecast periods are
+stripped, that historical values are copied bit-for-bit, and that the input is
+not mutated — *the values*. Not one asserted the declaration survived, and the
+defect walked straight through them. Asserting "the numbers are unchanged" is the
+natural test to write and it is exactly the test this class defeats.
+
+Routing all five forecast generators through a correct shared helper **did not
+fix the symptom** either. The arithmetic was never the cause.
+
+### AUDIT CANDIDATES — every declaration field with a default at the read site
+
+The class is defined by that shape, so the audit is mechanical: find fields whose
+read site says `or "<default>"` and whose write site is a dict rebuild.
+
+* `periods.frequency` — fixed 28 Jul; default `"annual"` at ~6 read sites
+* `statement_units` — first instance; default millions
+* `company.ownership` — default `"private"`; gates DLOM
+* `company.standard` — default `"us_gaap"`; selects sheet and row labels
+* `cycle.depth`, `cycle.anonymity_mode` — defaults `"standard"` / `"anonymous"`
+* `dataset.source`, `template_version` — forensic, but the same shape
+
+**Not yet audited. Recorded so the next instance is recognised rather than
+rediscovered.**
+
+## §7.42 ⭐ THE IMPORT-DIRECTION WALL — A CORRECT IMPLEMENTATION THE CALLER CANNOT REACH
+
+**Twice on 28 Jul, the right code existed and the sites that needed it could not
+call it.**
+
+| correct implementation | lived in | unreachable from |
+| --- | --- | --- |
+| period decode/encode (`next_period`) | `ingest.py` | `engines.py` — because `ingest` imports `engines` |
+| money formatting (`M`) | `report_pdf.py` | `reporting.py` — sibling, no shared home |
+
+**⭐ THE CONSEQUENCE IS NOT A MISSING FEATURE, IT IS A SECOND IMPLEMENTATION.**
+Five forecast generators went on doing integer `+1` *next to* a correct helper
+they had no way to import. The PPTX grew its own money formatter and drifted a
+decimal from the PDF's. In both cases the duplicate was not an oversight — it was
+the only thing the import graph allowed.
+
+**RULE: shared SEMANTICS go in a leaf module both sides reach.** Not in whichever
+module happened to need them first. A leaf imports nothing from its callers, so
+it can never be walled off from one of them later.
+
+Applied: `modules/financials/periods.py` and `api/report_format.py`. Both are
+leaves; the original homes re-export where existing callers depend on the old
+name.
+
+**The tell to watch for:** an implementation sitting in a module that also owns
+orchestration. `ingest` parses AND validates AND owns period arithmetic;
+`report_pdf` renders AND owns money formatting. Ownership of a shared primitive
+by a module with its own job is what builds the wall.
+
+## §7.43 ⭐ THE VACUOUS-TEST TAXONOMY — FIVE WAYS, ALL FOUND BY MUTATION
+
+Extends §7.20 ("a test the defect can satisfy by luck is not a test of the
+defect") with the shapes actually observed. **Every instance was found by
+mutation, none by review — several by the person who had just written the test,
+in one case by the person who had just written this taxonomy.**
+
+| # | shape | the instance |
+| --- | --- | --- |
+| 1 | **SHAPE-NOT-CONTENT** — asserts keys or type; the failure mode returns exactly that | `_department_sentiment_map`'s all-zero default carries `n` and `below_floor` like a real answer, so `assert "n" in rec` passed while the body never ran |
+| 2 | **WRONG-BINDING** — asserts something adjacent to what can break | `assert rep._big_money is rf.money` checks the IMPORT, which stays true while `_big` is redefined on the next line. Also: a test named "end to end" that imported the engine and then asserted on the helper it uses |
+| 3 | **FAILURE-MODE-ACCEPTED** — the assertion admits the broken state | `assert has_data is not False or "message" in out` accepts precisely what a drill returns when it finds no cycle; an HTTP test allowing 401 beside 200 passes when auth rejects before the body runs |
+| 4 | **PASSING-FOR-THE-WRONG-REASON** — assertion right, input cannot discriminate | a lowercase department still matched after case-insensitivity was removed, because the lookup key was already lowered |
+| 5 | **ALWAYS-FAILING** — fails on CORRECT code | an end-to-end test raised `KeyError` on an incomplete fixture |
+
+### ⭐ ENTRY 5 IS THE ONE THE HARNESS ITSELF HIDES
+
+The first four make a mutation SURVIVE, which the harness reports loudly. **Entry
+5 does the opposite: a test that fails unmutated kills every mutation paired with
+it, and the harness reports a confident `killed`.** The failure is invisible in
+exactly the direction that feels like success.
+
+**Closed by BASELINE-BEFORE-MUTATION.** `scripts/mutation_check.py` now runs
+every paired test unmutated first and refuses to report at all if any fails. A
+mutation result against a test that does not pass on correct code means nothing.
+
+**The general lesson, and the reason this list is worth keeping:** a mutation
+harness is itself code, and its silent-failure modes are the expensive ones. Two
+others were found the same day — a stale anchor quietly testing nothing (fixed
+with a loud summary and a rot threshold), and bytecode caching masking any
+mutation that preserved file size (`==` → `!=`, `,.2f` → `,.1f`), fixed by
+purging `__pycache__` per run.
+
+## §7.44 PERIOD DISPLAY — DEFERRED TO THE ENTRY-FORMAT LANE
+
+**Values are correct as of `e99d3b1`; presentation is not, and the two were
+deliberately not fixed together** — a correct `20231` rendering as `2024Q1` is a
+different defect from an incorrect `20225`, and folding them would have made the
+succession fix unverifiable.
+
+State:
+
+* `format_period(20231, "quarterly") -> "2023Q1"` exists in
+  `modules/financials/periods.py` and **nothing calls it**
+* the API returns raw `YYYYQ` integers
+* the frontend renders them directly, so **a customer sees `20231` as a column
+  header**
+
+Backend-side the formatter is already there, so this is frontend work against an
+API that would need to either send a formatted label alongside the integer, or
+have the client decode. **That choice is the lane's first decision** — sending
+both risks the two-owners class, and decoding client-side puts period semantics
+in two languages.
+
 ## §7.40 THE THIRD SIGHTING WAS BROWSER CACHE — AND THE METHOD WAS RIGHT ANYWAY
 
 After both gates were genuinely removed and both deploys verified, the customer
