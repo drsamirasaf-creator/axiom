@@ -4738,6 +4738,45 @@ clamp as an estimate.**
 
 Full working: `docs/reports/2026-07-28-b1-convergence.md` (B1) and this entry.
 
+## L.2h ⚠ OPEN DEFECT — THE FRONTEND HOST REFUSES HTTP/2 STREAMS UNDER LOAD (28 Jul)
+
+**Found while running V7 of the quarterly lane. Independent of that lane, and
+more serious than it.**
+
+`net::ERR_HTTP2_SERVER_REFUSED_STREAM`. The app requests 40–57 JS chunks on a
+cold load, and axiomdynamics.app **intermittently refuses most of them**:
+
+```
+attempt 1  ERR_CONNECTION_CLOSED before any asset
+attempt 2  js=12  api=0   failed=39   <- 39 chunks REFUSED; app never booted
+attempt 3  js=57  api=23  failed=0    <- clean
+```
+
+The same cause made `curl` fail with *"Error in the HTTP2 framing layer"* until
+forced to `--http1.1`.
+
+**⭐ WHAT A REAL USER SEES: a blank or half-rendered app on a cold cache**, with
+no error message, because the chunks that never arrive include `auth`,
+`access-mode` and `dist`. It is invisible to anyone with a warm cache — which is
+everyone who has already used the product, including us.
+
+**⭐ AND IT MAKES EVERY CRAWLER RESULT PROVISIONAL.** Three consecutive operator
+runs gave ABORT, 48/50 (a spurious `/benchmarking` SILENT-EMPTY), then 50/50
+green with §17.3 PASS. **The 50/50 is the true reading and the other two are
+host artifacts** — but nothing in a single run distinguishes them, so a red run
+must now be re-run before it is believed. That is a standing cost on the
+verification tool until this is fixed.
+
+**The §7.15p sanity gate diagnosed it correctly and unprompted**, naming the
+right layer: *"This is a HOST/BUNDLE failure (chunks refused or never served),
+not an auth failure. Check the frontend host before touching the credential."*
+The word *refused* is literally what the network reported. That gate was built
+earlier the same day, and it paid for itself here.
+
+**Not fixed — recorded as an open defect.** Likely levers: the host's HTTP/2
+concurrent-stream limit, or reducing chunk count / adding preload hints so a cold
+load does not request ~57 files at once. Needs a ruling on which.
+
 ## L.3 ⭐ THE REGRESSION PASSES SIT AT POSITION 4 DELIBERATELY
 
 **They are cheaper before the feature run than after.** Every subsequent feature
