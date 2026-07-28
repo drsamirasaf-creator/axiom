@@ -857,6 +857,13 @@ def parse_and_validate(content: bytes, expected_company_id: int,
         # `build_sample_data` already is, and it is what the template writes.
         # A customer who replaces their history has changed these cells; one who
         # replaces nothing has not.
+        # ⭐ STATEMENT HISTORY ONLY. `data["company"]` — tax rate, risk-free rate,
+        # market risk premium, cost of debt, beta, DLOM, size and specific risk
+        # premia — is NEVER compared, and must never be. Those are legitimate
+        # client CHOICES that routinely equal the template's illustrative values
+        # because the illustrative values are reasonable defaults. Flagging an
+        # assumption because it matches an example would call a correct decision
+        # suspect.
         for block in ("income_statement", "balance_sheet", "cash_flow"):
             up_rows = data.get(block, {}) or {}
             sm_rows = sample.get(block, {}) or {}
@@ -866,12 +873,24 @@ def parse_and_validate(content: bytes, expected_company_id: int,
                 continue
             def _hist(rows, k):
                 return [rows[k].get(y) for y in hist_keys]
-            untouched = all(_hist(up_rows, k) == _hist(sm_rows, k) for k in shared)
-            if untouched:
-                errors.append({"sheet": lab["sheets"][block], "cell": None,
-                               "message": f"The '{lab['sheets'][block]}' sheet still contains the "
-                                          "template's sample figures. Replace every sheet with your "
-                                          "company's own numbers before uploading."})
+            matches_sample = all(_hist(up_rows, k) == _hist(sm_rows, k) for k in shared)
+            if matches_sample:
+                # ⭐ A WARNING, NEVER A REJECTION — DOWNGRADED 28 Jul.
+                #
+                # This comparison proves the historical values EQUAL the
+                # template's example values. It CANNOT prove they were never
+                # replaced. A company whose real history happens to resemble the
+                # illustrative figures would be locked out of its own product
+                # with no way past, and a guard that blocks on an inference it
+                # cannot prove is worse than the silence it replaced.
+                #
+                # It is weak evidence worth surfacing, so it rides in `warnings`
+                # and the upload proceeds.
+                warnings.append(
+                    f"The '{lab['sheets'][block]}' sheet's historical periods match the "
+                    f"template's example figures. That usually means they were not "
+                    f"replaced — worth checking before relying on anything derived "
+                    f"from them.")
     except Exception:
         pass
 

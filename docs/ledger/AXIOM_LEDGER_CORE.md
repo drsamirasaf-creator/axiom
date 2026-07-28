@@ -3618,6 +3618,63 @@ render it. **The whole gap is one unused field and a banner.**
 That closes the loop for anyone already in this state, rather than requiring
 every affected customer to notice and re-upload.
 
+## §7.36 ⭐ CORRECTION — A VALUE MATCH IS NOT PROOF OF NON-MODIFICATION
+
+**The original scoping of §7.30 was wrong, and the error is mine to state
+plainly: it treated "these values equal the template's examples" as
+establishing "these cells were never replaced". It does not.**
+
+The comparison establishes **equality**. Non-modification is an **inference**
+from equality — a good one, usually right, and **not a fact**. A company whose
+real history resembles the illustrative figures is entirely possible, and the
+template's numbers are deliberately plausible.
+
+### WHAT THAT CHANGES
+
+**1. REJECTION → WARNING.** The check no longer blocks. It appends to
+`warnings` and the upload proceeds.
+
+⭐ **A GUARD THAT BLOCKS ON AN INFERENCE IT CANNOT PROVE IS WORSE THAN THE
+SILENCE IT REPLACED.** The silence let a customer compute from unreplaced
+examples — bad, and recoverable once noticed. A block would lock a customer out
+of their own product over figures that are genuinely theirs, **with no way
+past**. The first failure is a wrong number; the second is a wrong number *and*
+an unusable product.
+
+**2. THE COPY SAYS WHAT WAS DETECTED, NOT WHAT WAS CONCLUDED.** Not *"these
+figures are the template's sample data"* — rather, the historical periods on the
+named sheets **match** the template's examples, which **usually means** they were
+not replaced, and is **worth checking**. Advisory and **dismissible**: a customer
+who has checked and is satisfied can put it away.
+
+**3. SCOPE STATED IN THE NOTICE ITSELF.** It must never imply that forecast
+columns or client assumptions are suspect.
+
+### ⭐ ASSUMPTIONS ARE OUT OF SCOPE ENTIRELY
+
+`data["company"]` — **tax rate, risk-free rate, market risk premium, cost of
+debt, beta, DLOM, size and specific risk premia** — is **never compared, and must
+never be.**
+
+Those are **legitimate client choices that routinely equal the template's
+illustrative values, because the illustrative values are reasonable defaults.**
+A customer who accepts a sensible default has made a decision, not an omission.
+Flagging it would call a correct choice suspect — and would train customers to
+ignore the notice, which is how a real signal dies.
+
+The check covers **historical statement periods only**: the `income_statement`,
+`balance_sheet` and `cash_flow` blocks, historical columns, row by row.
+Forecast columns are the customer's own plan and are not compared either.
+
+### THE GENERAL FORM
+
+> **STATE WHAT WAS MEASURED, NOT WHAT IT PROBABLY MEANS — AND SIZE THE RESPONSE
+> TO THE STRENGTH OF THE EVIDENCE.**
+
+Weak evidence is worth surfacing. It is not worth blocking on. The failure here
+was not the detection; it was **letting the confidence of the response outrun the
+confidence of the finding.**
+
 ## §7.32 ⭐ A SIGNAL THAT SURVIVES THE THING IT DETECTS IS NOT A SIGNAL
 
 **The watermark check is REJECTED. Recorded with the audit as evidence.**
