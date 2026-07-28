@@ -17,10 +17,12 @@ The source file is restored after every mutation, including on failure.
 import subprocess, sys, shutil, os, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PU = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services/api/participant_upload.py")
 PRO = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services/api/modules/financials/proforma.py")
 ACC = os.path.join(ROOT, "services/api/accounts.py")
 VAL = os.path.join(ROOT, "services/api/modules/valuation/engines.py")
 READ = "tests/unit/test_assessment_read_path_execution.py"
+PUT = "tests/unit/test_participant_upload.py"
 COV = "tests/unit/test_coverage_rename_and_suppression.py"
 
 # (label, file, find, replace, test-node-id)
@@ -85,6 +87,76 @@ MUTATIONS = [
      "                           for k, s in data[b].items()}\n"
      "                       for b in (\"income_statement\",)}}",
      "tests/unit/test_historicals_only.py::test_historical_values_are_copied_UNTOUCHED"),
+
+
+    # ── participant_upload: every test paired with a plausible defect ────────
+    ("version stamp gates the parse again (the removed customer-blocker)", PU,
+     '    out["version"] = ver',
+     '    if ver != VERSION:\n'
+     '        out["errors"].append({"tab": None, "row": None,\n'
+     '                              "message": "Template version stamp is invalid."})\n'
+     '        return out\n    out["version"] = ver',
+     f"{PUT}::test_a_workbook_whose_stamp_was_LOST_still_parses_completely"),
+
+    ("role assignment overwrites instead of unioning", PU,
+     '        if role not in p["roles"]:\n            p["roles"].append(role)',
+     '        p["roles"] = [role]',
+     f"{PUT}::test_one_person_on_two_tabs_unions_their_roles"),
+
+    ("a later tab blanks the department an earlier one set", PU,
+     '        if department:\n            p["department"] = department',
+     '        p["department"] = department',
+     f"{PUT}::test_a_later_tab_does_not_erase_the_department_set_earlier"),
+
+    ("email is no longer case-folded, so one person becomes two", PU,
+     '                email = vals[idx["Email"]].lower()',
+     '                email = vals[idx["Email"]]',
+     f"{PUT}::test_email_is_the_identity_key_and_is_case_folded"),
+
+    ("department match becomes case-SENSITIVE", PU,
+     '                    dept_match = dep_lookup.get(dept_raw.lower())',
+     '                    dept_match = dep_lookup.get(dept_raw)',
+     f"{PUT}::test_department_matches_case_insensitively_and_returns_the_ORG_CHART_spelling"),
+
+    ("an unknown department is auto-created instead of colliding", PU,
+     '                    if dept_match is None:',
+     '                    if dept_match is None and False:',
+     f"{PUT}::test_an_unknown_department_is_a_collision_and_is_never_auto_created"),
+
+    ("the seniority vocabulary stops being closed", PU,
+     '                    elif band not in SENIORITY_BANDS:',
+     '                    elif False:',
+     f"{PUT}::test_seniority_outside_the_five_bands_is_rejected"),
+
+    ("assessors no longer require a department", PU,
+     '                    if not dept_raw:\n                        rowerrs.append("Department is required for assessors")',
+     '                    if False:\n                        rowerrs.append("Department is required for assessors")',
+     f"{PUT}::test_assessors_require_department_and_band_others_do_not"),
+
+    ("decision makers no longer require a title", PU,
+     '                if tab == "Decision Makers" and not title:',
+     '                if tab == "Decision Makers" and False:',
+     f"{PUT}::test_decision_makers_require_a_title"),
+
+    ("error rows are reported one line off", PU,
+     '                        out["errors"].append({"tab": tab, "row": r, "email": email, "message": m})',
+     '                        out["errors"].append({"tab": tab, "row": r - 1, "email": email, "message": m})',
+     f"{PUT}::test_error_rows_point_at_the_row_the_admin_will_look_at"),
+
+    ("duplicate emails on one tab stop being detected", PU,
+     '                if email and email in seen_emails:',
+     '                if False:',
+     f"{PUT}::test_a_duplicate_on_one_tab_names_the_earlier_row"),
+
+    ("the CEO flag is dropped on the way into the participant map", PU,
+     '        if is_ceo:\n            p["is_ceo"] = True',
+     '        if False:\n            p["is_ceo"] = True',
+     f"{PUT}::test_is_ceo_survives_into_the_participant_map"),
+
+    ("an unreadable file raises instead of being reported", PU,
+     '    except Exception as e:\n        out["errors"].append({"tab": None, "row": None, "message": f"Not a readable .xlsx file ({e})."})\n        return out',
+     '    except Exception as e:\n        raise',
+     f"{PUT}::test_a_file_that_is_not_a_workbook_is_reported_not_raised"),
 
     ("sigma reports the clamp as an estimate again", VAL,
      '            if sd < 0.15:\n                return 0.15, ("floor (0.15) — this company\'s historical revenue is too "\n'
