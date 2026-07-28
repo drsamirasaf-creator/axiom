@@ -4476,6 +4476,88 @@ advance, and the two are coupled without either naming the other.
    reader left behind.
 3. Confirm 1–2 on the user's real dataset (53), which needs a named write lane.
 
+## L.2e ⭐ STOCHASTIC ENGINE DESIGN — RULED 28 Jul (DESIGN ONLY, NOT BUILT)
+
+### THE PRINCIPLE THAT GOVERNS EVERY CHOICE BELOW
+
+**Model class is chosen per line item on DEFENSIBILITY grounds, matched to the
+information content of the data — not on sophistication.**
+
+With six annual observations, **a specification the data cannot identify is
+decoration**, and decoration is **more damaging to a math-forward claim than a
+simple model well-defended**. Every parameter must be traceable to something
+estimable.
+
+This principle is the entry's load-bearing part. If a later reader keeps the
+specifications and discards the principle, the next "improvement" will be an
+unidentifiable model, which is the failure this ruling exists to prevent.
+
+### ⭐ REJECTED EXPLICITLY, WITH REASONS — DO NOT REVISIT AS OBVIOUS IMPROVEMENTS
+
+Recorded because both will look like upgrades to anyone reading the
+specifications without the principle:
+
+* **Rough volatility / rough Bergomi.** The **Hurst exponent cannot be estimated
+  from six annual points.** These models exist to fit implied-volatility surfaces
+  from high-frequency data **that AXIOM does not have**.
+* **General Volterra kernels.** The underlying phenomenon — **performance has
+  memory** — is **real**, but it is capturable with an **estimable
+  autocorrelation or ARMA term** rather than machinery requiring far more
+  observations.
+
+**Both are genuine roadmap candidates** if AXIOM ever holds **quarterly or
+monthly data across many customers**, where **sector-level estimation** becomes
+possible. Rejected for today's data, not on principle.
+
+### PER-LINE-ITEM SPECIFICATION, AS RULED
+
+| Line | Process | Why |
+| --- | --- | --- |
+| **Revenue** | **GBM** | positive by construction, multiplicative, lognormal — the standard expectation |
+| **EBIT margin** | **Ornstein–Uhlenbeck** | bounded and mean-reverting; GBM would permit unbounded drift. Reversion speed and long-run level estimable from history |
+| **WACC, terminal growth** | **OU around long-run levels** | **highest-value change** — TV dominates the valuation and both are currently FIXED across all 3,000 paths, a principal cause of the intervals being too tight |
+| **Working capital** | **ratio with its own mean reversion** | |
+| **Capex** | **lumpy — likely regime-switching, not diffusive** | ⚠ **flagged as needing its own decision**, not settled here |
+| **Debt** | **follows a SCHEDULE, not a process** | currently responds to nothing: **cash is the plug and debt never reacts, so distress is understated** — a real modelling gap, not a simplification |
+| **Correlation** | **correlated Wiener increments via Cholesky** | replaces the current **+1-by-construction**. ⭐ **The matrix must be stateable and defensible** |
+
+### PARAMETER ESTIMATION — A SEPARATE AND EQUALLY LOAD-BEARING PROBLEM
+
+**Shrinkage toward a sector prior, with ensemble-fit residuals as the data term.**
+
+The residuals already exist and are already discarded. `forecast_studio.py`
+`_backtest_mae()` holds out the last two historical years, refits on the rest,
+and takes the MAE of the method's revenue prediction against actual — a genuine
+held-out backtest, in the customer's own units, for each of the five methods.
+Only the derived `weights` are returned; **the MAE values themselves are
+dropped**. They are the only empirical measurement of forecast uncertainty
+anywhere in the product.
+
+Two honest qualifications on that data term, recorded so it is not oversold:
+the holdout is **2 points per method**, and MAE is a **level** error on revenue,
+so converting it to a σ on a growth-rate process needs a stated distributional
+assumption. Thin but real — which is precisely the condition shrinkage toward a
+sector prior is designed for, and an argument FOR the ruled approach rather than
+against it.
+
+### ⭐ PREREQUISITE
+
+**Resolving the Real Options / pro forma σ contradiction (L.2b) is a prerequisite
+to any of this.** A parameter-estimation programme cannot be specified while the
+product holds two order-of-magnitude-different answers for the same firm's
+volatility.
+
+### QUEUE POSITION
+
+Sits behind the L.2b queue and inherits it: σ contradiction → convergence test →
+fit-or-declare volatility → correlation structure → **then this engine work** →
+methodology page last.
+
+Scope analysis (parameter change vs rewrite, and the structural prerequisites):
+`docs/reports/2026-07-28-stochastic-engine-scope.md`. **Summary: engine rewrite
+of the FACTOR layer, not a parameter change — but the accounting articulation
+beneath it is sound and is kept.**
+
 ## L.3 ⭐ THE REGRESSION PASSES SIT AT POSITION 4 DELIBERATELY
 
 **They are cheaper before the feature run than after.** Every subsequent feature
