@@ -274,7 +274,7 @@ def test_shading_holds_on_the_new_columns():
 
 def test_no_version_gate_was_reintroduced():
     """B4: stamp only — no accept-list, no equivalent under another name."""
-    assert ingest.TEMPLATE_VERSION == "7M-v7.6"
+    assert ingest.TEMPLATE_VERSION == "7M-v7.7"
     assert not hasattr(ingest, "ACCEPTED_TEMPLATE_VERSIONS")
     assert not any("ACCEPTED" in n and "VERSION" in n for n in dir(ingest)), \
         "a version allow-list under another name is still a gate"

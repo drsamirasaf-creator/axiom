@@ -82,7 +82,7 @@ def test_blank_direction_records_no_warning(_app):
 
 # ── template ─────────────────────────────────────────────────────────────────
 def test_template_carries_column_I_and_still_accepts_older_versions(_app):
-    assert ingest.TEMPLATE_VERSION == "7M-v7.6"
+    assert ingest.TEMPLATE_VERSION == "7M-v7.7"
     # ⭐ NO VERSION GATE EXISTS. The old assertion checked membership of
     # ACCEPTED_TEMPLATE_VERSIONS, which nothing ever read. The guarantee it was
     # reaching for — an older workbook still uploads — is now absolute rather

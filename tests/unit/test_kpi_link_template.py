@@ -155,7 +155,7 @@ def test_version_bump_and_backwards_acceptance():
 
     ⭐ IT FIRED ON THE v7.6 BUMP, WHICH IS THE POINT. A stamp that can move
     without a test noticing is a stamp nobody is maintaining."""
-    assert ingest.TEMPLATE_VERSION == "7M-v7.6"
+    assert ingest.TEMPLATE_VERSION == "7M-v7.7"
     # ⭐ The intent in the docstring — "a customer holding last quarter's workbook
     # must still be able to upload it" — is now guaranteed by policy rather than
     # by an allow-list: NO version gate exists on either template path, so every

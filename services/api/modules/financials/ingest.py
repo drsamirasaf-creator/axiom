@@ -36,7 +36,9 @@ def split_refs(v):
     return out
 
 
-TEMPLATE_VERSION = "7M-v7.6"   # v7.6: 40 quarterly forecast columns; period display formats
+TEMPLATE_VERSION = "7M-v7.7"   # v7.7: per-column row-1 instructions; derived widths
+# v7.7 is PRESENTATION ONLY — row 1 was already guidance, headers stay on row 2,
+# and no cell the parser reads moved. A v7.6 file parses identically.
 # ⭐ STAMP ONLY. There is no accept-list and no equivalent check under another
 # name — see the ACCEPTED_TEMPLATE_VERSIONS note below. A v7.5 file parses
 # identically: the extra forecast columns are blank and are dropped as unused.
@@ -284,6 +286,136 @@ def _locked_formula(cell, formula):
     cell.border = _border
 
 
+# ── v7.7 · per-column instructions, derived widths, computed row-1 height ────
+#
+# ⭐ ROW 1 IS PER COLUMN ON THE LIST-SHAPED SHEETS ONLY. Organization, Objectives,
+# Key Results and KPI Plan vs Actual are lists: one column, one meaning, so the
+# guidance belongs above the column it describes. The statement sheets are
+# MATRIX-shaped — row 1 is the sheet title and rows 2-4 are the banner /
+# period-type / period block — so the same treatment there would overwrite
+# structure, not improve it. Different layout, left alone.
+#
+# ⭐ COLUMN-SPECIFIC TEXT ONLY. Anything true of the SHEET (the 200-row capacity,
+# "unknown references warn and skip, never blocking the row") lives on the
+# Instructions sheet instead. Repeating a sheet-level rule above seven columns
+# creates seven copies to keep in step, and they will not stay in step.
+COLUMN_HELP = {
+    ORG_SHEET: [
+        "Department name. Pick one or type your own.",
+        "Who leads it — full name.",
+        "Their job title.",
+        "Their email — used to invite them. Optional.",
+        "Nests under another. Blank = top level.",
+        "Headcount. Used for per-head figures.",
+    ],
+    OBJECTIVES_SHEET: [
+        "What you intend to achieve, in one line.",
+        "The executive accountable for it.",
+        "How important, relative to your other objectives.",
+        "The time horizon you are working to.",
+        "Where it stands today. Blank is fine.",
+        "Short code (O1, O2 …). Key Results and KPIs point at it.",
+        "Owning department, from your Organization sheet.",
+    ],
+    KR_SHEET: [
+        "Which objective — use its Objective ID.",
+        "Stated so you can tell if it happened.",
+        "Units (%, $, days, count …).",
+        "Where it stood when you started.",
+        "Where it needs to get to.",
+        "Where it stands now.",
+        "When it is due.",
+    ],
+    KPI_SHEET: [
+        "The indicator's name.",
+        "Units (%, $, days, count …).",
+        "Planned, year to date.",
+        "Actual, year to date.",
+        "Where it should land by the end of the year.",
+        "Pick from your Organization sheet.",
+        "Objective IDs served, comma-separated (O1, O4).",
+        "Initiative refs, comma-separated (A1, B3).",
+        "'higher' (default) or 'lower' — use 'lower' for cost, churn or "
+        "downtime, so above-target reads as a problem.",
+    ],
+}
+
+# The sheet-level semantics lifted OUT of the per-column text (item 2). They are
+# stated once, on Instructions, because they are true of every list sheet.
+LIST_SHEET_RULES = [
+    "Strategy sheets (Organization, Objectives, Key Results, KPI Plan vs Actual):",
+    f"   · Each has {ROW_CAPACITY} pre-formatted rows. Paste a block in — you do not need to add rows.",
+    "   · References to something AXIOM cannot find (an unknown Objective ID or "
+    "initiative ref) are reported as warnings and skipped. They never stop the row loading.",
+    "   · Dropdowns are suggestions, not restrictions — you can type your own value.",
+]
+
+WIDTH_FLOOR, WIDTH_PAD, WIDTH_CAP = 12, 3, 46
+ROW1_LINE_HEIGHT, ROW1_MIN_H, ROW1_MAX_H = 11.5, 24.0, 96.0
+
+
+def _derive_width(header: str, seeded: list) -> float:
+    """Width from the CONTENT, never a hand-maintained table.
+
+    Four sheets drifted because widths were set by hand and the headers grew:
+    nine were truncated (KPI D/G/H/I, Objectives D/E/F, Key Results D/E/F,
+    Organization C/E/F). Deriving from max(header, longest seeded value) means a
+    header can never outgrow its column again without the width following."""
+    longest = max([len(str(header))] + [len(str(v)) for v in seeded if v not in (None, "")])
+    return float(min(max(longest + WIDTH_PAD, WIDTH_FLOOR), WIDTH_CAP))
+
+
+def _wrapped_height(text: str, width: float) -> float:
+    """Row-1 height for `text` wrapped at `width`.
+
+    Excel's width unit is roughly one character of the default font, so
+    characters-per-line ~= width. Deliberately computed rather than guessed: if a
+    column comes back five or six lines tall, the INSTRUCTION is too long — the
+    height is just reporting it."""
+    if not text:
+        return ROW1_MIN_H
+    per_line = max(int(width) - 1, 8)
+    lines = 0
+    for para in str(text).split("\n"):
+        lines += max(1, -(-len(para) // per_line))
+    return float(min(max(lines * ROW1_LINE_HEIGHT + 6.0, ROW1_MIN_H), ROW1_MAX_H))
+
+
+def _apply_column_layout(wb, sheet_name, header_row, data_start):
+    """Per-column row-1 instructions + derived widths + computed row-1 height."""
+    if sheet_name not in wb.sheetnames:
+        return []
+    ws = wb[sheet_name]
+    helps = COLUMN_HELP.get(sheet_name, [])
+    report = []
+    ncols = max(len(helps), ws.max_column)
+    for i in range(ncols):
+        col = 1 + i
+        letter = get_column_letter(col)
+        header = ws.cell(row=header_row, column=col).value
+        if header in (None, "") and i >= len(helps):
+            continue
+        seeded = [ws.cell(row=r, column=col).value
+                  for r in range(data_start, min(data_start + 12, ws.max_row + 1))]
+        width = _derive_width(header or "", seeded)
+        ws.column_dimensions[letter].width = width
+
+        cell = ws.cell(row=1, column=col)
+        cell.value = helps[i] if i < len(helps) else None
+        # ⭐ LOCKED AND NOT SHADED. Shading means "unlocked input" (v7.2), and an
+        # instruction is neither. Italic, smaller and muted carries it instead, so
+        # it cannot be mistaken for the row-2 header either.
+        cell.font = Font(italic=True, size=9, color="6B7A72")
+        cell.alignment = Alignment(wrap_text=True, vertical="top")
+        cell.protection = Protection(locked=True)
+        cell.fill = PatternFill(fill_type=None)
+        report.append((letter, header, width, cell.value or ""))
+    heights = [_wrapped_height(t, w) for _l, _h, w, t in report]
+    if heights:
+        ws.row_dimensions[1].height = max(heights)
+    return report
+
+
 def build_company_template(*, company_id: int, company_name: str, currency: str,
                            statement_units: str, ownership: str,
                            standard: str = "us_gaap",
@@ -332,6 +464,7 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
         "   plan. Put a year in row 4 and fill the lines to enter it; AXIOM keeps it",
         "   as your Client Plan and compares it against its five forecasting methods",
         "   (Business Planning & Forecasting). Leave them blank to upload history only.",
+        *LIST_SHEET_RULES,
         "3. Only the highlighted (green-tinted) cells accept input; labels and",
         "   subtotal rows are locked. The lock is a guardrail — AXIOM re-validates",
         "   every cell on upload; the server-side validator is the guarantee.",
@@ -647,6 +780,34 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     ws.sheet_state = "hidden"
     ws.protection.sheet = True
     ws.protection.password = _LOCK_PWD
+
+    # ── v7.7 finalisation, applied in ONE place over every sheet ────────────
+    # Sheet protection is set at eight different sites in three different
+    # spellings. Editing each was how the widths drifted in the first place, so
+    # the flags and the layout are both applied here, once, over whatever the
+    # builders produced.
+    #
+    # ⭐ LET THE CLIENT RESIZE. Cell-level `locked` already protects every formula
+    # and every structural cell, so formatColumns/formatRows were only stopping
+    # someone widening a column to READ it — protection working against the
+    # reader rather than against a mistake.
+    #
+    # insertRows / insertColumns stay PROHIBITED (reported before touching, and
+    # deliberately untouched): the parser addresses rows and columns by position,
+    # so an inserted one silently shifts meaning.
+    for _ws in wb.worksheets:
+        if _ws.protection.sheet:
+            _ws.protection.formatColumns = False
+            _ws.protection.formatRows = False
+
+    # Row-1 per-column instructions + derived widths + computed height. Only the
+    # LIST-shaped sheets; the statement sheets are matrix-shaped and keep their
+    # title/banner/period block.
+    for _name, _hdr_row, _start in ((ORG_SHEET, ORG_HEADER_ROW, ORG_DATA_START),
+                                    (OBJECTIVES_SHEET, OBJ_HEADER_ROW, OBJ_DATA_START),
+                                    (KR_SHEET, KR_HEADER_ROW, KR_DATA_START),
+                                    (KPI_SHEET, KPI_HEADER_ROW, KPI_DATA_START)):
+        _apply_column_layout(wb, _name, _hdr_row, _start)
 
     buf = io.BytesIO(); wb.save(buf)
     return buf.getvalue()
