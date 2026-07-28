@@ -183,3 +183,105 @@ encoding anywhere on the sheet. Worth a decision alongside Blocker 2.
 4. **Then** the round-trip verification (Part 8) on company 39 — which also needs
    the operator-access gap resolved, since that credential currently 404s on
    company 39.
+
+---
+
+# ADDENDUM — items 9 & 10, and the pre-change baseline (28 Jul)
+
+Items 9–10 arrived after the report above. Both are verification items, so the
+**pre-change baseline was captured first** — "unchanged" is meaningless against a
+before-state recorded after the edit. Tooling: `scripts/template_shape.py`, which
+reads the GENERATED WORKBOOK rather than the generator source, because the
+question is what the customer receives and correct-looking source can still emit
+a wrong workbook.
+
+## ⚠ BLOCKER 5 — item 9 says 5 forecast columns; the annual template has 8
+
+Measured from the generated workbook, current code, no edits:
+
+```
+ANNUAL   6 historical B..G  labels 2020..2025
+         8 FORECAST   H..O  labels 2026..2033        <- eight, not five
+         dropdown B3..O3 · merge H2:O2 · protection on
+         defined names (6) · hidden _LISTS,_AXIOM · shading violations NONE
+```
+
+`FORECAST_ANNUAL = 8` (ingest.py:125). **A regression check written against "5"
+would fail a correct template**, and — worse — someone resolving that failure
+could "fix" the annual block down to 5 and silently drop three forecast years
+from every annual customer. Flagged rather than quietly reconciled.
+
+## Item 9 — FORECAST_ANNUAL untouched by construction: VERIFIED, not assumed
+
+The generator was run with `FORECAST_QUARTERLY` patched to 40 **in memory only**
+(source file unmodified — confirmed by `git status` and by re-reading line 126).
+The annual workbook came back **identical** on every dimension:
+
+| | baseline | with quarterly at 40 |
+|---|---|---|
+| forecast columns | 8 (H..O) | 8 (H..O) |
+| forecast labels | 2026..2033 | 2026..2033 |
+| dropdown sqref | B3..O3 | B3..O3 |
+| merge | H2:O2 | H2:O2 |
+| Instructions | "the 8 pale 'Forecast' columns" | "the 8 pale 'Forecast' columns" |
+
+## Item 10 — structural checks on the 40-column quarterly workbook: ALL PASS
+
+Simulated at 40, read back from the workbook:
+
+```
+QUARTERLY  12 historical B..M  labels 20201..20224
+           40 FORECAST   N..BA  labels all blank
+           max_column 53 (BA)
+           dropdown sqref  B3 … BA3   (all 52 columns)
+           merged ranges   ['N2:BA2']
+           sheet protection True
+           defined names (6) AX_Depts AX_Hor AX_ObjIDs AX_OrgDepts AX_Prio AX_Stat
+           hidden sheets   _LISTS, _AXIOM
+           shading         NONE — shaded IFF unlocked input
+           Instructions    "the 40 pale 'Forecast' columns"   (auto-updated)
+```
+
+**Shading discipline holds on the new columns**, checked at both ends of the
+block:
+
+```
+row 11 Gross Profit  BA==BA5-BA6          locked=True  shaded=False
+row 12 EBITDA        BA==BA5-BA6-BA7      locked=True  shaded=False
+row 13 EBIT          BA==BA5-BA6-BA7-BA8  locked=True  shaded=False
+AT5 (mid-block input) value=None locked=False shaded=True fmt=#,##0.00
+```
+
+Formula cells locked and unshaded; input cells unlocked, shaded, `#,##0.00`.
+Total Assets / Total L&E translate the same way on the balance-sheet block.
+
+**"No repair prompt" — proxy only, stated as such.** Excel itself was not opened;
+this environment has no Excel. What was checked is the mechanical cause the code
+comments already identify: **0** DataValidation formulas exceed 255 characters
+and **0** carry a raw cross-sheet reference. That is necessary, not sufficient —
+**item 10 still needs a human to open both files.**
+
+## Consequence for item 8's round-trip
+
+Item 8 fills **20 forecast quarters** and expects the client plan to land with 20
+periods. It **cannot pass** until Blocker 2 is fixed: the validator will reject at
+every year boundary (`expected 20215, found 20221`). And Blocker 1 truncates
+anything past column AE, so only 18 of the 40 columns are even read.
+
+So item 8 is a **dependent** verification, not an independent one — it is the
+test that proves Blockers 1 and 2 are fixed, and it will fail until they are.
+
+## Summary of the five blockers
+
+| # | Blocker | Kind | Blocks |
+|---|---|---|---|
+| 1 | `read_cols` hardcoded 30-column window | live defect | Part A (would ship silent truncation), item 8 |
+| 2 | quarterly consecutive-period validator | live defect | item 8 |
+| 3 | `ACCEPTED_TEMPLATE_VERSIONS` removed today | policy collision | Part C/7 second half only |
+| 4 | instruction truncated at "9. Download the" | — | **RESOLVED** — items 9, 10 supplied |
+| 5 | item 9 states 5 annual forecast columns; actual is 8 | spec error | item 9's pass criterion |
+
+**Part A remains a verified one-line change** (`FORECAST_QUARTERLY = 8 → 40`),
+and everything the lane asked to be audited scales automatically — now proven by
+generating the workbook, not by reading the source. It is held only because
+landing it before Blocker 1 would manufacture silent truncation.
