@@ -613,7 +613,20 @@ def _calibrate_sigma(data: dict) -> tuple[float, str]:
         if len(gs) >= 2:
             mu = sum(gs) / len(gs)
             sd = (sum((g - mu) ** 2 for g in gs) / (len(gs) - 1)) ** 0.5
-            return max(0.15, min(0.60, sd)), "historical revenue log-growth"
+            # ⭐ THE BASIS MUST DESCRIBE THE VALUE ACTUALLY RETURNED.
+            # This said "historical revenue log-growth" unconditionally — including
+            # when the clamp binds, which on live data is 12 of 13 datasets (median
+            # raw sd 0.0050 against a 0.15 floor). It told the customer their own
+            # history produced a number that is a constant. No ruling makes
+            # "estimated" true of a clamp, so this needed no ruling and did not
+            # wait for one.
+            if sd < 0.15:
+                return 0.15, ("floor (0.15) — this company's historical revenue is too "
+                              "smooth to estimate volatility from")
+            if sd > 0.60:
+                return 0.60, ("cap (0.60) — estimated volatility exceeded the "
+                              "modelled maximum")
+            return sd, "historical revenue log-growth"
     return 0.22, "default (insufficient history for estimation)"
 
 

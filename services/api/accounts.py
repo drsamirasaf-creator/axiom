@@ -3223,8 +3223,28 @@ def _dept_name_variants(db, company_id: int, dep) -> list[str]:
 
 def _dept_variant_norms(db, company_id: int, dep) -> set[str]:
     """`_dept_name_variants` normalised, for in-Python matching against the
-    department keys of an already-computed aggregate."""
-    return {_norm_dept_name(n) for n in _dept_name_variants(db, company_id, dep)}
+    department keys of an already-computed aggregate.
+
+    ⭐ THE CANONICAL-RENAME MAP BELONGS HERE, NOT IN THE NAME LIST.
+    `CANONICAL_DEPT_RENAMES` ("finance" -> "Finance and Accounting") was applied
+    only on the INGEST path, so a response submitted as "Finance" against a
+    department now called "Finance and Accounting" matched nothing — and the alias
+    table did not cover it either. Measured on company 39: 312 responses from 4 of
+    9 participants invisible on every department surface, while all 14 alias rows
+    were byte-identical to the current name and so added nothing.
+
+    Its keys are LOOKUP KEYS, not former display names, so folding them into
+    `_dept_name_variants` would put "legal" in a list that renders as history.
+    They belong in the match set, which is exactly what this returns — and every
+    consumer (`_pick_dept_slice`, the coverage map, the comment buckets) goes
+    through it, so one addition reaches all of them."""
+    norms = {_norm_dept_name(n) for n in _dept_name_variants(db, company_id, dep)}
+    if dep is not None:
+        self_norm = _norm_dept_name(dep.name)
+        for short, canonical in CANONICAL_DEPT_RENAMES.items():
+            if _norm_dept_name(canonical) == self_norm:
+                norms.add(_norm_dept_name(short))
+    return norms
 
 
 def _pick_dept_slice(db, company_id: int, dep, departments: dict):
@@ -5037,22 +5057,47 @@ def _dept_coverage(db, company_id):
     invited}}. respondents = distinct participant_refs whose responses carry that dept;
     invited = non-revoked assessor invites tagged with that dept. Both keyed by dept
     NAME (responses/invites store the name string)."""
-    newest = (db.query(AssessmentCycle).filter_by(company_id=company_id)
-                .order_by(AssessmentCycle.id.desc()).first())
+    # ⭐ THE CYCLE COMES FROM THE RESOLVER, NOT FROM `newest by id`. This took the
+    # newest cycle whatever it contained, so an empty later cycle reported every
+    # department at zero while the populated one sat beside it.
+    newest = resolve_active_cycle(db, company_id)
     resp, inv = {}, {}
+    unattributed = {"respondents": 0, "invited": 0}
     if newest:
+        # ⭐ BUCKET BY DEPARTMENT ID, RESOLVED THROUGH THE ALIAS SET — never by the
+        # raw name on the response. A response carries whatever the department was
+        # called when it was submitted; keying the map by that string and then
+        # reading it back with `.get(d.name)` returns 0 for every department whose
+        # name has moved. That is the same trap `_department_sentiment_map` already
+        # documents, reached from a second direction.
+        deps = db.query(Department).filter_by(company_id=company_id).all()
+        norm_to_id = {}
+        for d in deps:
+            for n_ in _dept_variant_norms(db, company_id, d):
+                norm_to_id.setdefault(n_, d.id)
+
         seen = {}
         for r in (db.query(AssessmentResponse.participant_ref, AssessmentResponse.department)
                     .filter_by(cycle_id=newest.id).distinct().all()):
-            if r[1]:
-                seen.setdefault(r[1], set()).add(r[0])
+            did = norm_to_id.get(_norm_dept_name(r[1])) if r[1] else None
+            if did is None:
+                # Not silently dropped: a respondent whose department cannot be
+                # resolved is still a respondent, and the company total must say so.
+                unattributed["respondents"] += 1
+                continue
+            seen.setdefault(did, set()).add(r[0])
         resp = {k: len(v) for k, v in seen.items()}
+
         for a in (db.query(AssessmentInvite)
                     .filter(AssessmentInvite.cycle_id == newest.id,
                             AssessmentInvite.revoked_at.is_(None)).all()):
-            if a.department:
-                inv[a.department] = inv.get(a.department, 0) + 1
-    return {"cycle_id": (newest.id if newest else None), "respondents": resp, "invited": inv}
+            did = norm_to_id.get(_norm_dept_name(a.department)) if a.department else None
+            if did is None:
+                unattributed["invited"] += 1
+                continue
+            inv[did] = inv.get(did, 0) + 1
+    return {"cycle_id": (newest.id if newest else None), "respondents": resp,
+            "invited": inv, "unattributed": unattributed}
 
 
 ATTAINMENT_GREEN_MIN = 0.70
@@ -5121,13 +5166,7 @@ def _dept_cei_map(db, company_id):
     deps = db.query(Department).filter_by(company_id=company_id).all()
     empty = {d.id: {"cei": None, "n": 0, "state": "absent", "reason": None,
                     "note": None, "cycle_id": None, "cycle_name": None} for d in deps}
-    cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
-                .order_by(AssessmentCycle.opened_at).all())
-    latest = None
-    for c in reversed(cycles):
-        if c.closed_at and db.query(AssessmentResponse.id).filter_by(cycle_id=c.id).first():
-            latest = c
-            break
+    latest = resolve_active_cycle(db, company_id)
     if latest is None:
         return empty
     depts_raw = (apply_kfloor(_cycle_cei(db, latest)) or {}).get("departments") or {}
@@ -5236,8 +5275,8 @@ def list_departments(company_id: int, member=Depends(_summary_access), db=Depend
             "attainment": {"avg": None, "scored": 0, "band": "none"}}
 
     def coverage(d):
-        respondents = cov["respondents"].get(d.name, 0)
-        invited = cov["invited"].get(d.name, 0)
+        respondents = cov["respondents"].get(d.id, 0)
+        invited = cov["invited"].get(d.id, 0)
         emp = getattr(d, "employees", None)
         return {"respondents": respondents, "invited": invited, "employees": emp,
                 "participation_pct": (round(100 * respondents / emp) if emp else None),
@@ -6559,9 +6598,7 @@ def _briefing_payload(db, ini):
     linked = None
     if ini.linked_item_code:
         from .assessment_engine import score_rag
-        cyc = (db.query(AssessmentCycle).filter_by(company_id=ini.company_id)
-                 .filter(AssessmentCycle.closed_at.isnot(None))
-                 .order_by(AssessmentCycle.closed_at).all())
+        cyc = closed_cycles_with_results(db, ini.company_id)
         snap = (cyc[-1].snapshot or {}) if cyc else {}
         d = (snap.get("item_dispersion") or {}).get(ini.linked_item_code)
         sent = (snap.get("item_sentiment") or {}).get(ini.linked_item_code)
@@ -9265,19 +9302,14 @@ def assessment_summary(company_id: int, department: int | None = None,
     if fw is None:
         return {"revision": None, "cei": None, "n_participants": 0, "l1_subscores": [],
                 "radar": [], "item_dispersion": {}, "trend": [], "cadence": cadence_block}
-    cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
-                .order_by(AssessmentCycle.opened_at).all())
-    # Headline source: the latest CLOSED cycle that has responses, so an open or
-    # empty cycle can never mask a closed cycle's results. Fall back to the newest
-    # cycle when no closed-with-responses cycle exists (unchanged first-run behavior).
-    latest = None
-    for c in reversed(cycles):
-        if c.closed_at and db.query(AssessmentResponse.id).filter_by(cycle_id=c.id).first():
-            latest = c
-            break
+    # Selection lives in resolve_active_cycle — see the note there. The
+    # fall-back to the newest cycle when nothing is closed-with-results keeps
+    # first-run behaviour unchanged.
+    latest = resolve_active_cycle(db, company_id)
     if latest is None:
+        cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
+                    .order_by(AssessmentCycle.opened_at).all())
         latest = cycles[-1] if cycles else None
-    from .assessment_engine import apply_kfloor, KFLOOR, suppression_block
     current = _cycle_cei(db, latest) if latest else {}
     safe = apply_kfloor(current) if latest else {}      # k-anonymity display gate (storage untouched)
     suppressed_all = bool(safe.get("suppression"))
@@ -9466,6 +9498,45 @@ def assessment_summary(company_id: int, department: int | None = None,
             "trend": trend, "cadence": cadence_block}
 
 
+# ── cycle resolution — ONE definition, three shapes (28 Jul) ────────────────
+# ⭐ THE SELECTION WAS DUPLICATED AT EIGHT SITES AND FOUR OF THEM WERE WRONG.
+# `_dept_coverage` took the newest cycle by id; `assessment_item_drill`,
+# `assessment_swot` and `_briefing_payload` took the newest CLOSED cycle without
+# asking whether it carried any results. On company 39 that is cycle 54 — closed,
+# zero responses — shadowing cycle 53 and its 701 responses, so Org Structure
+# reported "0 of 612" while the data sat there.
+#
+# Repairing the call sites would have left the next sibling to be found by a
+# customer, so the selection is defined once and the variants are NAMED. A
+# consumer that genuinely wants the newest cycle regardless of results now has to
+# say so out loud.
+
+def closed_cycles_with_results(db, company_id: int) -> list:
+    """Every closed cycle that carries scores, oldest first.
+
+    For callers that need history (a prior cycle for trend), not just the latest."""
+    cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
+                .order_by(AssessmentCycle.opened_at).all())
+    return [c for c in cycles if c.closed_at and _cycle_has_results(c)]
+
+
+def resolve_active_cycle(db, company_id: int):
+    """⭐ THE cycle every results surface should read. Latest closed WITH results.
+
+    An open or empty cycle can never mask a closed populated one."""
+    closed = closed_cycles_with_results(db, company_id)
+    return closed[-1] if closed else None
+
+
+def newest_cycle_regardless_of_results(db, company_id: int):
+    """The newest cycle whether or not it has results — deliberately named at
+    length so it cannot be reached for by accident. Legitimate for seat counting
+    and for 'is a cycle running', which are questions about the CURRENT cycle,
+    not about results."""
+    return (db.query(AssessmentCycle).filter_by(company_id=company_id)
+              .order_by(AssessmentCycle.id.desc()).first())
+
+
 def _cycle_has_results(c) -> bool:
     """Does this closed cycle actually carry SCORES?
 
@@ -9554,9 +9625,7 @@ def _department_sentiment_map(db, company_id):
     from .assessment_engine import KFLOOR
     out = {}
     deps = db.query(Department).filter_by(company_id=company_id).all()
-    cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
-                .order_by(AssessmentCycle.opened_at).all())
-    closed = [c for c in cycles if c.closed_at and _cycle_has_results(c)]
+    closed = closed_cycles_with_results(db, company_id)
     latest = closed[-1] if closed else None
     if latest is None or not (latest.snapshot or {}).get("sentiment_available"):
         return {d.id: {"score": None, "rag": None, "n": 0, "below_floor": True,
@@ -9671,9 +9740,7 @@ def assessment_sentiment(company_id: int, department: int | None = None,
     the comment COUNTS, echoed as `tone_basis`. Haiku-absent → has_data False (never a
     default-neutral)."""
     from .assessment_engine import KFLOOR
-    cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
-                .order_by(AssessmentCycle.opened_at).all())
-    closed = [c for c in cycles if c.closed_at and _cycle_has_results(c)]
+    closed = closed_cycles_with_results(db, company_id)
     latest = closed[-1] if closed else None
     prior = closed[-2] if len(closed) > 1 else None
     empty = {"company_id": company_id, "has_data": False, "cycle_id": None,
@@ -9882,9 +9949,9 @@ def assessment_item_drill(company_id: int, item_code: str,
     'who scored it, what was asked, why, what now'. Anonymity-safe — only
     aggregates (a score distribution, counts) are returned, never per-person."""
     from .assessment_engine import score_rag
-    closed = (db.query(AssessmentCycle).filter_by(company_id=company_id)
-                .filter(AssessmentCycle.closed_at.isnot(None))
-                .order_by(AssessmentCycle.closed_at).all())
+    # ⭐ CLOSED IS NOT THE SAME AS HAS-RESULTS. This took the newest closed cycle
+    # whatever it contained — the same defect as _dept_coverage, one surface away.
+    closed = closed_cycles_with_results(db, company_id)
     if not closed:
         return {"has_data": False, "item_code": item_code,
                 "message": "No closed assessment cycle yet."}
@@ -9984,9 +10051,9 @@ def assessment_swot(company_id: int, department: int | None = None,
         pass
     doc_swot_count = sum(len(v) for v in doc_swot.values())
 
-    closed = (db.query(AssessmentCycle).filter_by(company_id=company_id)
-                .filter(AssessmentCycle.closed_at.isnot(None))
-                .order_by(AssessmentCycle.closed_at).all())
+    # ⭐ CLOSED IS NOT THE SAME AS HAS-RESULTS. This took the newest closed cycle
+    # whatever it contained — the same defect as _dept_coverage, one surface away.
+    closed = closed_cycles_with_results(db, company_id)
     if not closed:
         buckets = {"strengths": [], "weaknesses": [], "opportunities": [],
                    "threats": [], "watch_list": []}
@@ -10566,9 +10633,8 @@ def assessment_seats(company_id: int, member=Depends(require_company_admin), db=
     150 Prescience; no account → Business 50), plus Account.assessor_overage."""
     open_cyc = _current_open_cycle(db, company_id)
     if open_cyc is None:
-        newest = (db.query(AssessmentCycle).filter_by(company_id=company_id)
-                    .order_by(AssessmentCycle.id.desc()).first())
-        cyc = newest
+        # Seat counting asks "which cycle is current", not "which has results".
+        cyc = newest_cycle_regardless_of_results(db, company_id)
     else:
         cyc = open_cyc
     st = _seat_status(db, company_id, cyc.id if cyc else None)

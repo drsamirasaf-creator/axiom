@@ -716,7 +716,7 @@ GLOSSARY.update({
     "Option to Defer": "A call on waiting: holding an investment decision open and committing only when the upside materializes, sidestepping a downside a today-or-never DCF would force you to accept.",
     "Binomial Lattice": "The Cox-Ross-Rubinstein tree used to price the options: each step the enterprise value moves up by e^(sigma sqrt(dt)) or down by its reciprocal, valued risk-neutrally at probability p* = (e^(r dt) - d)/(u - d). American exercise is checked at every node. The certificate publishes u, d, and p*.",
     "Flexibility Value": "The option-inclusive value minus the static baseline (never expand / never abandon / invest today): the pure worth of keeping the choice open, in currency and as a percent of enterprise value.",
-    "Option Volatility (sigma)": "The enterprise's own cash-flow volatility, estimated from the standard deviation of historical revenue log-growth (floored at 15% because a smooth 5-year statement understates real business risk). Higher volatility means more valuable flexibility - the one place in finance where risk creates value.",
+    "Option Volatility (sigma)": "Cash-flow volatility. AXIOM estimates it from the standard deviation of historical revenue log-growth, then clamps it to [15%, 60%]. IN PRACTICE THE 15% FLOOR USUALLY BINDS: planning-template historicals are smooth (median measured dispersion is well under 2%), so for most companies the figure shown is the floor, not an estimate from your data - the panel says which. The floor exists because a smooth 5-year statement understates real business risk. Higher volatility means more valuable flexibility - the one place in finance where risk creates value.",
 })
 
 

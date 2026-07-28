@@ -67,7 +67,14 @@ def test_sigma_calibration_from_history_and_floor():
     r = val.real_option(halcyon(), "expand")
     lc = r["lattice_certificate"]
     assert lc["sigma"] >= 0.15                          # floor holds
-    assert lc["sigma_basis"] == "historical revenue log-growth"
+    # ⭐ THIS ASSERTION USED TO PIN THE DEFECT. It required the basis to read
+    # "historical revenue log-growth" in a case where the FLOOR had just been
+    # asserted to hold — i.e. it demanded that a clamp describe itself as an
+    # estimate from the customer's data. The basis must describe the value
+    # actually returned.
+    assert lc["sigma"] >= 0.15
+    assert "floor" in lc["sigma_basis"], lc["sigma_basis"]
+    assert "historical revenue log-growth" not in lc["sigma_basis"]
 
 
 def test_validation():
