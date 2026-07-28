@@ -835,10 +835,39 @@ def parse_and_validate(content: bytes, expected_company_id: int,
     try:
         sample = build_sample_data(company.get("ownership") or "private", standard,
                                    (meta or {}).get("frequency", "annual"))
+        # ⭐ COMPARE THE HISTORICAL COLUMNS ONLY, ROW BY ROW.
+        #
+        # This block used to compare the WHOLE block as one sorted multiset:
+        #     up_vals = sorted(every value in the uploaded block)
+        #     sm_vals = sorted(every value in build_sample_data()'s block)
+        # and could therefore NEVER fire. `build_sample_data` generates the six
+        # HISTORICAL periods only, while the shipped template also pre-fills the
+        # eight forecast columns — so the two multisets differ in SIZE (70 vs 30
+        # for the income statement) before they differ in content, and equality
+        # is impossible for any workbook produced from the template.
+        #
+        # Measured on the upload that slipped through (company 39, dataset 52):
+        # the historical values match the sample EXACTLY — 10.0, 11.5, 13.2,
+        # 15.2, 17.5, 20.125 against 10000000.0 … 20125000.0, a clean 1e6 factor
+        # because the sentinel runs BEFORE normalisation to millions. Only the
+        # forecast columns made the sets unequal.
+        #
+        # Restricting the comparison to `hist` fixes the reference without
+        # needing a per-version stored sample: the historical sample is what
+        # `build_sample_data` already is, and it is what the template writes.
+        # A customer who replaces their history has changed these cells; one who
+        # replaces nothing has not.
         for block in ("income_statement", "balance_sheet", "cash_flow"):
-            up_vals = sorted(v for row in data.get(block, {}).values() for v in row.values())
-            sm_vals = sorted(v for row in sample.get(block, {}).values() for v in row.values())
-            if up_vals and up_vals == sm_vals:
+            up_rows = data.get(block, {}) or {}
+            sm_rows = sample.get(block, {}) or {}
+            shared = set(up_rows) & set(sm_rows)
+            hist_keys = [str(y) for y in (hist or [])]
+            if not shared or not hist_keys:
+                continue
+            def _hist(rows, k):
+                return [rows[k].get(y) for y in hist_keys]
+            untouched = all(_hist(up_rows, k) == _hist(sm_rows, k) for k in shared)
+            if untouched:
                 errors.append({"sheet": lab["sheets"][block], "cell": None,
                                "message": f"The '{lab['sheets'][block]}' sheet still contains the "
                                           "template's sample figures. Replace every sheet with your "

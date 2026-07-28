@@ -3567,6 +3567,96 @@ applied retroactively to the stored original workbooks.
 **LAUNCH-BLOCKING.** The failure is silent, reaches the most consequential
 artefact AXIOM produces, and the customer has no way to detect it.
 
+## §7.32 ⭐ A SIGNAL THAT SURVIVES THE THING IT DETECTS IS NOT A SIGNAL
+
+**The watermark check is REJECTED. Recorded with the audit as evidence.**
+
+The proposal was to reject any workbook whose statement sheets still carry
+`SAMPLE DATA (illustrative…)` in row 2. The retroactive audit killed it:
+
+```
+8 fetchable originals audited:  WATERMARKED 8 · clean 0 · UNKNOWN 12
+
+ds=40 ent=25 v6.1 WATERMARKED   max_revenue=78.2      matches_template_sample=False
+ds=42 ent=20 v6.2 WATERMARKED   max_revenue=23975.0   matches_template_sample=False
+ds=46 ent=25 v7.2 WATERMARKED   max_revenue=38700.0   matches_template_sample=False
+ds=52 ent=39 v7.5 WATERMARKED   max_revenue=36.845    matches_template_sample=TRUE
+```
+
+⭐ **THE BANNER IS A LABEL ROW, NOT A DATA ROW. IT SURVIVES COMPLETE EDITING.** A
+customer who replaces every figure has no reason to delete a caption. So the
+watermark records **"a caption wasn't deleted"**, never **"the data is
+untouched"**.
+
+**It would have blocked 7 of 8 real customer workbooks to catch 1 sample** —
+Milliner's and Meridian's included. **Silent-wrong traded for
+loudly-wrong-and-blocking on paying customers is the worse failure.**
+
+### THE GENERAL RULE
+
+> **A SIGNAL THAT SURVIVES THE THING IT IS MEANT TO DETECT IS NOT A SIGNAL.**
+
+**Same shape as declared-but-unbound, one level up.** There, a guard was declared
+and never bound — it did not execute. Here the marker **exists, is written
+correctly, and is read correctly** — and still carries **no information**, because
+its presence is uncorrelated with the condition it is supposed to indicate. The
+binding is fine; the *signal* is empty.
+
+Test for it: **ask what the marker looks like in the negative case.** If it looks
+the same, it is decoration.
+
+## §7.33 THE CORRECTED SENTINEL — REFERENCE FIXED, PROVEN BOTH DIRECTIONS
+
+**My first diagnosis was partly wrong and is corrected here.** I reported the
+sentinel compared against "a different sample than the product ships", citing
+`shared_values 0/67`. **That zero was a unit-scale artifact**: the sentinel runs
+BEFORE normalisation, so `build_sample_data` is in ACTUAL units while stored data
+is in millions. The historical values match **exactly**, at a clean 1e6 factor:
+
+```
+sample : 10000000.0  11500000.0  13200000.0  15200000.0  17500000.0  20125000.0
+stored :       10.0        11.5        13.2        15.2        17.5      20.125
+```
+
+**The real defect is narrower and sharper: `build_sample_data` generates the six
+HISTORICAL periods only, while the shipped template also pre-fills eight FORECAST
+columns.** The multisets differ in SIZE (70 vs 30 for the income statement)
+before they differ in content, so exact equality was impossible for any workbook
+built from the template.
+
+**Fix:** compare the **historical columns only, row by row**. No per-version
+stored sample is needed — the historical sample *is* `build_sample_data`, and it
+is what the template writes.
+
+**Proved against every upload in production:**
+
+```
+FIRES on: [52]
+CLEARS  : [8,13,15,32,33,34,35,38,39,40,41,42,43,45,46,47,48,49,51]
+```
+
+⭐ **AND IT REACHES WHAT THE WATERMARK COULD NOT.** The value comparison works on
+the **parsed dataset**, so it clears all 12 uploads that have no stored original —
+permanently unauditable by any originals-based method. The rejected approach
+covered 8 datasets and misjudged 7; the accepted one covers 20 and misjudges 0.
+
+## §7.34 DATA-RETENTION GAP — 12 OF 20 UPLOADS HAVE NO STORED ORIGINAL
+
+```
+upload datasets: 20   with original_r2_key: 8   WITHOUT: 12
+```
+
+**Permanently unauditable by any method that needs the original workbook** — not
+only for this defect. Any future ingest question ("was this parsed correctly?",
+"what did the customer actually send?", "which template version?") is
+unanswerable for 12 of 20 uploads, and 11 of those also carry no
+`template_version`.
+
+⭐ **THIS IS ITS OWN FINDING: A RETENTION GAP FORECLOSES RETROACTIVE
+INVESTIGATION OF EVERY INGEST DEFECT, PAST AND FUTURE.** It is why the
+value-comparison approach is strictly better than any originals-based one — and
+why the retention gap should be closed regardless of this lane.
+
 ## §7.31 NUMBER PRESENTATION MUST BE IDENTICAL ACROSS EVERY FINANCIAL SURFACE (ruled)
 
 **Same units, same precision, same currency treatment, same negative convention,
