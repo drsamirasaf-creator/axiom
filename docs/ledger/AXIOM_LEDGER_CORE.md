@@ -3206,6 +3206,69 @@ Fix belongs to the customer-journey pass; the **recovery** is a separate,
 explicitly authorised write lane. Logged at full severity — this is the most
 customer-damaging defect found on the new-customer path.
 
+## §7.24 THE CYCLE LIFECYCLE — THREE FINDINGS THAT COMPOUND (28 Jul, for the customer-journey pass)
+
+**Established read-only. Not built. These three plus §7.23 produce one bad
+first experience.**
+
+### 7.24a ⭐ THE AUTO-OPEN TRAP — "invite" SILENTLY MEANS "start a new cycle"
+
+**Assessors CAN be added to an already-open cycle.** `invite_assessor` calls
+`_ensure_open_cycle`, which *"returns the company's open cycle, auto-opening one
+when none is open"*. So the 10-then-15-tomorrow case works correctly **provided
+the cycle is still open** — today's failure was an **affordance problem, not a
+functional limitation.**
+
+The trap is the other branch. With **no** open cycle, the same button silently
+**opens a new one**. The auto-open exists for a good reason — *"so an assessor
+invite never orphans (lifecycle-gap fix)"* — but it means **an admin who closes
+a cycle and then invites one more person has started a second cycle without
+being told**, and `KFLOOR = 3` is evaluated **per cycle**.
+
+That is the mechanism that converted §7.23's misstatement into split data: the
+landing said "No cycles yet", the admin invited again, and cycle 54 appeared.
+
+### 7.24b ⭐ NO K-FLOOR WARNING AT CLOSURE — AN IRREVERSIBLE ACT, MIS-DESCRIBED
+
+`close_assessment_cycle` sets `closed_at` with **no participant-count check**.
+And closure is **irreversible**: `PATCH /assessment/cycles/{cid}` handles depth
+only and cannot clear `closed_at`; **no reopen endpoint exists anywhere.**
+Afterwards the cid-scoped invite returns `409 "cycle is closed"`, while the
+company-level invite silently auto-opens a new cycle (7.24a).
+
+The dialog counts **outstanding invitations** and says:
+
+> *"N of M invited people haven't responded yet … You can close anyway; **the
+> CEI is computed from whoever responded**."*
+
+⭐ **THAT LAST CLAUSE IS FALSE BELOW THE FLOOR.** With n < 3 nothing is computed
+or reportable, ever, and there is no way back. The admin is told the opposite of
+what will happen, at the one moment the decision is still reversible.
+
+**The sentence that would have prevented the entire failure does not exist:**
+*"2 responses is below the 3-response confidentiality floor — this cycle will
+never be reportable."*
+
+### 7.24c THE CONCEPTUAL GAP — "CYCLE" IS UNEXPLAINED WHERE THE CUSTOMER MEETS IT
+
+The customer meets "cycle" as a noun in a button ("Open assessment cycle"), a
+dialog ("Close this cycle?"), and an empty state ("No cycles yet") — with no
+explanation that a cycle is the **unit of anonymity and of reporting**, that the
+floor applies **per cycle**, or that closing is **final**. Every consequence in
+7.24a and 7.24b follows from a concept the interface never teaches.
+
+### HOW THE FOUR COMPOUND
+
+1. Admin invites, collects **2** responses.
+2. Closes — **no floor warning**; told the CEI "is computed from whoever responded".
+3. Landing says **"No cycles yet"** (§7.23 — guard read the wrong field).
+4. Admin re-invites → **auto-open** creates cycle 2; the third response lands there.
+5. **n=2 and n=1, both permanently below the floor, no reopen, and the landing
+   still says nothing ran.**
+
+Each is survivable alone. Together they make a customer's first assessment
+unreportable and tell them it never happened.
+
 ## §7.19 ⭐ THE HALF-DONE-SUPERSESSION CLASS — WRITES MIGRATED, READS LEFT BEHIND
 
 **Beside two-owners (§7.15g) and shadowed-route (§7.17). A third way for a
