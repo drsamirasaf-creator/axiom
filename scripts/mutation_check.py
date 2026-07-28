@@ -17,6 +17,7 @@ The source file is restored after every mutation, including on failure.
 import subprocess, sys, shutil, os, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PRO = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services/api/modules/financials/proforma.py")
 ACC = os.path.join(ROOT, "services/api/accounts.py")
 VAL = os.path.join(ROOT, "services/api/modules/valuation/engines.py")
 READ = "tests/unit/test_assessment_read_path_execution.py"
@@ -71,6 +72,19 @@ MUTATIONS = [
      "    closed = []\n"
      "    if not closed:\n        return {\"has_data\": False, \"item_code\": item_code,",
      f"{READ}::test_assessment_item_drill_body_executes"),
+
+    ("_historicals_only stops stripping forecast VALUES (list only)", PRO,
+     '            out[block] = {key: {y: v for y, v in (series or {}).items() if y in hist}',
+     '            out[block] = {key: {y: v for y, v in (series or {}).items()}',
+     "tests/unit/test_historicals_only.py::test_forecast_VALUES_are_stripped_from_every_block"),
+
+    ("_historicals_only rounds the historical figures it copies", PRO,
+     "    hist = {str(y) for y in data[\"periods\"][\"historical\"]}",
+     "    hist = {str(y) for y in data[\"periods\"][\"historical\"]}\n"
+     "    data = {**data, **{b: {k: {y: round(v, 1) for y, v in s.items()}\n"
+     "                           for k, s in data[b].items()}\n"
+     "                       for b in (\"income_statement\",)}}",
+     "tests/unit/test_historicals_only.py::test_historical_values_are_copied_UNTOUCHED"),
 
     ("sigma reports the clamp as an estimate again", VAL,
      '            if sd < 0.15:\n                return 0.15, ("floor (0.15) — this company\'s historical revenue is too "\n'
