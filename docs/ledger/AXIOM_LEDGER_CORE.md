@@ -4295,6 +4295,187 @@ admins.
 | 9 | **Prescience engines, Performance Monitoring** | |
 | 10 | **Commercial layer last** — pricing, Free Pilot, Partner Program | least dependent on the rest, most likely to change before launch |
 
+## L.2b ⭐ STOCHASTIC METHODOLOGY — LAUNCH-SCOPE ITEM (user ruling, 28 Jul)
+
+**Audience for the methodology surface: a CEO with a PhD in stochastic
+processes.** He will test the claims. What follows is what is true today,
+established by reading the engines, not by reading the marketing copy.
+
+### ⭐ THE THREE-WAY UNDERSTATEMENT — STATE IT PLAINLY
+
+The published P05–P95 intervals are **systematically tighter than the model can
+justify**, from three independent causes that all push the same way:
+
+1. **Correlation is +1, not zero.** Only TWO random variables are drawn per year
+   (`ε_g` on the revenue growth rate, `ε_m` on EBIT margin). Every other line —
+   COGS, opex, D&A, capex, NWC, OCA, NCA, CL — is a **fixed ratio of revenue**,
+   so cross-line correlation is **+1 by construction**. Debt, dividends and net
+   borrowing are constant across paths (variance 0). Line items are **not drawn
+   independently**; this is a two-factor model.
+2. **Volatility is assumed and global.** `SIGMA_G = 0.02`, `SIGMA_M = 0.01` in
+   `proforma.py` are **module constants, identical for every customer**, never
+   estimated from that customer's history.
+3. **WACC and terminal growth are fixed across all MC paths.** TV is computed
+   inside each path (`tv_i = f_last·(1+g)/(wacc−g)`) but its only randomness is
+   the final year's FCFF. **TV typically dominates EV**, so the EV distribution
+   carries no discount-rate or terminal-growth uncertainty at all.
+
+**⭐ A CUSTOMER READING P05–P95 AS A CONFIDENCE INTERVAL IS BEING MISLED.** That
+is the sentence that must govern the methodology page. It is not a nuance to be
+footnoted; it is the headline finding, and no page ships that implies otherwise.
+
+Two further honest qualifications, recorded so they are not rediscovered:
+
+* **Shocks are i.i.d. across years** — no autocorrelation, no persistence. This
+  makes `p_meets_plan_every_year` (cumulative attainment) **optimistic** relative
+  to any process with persistent shocks.
+* **Cash is the plug.** The balance sheet balances per path per year (asserted by
+  the `balance_sheet_balances` checkpoint) because cash absorbs the residual
+  while debt and dividends stay at plan. Downside paths therefore **understate
+  distress and overstate equity** — no revolver is drawn, no dividend suspended.
+
+### ⭐ DEFECT — THE σ CONTRADICTION (its own item, not a simplification)
+
+**Two engines, the same firm, order-of-magnitude different volatility.**
+
+| Engine | σ | Basis |
+| --- | --- | --- |
+| Pro-forma statements + MC valuation | **0.02** on the growth rate | global constant, never fitted |
+| Real Options `_calibrate_sigma` | **≥ 0.15** (clamp `[0.15, 0.60]`, fallback 0.22) | fitted from historical revenue log-growth |
+
+This is a **contradiction, not a simplification** — the same firm's revenue
+volatility cannot be both. **It must be resolved before EITHER can be
+documented**, because a methodology page that describes one leaves the other
+standing as a visible inconsistency on an adjacent surface.
+
+Note also that with six historical periods there are only **five** log-growth
+observations (4 d.f., ~35% relative standard error), and for the smooth
+statements typical of a planning template the raw estimate usually falls **below
+the 0.15 floor** — so the Real Options σ is in practice **the floor, not the
+estimate**. Describing it as "estimated from your history" would be false.
+
+### ⭐ 3,000 PATHS WAS NEVER TESTED
+
+No convergence test exists. The suite asserts seed and path count are
+**reported** (`assert ra["seed"] == 26060 and ra["n_paths"] == 2000`) and never
+that a percentile is **stable**. That is a reproducibility assertion, not a
+convergence one. Five different path counts coexist with nothing documenting
+why: **3000** (Business Planning statements), **1000** (Scenario Analysis
+statements, base and shifted), **1200** (Scenario Analysis EV samples), **2000**
+(valuation MC default), **400** (frontier).
+
+**Seed caveat, required for any replayability claim:** draws are consumed
+sequentially, so anything changing the number or order of draws — a different
+horizon, a different path count, an added stochastic line — shifts the entire
+stream. **Same seed ≠ same paths across configurations**, and the 1000-path and
+3000-path runs are *not* nested subsamples of one another.
+
+### QUEUE — ORDERED (user, 28 Jul). METHODOLOGY PAGE COMES LAST.
+
+| # | Item |
+| --- | --- |
+| 1 | **Resolve the σ inconsistency** — one answer for one firm |
+| 2 | **Convergence test** — does 3,000 give stable percentiles, and why do five path counts exist |
+| 3 | **Decide: fit volatility per customer, or state plainly that it is assumed** |
+| 4 | **Correlation structure** |
+| — | **Only then the methodology page.** It cannot be written before we know what is true. |
+
+Full working: `docs/reports/2026-07-28-stochastic-proforma-framing.md`.
+
+## L.2c ⭐ THE ANCHOR YEAR IS RENDERED ON NEITHER STATEMENT SURFACE (28 Jul)
+
+**Architecture (user ruling, 28 Jul) — three layers:**
+
+1. **Last actual year is the ANCHOR** — customer-supplied. Must match exactly on
+   every surface. **Divergence there is a defect.**
+2. **Business Planning is DETERMINISTIC** — five methods, client plan, AXIOM
+   Ensemble. Reproducible given a method.
+3. **Scenario Analysis is STOCHASTIC** — Monte Carlo and techniques beyond the
+   five methods. **Forecast-year divergence from Business Planning is expected
+   and correct**, and must stop being treated as a defect.
+
+**The finding: neither statement surface renders the anchor year.** Measured on
+company 38 — Business Planning → Income Statement and Scenario Analysis →
+Income Statement **both open at 2026**. The one value that must visibly agree
+between the two layers is shown on neither.
+
+**Showing it is the cheapest possible answer to "do these agree" — and today the
+question cannot be answered by looking.**
+
+The agreement itself is real. Verified on the user's real dataset (53, Trust
+Industries): anchor **2025**, revenue **82.64**, historicals 2020–2025. It is
+single-sourced in code — `y0 = str(hist[-1])` in `stochastic_statements`, and
+`_historicals_only()` **filters years while copying values untouched**, so no
+code path can rewrite it. But structural correctness a customer cannot see is
+not the same as a claim a customer can check.
+
+**Queued:** render the anchor as the leading column on both statement surfaces,
+marked as actual rather than projected. The data is already in both payloads.
+
+## L.2d ANCHOR ADVANCE — VERIFICATION ITEM, NOT A BUILD (user, 28 Jul)
+
+**Scope:** when a new template is uploaded carrying an additional year or quarter
+of actuals, the anchor moves forward and everything reforecasts. Confirm by test
+rather than assume. **Build only if something is genuinely broken.**
+
+**Status: static half complete (read-only, 28 Jul). Dynamic half NOT run — it
+requires creating a new dataset version, which is a WRITE and needs a named
+lane.** Findings below are from the code, which is stronger than a single test
+for "does anything hold a stale artifact" — it finds every holder rather than the
+ones a test happens to touch. It is weaker for "does it actually fire", which is
+what the dynamic half is for.
+
+### §8 SIGN-OFF INVALIDATION — CONFIRMED IT FIRES, AND WHY IT CANNOT BE MISSED
+
+**Invalidation is COMPUTED ON READ, per department, never by a background job.**
+`signoff_state()` recomputes `state_digest(signed_dashboard_state(...))` and
+compares it to the stored digest on every read. The code records the reasoning:
+*"A job that fails leaves a stale 'signed' badge sitting on changed numbers,
+which is precisely the trap the mechanism exists to prevent."*
+
+So no activation trigger exists to be forgotten, and none is needed. A new anchor
+changes displayed values → digest mismatch → `needs_resignoff`, for **every**
+department, automatically.
+
+`signed_dashboard_state()` covers four families, all read from the SAME
+serializer the dashboard renders from (§8.2 — computed, never hand-maintained):
+KPIs (`company_kpi_variance`), objectives (`department_okr_map` → attainment),
+sentiment and CEI trend (`assessment_summary`). **KPI plan-vs-actual is
+anchor-dependent**, so the mismatch is guaranteed, not incidental.
+
+### §4x OVERRIDE ABSORPTION — CONFIRMED IT FIRES
+
+`retirement_candidates()` reads **today's** source — `_active_company_dataset()`
+→ `KpiPlan.ytd_actual` for the active dataset — and offers retirement where the
+source has caught up within `ABSORB_TOLERANCE`. The code records the trap it
+avoids: `computed_value_at_override` is deliberately FROZEN, so comparing against
+it *"would compare the override to itself and never detect absorption at all"*
+(caught by two retirement tests failing).
+
+**Dependency worth stating, because it is the failure mode:** absorption is keyed
+on `KpiPlan` rows filtered to the **active dataset id**, and skips any override
+whose `metric_ref` is absent from that set (`if o.metric_ref not in live:
+continue`). A new dataset version with no carried KPI rows would therefore make
+absorption silently offer **nothing** — a silent-empty, the primary failure mode.
+It does not, because a reconciliation step carries rows to `new_ds.id` and
+handles all four cases explicitly: matched rows updated, in-app-only rows carried
+intact, template rows absent from the new upload carried **flagged** rather than
+deleted, and divergent same-key content **surfaced as a conflict, never resolved
+silently**. That carry-forward is what makes absorption work across an anchor
+advance, and the two are coupled without either naming the other.
+
+### STILL TO VERIFY DYNAMICALLY (the reason this stays an open item)
+
+1. **Does the new actual replace the corresponding forecast year across all
+   surfaces, or does anything retain the old projection alongside it?**
+2. **What recomputes automatically and what does not.** Candidate holders of an
+   artifact computed at the PREVIOUS anchor, to be checked individually:
+   `ForecastSet`, `TrajectoryCache`, `DecisionFrontier`, `DPPolicySurface`,
+   `AssessmentOverall`, and persisted valuation / simulation runs. **This is the
+   shape of both stored-snapshot defects found today** — a writer migrated, a
+   reader left behind.
+3. Confirm 1–2 on the user's real dataset (53), which needs a named write lane.
+
 ## L.3 ⭐ THE REGRESSION PASSES SIT AT POSITION 4 DELIBERATELY
 
 **They are cheaper before the feature run than after.** Every subsequent feature
