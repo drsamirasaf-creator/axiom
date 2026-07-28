@@ -3269,6 +3269,39 @@ floor applies **per cycle**, or that closing is **final**. Every consequence in
 Each is survivable alone. Together they make a customer's first assessment
 unreportable and tell them it never happened.
 
+## §7.25 ⭐ NEVER CONCLUDE FROM A TRUNCATED VIEW OF A PAYLOAD
+
+**Standing rule. Twice on 28 Jul, and both times the truncation was invisible in
+the output — so it read as a complete answer.**
+
+| # | what was printed | what was concluded | truth |
+| --- | --- | --- | --- |
+| 1 | `ros.get("members", [])` on a payload whose key is `people` | *"company 38 has ZERO accounts"* | 2 memberships — one admin, one viewer |
+| 2 | `sorted(e.keys())[:8]` on a trend entry | *"`isSuppressed(t.cei)` never fires, the trend is broken too"* | `[:8]` cut off immediately before `reason` and `suppressed`; the trend site was **never broken** |
+
+⭐ **A TRUNCATED PRINT PRODUCES A WELL-FORMED, PLAUSIBLE, WRONG ANSWER.** Neither
+output carried any marker that it was partial. `[:8]` looks like tidiness; a
+wrong key name looks like an empty collection. In both cases the *shape* of the
+result was exactly what a real negative finding looks like.
+
+The second instance is the sharper one: it nearly caused a **fix to code that
+had no defect**. The claim "the trend is broken the same way" was recorded and
+reported before being checked against the full key list.
+
+**THE RULE:**
+
+1. **Before concluding a field is ABSENT, print the whole object** — or assert
+   on the exact key rather than a slice of it.
+2. **Never slice a key list you are reasoning about.** If it is too long to
+   print, that is a reason to search it, not to truncate it.
+3. **A negative finding about a payload requires the complete payload.** Positive
+   findings can survive a partial view; negatives cannot, because absence is
+   exactly what truncation manufactures.
+
+Same family as the other 27–28 Jul instrument failures — *the instrument
+measured something adjacent to the claim* — with the distinguishing feature that
+here the instrument **discarded** the evidence rather than mis-reading it.
+
 ## §7.19 ⭐ THE HALF-DONE-SUPERSESSION CLASS — WRITES MIGRATED, READS LEFT BEHIND
 
 **Beside two-owners (§7.15g) and shadowed-route (§7.17). A third way for a
