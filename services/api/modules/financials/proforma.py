@@ -37,7 +37,15 @@ def _historicals_only(data: dict) -> dict:
     endpoint helper — kept here to avoid a router import cycle)."""
     hist = {str(y) for y in data["periods"]["historical"]}
     out = dict(data)
-    out["periods"] = {"historical": list(data["periods"]["historical"]), "forecast": []}
+    # ⭐ FREQUENCY IS CARRIED, NOT REBUILT AWAY. This wrote a fresh periods dict
+    # with only historical/forecast, silently dropping `frequency` — so a
+    # quarterly dataset came out of here declaring nothing, every downstream
+    # reader defaulted to annual, and auto_forecast generated 20225..20229 after
+    # 20224. The stored data was correct throughout; this one dropped key is what
+    # made the re-projection invent five impossible quarters.
+    out["periods"] = {"historical": list(data["periods"]["historical"]),
+                      "forecast": [],
+                      "frequency": (data.get("periods") or {}).get("frequency") or "annual"}
     for block in ("income_statement", "balance_sheet", "cash_flow"):
         blk = data.get(block)
         if isinstance(blk, dict):

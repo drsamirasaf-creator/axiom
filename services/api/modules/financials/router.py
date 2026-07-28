@@ -21,6 +21,7 @@ from ..identity.deps import read_tenant as _tenant  # noqa: E402
 from ..identity.deps import write_tenant as _writer  # noqa: E402
 from ..identity.deps import is_authenticated as _authed  # noqa: E402
 from ..identity.deps import viewer_company as _scoped  # noqa: E402
+from .periods import forecast_periods as _fc_periods, frequency_of as _freq_of
 
 
 def _get_dataset(db: Session, tenant: str, dataset_id: int,
@@ -337,7 +338,7 @@ def compute_plan_vs_methods(data: dict, horizon: int | None = None,
     hz = max(1, min(horizon or plan_span, HORIZON_MAX))
     all_last = max(plan_last, hist_last + hz)
     method_hz = all_last - hist_last
-    method_years = [hist_last + k for k in range(1, method_hz + 1)]
+    method_years = _fc_periods(hist_last, method_hz, _freq_of(data))
 
     # AXIOM method series — fit on HISTORY, projected across the full range.
     method_out = {m: compute_method(base, m, method_hz) for m in FS_METHODS}
@@ -356,7 +357,7 @@ def compute_plan_vs_methods(data: dict, horizon: int | None = None,
                   **_pvm_forecast_only(data, fc_years)}
         ext_hz = all_last - plan_last
         ext_stmts, ext_extra = compute_method(pseudo, extend_method, ext_hz)
-        ext_years = [plan_last + k for k in range(1, ext_hz + 1)]
+        ext_years = _fc_periods(plan_last, ext_hz, _freq_of(data))
         # splice the extension onto the plan's forecast statements
         for block in ("income_statement", "balance_sheet", "cash_flow"):
             for k, series in (ext_stmts.get(block) or {}).items():

@@ -32,6 +32,11 @@ the person who had just written the test.
      HTTP-level test allowing 401 beside 200 passes when auth rejects the request
      before the body runs.
 
+A fifth, which the HARNESS itself can hide: ALWAYS-FAILING. A test that does not
+pass on correct code kills every mutation paired with it and reports a confident
+`killed`. The baseline pass in main() exists for that, and it caught an
+end-to-end test raising KeyError on an incomplete fixture.
+
 A fourth, adjacent: PASSING-FOR-THE-WRONG-REASON, where the input does not
 discriminate. A lowercase department name still matched after case-insensitivity
 was removed, because the lookup key was already lowered. The assertion was right;
@@ -42,6 +47,8 @@ The source file is restored after every mutation, including on failure.
 import subprocess, sys, shutil, os, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services/api/modules/financials/periods.py")
+ENG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services/api/modules/financials/engines.py")
 RF = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services/api/report_format.py")
 REP = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services/api/reporting.py")
 PU = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services/api/participant_upload.py")
@@ -51,6 +58,7 @@ VAL = os.path.join(ROOT, "services/api/modules/valuation/engines.py")
 READ = "tests/unit/test_assessment_read_path_execution.py"
 PUT = "tests/unit/test_participant_upload.py"
 RFT = "tests/unit/test_report_format.py"
+FPS = "tests/unit/test_forecast_period_succession.py"
 COV = "tests/unit/test_coverage_rename_and_suppression.py"
 
 # (label, file, find, replace, test-node-id)
@@ -264,6 +272,34 @@ MUTATIONS = [
      "def chart_bars(labels, values, title=\"\", colors=None, horizontal=False, fmt=None, decimals=None):",
      f"{RFT}::test_chart_bars_uses_the_shared_score_formatter"),
 
+
+    # ── forecast period succession ───────────────────────────────────────────
+    ("forecast_periods goes back to integer +1 (Q5..Q9 return)", PER,
+     "    out, p = [], last_historical\n    for _ in range(max(0, int(n))):\n"
+     "        p = next_period(p, frequency)\n        out.append(p)\n    return out",
+     "    return [last_historical + k for k in range(1, int(n) + 1)]",
+     f"{FPS}::test_twelve_quarterly_historicals_ending_20224_produce_the_right_nine"),
+
+    ("_historicals_only drops the frequency again (the actual cause)", PRO,
+     '                      "frequency": (data.get("periods") or {}).get("frequency") or "annual"}',
+     '                      }',
+     f"{FPS}::test_historicals_only_CARRIES_THE_FREQUENCY"),
+
+    ("auto_forecast stops asking the dataset its frequency", ENG,
+     '"forecast": _fc_periods(hist[-1], horizon, _freq_of(data))},',
+     '"forecast": _fc_periods(hist[-1], horizon, "annual")},',
+     f"{FPS}::test_the_full_path_end_to_end_produces_no_impossible_quarter"),
+
+    ("the quarter carry is lost, so Q4 is followed by Q5", PER,
+     '        return (year + 1) * 10 + 1 if q == 4 else year * 10 + (q + 1)',
+     '        return year * 10 + (q + 1)',
+     f"{FPS}::test_each_year_boundary_carries"),
+
+    ("annual succession picks up the quarterly rule", PER,
+     "    return year + 1",
+     "    return year * 10 + 1",
+     f"{FPS}::test_annual_generation_is_plain_year_succession"),
+
     ("sigma reports the clamp as an estimate again", VAL,
      '            if sd < 0.15:\n                return 0.15, ("floor (0.15) — this company\'s historical revenue is too "\n'
      '                              "smooth to estimate volatility from")',
@@ -314,6 +350,27 @@ MAX_STALE = 2
 
 def main():
     print(f"MUTATION CHECK — {len(MUTATIONS)} plausible defects\n")
+
+    # ⭐ A TEST THAT FAILS ON CORRECT CODE KILLS EVERY MUTATION TRIVIALLY, and
+    # the harness would report a confident PASS. It happened: an end-to-end test
+    # raised KeyError on an incomplete fixture, so every mutation paired with it
+    # "died" without the code under test ever running. Baseline first — if the
+    # test does not pass unmutated, its mutation result means nothing.
+    print("  baseline (each paired test must PASS unmutated):")
+    broken = []
+    for node in sorted({m[4] for m in MUTATIONS}):
+        ok, _ = run(node)
+        if not ok:
+            broken.append(node)
+            print(f"    ⚠ FAILS UNMUTATED  {node}")
+    if broken:
+        print(f"\n  FAIL — {len(broken)} paired test(s) fail on correct code. Every "
+              f"mutation against them would report `killed` while proving nothing.")
+        for n in broken:
+            print(f"    {n}")
+        return 1
+    print(f"    all {len({m[4] for m in MUTATIONS})} paired tests pass unmutated\n")
+
     survived, killed, skipped = [], [], []
     for label, path, find, repl, node in MUTATIONS:
         src = open(path).read()

@@ -27,6 +27,7 @@ FCFE extension logged against the spec; identity-checked against
 NI + D&A - CapEx - dNWC + net_borrowing on every run).
 """
 import math
+from .periods import forecast_periods as _fc_periods, frequency_of as _freq_of
 
 IS_KEYS = ["revenue", "cogs", "opex", "depreciation_amortization",
            "interest_expense"]
@@ -352,7 +353,7 @@ def auto_forecast(data: dict, assumptions: dict | None = None) -> dict:
 
     out = {"company": dict(company),
            "periods": {"historical": hist,
-                       "forecast": [hist[-1] + k for k in range(1, horizon + 1)]},
+                       "forecast": _fc_periods(hist[-1], horizon, _freq_of(data))},
            "income_statement": {k: dict(IS[k]) for k in IS_KEYS},
            "balance_sheet": {k: dict(BS[k]) for k in BS_KEYS},
            "cash_flow": {k: dict(CF[k]) for k in CF_KEYS}}

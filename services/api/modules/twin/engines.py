@@ -28,6 +28,7 @@ The twin loop, published in full:
 """
 from ..financials import engines as fin
 from ..valuation import engines as val
+from ..financials.periods import forecast_periods as _fc_periods, frequency_of as _freq_of
 
 THRESHOLDS = {
     "revenue":     {"green": 0.02, "amber": 0.05, "kind": "pct"},
@@ -334,7 +335,7 @@ def simulate(data: dict, scenario: str = "baseline", horizon: int | None = None,
     sig_m = 0.01 * sc["sigma_scale"] * float(sc.get("sigma_m_scale", 1.0))
 
     rng = _random.Random(seed)
-    years = [hist[-1] + k for k in range(1, horizon + 1)]
+    years = _fc_periods(hist[-1], horizon, _freq_of(data))
     log_growth_sum = 0.0                # for the ergodicity block
     rev_paths = [[] for _ in years]
     fcff_paths = [[] for _ in years]

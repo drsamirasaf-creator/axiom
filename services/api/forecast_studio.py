@@ -33,6 +33,7 @@ from . import accounts as A
 from .accounts import (Base, get_db, require_company_member, require_company_admin,
                        get_current_user, audit, _active_company_dataset)
 from .modules.financials import engines as fin
+from .modules.financials.periods import forecast_periods as _fc_periods, frequency_of as _freq_of
 
 _log = logging.getLogger("axiom.forecast_studio")
 
@@ -105,7 +106,7 @@ def _project(data, rev_path, drivers):
     horizon = len(rev_path)
     T = float(data["company"]["tax_rate"])
     IS, BS, CF = data["income_statement"], data["balance_sheet"], data["cash_flow"]
-    fcst_years = [hist[-1] + k for k in range(1, horizon + 1)]
+    fcst_years = _fc_periods(hist[-1], horizon, _freq_of(data))
     out = {"periods": {"forecast": fcst_years},
            "income_statement": {k: {} for k in fin.IS_KEYS},
            "balance_sheet": {k: {} for k in fin.BS_KEYS},

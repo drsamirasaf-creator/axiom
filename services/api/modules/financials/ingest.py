@@ -813,48 +813,11 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     return buf.getvalue()
 
 
-# ── period arithmetic (§ quarterly lane, 28 Jul) ─────────────────────────────
-# ⭐ QUARTERLY PERIODS ARE NOT INTEGERS THAT COUNT BY ONE. They are YYYYQ — a
-# packed (year, quarter) pair — and the succession rule has a carry:
-#     20204 -> 20211   is CONSECUTIVE (+7 as an integer)
-#     20205             does not exist; there is no fifth quarter
-#
-# The validator used to do `expected = last + 1` unconditionally. On a quarterly
-# plan that REJECTED every correct year boundary and would have ACCEPTED an
-# impossible 20205. It was latent only because quarterly forecast labels ship
-# blank, so the path had never run.
-#
-# Decoding is done here, once, rather than at each comparison site, so annual and
-# quarterly cannot drift apart the way the two halves of a duplicated rule do.
-
-def decode_period(value: int, frequency: str) -> tuple[int, int | None]:
-    """YYYYQ -> (year, quarter) for quarterly; (year, None) for annual."""
-    if frequency == "quarterly":
-        year, q = divmod(int(value), 10)
-        return year, q
-    return int(value), None
-
-
-def period_is_valid(value: int, frequency: str) -> bool:
-    year, q = decode_period(value, frequency)
-    if not (1900 <= year <= 2200):
-        return False
-    if frequency == "quarterly":
-        return q is not None and 1 <= q <= 4
-    return True
-
-
-def next_period(value: int, frequency: str) -> int:
-    """The period that must follow `value`. Carries the year on Q4."""
-    year, q = decode_period(value, frequency)
-    if frequency == "quarterly":
-        return (year + 1) * 10 + 1 if q == 4 else year * 10 + (q + 1)
-    return year + 1
-
-
-def format_period(value: int, frequency: str) -> str:
-    year, q = decode_period(value, frequency)
-    return f"{year}Q{q}" if frequency == "quarterly" else str(year)
+# Period arithmetic lives in periods.py so that `engines` — which `ingest`
+# imports, and which therefore cannot import `ingest` — can reach it too. These
+# names are re-exported for the validator below and for existing callers.
+from .periods import (decode_period, period_is_valid, next_period,
+                      format_period, forecast_periods, frequency_of)
 
 
 def read_upload_metadata(content: bytes) -> dict | None:
