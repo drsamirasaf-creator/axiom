@@ -3567,6 +3567,57 @@ applied retroactively to the stored original workbooks.
 **LAUNCH-BLOCKING.** The failure is silent, reaches the most consequential
 artefact AXIOM produces, and the customer has no way to detect it.
 
+## §7.35 THE REJECTION COPY, AND THE RETROACTIVE QUESTION (28 Jul)
+
+### THE MESSAGE A BLOCKED CUSTOMER SEES — ADEQUATE, AND CHECKED
+
+This is **the first guard in the product that blocks a customer action**, so the
+copy is part of the fix. What the sentinel emits, per affected sheet:
+
+```
+sheet:   "Income Statement" | "Balance Sheet" | "Cash Flow"
+cell:    null
+message: "The '<sheet>' sheet still contains the template's sample figures.
+          Replace every sheet with your company's own numbers before uploading."
+```
+
+It reaches the customer intact — `router.py` raises `422` with the error list,
+and `data-input.tsx` renders a **Sheet / Cell / Issue table**, falling back
+`e.issue ?? e.message`, under the heading *"The file needs a few fixes — nothing
+was saved"*, with a **fresh-template download link** beneath it.
+
+**So the customer is told which sheets are affected, what is wrong, that nothing
+was saved, and how to get a clean template.** One error row per affected sheet.
+Not a generic validation failure.
+
+⚠ **One weakness worth noting:** `cell` is `null`, so the Cell column renders
+`—`. For this error that is honest — the whole sheet is the problem, not a cell
+— but it is the only error type that leaves the column empty, and a customer
+scanning the table may read `—` as "unknown" rather than "not applicable".
+
+### CAN AN ALREADY-INGESTED SAMPLE DATASET BE FLAGGED RETROACTIVELY? — YES
+
+Company 39 currently shows **a dashboard, valuation, forecasts and statements
+computed from sample figures, with no indication they are samples.** The
+corrected sentinel prevents the *next* such upload; it does nothing for data
+already stored.
+
+**The mechanism already exists end to end and is unused:**
+
+- `financial_datasets.validation` is a JSON column, already populated at ingest
+  (`{"warnings": []}` for dataset 52).
+- **`DatasetOut.validation: dict` is already on the wire** — the API returns it
+  on every dataset list and detail call.
+- **Nothing in the frontend reads it.** The only `validation` references are
+  `ChangesetReview`'s unrelated field.
+
+So retroactive flagging needs **no migration and no API change** — run the
+corrected comparison over stored datasets, write a warning into `validation`, and
+render it. **The whole gap is one unused field and a banner.**
+
+That closes the loop for anyone already in this state, rather than requiring
+every affected customer to notice and re-upload.
+
 ## §7.32 ⭐ A SIGNAL THAT SURVIVES THE THING IT DETECTS IS NOT A SIGNAL
 
 **The watermark check is REJECTED. Recorded with the audit as evidence.**
@@ -3640,7 +3691,7 @@ the **parsed dataset**, so it clears all 12 uploads that have no stored original
 permanently unauditable by any originals-based method. The rejected approach
 covered 8 datasets and misjudged 7; the accepted one covers 20 and misjudges 0.
 
-## §7.34 DATA-RETENTION GAP — 12 OF 20 UPLOADS HAVE NO STORED ORIGINAL
+## §7.34 ⭐⭐ LAUNCH-BLOCKING — DATA-RETENTION GAP: 12 OF 20 UPLOADS HAVE NO STORED ORIGINAL
 
 ```
 upload datasets: 20   with original_r2_key: 8   WITHOUT: 12
@@ -3656,6 +3707,14 @@ unanswerable for 12 of 20 uploads, and 11 of those also carry no
 INVESTIGATION OF EVERY INGEST DEFECT, PAST AND FUTURE.** It is why the
 value-comparison approach is strictly better than any originals-based one — and
 why the retention gap should be closed regardless of this lane.
+
+⭐ **LAUNCH-BLOCKING IN ITS OWN RIGHT. CLOSING IT IS CHEAP NOW AND IMPOSSIBLE
+RETROACTIVELY.** Every day of uploads without a stored original is a day that can
+never be investigated. This lane needed the originals and could not have them for
+12 of 20 datasets; the next ingest question will hit the same wall, and by then
+the window for these datasets will have closed permanently. A retention gap is
+the only defect class where the cost of delay is strictly monotonic — nothing
+later can recover what was not kept.
 
 ## §7.31 NUMBER PRESENTATION MUST BE IDENTICAL ACROSS EVERY FINANCIAL SURFACE (ruled)
 
