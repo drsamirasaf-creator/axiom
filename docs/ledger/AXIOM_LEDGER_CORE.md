@@ -3427,6 +3427,117 @@ suppressed one of two qualifying departments and one of two qualifying bands.
 customer-journey pass. The cost of leaving them optional is not the unassigned
 slice; it is the *assigned* ones that get suppressed to protect it.
 
+## §7.30 ⭐⭐ LAUNCH-BLOCKING — A BOARD-READY VALUATION COMPUTED FROM UNMODIFIED SAMPLE DATA
+
+**The template ships sample figures in the very cells the customer must
+overwrite, and AXIOM ingests them without a warning.**
+
+Company 39 uploaded `Trust_Industries_AXIOM_Filled_Template.xlsx` with the
+Company sheet filled and the **Income Statement, Balance Sheet and Cash Flow
+left at template defaults** — each marked `SAMPLE DATA (illustrative…)` in row 2.
+Every downstream surface then computed confidently from them: dashboard,
+valuation, forecasts, statements. Arithmetic internally consistent throughout;
+**the inputs were fiction.**
+
+### A SENTINEL EXISTS AND CANNOT FIRE
+
+`ingest.py:834` — *"sentinel: reject a workbook still holding the template SAMPLE
+data"*:
+
+```python
+sample = build_sample_data(ownership, standard, frequency)
+for block in ("income_statement","balance_sheet","cash_flow"):
+    up_vals = sorted(every value in the uploaded block)
+    sm_vals = sorted(every value in the sample block)
+    if up_vals and up_vals == sm_vals:   ->  reject
+```
+
+Measured against the real upload:
+
+```
+                    uploaded_vals   sample_vals   EXACT_MATCH   shared_values
+income_statement         70              30          False          0 / 67
+balance_sheet           126              54          False          1 / 92
+cash_flow                42              18          False          0 / 36
+```
+
+⭐ **`build_sample_data()` GENERATES 6 HISTORICAL PERIODS AND NO FORECAST
+PERIODS. The SHIPPED TEMPLATE carries 6 historical + 8 forecast.** The multisets
+differ in size before they differ in content, so `up_vals == sm_vals` **can never
+be true for any workbook built from the shipped template**. The overlap is
+essentially zero — the sentinel is comparing against a *different sample than the
+one the product ships*.
+
+**Three compounding failures:**
+1. **Exact-multiset equality** — a single edited cell defeats it. A customer who
+   changes one number and leaves 200 keeps the sample.
+2. **Wrong reference** — it compares against a regenerated sample, not the
+   defaults actually shipped.
+3. **The row-2 `SAMPLE DATA` watermark is never read.** `WATERMARK` is *written*
+   by the template writer (`ingest.py:138`) and **never checked on the way in** —
+   the one marker that is unambiguous, per-sheet, and survives partial editing.
+
+### WHAT A CUSTOMER SEES
+
+Nothing. `validation.warnings` was **empty**. No error, no warning, no banner —
+a complete, confident, board-ready valuation over untouched sample figures.
+
+### CAN AXIOM DISTINGUISH DEFAULTS FROM REAL FIGURES THAT COINCIDE?
+
+**Today, no — and it needn't guess.** The watermark makes the question moot: a
+sheet still carrying `SAMPLE DATA (illustrative…)` in row 2 is *declared*
+untouched, whatever its numbers. Reading the marker converts an inference problem
+into a fact.
+
+**LAUNCH-BLOCKING.** The failure is silent, reaches the most consequential
+artefact AXIOM produces, and the customer has no way to detect it.
+
+## §7.31 NUMBER PRESENTATION MUST BE IDENTICAL ACROSS EVERY FINANCIAL SURFACE (ruled)
+
+**Same units, same precision, same currency treatment, same negative convention,
+same zero rendering.** Business Planning renders `$4.07M` where Scenario Analysis
+renders `4`.
+
+⭐ **RATIONALE — ON FINANCIAL SURFACES, PRESENTATION INCONSISTENCY IS NOT
+COSMETIC.** A reader cannot distinguish *"these numbers differ"* from *"these
+pages format differently"*, so **the defect and the style choice are
+indistinguishable at the point of reading.** That inconsistency concealed a
+genuine divergence in FCFF, FCFE and cash-from-financing until the values were
+reconstructed by hand.
+
+### TRUNCATION — WRONG INDEPENDENTLY OF CONSISTENCY
+
+`scenario-analysis.tsx:1045` `shortMoney()`:
+
+```js
+if (abs >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+if (abs >= 1e3) return `${(v / 1e3).toFixed(0)}k`;
+return v.toFixed(0);
+```
+
+Values below 1e3 render via `toFixed(0)`, so **$4.99M and $4.01M both display as
+`4`** when the series is already in millions. **This must not survive the fix.**
+
+### THE SHAPE OF THE FIX — MEASURED
+
+**A shared formatter EXISTS and is bypassed**, so the fix is adoption, not
+consolidation:
+
+- `src/lib/currency.ts` — `formatMoney(n, code)` and `formatMoneyM(n, code)`.
+- **41 files** under `routes/` + `components/` call `toFixed(` / `toLocaleString(`
+  directly.
+- The two named surfaces both import the shared formatter **and** hand-roll
+  alongside it: `financial-forecasts.tsx` 25 shared calls / 8 local; **
+  `scenario-analysis.tsx` 16 shared / 15 local** — nearly half hand-rolled, which
+  is where `shortMoney` lives.
+- At least **7 distinct local formatter definitions** across the financial routes
+  (`dashboard` ×3, `financial-forecasts`, `twin`, `valuation` ×2).
+
+**So: one canonical formatter, widely bypassed.** Route every financial surface
+through it and delete the local ones — `shortMoney` first.
+
+For the customer-journey pass, alongside the base-case reconciliation.
+
 ## §7.19 ⭐ THE HALF-DONE-SUPERSESSION CLASS — WRITES MIGRATED, READS LEFT BEHIND
 
 **Beside two-owners (§7.15g) and shadowed-route (§7.17). A third way for a
