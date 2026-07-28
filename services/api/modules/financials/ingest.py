@@ -902,7 +902,16 @@ def parse_and_validate(content: bytes, expected_company_id: int,
             if ok:
                 expected = next_period(y, freq)
     data = {"company": company,
-            "periods": {"historical": hist, "forecast": fcst},
+            # ⭐ FREQUENCY IS PERSISTED WITH THE DATASET, not threaded through
+            # call signatures. `validate_dataset` has 5 callers and
+            # `valuation.run` has 8+, most of which never see the upload and
+            # could not supply it. Every one of them already receives `data`, so
+            # the fact lives where the periods it describes live.
+            #
+            # Additive and backward-compatible: datasets written before this key
+            # existed default to "annual" on read, which is correct — every
+            # dataset in production today is annual (4-digit periods).
+            "periods": {"historical": hist, "forecast": fcst, "frequency": freq},
             "income_statement": blocks.get("income_statement", {}),
             "balance_sheet": blocks.get("balance_sheet", {}),
             "cash_flow": blocks.get("cash_flow", {})}

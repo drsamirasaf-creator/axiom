@@ -65,6 +65,14 @@ def _series(block: dict, key: str, years: list) -> list:
     return [vals.get(str(y)) for y in years]
 
 
+# Period limits, per frequency. Ten years of runway in both shapes — 15 annual
+# years and 40 quarters. They are NOT the same number because they do not measure
+# the same thing, and a single shared constant would have to be wrong for one of
+# them.
+MAX_FORECAST_PERIODS = {"annual": 15, "quarterly": 40}
+MAX_HISTORICAL_PERIODS = {"annual": 10, "quarterly": 40}
+
+
 def validate_dataset(data: dict) -> dict:
     """Structural + accounting validation (Product §7.14). Returns
     {'errors': [...], 'warnings': [...]}; errors block persistence."""
@@ -96,10 +104,24 @@ def validate_dataset(data: dict) -> dict:
         errors.append("periods.historical must contain at least one year")
     if years != sorted(set(years)):
         errors.append("periods must be strictly increasing and non-overlapping")
-    if len(hist) > 10:
-        warnings.append("more than 10 historical years supplied; all are used")
-    if fcst and not (1 <= len(fcst) <= 15):
-        errors.append("periods.forecast supports 1-15 years")
+    # ⭐ PERIOD LIMITS ARE FREQUENCY-AWARE (Lane 2 A1/A2).
+    #
+    # A flat 40 would permit a 40-YEAR annual plan, and nothing in the valuation
+    # kernel is defensible at that horizon — so the annual cap stays 15 and only
+    # the quarterly cap is widened. Ten years of runway either way.
+    #
+    # And the historical warning: "more than 10 historical years" fired on 12
+    # quarters, which is THREE years. A warning that cries wolf on a normal file
+    # teaches customers to dismiss warnings, which costs exactly on the day one
+    # matters.
+    freq = (data.get("periods", {}) or {}).get("frequency") or "annual"
+    unit = "quarters" if freq == "quarterly" else "years"
+    max_fcst = MAX_FORECAST_PERIODS.get(freq, MAX_FORECAST_PERIODS["annual"])
+    max_hist = MAX_HISTORICAL_PERIODS.get(freq, MAX_HISTORICAL_PERIODS["annual"])
+    if len(hist) > max_hist:
+        warnings.append(f"more than {max_hist} historical {unit} supplied; all are used")
+    if fcst and not (1 <= len(fcst) <= max_fcst):
+        errors.append(f"periods.forecast supports 1-{max_fcst} {unit}")
 
     for block_name, keys in (("income_statement", IS_KEYS),
                              ("balance_sheet", BS_KEYS),

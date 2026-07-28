@@ -38,6 +38,52 @@ def _r(x, nd=6):
     return None if x is None else round(float(x), nd)
 
 
+# ── frequency-aware discounting (Lane 2 A3, 28 Jul) ─────────────────────────
+# ⭐ THE DISCOUNT EXPONENT COUNTS PERIODS, NOT YEARS. `_dcf` compounds once per
+# element of `fcff`, and the WACC handed to it is an ANNUAL rate. On an annual
+# plan those coincide, which is why this was never wrong before. On a 20-quarter
+# plan it applies TWENTY years of discounting to FIVE years of cash flows, and
+# then values the terminal perpetuity off a QUARTERLY final cash flow using an
+# ANNUAL rate and an ANNUAL growth.
+#
+# Measured on the same business expressed both ways ($10M/yr x 5 vs $2.5M/qtr x 20,
+# WACC 10%, g 2.5%):
+#
+#     annual                        EV 122.77   (TV 136.67)
+#     quarterly, as it was coded    EV  26.36   (TV  34.17)   <- 4.66x LOW
+#     quarterly, period rates       EV 126.45   (TV 140.36)   <- within 3% of annual
+#
+# The residual 3% is real and should not be tuned away: cash arriving quarterly is
+# worth slightly more than the same cash arriving in annual lumps.
+#
+# ⭐ THE ERROR RAN THE WRONG WAY FROM THE OBVIOUS GUESS. A quarterly cash flow is
+# roughly a quarter of an annual one, so the instinct is that TV comes out ~4x too
+# BIG. It comes out ~4x too SMALL, because the perpetuity denominator (WACC - g)
+# is the annual spread rather than the quarterly one — roughly 4x too wide. An
+# understated EV reads as a poor business rather than as a suspicious number,
+# which is why it could have shipped unnoticed.
+
+PERIODS_PER_YEAR = {"annual": 1, "quarterly": 4}
+
+
+def periods_per_year(data: dict) -> int:
+    """How many forecast periods make a year, from the dataset's own declaration.
+
+    Read from the data rather than passed in: `run()` has 8+ call sites, most of
+    which never saw the upload and could not supply it. Datasets written before
+    the key existed read as annual, which is correct — every one of them is."""
+    freq = ((data or {}).get("periods", {}) or {}).get("frequency") or "annual"
+    return PERIODS_PER_YEAR.get(freq, 1)
+
+
+def to_period_rate(annual_rate: float, ppy: int) -> float:
+    """Annual rate -> equivalent rate for one period. Compounding, not division:
+    dividing by 4 would overstate the quarterly rate and understate every PV."""
+    if ppy <= 1:
+        return annual_rate
+    return (1.0 + annual_rate) ** (1.0 / ppy) - 1.0
+
+
 def _dcf(fcff: list, wacc_value: float, terminal_growth: float):
     if wacc_value <= terminal_growth:
         raise ValueError("WACC must exceed terminal growth (Math §3.10)")
@@ -81,7 +127,10 @@ def run(data: dict, mode: str, assumptions: dict | None = None,
     w = fin.wacc(company)
     wacc_value = float(a.get("wacc_override", w["wacc"]))
 
-    pv_e, tv, pv_t = _dcf(fcff, wacc_value, g_term)
+    ppy = periods_per_year(working)
+    wacc_period = to_period_rate(wacc_value, ppy)
+    g_period = to_period_rate(g_term, ppy)
+    pv_e, tv, pv_t = _dcf(fcff, wacc_period, g_period)
     ev = pv_e + pv_t
     net_debt = company["_debt_book"] - bs["cash"][ys]
     pref = bs["preferred_equity"][ys]
@@ -182,11 +231,14 @@ def run(data: dict, mode: str, assumptions: dict | None = None,
             nwc_k = nwc_pct[k] * rev
             f = (m_k * (1 - T_tax) + da_pct[k] - capex_pct[k]) * rev \
                 - (nwc_k - nwc_prev)
+            # Period rates, same as the deterministic DCF above. Leaving the MC on annual
+            # rates while the point estimate used period rates would put the distribution
+            # and the headline number in different units — two owners, in arithmetic.
             nwc_prev = nwc_k
-            cum *= (1.0 + wacc_value)
+            cum *= (1.0 + wacc_period)
             pv += f / cum
             f_last = f
-        tv_i = f_last * (1.0 + g_term) / (wacc_value - g_term)
+        tv_i = f_last * (1.0 + g_period) / (wacc_period - g_period)
         evs.append(pv + tv_i / cum)
     evs.sort()
 
