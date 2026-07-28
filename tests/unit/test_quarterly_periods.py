@@ -201,3 +201,80 @@ def test_one_bad_period_does_not_repair_the_sequence():
             f"of {len(wrong)} — the sequence was repaired by a bad period")
     finally:
         ingest.FORECAST_QUARTERLY = original
+
+
+# ── Lane 2 Part B — generator shape ─────────────────────────────────────────
+def test_quarterly_ships_forty_forecast_columns_annual_untouched():
+    """B1: verify, don't assume — the annual block must not move."""
+    assert ingest.FORECAST_QUARTERLY == 40
+    assert ingest.FORECAST_ANNUAL == 8, "annual forecast block moved"
+    q = load_workbook(io.BytesIO(_template("quarterly")))["Income Statement"]
+    a = load_workbook(io.BytesIO(_template("annual")))["Income Statement"]
+    qf = [c for c in range(2, q.max_column + 1)
+          if str(q.cell(row=3, column=c).value or "").lower() == "forecast"]
+    af = [c for c in range(2, a.max_column + 1)
+          if str(a.cell(row=3, column=c).value or "").lower() == "forecast"]
+    assert len(qf) == 40 and q.max_column == 53, "quarterly forecast block is not N..BA"
+    assert len(af) == 8, "annual forecast block moved"
+
+
+def test_period_display_formats_are_display_only():
+    """B2: the CELL VALUE must stay an integer or both parser paths change."""
+    for freq, hist_fmt, fcst_fmt, sample in (
+            ("quarterly", '0000"\'Q"0"-A"', '0000"\'Q"0"-E"', 20201),
+            ("annual", '0000"-A"', '0000"-E"', 2020)):
+        ws = load_workbook(io.BytesIO(_template(freq)))["Income Statement"]
+        assert ws["B4"].number_format == hist_fmt, f"{freq} historical format"
+        assert ws["B4"].value == sample, "value must remain an integer"
+        assert isinstance(ws["B4"].value, int)
+        first_fcst = next(get_col(c) for c in range(2, ws.max_column + 1)
+                          if str(ws.cell(row=3, column=c).value or "").lower() == "forecast")
+        assert ws[f"{first_fcst}4"].number_format == fcst_fmt, f"{freq} forecast format"
+
+
+def get_col(idx):
+    from openpyxl.utils import get_column_letter
+    return get_column_letter(idx)
+
+
+def test_the_period_tooltip_matches_the_frequency():
+    """B3: a single shared message would tell an ANNUAL client to type 20231 —
+    a confident instruction to enter a value the annual validator rejects."""
+    for freq, must_contain in (("quarterly", "YYYYQ"), ("annual", "four-digit year")):
+        ws = load_workbook(io.BytesIO(_template(freq)))["Income Statement"]
+        prompts = [d for d in ws.data_validations.dataValidation if d.promptTitle]
+        assert len(prompts) == 1, f"{freq}: expected exactly one prompt validation"
+        assert must_contain in prompts[0].prompt, f"{freq} prompt: {prompts[0].prompt}"
+
+
+def test_quarterly_forecast_labels_still_ship_blank():
+    """B3: blank is the opt-in switch. Pre-filling 40 would declare ten years of
+    plan the client never asked for."""
+    ws = load_workbook(io.BytesIO(_template("quarterly")))["Income Statement"]
+    fcst = [c for c in range(2, ws.max_column + 1)
+            if str(ws.cell(row=3, column=c).value or "").lower() == "forecast"]
+    assert all(ws.cell(row=4, column=c).value is None for c in fcst)
+
+
+def test_shading_holds_on_the_new_columns():
+    """B5: shaded IFF unlocked input — no formula cell shaded, out to BA."""
+    ws = load_workbook(io.BytesIO(_template("quarterly")))["Income Statement"]
+    bad = []
+    for row in ws.iter_rows(min_row=3, max_row=min(ws.max_row, 40),
+                            min_col=2, max_col=ws.max_column):
+        for c in row:
+            shaded = c.fill is not None and c.fill.fill_type == "solid"
+            formula = isinstance(c.value, str) and c.value.startswith("=")
+            if shaded and formula:
+                bad.append(f"{c.coordinate} shaded formula")
+            if shaded and c.protection is not None and c.protection.locked:
+                bad.append(f"{c.coordinate} shaded but locked")
+    assert not bad, bad
+
+
+def test_no_version_gate_was_reintroduced():
+    """B4: stamp only — no accept-list, no equivalent under another name."""
+    assert ingest.TEMPLATE_VERSION == "7M-v7.6"
+    assert not hasattr(ingest, "ACCEPTED_TEMPLATE_VERSIONS")
+    assert not any("ACCEPTED" in n and "VERSION" in n for n in dir(ingest)), \
+        "a version allow-list under another name is still a gate"

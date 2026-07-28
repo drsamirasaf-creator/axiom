@@ -36,7 +36,10 @@ def split_refs(v):
     return out
 
 
-TEMPLATE_VERSION = "7M-v7.5"   # v7.5: KPI direction column (I) — polarity stated, not guessed
+TEMPLATE_VERSION = "7M-v7.6"   # v7.6: 40 quarterly forecast columns; period display formats
+# ⭐ STAMP ONLY. There is no accept-list and no equivalent check under another
+# name — see the ACCEPTED_TEMPLATE_VERSIONS note below. A v7.5 file parses
+# identically: the extra forecast columns are blank and are dropped as unused.
 # Both stamps are accepted (v7.0 files are already in the wild; the parser never rejects
 # on version — it records the stamp). On a v7.0 file the Employees column is simply absent
 # and parses to null (_cell_int of a missing cell), so v7.0 and v7.1 parse identically
@@ -123,7 +126,38 @@ QUARTERLY_COLS = 12
 # Left blank by default (no period year) so a history-only upload is unaffected —
 # the parser skips any column whose Period (year) cell is empty.
 FORECAST_ANNUAL = 8
-FORECAST_QUARTERLY = 8
+FORECAST_QUARTERLY = 40   # v7.6: ten years of quarters
+# ⭐ ROW-4 PERIOD DISPLAY FORMATS (v7.6). DISPLAY ONLY — the CELL VALUE stays an
+# integer (2024, or 20241 in YYYYQ), so the parser reads exactly what it read
+# before and neither `read_cols` nor the succession check is affected.
+#
+# The point is legibility: a bare 20241 is unreadable as "2023 Q1", and a client
+# who cannot read the encoding cannot check their own file. -A marks an actual,
+# -E an estimate.
+PERIOD_FORMATS = {
+    ("quarterly", "historical"): '0000"\'Q"0"-A"',
+    ("quarterly", "forecast"):   '0000"\'Q"0"-E"',
+    ("annual", "historical"):    '0000"-A"',
+    ("annual", "forecast"):      '0000"-E"',
+}
+
+# B3 — the tooltip that stops a client typing the DISPLAYED string back in.
+# Now that historicals render as 2020'Q1-A, copying that text into a forecast
+# cell is the obvious mistake; the input message names the encoding instead.
+# ⭐ THE MESSAGE IS PER FREQUENCY. A single string would have told an ANNUAL
+# client to type 20231, which is worse than no tooltip: it is a confident
+# instruction to enter a value the annual validator rejects. The rationale is the
+# same in both shapes — historicals now DISPLAY as 2020'Q1-A / 2024-A, so copying
+# the displayed text into a forecast cell is the obvious mistake, and the prompt
+# names the encoding instead.
+PERIOD_PROMPT_TITLE = "Period format"
+PERIOD_PROMPTS = {
+    "quarterly": ("Enter the period as YYYYQ — 20231 for 2023 Q1. "
+                  "Displays as 2023'Q1-E."),
+    "annual": ("Enter the period as a four-digit year — 2026. "
+               "Displays as 2026-E."),
+}
+
 FORECAST_NOTE = ("Enter your own plan here (optional) — AXIOM compares it against "
                  "its five forecasting methodologies. Mark each column 'Forecast', "
                  "put the year in row 4, then fill the lines below. Leave blank to "
@@ -348,13 +382,23 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
         ws["A3"].font = ws["A4"].font = Font(bold=True, color="204534")
         dv = DataValidation(type="list", formula1='"Historical,Forecast"', allow_blank=True)
         ws.add_data_validation(dv)
+        # B3 — a PROMPT-ONLY validation: it shows an input message on selection and
+        # constrains nothing. `allow_blank` and no operator means it cannot reject a
+        # value, which matters because the forecast block is optional and a
+        # validation that rejected blanks would make every unused column an error.
+        period_dv = DataValidation(allow_blank=True, showInputMessage=True,
+                                   showErrorMessage=False)
+        period_dv.promptTitle = PERIOD_PROMPT_TITLE
+        period_dv.prompt = PERIOD_PROMPTS[frequency]
+        ws.add_data_validation(period_dv)
         letters = []          # historical columns
         fcst_letters = []     # v7: optional client-plan forecast columns
         for i in range(ncols):
             c = FIRST_COL + i
             letter = get_column_letter(c); letters.append(letter)
             _input(ws[f"{letter}3"]); ws[f"{letter}3"].number_format = "General"
-            _input(ws[f"{letter}4"]); ws[f"{letter}4"].number_format = "0"
+            _input(ws[f"{letter}4"])
+            ws[f"{letter}4"].number_format = PERIOD_FORMATS[(frequency, "historical")]
             ws[f"{letter}3"] = "Historical"
             ws[f"{letter}4"] = sample_periods[i]            # sample period label
             dv.add(ws[f"{letter}3"])
@@ -366,7 +410,9 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
             c = FIRST_COL + ncols + i
             letter = get_column_letter(c); fcst_letters.append(letter)
             _input(ws[f"{letter}3"]); ws[f"{letter}3"].number_format = "General"
-            _input(ws[f"{letter}4"]); ws[f"{letter}4"].number_format = "0"
+            _input(ws[f"{letter}4"])
+            ws[f"{letter}4"].number_format = PERIOD_FORMATS[(frequency, "forecast")]
+            period_dv.add(ws[f"{letter}4"])
             ws[f"{letter}3"] = "Forecast"
             # row 3 is the Historical/Forecast DROPDOWN — an unlocked input, so it keeps
             # the _INPUT tint (from _input above). It is NOT shaded like a computed cell;

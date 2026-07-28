@@ -149,9 +149,13 @@ def test_version_bump_and_backwards_acceptance():
     """Pins the CURRENT version and, more importantly, that no older one is ever
     dropped — a customer holding last quarter's workbook must still be able to
     upload it. The version itself moves whenever a column is added (v7.4 link
-    columns, v7.5 direction), so this assertion tracks it deliberately rather
-    than pinning a stale value."""
-    assert ingest.TEMPLATE_VERSION == "7M-v7.5"
+    columns, v7.5 direction, v7.6 forty quarterly forecast columns + period display
+    formats), so this assertion tracks it deliberately rather than pinning a
+    stale value.
+
+    ⭐ IT FIRED ON THE v7.6 BUMP, WHICH IS THE POINT. A stamp that can move
+    without a test noticing is a stamp nobody is maintaining."""
+    assert ingest.TEMPLATE_VERSION == "7M-v7.6"
     # ⭐ The intent in the docstring — "a customer holding last quarter's workbook
     # must still be able to upload it" — is now guaranteed by policy rather than
     # by an allow-list: NO version gate exists on either template path, so every
