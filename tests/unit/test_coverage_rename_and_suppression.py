@@ -224,3 +224,28 @@ def test_assessment_summary_executes_end_to_end_on_a_populated_cycle(_app):
         db2.close()
     assert isinstance(out, dict)
     assert "cei" in out and "cadence" in out
+
+
+def test_dept_cei_map_executes_on_a_populated_cycle(_app):
+    """The THIRD site the same splice broke, and the one production hit second.
+
+    `_dept_cei_map` also referenced `cycles` for its stable per-company ordinal.
+    Fixing assessment_summary alone left this one live — /companies/{id}/departments
+    still returned 500. Each of the three was found by a separate crash because no
+    test executed any of them on a cycle that has results."""
+    from services.api.accounts import _dept_cei_map
+    db = SessionLocal()
+    try:
+        ent = _company(db, "CeiMapCo")
+        _ensure_department(db, ent.id, "Operations")
+        fw = _assess_ensure_framework(db, ent.id)
+        db.commit()
+        now = datetime.utcnow()
+        cyc = _cycle(db, ent.id, now - timedelta(days=9), now - timedelta(days=2), fw_id=fw.id)
+        _respond(db, cyc.id, "v1", "Operations")
+        out = _dept_cei_map(db, ent.id)
+        assert isinstance(out, dict)
+        for rec in out.values():
+            assert "state" in rec and "cycle_id" in rec
+    finally:
+        db.close()

@@ -5166,6 +5166,10 @@ def _dept_cei_map(db, company_id):
     deps = db.query(Department).filter_by(company_id=company_id).all()
     empty = {d.id: {"cei": None, "n": 0, "state": "absent", "reason": None,
                     "note": None, "cycle_id": None, "cycle_name": None} for d in deps}
+    # `cycles` is used below for the stable per-company ordinal, so it is bound
+    # unconditionally rather than as a by-product of the selection.
+    cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
+                .order_by(AssessmentCycle.opened_at).all())
     latest = resolve_active_cycle(db, company_id)
     if latest is None:
         return empty
