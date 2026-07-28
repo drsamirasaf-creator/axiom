@@ -3099,6 +3099,113 @@ the company.
 **Status: DECIDED, NOT BUILT.** Belongs to the customer-journey pass with the
 other findings.
 
+## §7.23 ⭐⭐ THE SELF-PERPETUATING SILENT-EMPTY — "No cycles yet" ON A COMPANY WITH TWO CYCLES
+
+**FULL SEVERITY. New-customer path. The misstatement CAUSES the damage it then
+conceals.**
+
+Observed on **Trust Industries Inc. (company 39)**, seeded through the customer
+path 28 Jul.
+
+### WHAT THE SYSTEM KNOWS — from the SAME payload that renders the empty copy
+
+```json
+{ "suppression": {"suppressed": true, "n": 1, "reason": "below_anonymity_floor",
+                  "note": "Withheld for anonymity — responses exist but are below…"},
+  "cei": null,
+  "n_participants": 1,
+  "cycle_count": 2,                       <-- TWO CYCLES, in the same object
+  "current_cycle_id": 54, "current_cycle_closed": true,
+  "trend": [{"cycle_id": 53, "n_participants": 2, …}, …] }
+```
+
+Database: **2 closed cycles, 233 responses, 3 submissions.**
+
+### WHAT THE CUSTOMER IS TOLD
+
+> **"No cycles yet"** — with an *"Open assessment cycle"* button.
+
+⭐ **`cycle_count: 2` IS IN THE PAYLOAD THAT RENDERS "No cycles yet".** The fact
+contradicting the copy is in the same object the copy is rendered from.
+
+### THE CAUSE — A SHAPE MISMATCH, NOT A NORMALISER REJECTION
+
+Settled by capturing the live payload, because both faults produce `EmptyState`
+and they need different fixes.
+
+```ts
+if (r && isSuppressed(r.cei))  ->  SuppressedSummaryView     // never fires
+```
+
+`apply_kfloor` sets **`out["cei"] = None`** on company-wide suppression, and
+publishes the block at the **top-level `suppression` key**. The frontend looks
+for it **inside `cei`**. `isSuppressed(null)` is false, so the guard is skipped,
+`normalizeSummary` returns falsy, `empty = true`, and the empty copy renders.
+
+⚠ **THE SUPPRESSION BRANCH CARRIES AN EXPLICIT COMMENT FORBIDDING EXACTLY THE
+COPY THAT RENDERED:**
+
+> *"Top-level CEI suppression (e.g. Milliner cycle 15, n=1) — render the
+> protected state, NEVER the 'no cycles yet' empty copy."*
+
+The author foresaw this precise failure, wrote the guard, and the guard reads
+the wrong field. **An intention correctly stated and incorrectly bound** — the
+declared-but-unbound class, at a customer-facing surface.
+
+### ⭐ WHY IT IS SELF-PERPETUATING
+
+1. Customer opens cycle 53, collects **2** submissions, closes it.
+2. Landing says **"No cycles yet"**, offering to open one.
+3. Customer reasonably concludes the assessment never ran and **opens cycle 54**.
+4. The third assessor responds into cycle 54 → **n=2 and n=1**.
+5. `KFLOOR = 3` is evaluated **per cycle**, so **both cycles are now permanently
+   below the floor** — and the landing still says "No cycles yet".
+
+**The misstatement induces the split that guarantees the suppression that the
+misstatement then hides.** Three real submissions exist and no cycle has three.
+Collecting a fourth response does not help unless it lands in a cycle that
+already holds two.
+
+### RECOVERY — ASSESSED, NOT PERFORMED
+
+Consolidating cycle 54 into cycle 53 would give **n = 3** and clear the floor.
+Read-only assessment:
+
+**Only three tables carry `cycle_id`:** `ax_assessment_invites`,
+`ax_assessment_responses`, `ax_assessment_overall` (0 rows here). Nothing else
+in the schema keys on it.
+
+⛔ **BUT `participant_ref` COLLIDES.**
+
+```
+(53, 'P1', 77 responses)   (53, 'P2', 78)   (54, 'P1', 78)
+```
+
+`participant_ref` is allocated **per cycle**, so cycle 54's *Alex Morgan* is
+**`P1`** — the same ref as cycle 53's *Sandy Smith*. A naive
+`UPDATE … SET cycle_id = 53` would **merge two different people into one
+respondent**, producing n=2 with 155 responses attributed to a single ref, and
+**silently corrupting an anonymised dataset in a way no later reading could
+detect or undo.**
+
+Safe consolidation therefore requires **re-keying cycle 54's `participant_ref`
+to an unused value (`P3`) in the same transaction as the `cycle_id` move**,
+across both `ax_assessment_responses` and `ax_assessment_invites`. Both cycles
+share `framework_id=35`, `revision=1`, `depth='standard'`,
+`anonymity_mode='anonymous'` and each answered all 78 items, so the merge is
+otherwise clean — no framework or revision skew.
+
+**The customer must not have to re-collect assessments to see their own
+results.** Recovery is feasible; it is a **write to a live customer's anonymised
+assessment data** and belongs in its own named lane with the re-key made
+explicit.
+
+### DISPOSITION
+
+Fix belongs to the customer-journey pass; the **recovery** is a separate,
+explicitly authorised write lane. Logged at full severity — this is the most
+customer-damaging defect found on the new-customer path.
+
 ## §7.19 ⭐ THE HALF-DONE-SUPERSESSION CLASS — WRITES MIGRATED, READS LEFT BEHIND
 
 **Beside two-owners (§7.15g) and shadowed-route (§7.17). A third way for a
