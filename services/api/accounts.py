@@ -9305,11 +9305,17 @@ def assessment_summary(company_id: int, department: int | None = None,
     # Selection lives in resolve_active_cycle — see the note there. The
     # fall-back to the newest cycle when nothing is closed-with-results keeps
     # first-run behaviour unchanged.
+    # `cycles` is needed unconditionally further down — the trend series numbers
+    # every cycle by its position in opened order, including the ones the resolver
+    # skipped. Scoping it inside the fallback branch left it unbound on the normal
+    # path; the test that now covers this function caught that immediately after
+    # the missing import was restored.
+    cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
+                .order_by(AssessmentCycle.opened_at).all())
     latest = resolve_active_cycle(db, company_id)
     if latest is None:
-        cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
-                    .order_by(AssessmentCycle.opened_at).all())
         latest = cycles[-1] if cycles else None
+    from .assessment_engine import apply_kfloor, KFLOOR, suppression_block
     current = _cycle_cei(db, latest) if latest else {}
     safe = apply_kfloor(current) if latest else {}      # k-anonymity display gate (storage untouched)
     suppressed_all = bool(safe.get("suppression"))
