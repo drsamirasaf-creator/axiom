@@ -3675,6 +3675,76 @@ Weak evidence is worth surfacing. It is not worth blocking on. The failure here
 was not the detection; it was **letting the confidence of the response outrun the
 confidence of the finding.**
 
+## §7.38 ⭐ A FIELD EVERY CONSUMER BRANCHES ON IS A GATE WITH A DISCLAIMER
+
+`version_ok` was left in the API response and called **informational**. Three
+consumers branched on it:
+
+```
+accounts.py  commit   ->  raise HTTPException(422, …)
+accounts.py  preview  ->  recon = … if version_ok else None
+                          "committable": bool(version_ok)
+ParticipantListTab.tsx -> replaced the ENTIRE preview with an error
+```
+
+⭐ **CALLING A FIELD INFORMATIONAL DOES NOT MAKE IT INFORMATIONAL. BEHAVIOUR
+DOES.** The field is now removed rather than documented — a field that exists is
+a field something will eventually branch on.
+
+### THE INVERSE OF DECLARED-BUT-UNBOUND
+
+| | declared-but-unbound | this |
+| --- | --- | --- |
+| shape | a **guard that enforces nothing** | a **non-guard that enforces something** |
+| `is_staff`, `_operator_bypass`, `ACCEPTED_TEMPLATE_VERSIONS` | declared, never bound | `version_ok` — disclaimed, universally obeyed |
+
+**Same root: the name and the comments diverge from the behaviour, and only the
+behaviour settles it.** One fails open, the other fails closed; both are read
+from the source and believed.
+
+**THE TEST: grep every consumer before calling a field informational.** If any
+consumer branches on it, it is a gate — name it one, or remove it.
+
+## §7.39 ⭐ A GUARD AUDIT SCOPED TO ONE REPO DOES NOT CLEAR THE GUARD
+
+**Three instances in this single lane, of one shape: the guard removed from the
+obvious place and left in the adjacent one.**
+
+1. `participant_upload.py` error → **commit endpoint still raised**
+2. commit endpoint fixed → **preview still gated `recon` and `committable`**
+3. all four backend gates removed → **the client-side gate still blocked**, and
+   this one **crossed the repo boundary**
+
+⭐ **THE THIRD IS THE INSTRUCTIVE ONE.** The backend audit was thorough and
+correct **and could not have found it**: the two hardcoded messages were written
+independently on either side of the boundary and **differed by a single word** —
+
+```
+backend :  "Template version stamp invalid — download a fresh template."
+frontend:  "Template version stamp is invalid — download a fresh template."
+```
+
+A grep for the backend's wording finds nothing in the frontend. **The probe of
+the endpoint returned zero version errors and was entirely correct — while the
+customer stayed blocked.** A correct verification of the wrong layer.
+
+**STANDING RULE:** any removal of a customer-facing gate must be
+
+1. **audited across BOTH repos**, and
+2. **verified by DRIVING THE UI**, not the endpoint.
+
+⭐ **THE ENDPOINT BEING CORRECT IS PRECISELY WHY THE ENDPOINT IS THE WRONG THING
+TO TEST.** Verification must enter where the customer enters.
+
+**Verified here by driving the real UI** — a stamp-less workbook uploaded through
+`/data-input?tab=participants`:
+
+```
+version error present : False
+'Preview' rendered    : True
+Assessors / Viewers / Decision Makers / Roster : all True
+```
+
 ## §7.37 ⭐⭐ POLICY — REJECT ONLY ON WHAT MAKES THE FILE UNUSABLE. EVERYTHING ELSE WARNS.
 
 **User ruling, 28 Jul.** *AXIOM does not track or control template versions as a

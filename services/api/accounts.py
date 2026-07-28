@@ -10700,7 +10700,13 @@ async def participant_preview(company_id: int, file: UploadFile = File(...),
     # version stamp. Gating the PREVIEW was the same block wearing a different
     # coat: it left the customer a preview they could not commit.
     recon = _reconcile_participants(db, company_id, parsed)
-    return {"version": parsed.get("version"), "version_ok": parsed.get("version_ok"),
+    # ⭐ `version_ok` IS NOT RETURNED. It was kept as an "informational" field
+    # and THREE consumers branched on it — the commit gate, the preview
+    # reconciliation, and a client-side block that replaced the whole preview
+    # with an error. A field every consumer branches on is a gate with a
+    # disclaimer, so the field is gone rather than documented (CORE §7.38).
+    # `version` (the raw stamp, or None) remains as forensic metadata.
+    return {"version": parsed.get("version"),
             "counts": parsed.get("counts", {}), "errors": parsed.get("errors", []),
             "warnings": parsed.get("warnings", []), "collisions": parsed.get("collisions", []),
             "reconciliation": recon,

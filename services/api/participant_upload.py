@@ -117,7 +117,7 @@ def parse_participant_workbook(content: bytes, valid_departments: list[str]) -> 
     Returns per-tab valid rows, the unioned participant map (email → roles/attrs), and
     errors/warnings/collisions with row numbers. DB reconciliation is the caller's job."""
     from openpyxl import load_workbook
-    out = {"version": None, "version_ok": False, "tabs": {}, "participants": {},
+    out = {"version": None, "tabs": {}, "participants": {},
            "errors": [], "warnings": [], "collisions": [], "counts": {}}
     try:
         wb = load_workbook(io.BytesIO(content), data_only=True)
@@ -150,8 +150,10 @@ def parse_participant_workbook(content: bytes, valid_departments: list[str]) -> 
     #
     # `version_ok` is retained as an informational field only. NOTHING may branch
     # on it.
+    # The stamp is recorded; `version_ok` is NOT computed or exposed — nothing
+    # may branch on it, and a field that exists is a field something will
+    # eventually branch on (CORE §7.38).
     out["version"] = ver
-    out["version_ok"] = (ver == VERSION)
 
     dep_lookup = {d.strip().lower(): d for d in (valid_departments or [])}
     parts = {}                       # email -> unioned participant
