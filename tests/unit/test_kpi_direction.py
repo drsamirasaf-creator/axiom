@@ -83,8 +83,12 @@ def test_blank_direction_records_no_warning(_app):
 # ── template ─────────────────────────────────────────────────────────────────
 def test_template_carries_column_I_and_still_accepts_older_versions(_app):
     assert ingest.TEMPLATE_VERSION == "7M-v7.5"
-    for v in ("7M-v7.0", "7M-v7.3", "7M-v7.4", "7M-v7.5"):
-        assert v in ingest.ACCEPTED_TEMPLATE_VERSIONS
+    # ⭐ NO VERSION GATE EXISTS. The old assertion checked membership of
+    # ACCEPTED_TEMPLATE_VERSIONS, which nothing ever read. The guarantee it was
+    # reaching for — an older workbook still uploads — is now absolute rather
+    # than list-based, so assert the ABSENCE of any gate (CORE §7.37).
+    assert not hasattr(ingest, "ACCEPTED_TEMPLATE_VERSIONS"), \
+        "a version allow-list is a gate waiting to be wired up"
 
 
 def test_generated_workbook_has_the_direction_header(_app):

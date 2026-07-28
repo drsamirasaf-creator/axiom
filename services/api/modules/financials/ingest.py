@@ -45,10 +45,18 @@ TEMPLATE_VERSION = "7M-v7.5"   # v7.5: KPI direction column (I) — polarity sta
 # "this upload declares no template links" — NOT as "delete the links you have":
 # in-app links are untouched by definition, and template links flag rather than
 # vanish. Honest degradation, not a forced migration.
-ACCEPTED_TEMPLATE_VERSIONS = frozenset({"7M-v7.0", "7M-v7.1", "7M-v7.2", "7M-v7.3",
-                                        "7M-v7.4", "7M-v7.5"})
-# v7.2 is a PRESENTATION-ONLY change (shading convention); v7.0/v7.1 files parse
-# identically — same data shape, same defined names — so all three are accepted.
+# ⭐ ACCEPTED_TEMPLATE_VERSIONS WAS REMOVED, NOT RELAXED (28 Jul).
+#
+# It listed the template versions the financial upload would accept — and NOTHING
+# EVER READ IT. Inert since it was written: another declared-but-unbound. It is
+# deleted rather than left in place precisely BECAUSE it was inert, since the
+# obvious "improvement" for a future reader is to wire it up — which would
+# recreate, on the financial path, the exact defect just removed from the
+# participant path.
+#
+# Policy (user, 28 Jul): AXIOM does not track or control template versions as a
+# precondition for upload. Any template that parses is accepted. The parser keys
+# on sheet and row labels; the stamp is forensic metadata only. See CORE §7.37.
 
 # §9 OKR strategy sheets — fixed-name, standard-independent. Builder + parser share
 # these so the dropdown values and the accepted enums can never drift apart.

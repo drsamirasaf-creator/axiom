@@ -3752,6 +3752,70 @@ makes every derived figure wrong, and warning may be too quiet.
 > **ON CUSTOMER-FACING INGEST, REJECT ONLY ON WHAT MAKES THE FILE UNUSABLE.
 > EVERYTHING ELSE WARNS.**
 
+### ⭐ THE DISTINCTION THAT KEEPS THIS RULE FROM BEING OVER-APPLIED (ruled 28 Jul)
+
+**The two reversals and the one retained hard error are not the same kind of
+check, and the difference is what the rule turns on.**
+
+| check | kind | verdict |
+| --- | --- | --- |
+| version stamp | **inference about INTENT** — *is this the right template?* | never blocks |
+| sample-data match | **inference about INTENT** — *were these replaced?* | never blocks |
+| **balance-sheet identity** | **ARITHMETIC FACT about the file** | **stays a hard error** |
+
+⭐ **INFERENCES ABOUT INTENT NEVER JUSTIFY BLOCKING.** Both reversals guessed at
+what the customer meant — whether a file was the right one, whether cells had
+been edited — and no guess about intent is strong enough to lock someone out of
+their own product.
+
+⭐ **THE BALANCE-SHEET IDENTITY IS NOT A GUESS.** Assets ≠ liabilities + equity is
+a fact about the numbers, **there is no legitimate customer state in which it is
+correct**, and **every derived figure inherits the error silently** — valuation,
+forecasts, ratios, the board pack. A warning would be swallowed by exactly the
+silence §7.30 was about.
+
+**So "unusable" is refined:**
+
+> **UNUSABLE MEANS CANNOT PRODUCE A *CORRECT* DATASET — NOT MERELY CANNOT BE
+> PARSED.**
+
+A file that parses into arithmetic that cannot be right is unusable, however
+cleanly it reads. The test is not *"did the parser succeed?"* but *"can this
+produce a dataset a customer could act on?"*
+
+### ROOT CAUSE OF THE VERSION FAILURE — WHY REPAIR WAS NEVER THE ANSWER
+
+The stamp is a **workbook-global defined name (`PLU_VERSION`) pointing at a cell
+on a hidden sheet**. Excel and Google Sheets **re-scope such names to the sheet,
+or drop them entirely, on save.**
+
+Verified: the writer stamps correctly and a Python round-trip preserves all four
+defined names, so nothing in AXIOM's own code is broken.
+
+⭐ **THE CHECK DEPENDED ON AN ARTIFACT SURVIVING TOOLING AXIOM NEITHER CONTROLS
+NOR CAN REQUIRE.** That is why REMOVING it is correct and REPAIRING it would not
+have been: any repair — a cell value instead of a defined name, a second copy, a
+checksum — still asks a customer's spreadsheet application to preserve something
+on AXIOM's behalf. **A precondition you cannot enforce is not a precondition; it
+is a coin toss with a rejection attached.**
+
+### ACCEPTED_TEMPLATE_VERSIONS — REMOVED, NOT RELAXED
+
+Another **declared-but-unbound** instance: a frozenset of accepted template
+versions on the financial path that **nothing ever read.** Inert since written.
+
+**Deleted rather than left in place PRECISELY BECAUSE it was inert** — the
+obvious "improvement" for a future reader is to wire it up, which would have
+recreated, on the financial path, the exact defect just removed from the
+participant path. **An unbound guard is not harmless; it is a defect with a
+delay.**
+
+Two tests asserted membership of it. Their real intent — *"a customer holding
+last quarter's workbook must still be able to upload it"* — is now guaranteed
+absolutely rather than by allow-list, so both were rewritten to assert the
+**absence of any gate**: `assert not hasattr(ingest, "ACCEPTED_TEMPLATE_VERSIONS")`,
+with the message *"a version allow-list is a gate waiting to be wired up."*
+
 Test: *can the parser produce a dataset from this file?* If yes, accept it and
 say what looks wrong. If no, reject and say what is missing. **"Looks wrong" is
 never "cannot be read."**

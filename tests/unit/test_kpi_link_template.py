@@ -152,5 +152,9 @@ def test_version_bump_and_backwards_acceptance():
     columns, v7.5 direction), so this assertion tracks it deliberately rather
     than pinning a stale value."""
     assert ingest.TEMPLATE_VERSION == "7M-v7.5"
-    for v in ("7M-v7.0", "7M-v7.1", "7M-v7.2", "7M-v7.3", "7M-v7.4", "7M-v7.5"):
-        assert v in ingest.ACCEPTED_TEMPLATE_VERSIONS
+    # ⭐ The intent in the docstring — "a customer holding last quarter's workbook
+    # must still be able to upload it" — is now guaranteed by policy rather than
+    # by an allow-list: NO version gate exists on either template path, so every
+    # older workbook uploads, listed or not (CORE §7.37).
+    assert not hasattr(ingest, "ACCEPTED_TEMPLATE_VERSIONS"), \
+        "a version allow-list is a gate waiting to be wired up"
