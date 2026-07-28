@@ -3065,20 +3065,39 @@ was ever written.** Two coherent halves, nothing forcing agreement.
 export specifically. Those render from the canonical dataset and so most likely
 follow the template name, but that was not confirmed.
 
-### PROPOSED RESOLUTION — FOR RULING, NOT BUILT
+### ⭐ RULED (user, 28 Jul) — THIS RESOLVES THE TWO-OWNERS INSTANCE AT THIS SITE
 
-1. **The profile name is authoritative for display**, everywhere — including the
-   valuation subject and every exported artifact.
-2. **A template/profile mismatch is SURFACED AT UPLOAD for human resolution**,
-   per the standing collision philosophy: *surface collisions, never
-   auto-resolve*. The uploader is told the template says X and the profile says
-   Y, and chooses.
-3. **NEVER SILENTLY OVERRIDDEN in either direction.** Silently preferring the
-   profile would discard a deliberate correction typed into the template;
-   silently preferring the template would let a spreadsheet rename a company.
+**THE COMPANY PROFILE NAME IS AUTHORITATIVE AND OVERWRITES THE TEMPLATE'S VALUE
+FOR ALL DISPLAY AND EXPORT.**
 
-This is a ruling for the user, recorded here so the decision is made once rather
-than re-derived at each reading site.
+**Rationale:** the profile name is a **deliberate act by a named admin**. The
+template cell is **data entry** — possibly stale, possibly authored by someone
+else entirely. **A deliberate declaration outranks an incidental one.** That is
+the principle, and it is what makes this a ruling rather than a preference: it
+generalises to any future profile-versus-payload disagreement.
+
+**⭐ REFINEMENT — OVERWRITE THE DISPLAY, NOT THE RECORD.** The template's value
+is **retained** and **surfaced once at upload as a mismatch notice**. Not a
+blocking prompt — precedence is now ruled, so there is nothing for the uploader
+to decide. The notice exists so that **a persistently disagreeing template stays
+visible as a signal about the upload process** rather than being silently
+erased. Silent erasure would destroy the only evidence that someone's source
+spreadsheet is wrong.
+
+This narrows the standing collision philosophy rather than contradicting it:
+*surface collisions, never auto-resolve* applies where precedence is
+**undecided**. Here precedence is decided, so the collision is **reported, not
+adjudicated**.
+
+**⭐ EVERY SURFACE AND EVERY EXPORT MUST READ THE SINGLE AUTHORITATIVE SOURCE.**
+The customer-visible failure was a **board-facing document carrying two entity
+names**, so a fix that corrects some readers and not others has not fixed it.
+That includes, at minimum: the PDF board report meta AND its filename, the
+valuation `subject`, the financial-statements export, and every email that names
+the company.
+
+**Status: DECIDED, NOT BUILT.** Belongs to the customer-journey pass with the
+other findings.
 
 ## §7.19 ⭐ THE HALF-DONE-SUPERSESSION CLASS — WRITES MIGRATED, READS LEFT BEHIND
 
