@@ -193,7 +193,17 @@ def chart_mc_hist(hist, percentiles=None):
     return _png(fig)
 
 
-def chart_bars(labels, values, title="", colors=None, horizontal=False, fmt="{:,.1f}"):
+def chart_bars(labels, values, title="", colors=None, horizontal=False, decimals=None):
+    """`fmt` defaults to the shared SCORE formatter.
+
+    ⭐ IT USED TO TAKE A FORMAT STRING. The default was "{:,.1f}" and callers
+    passed "{:.1f}", "{:.0f}" and "{:.2f}" — SIX spellings of how to render a
+    score, each decided at a call site. That is precisely how the PDF and PPTX
+    money formatters came to disagree.
+
+    A caller may still choose PRECISION, because a heat-map cell and a benchmark
+    ratio legitimately want different resolution — but it says how many decimals,
+    not how to format. One definition, six callers."""
     keep = [(l, v) for l, v in zip(labels or [], values or []) if v is not None]
     if not keep:
         return None
@@ -204,13 +214,13 @@ def chart_bars(labels, values, title="", colors=None, horizontal=False, fmt="{:,
         ax.barh(range(len(values)), values, color=colors, height=0.62)
         ax.set_yticks(range(len(values))); ax.set_yticklabels(labels, fontsize=9, color=INK)
         for i, v in enumerate(values):
-            ax.text(v, i, " " + fmt.format(v), va="center", color=INK, fontsize=8.5)
+            ax.text(v, i, " " + _score(v) if decimals is None else _score(v, decimals), va="center", color=INK, fontsize=8.5)
         ax.grid(axis="x", color=GRIDLT, lw=0.9); ax.grid(axis="y", visible=False)
     else:
         ax.bar(range(len(values)), values, color=colors, width=0.62)
         ax.set_xticks(range(len(values))); ax.set_xticklabels(labels, fontsize=9, color=INK)
         for i, v in enumerate(values):
-            ax.text(i, v, fmt.format(v), ha="center", va="bottom", color=INK, fontsize=8.5)
+            ax.text(i, v, _score(v) if decimals is None else _score(v, decimals), ha="center", va="bottom", color=INK, fontsize=8.5)
     if title:
         ax.set_title(title, loc="left", fontsize=11, color=INK, fontweight="bold")
     return _png(fig)
@@ -486,7 +496,7 @@ def _chart_rail(d, kicker, headline, png, rail_cards=None, rail_bullets=None, in
 # 4.0 and 4.4 into one figure. `_fmt` agreed with the PDF's percent formatter,
 # which made it the next instance of this class rather than a safe one.
 from .report_format import (money as _big_money, percent as _pct, number as _plain,
-                            currency_symbol as _currency_symbol)
+                            currency_symbol as _currency_symbol, score as _score)
 
 
 def _fmt(v, pct=False):
@@ -578,7 +588,7 @@ def build_pptx_comprehensive(report, extras, meta, data=None) -> bytes:
     comps = (di.get("health") or {}).get("components") or {}
     hidx = (di.get("health") or {}).get("index", sm.get("scorecard", {}).get("health_index"))
     _chart_rail(d, "Diagnostic", f"A health index of {_fmt(hidx)} out of 100",
-                chart_bars(list(comps.keys()), [comps[k] for k in comps], "Health components", horizontal=True, fmt="{:.1f}") if comps else None,
+                chart_bars(list(comps.keys()), [comps[k] for k in comps], "Health components", horizontal=True) if comps else None,
                 rail_cards=[("Risk grade", sm.get("scorecard", {}).get("risk_grade", "—"), "", _rag_accent("green")),
                             ("Optimizer uplift", _big(sm.get("scorecard", {}).get("optimization_uplift"), sym), "available", BRASS)],
                 insight=(di.get("narrative") or [""])[0][:150] if di.get("narrative") else None)
@@ -718,7 +728,7 @@ def build_pptx_comprehensive(report, extras, meta, data=None) -> bytes:
                 ("Total debt", _big(cov.get("total_debt"), sym), "", INK)], top=2.15, cols=2)
     _full_chart(d, "Risk Analysis", "Where cash-flow variance actually comes from",
                 chart_bars([h.get("category") for h in (ap.get("risk_heat_map") or [])], [h.get("score") for h in (ap.get("risk_heat_map") or [])],
-                           "Risk heat map (variance share)", colors=[_rag_accent(h.get("rag")) for h in (ap.get("risk_heat_map") or [])], horizontal=True, fmt="{:.0f}"),
+                           "Risk heat map (variance share)", colors=[_rag_accent(h.get("rag")) for h in (ap.get("risk_heat_map") or [])], horizontal=True, decimals=0),
                 insight=f"Distance to default is {_fmt(cov.get('distance_to_default_sigmas'))} sigmas from the barrier.")
     evt = ap.get("extreme_value_tail") or {}; covs = ap.get("covenants") or {}
     erows = [[k.replace("_", " ").title(), _big(v, sym) if abs(v) > 5 else _fmt(v)] for k, v in evt.items() if isinstance(v, (int, float))][:5]
@@ -740,7 +750,7 @@ def build_pptx_comprehensive(report, extras, meta, data=None) -> bytes:
         if grp:
             _full_chart(d, "Benchmarking", "Where the company leads and lags peers",
                         chart_bars([k.get("label", k.get("kpi", ""))[:16] for k in grp], [k.get("score") for k in grp],
-                                   "Benchmark scores (1.0 = in line)", colors=[_rag_accent(k.get("rag")) for k in grp], horizontal=True, fmt="{:.2f}"))
+                                   "Benchmark scores (1.0 = in line)", colors=[_rag_accent(k.get("rag")) for k in grp], horizontal=True, decimals=2))
             def _bv(k, key):
                 v = k.get(key)
                 return _fmt(v, pct=True) if k.get("format") == "percent" else _fmt(v)

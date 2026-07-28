@@ -12,6 +12,31 @@ deleted local import, a reverted key, a dropped filter — not an arbitrary
 character swap. If the paired test still passes with the mutation applied, the
 test is not testing what it claims and the harness says so.
 
+⭐ THE THREE WAYS A TEST TURNS OUT VACUOUS. Every instance found so far fell into
+one of these, and every one was found by MUTATION, not by review — including by
+the person who had just written the test.
+
+  1. SHAPE-NOT-CONTENT — it asserts the return has the right keys or type, and
+     the failure mode returns exactly that. `_department_sentiment_map`'s
+     all-zero default carries "n" and "below_floor" like a real answer, so
+     `assert "n" in rec` passed while the body never ran.
+
+  2. WRONG-BINDING — it asserts something adjacent to the thing that can break.
+     `assert rep._big_money is rf.money` checks the IMPORT, which stays true
+     while `_big` is redefined on the next line. Assert the name the caller
+     actually reaches.
+
+  3. FAILURE-MODE-ACCEPTED — the assertion admits the broken state as one of its
+     allowed outcomes. `assert out.get("has_data") is not False or "message" in
+     out` accepts precisely what a drill returns when it finds no cycle; and an
+     HTTP-level test allowing 401 beside 200 passes when auth rejects the request
+     before the body runs.
+
+A fourth, adjacent: PASSING-FOR-THE-WRONG-REASON, where the input does not
+discriminate. A lowercase department name still matched after case-insensitivity
+was removed, because the lookup key was already lowered. The assertion was right;
+the fixture could not tell the two behaviours apart.
+
 The source file is restored after every mutation, including on failure.
 """
 import subprocess, sys, shutil, os, tempfile
@@ -164,8 +189,8 @@ MUTATIONS = [
 
     # ── board pack §7.31 ─────────────────────────────────────────────────────
     ("money drops back to zero decimals (3.6/4.0/4.4 collapse again)", RF,
-     '    return f"{sym}{x:,.{MONEY_DECIMALS}f}M"',
-     '    return f"{sym}{x:,.0f}M"',
+     '        body = f"{a:,.{MONEY_DECIMALS}f}M"',
+     '        body = f"{a:,.0f}M"',
      f"{RFT}::test_the_three_collapsed_values_are_now_three_strings"),
 
     ("the PPTX re-grows its own money formatter, agreeing by luck not design", REP,
@@ -183,8 +208,8 @@ MUTATIONS = [
      f"{RFT}::test_pdf_and_pptx_render_the_same_money_string"),
 
     ("the billion tier stops dividing by a thousand", RF,
-     '        return f"{sym}{x/1000:,.{MONEY_DECIMALS}f}B"',
-     '        return f"{sym}{x:,.{MONEY_DECIMALS}f}B"',
+     '        body = f"{a/1000:,.{MONEY_DECIMALS}f}B"',
+     '        body = f"{a:,.{MONEY_DECIMALS}f}B"',
      f"{RFT}::test_the_billion_tier_divides_by_a_thousand_because_input_is_millions"),
 
     ("an unknown currency goes back to rendering bare", RF,
@@ -206,6 +231,38 @@ MUTATIONS = [
      '    if kind == "stoch":\n        return statement["stochastic"][key]["plan"]',
      '    if kind != "stoch":\n        return statement["stochastic"][key]["plan"]',
      f"{RFT}::test_plan_selection_reads_the_block_its_kind_names"),
+
+
+    ("the k tier is dropped, so 0.5M reads $0.50M not $500.00k", RF,
+     '    elif a >= 0.001:                   # >= 1e3 actual\n'
+     '        body = f"{a*1000:,.{MONEY_DECIMALS}f}k"',
+     '    elif False:\n        body = f"{a*1000:,.{MONEY_DECIMALS}f}k"',
+     f"{RFT}::test_the_k_tier_matches_the_screen_value_not_just_the_letter"),
+
+    ("the k tier boundary drifts off the screen's 1e3", RF,
+     "    elif a >= 0.001:                   # >= 1e3 actual",
+     "    elif a >= 0.01:",
+     f"{RFT}::test_the_pack_lands_in_the_same_tier_as_the_screen"),
+
+    ("the sign goes back after the symbol ($-4.40M)", RF,
+     '    return f"{sign}{sym}{body}"',
+     '    return f"{sym}{sign}{body}"',
+     f"{RFT}::test_negatives_put_the_sign_BEFORE_the_symbol_as_the_screen_does"),
+
+    ("an unknown currency renders bare again", RF,
+     '    return CURRENCY_SYMBOLS.get(c, (c + " ") if c else "")',
+     '    return CURRENCY_SYMBOLS.get(c, "")',
+     f"{RFT}::test_no_currency_ever_renders_a_bare_number"),
+
+    ("score grows a currency symbol, becoming money by accident", RF,
+     '    return f"{v:,.{d}f}"',
+     '    return f"${v:,.{d}f}M"',
+     f"{RFT}::test_score_is_not_money_and_carries_no_symbol_or_tier"),
+
+    ("chart_bars takes a format string at the call site again", REP,
+     "def chart_bars(labels, values, title=\"\", colors=None, horizontal=False, decimals=None):",
+     "def chart_bars(labels, values, title=\"\", colors=None, horizontal=False, fmt=None, decimals=None):",
+     f"{RFT}::test_chart_bars_uses_the_shared_score_formatter"),
 
     ("sigma reports the clamp as an estimate again", VAL,
      '            if sd < 0.15:\n                return 0.15, ("floor (0.15) — this company\'s historical revenue is too "\n'

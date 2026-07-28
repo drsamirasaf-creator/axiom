@@ -25,11 +25,12 @@ disagreed with the product a customer had just been looking at. Zero decimals wa
 also destroying information outright — 3.6, 4.0 and 4.4 all rendered "$4M", the
 same collapse `shortMoney` produced on Scenario Analysis.
 
-KNOWN REMAINING DIVERGENCE FROM THE SCREEN, recorded rather than silently
-carried: the frontend has a `k` tier below 1M (0.5M renders "$500.00k") and this
-does not — it renders "$0.50M". Changing the tier boundary alters every small
-figure in the board pack and is a presentation ruling, not a refactor, so it is
-left alone and stated here.
+⭐ THE TIERS AND THE NEGATIVE CONVENTION NOW MATCH THE SCREEN EXACTLY.
+`formatWithCode` in the frontend switches on the ACTUAL amount — 1e9 -> B,
+1e6 -> M, 1e3 -> k — and writes the sign BEFORE the symbol ("-$4.40M"). This
+module receives millions, so the same boundaries are 1000 / 1 / 0.001, and the
+sign moved: it used to emit "$-4.40M", which is a third spelling of the same
+figure.
 
 Inputs are CANONICAL MILLIONS, as the board_report payload supplies them.
 """
@@ -56,13 +57,25 @@ def currency_symbol(code) -> str:
 def money(x, sym: str = "") -> str:
     """A money figure in CANONICAL MILLIONS -> display string.
 
-    Two decimals, so figures a reader must tell apart stay apart. The B tier
-    divides by 1000 because the input is already in millions."""
+    Tier boundaries are the frontend's, restated in millions: the screen switches
+    at 1e9 / 1e6 / 1e3 on the ACTUAL amount, which is 1000 / 1 / 0.001 here. Two
+    decimals throughout, so figures a reader must tell apart stay apart.
+
+    ⭐ SIGN BEFORE SYMBOL. `-$4.40M`, as the screen writes it. This emitted
+    `$-4.40M`, which is the same number in a third spelling."""
     if x is None:
         return DASH
-    if abs(x) >= 1000:
-        return f"{sym}{x/1000:,.{MONEY_DECIMALS}f}B"
-    return f"{sym}{x:,.{MONEY_DECIMALS}f}M"
+    a = abs(x)
+    sign = "-" if x < 0 else ""
+    if a >= 1000:                      # >= 1e9 actual
+        body = f"{a/1000:,.{MONEY_DECIMALS}f}B"
+    elif a >= 1:                       # >= 1e6 actual
+        body = f"{a:,.{MONEY_DECIMALS}f}M"
+    elif a >= 0.001:                   # >= 1e3 actual
+        body = f"{a*1000:,.{MONEY_DECIMALS}f}k"
+    else:                              # sub-thousand, plain
+        body = f"{a*1_000_000:,.{MONEY_DECIMALS}f}"
+    return f"{sign}{sym}{body}"
 
 
 def percent(x, d: int = PERCENT_DECIMALS) -> str:
@@ -111,3 +124,23 @@ def plan_value(statement: dict, key: str, kind: str):
     if kind == "stoch":
         return statement["stochastic"][key]["plan"]
     return statement["deterministic"][key]
+
+
+SCORE_DECIMALS = 1
+
+
+def score(v, d: int = SCORE_DECIMALS) -> str:
+    """A SCORE — health components, risk-heat-map cells, KPI scores.
+
+    ⭐ A SEPARATE NAMED FUNCTION, NOT A REUSE OF `money`. These are points on a
+    scale, not currency: no symbol, no k/M/B tier, and rescaling one as though it
+    were millions would be nonsense. They are given their own name so nobody has
+    to decide at the call site, and so a later change to money's precision cannot
+    silently move every chart label.
+
+    It was five spellings across the chart callers — `chart_bars`'s
+    `fmt="{:,.1f}"` default plus a `fmt="{:.1f}"` passed at one site — which is
+    the same duplication that let the PDF and PPTX money formatters drift."""
+    if v is None:
+        return DASH
+    return f"{v:,.{d}f}"
