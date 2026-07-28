@@ -606,6 +606,50 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     return buf.getvalue()
 
 
+# ── period arithmetic (§ quarterly lane, 28 Jul) ─────────────────────────────
+# ⭐ QUARTERLY PERIODS ARE NOT INTEGERS THAT COUNT BY ONE. They are YYYYQ — a
+# packed (year, quarter) pair — and the succession rule has a carry:
+#     20204 -> 20211   is CONSECUTIVE (+7 as an integer)
+#     20205             does not exist; there is no fifth quarter
+#
+# The validator used to do `expected = last + 1` unconditionally. On a quarterly
+# plan that REJECTED every correct year boundary and would have ACCEPTED an
+# impossible 20205. It was latent only because quarterly forecast labels ship
+# blank, so the path had never run.
+#
+# Decoding is done here, once, rather than at each comparison site, so annual and
+# quarterly cannot drift apart the way the two halves of a duplicated rule do.
+
+def decode_period(value: int, frequency: str) -> tuple[int, int | None]:
+    """YYYYQ -> (year, quarter) for quarterly; (year, None) for annual."""
+    if frequency == "quarterly":
+        year, q = divmod(int(value), 10)
+        return year, q
+    return int(value), None
+
+
+def period_is_valid(value: int, frequency: str) -> bool:
+    year, q = decode_period(value, frequency)
+    if not (1900 <= year <= 2200):
+        return False
+    if frequency == "quarterly":
+        return q is not None and 1 <= q <= 4
+    return True
+
+
+def next_period(value: int, frequency: str) -> int:
+    """The period that must follow `value`. Carries the year on Q4."""
+    year, q = decode_period(value, frequency)
+    if frequency == "quarterly":
+        return (year + 1) * 10 + 1 if q == 4 else year * 10 + (q + 1)
+    return year + 1
+
+
+def format_period(value: int, frequency: str) -> str:
+    year, q = decode_period(value, frequency)
+    return f"{year}Q{q}" if frequency == "quarterly" else str(year)
+
+
 def read_upload_metadata(content: bytes) -> dict | None:
     """Return {company_id, frequency, template_version, standard} from the
     hidden _AXIOM sheet, or None if absent/unreadable."""
@@ -641,7 +685,8 @@ def _sheet_for(engine_error: str, lab: dict) -> str | None:
 
 
 def parse_and_validate(content: bytes, expected_company_id: int,
-                       statement_units: str | None = None):
+                       statement_units: str | None = None,
+                       frequency: str | None = None):
     """Parse + validate an uploaded company workbook into the canonical dataset.
 
     Returns (data|None, errors, meta, warnings). `errors` is a structured list
@@ -656,6 +701,20 @@ def parse_and_validate(content: bytes, expected_company_id: int,
         return None, [{"sheet": "_AXIOM", "cell": None,
                        "message": "Not an AXIOM company template (metadata sheet "
                                   "missing or altered). Download a fresh template."}], None, []
+    # ⭐ FREQUENCY IS DECLARED, NEVER INFERRED. The caller's explicit argument wins;
+    # otherwise the workbook's own `_AXIOM!B3`, written by the generator. It is
+    # NEVER derived from how many columns the file happens to have — a file with
+    # 20 columns could be either shape, and guessing would make period validation
+    # depend on the thing it is supposed to be checking.
+    #
+    # NOTE (data-model gap, reported not silently worked around): `Enterprise`
+    # carries `statement_units` and `ownership` but has NO frequency column, so
+    # there is no company-level authority for the caller to pass. The workbook
+    # declaration is the best available source today.
+    freq = (frequency or meta.get("frequency") or "annual").strip().lower()
+    if freq not in ("annual", "quarterly"):
+        freq = "annual"
+
     if meta["company_id"] != expected_company_id:
         return None, [{"sheet": "_AXIOM", "cell": "B2",
                        "message": f"This template was generated for company "
@@ -698,9 +757,25 @@ def parse_and_validate(content: bytes, expected_company_id: int,
 
     # ---- Statement sheets ----
     def read_cols(ws):
+        """Every period column on the sheet.
+
+        ⭐ NO HARDCODED WIDTH. This used to be `for i in range(30)` — columns
+        B..AE. That covered every shape that had ever shipped (max 20 columns),
+        so it never misbehaved; at 12 historical + 40 forecast quarters it drops
+        AF..BA — 22 columns — with no error, no warning and nothing in the result
+        to show that anything went missing. A silent truncation is strictly worse
+        than a rejected upload, because the customer sees a successful import.
+
+        ⭐ AND IT SCANS THE FULL WIDTH RATHER THAN STOPPING AT THE FIRST BLANK.
+        Stop-at-blank reads correctly for a client who fills a contiguous run,
+        and silently drops data for one who leaves a gap in the middle — the same
+        failure in a new place. Skipping blanks means a gap is READ, and the
+        succession check below then rejects it naming the exact cell. Blank
+        forecast columns stay legal: `_col_has_data` drops the ones nobody
+        filled."""
         cols = []
-        for i in range(30):
-            letter = get_column_letter(FIRST_COL + i)
+        for c in range(FIRST_COL, ws.max_column + 1):
+            letter = get_column_letter(c)
             y, k = ws[f"{letter}4"].value, ws[f"{letter}3"].value
             if y in (None, ""):
                 continue
@@ -709,6 +784,14 @@ def parse_and_validate(content: bytes, expected_company_id: int,
             except (TypeError, ValueError):
                 errors.append({"sheet": ws.title, "cell": f"{letter}4",
                                "message": "period must be an integer"})
+                continue
+            if not period_is_valid(y, freq):
+                errors.append({"sheet": ws.title, "cell": f"{letter}4",
+                               "message": (f"'{y}' is not a valid quarterly period — "
+                                           "use YYYYQ with a quarter of 1-4 "
+                                           "(20231 = 2023 Q1)")
+                               if freq == "quarterly" else
+                               f"'{y}' is not a valid year"})
                 continue
             kind = str(k or "").strip().lower()
             if kind not in ("historical", "forecast"):
@@ -780,26 +863,44 @@ def parse_and_validate(content: bytes, expected_company_id: int,
     # comparison downstream, so these are hard errors naming the exact cell.
     if fcst and hist:
         is_name = lab["sheets"]["income_statement"]
+        unit = "quarter" if freq == "quarterly" else "year"
         last_hist = max(hist)
         seen = set(hist)
-        expected = last_hist + 1
+        expected = next_period(last_hist, freq)
         for letter, y, k in [c for c in ref_cols if c[2] == "forecast"]:
             cell = f"{letter}4"
+            ok = False
             if y in seen:
                 errors.append({"sheet": is_name, "cell": cell,
-                               "message": f"period {y} is duplicated — each forecast "
-                                          "column needs its own distinct year"})
+                               "message": f"period {format_period(y, freq)} is duplicated — "
+                                          f"each forecast column needs its own distinct {unit}"})
             elif y <= last_hist:
                 errors.append({"sheet": is_name, "cell": cell,
-                               "message": f"forecast year {y} must be AFTER the last "
-                                          f"historical year ({last_hist})"})
+                               "message": f"forecast {unit} {format_period(y, freq)} must be "
+                                          f"AFTER the last historical {unit} "
+                                          f"({format_period(last_hist, freq)})"})
             elif y != expected:
                 errors.append({"sheet": is_name, "cell": cell,
-                               "message": "forecast years must run consecutively from the "
-                                          f"last historical year with no gaps — expected "
-                                          f"{expected}, found {y}"})
+                               "message": f"forecast {unit}s must run consecutively from the "
+                                          f"last historical {unit} with no gaps — expected "
+                                          f"{format_period(expected, freq)}, found "
+                                          f"{format_period(y, freq)}"})
+            else:
+                ok = True
             seen.add(y)
-            expected = y + 1
+            # ⭐ THE SEQUENCE IS NEVER REPAIRED BY A BAD PERIOD. This used to do
+            # `expected = y + 1` unconditionally, re-anchoring on whatever was
+            # FOUND. One wrong cell therefore produced exactly one error and then
+            # silently adopted the wrong sequence — so a SYSTEMATIC fault (an
+            # annual rule applied to a quarterly file) surfaced as one isolated
+            # complaint per year boundary, surrounded by accepts. It read like a
+            # typo in a single cell, which is the most expensive way to
+            # misdescribe a frequency bug.
+            #
+            # Now `expected` advances only from an ACCEPTED period, so a
+            # systematic fault stays visible on every column it affects.
+            if ok:
+                expected = next_period(y, freq)
     data = {"company": company,
             "periods": {"historical": hist, "forecast": fcst},
             "income_statement": blocks.get("income_statement", {}),
