@@ -4585,7 +4585,7 @@ data improves its numbers without loosening it.
 | # | Item | Why here |
 | --- | --- | --- |
 | 1 | ✅ **Convergence test — DONE 28 Jul** | **ANSWERED: yes, comfortably — and so does 400.** See L.2f |
-| 2 | **Resolve the Real Options / pro forma σ contradiction** | a parameter-estimation programme cannot be specified while two order-of-magnitude answers stand |
+| 2 | ⏳ **Resolve the σ contradiction — EVIDENCE GATHERED 28 Jul, awaiting ruling** | see L.2g: the "fitted" engine is the LESS data-faithful one and misreports its own basis |
 | 3 | **The shared sampler** | **a precondition, not an optimisation** — ten independent path loops exist with no shared sampler, and stochastic WACC/TV requires the statement and valuation engines to consume the SAME factor paths |
 | 4 | **Per-line-item processes** | GBM, OU, mean-reverting ratios — on top of the sampler |
 | — | **Methodology page last** | and it must carry the estimation caveats below explicitly |
@@ -4687,6 +4687,56 @@ that fails on first contact with a reader who tests it.
 
 Full tables: `docs/reports/2026-07-28-b1-convergence.md`.
 Tooling: `scripts/convergence_study.py` (re-runnable, validates its own replica).
+
+## L.2g B2 σ CONTRADICTION — EVIDENCE (28 Jul). AWAITING RULING, NOT RESOLVED.
+
+Measured on real data. **The result inverts the L.2b characterisation** and must
+replace it: L.2b called Real Options "fitted" and the pro forma "assumed". More
+precisely — **Real Options ATTEMPTS to fit, discards the fit entirely because the
+clamp binds, and then REPORTS THE CLAMP AS A FIT.**
+
+| dataset | raw log-growth sd | `_calibrate_sigma` returns | basis string it reports |
+| --- | --- | --- | --- |
+| 53 (user's real data) | **0.0132** | **0.15** — the floor, **11× the estimate** | `"historical revenue log-growth"` |
+| 51 (test fixture) | **0.0013** | **0.15** — the floor, **115× the estimate** | `"historical revenue log-growth"` |
+
+**Across all 13 non-denylisted datasets** (Milliner id 25 excluded, aggregate
+only): median sd **0.0050**, p75 **0.0150**, max 0.3553. **12 of 13 fall below
+the 0.15 floor**; 11 of 13 below even the pro-forma 0.02.
+
+So on live data:
+
+* **The floor binds essentially always.** Real Options is not fitting anything in
+  practice — and the `basis` string tells the user it estimated from their
+  history when it returned a constant. **That mislabel is a defect in its own
+  right and should be fixed whichever way the σ ruling goes.**
+* **The pro-forma σ_g = 0.02 is the MORE data-faithful of the two** — within ~1.5×
+  of the measured dispersion on the user's real dataset (0.0132).
+
+### ⭐ BUT THE FLOOR IS DEFENDING AGAINST SOMETHING REAL
+
+Dataset 53's historical revenue is 48.6 → 82.64 with year-on-year growth of
+8.95%, 10.99%, 11.31%, 11.86%, 12.93% — **monotonically rising, sd 1.46pp.**
+Dataset 51 is a near-perfect geometric series (sd 0.0013). Real businesses do not
+grow like that.
+
+**The historicals in these workbooks look SMOOTHED OR PLANNED, not measured.** If
+so, neither σ is estimable from them, and the 0.15 floor is a judgement standing
+in for missing information — which is defensible, and its stated rationale ("a
+smooth 5-year statement understates real business risk") is **correct**.
+
+### WHAT THIS MEANS FOR THE RULING
+
+The question is not "which σ is right" but **"is volatility estimable from these
+workbooks at all?"** The evidence says no. That is a **data-model** finding, and
+it independently supports the L.2e estimation ruling: σ should come from a
+**sector prior**, because the customer's own history cannot carry it.
+
+**Not resolved here — it needs a ruling.** What is recorded is the evidence and
+the one thing that is a defect under any ruling: **a basis string that reports a
+clamp as an estimate.**
+
+Full working: `docs/reports/2026-07-28-b1-convergence.md` (B1) and this entry.
 
 ## L.3 ⭐ THE REGRESSION PASSES SIT AT POSITION 4 DELIBERATELY
 
