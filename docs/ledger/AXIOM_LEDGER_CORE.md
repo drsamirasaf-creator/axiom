@@ -4584,7 +4584,7 @@ data improves its numbers without loosening it.
 
 | # | Item | Why here |
 | --- | --- | --- |
-| 1 | **Convergence test** | **first, because it establishes the baseline everything else is measured against** — and going from 2 factors to 6+ **invalidates every seed**, so the re-baseline must land against a known-stable target rather than against whatever the new engine produces |
+| 1 | ✅ **Convergence test — DONE 28 Jul** | **ANSWERED: yes, comfortably — and so does 400.** See L.2f |
 | 2 | **Resolve the Real Options / pro forma σ contradiction** | a parameter-estimation programme cannot be specified while two order-of-magnitude answers stand |
 | 3 | **The shared sampler** | **a precondition, not an optimisation** — ten independent path loops exist with no shared sampler, and stochastic WACC/TV requires the statement and valuation engines to consume the SAME factor paths |
 | 4 | **Per-line-item processes** | GBM, OU, mean-reverting ratios — on top of the sampler |
@@ -4627,6 +4627,66 @@ Scope analysis (parameter change vs rewrite, and the structural prerequisites):
 `docs/reports/2026-07-28-stochastic-engine-scope.md`. **Summary: engine rewrite
 of the FACTOR layer, not a parameter change — but the accounting articulation
 beneath it is sound and is kept.**
+
+## L.2f ⭐ B1 CONVERGENCE — ANSWERED 28 Jul. NO PATH COUNT CHANGED.
+
+**Method:** the real engine on the user's real dataset (53), five production path
+counts, **40 independent seeds each**. Measured across SEEDS, because re-running
+one seed reproduces itself — that is reproducibility, which the suite already
+asserts, and it says nothing about convergence.
+
+**p50 note:** the engine publishes `{plan, expected, p05, p95, p_meets_plan}` and
+**computes no median at all**. p50 was measured via a replica required to
+reproduce the engine's p05/p95 **exactly** at matched seeds first. It did.
+
+### THE ANSWER: YES — AND SO DOES 400
+
+* At **3,000 paths**: relative s.e. of P05 is **0.07%–0.24%**; across 40 seeds the
+  entire P05 range never exceeds **$0.49M** on values of $10M–$180M.
+* At **400 paths**: worst case **0.60%**. Sub-1% everywhere.
+* Convergence tracks `1/√n`. **P50 is ~half as noisy as P05**, as theory predicts
+  for centre vs tail — the tail is the least stable published number and is
+  still stable.
+
+### ⭐ THE FIVE PATH COUNTS ARE ARBITRARY
+
+Nothing justifies 3000 over 400, let alone the coexistence of
+**3000/2000/1200/1000/400**. No comment, doc or test ties any of them to a
+stability requirement; the tests assert only that the counts are **reported**.
+
+### ⭐ AND THE RESULT THAT MATTERS MORE THAN THE ANSWER
+
+**This measures Monte-Carlo noise. It does NOT measure whether the interval is
+right.** At 3,000 paths the MC standard error on P05 is ~**2% of the P05–P95
+half-width**; at 400 it is ~6%. Sampling error is nowhere near the binding
+constraint.
+
+**The percentiles are stable because the interval is NARROW, and the interval is
+narrow because the model UNDERSTATES it** (L.2b: +1 correlation, assumed global
+σ, fixed WACC/terminal growth with TV dominant).
+
+**"3,000 paths gives stable percentiles" must NEVER be reported as "the
+percentiles are trustworthy."** It is a statement about the sampler, not the
+model — precision without accuracy, and exactly the true-but-misleading claim
+that fails on first contact with a reader who tests it.
+
+### CONSEQUENCES
+
+1. Path count is **not** the binding constraint, so standardising on one number
+   is effectively free — 400–1000 is defensible; 3,000 buys nothing visible.
+2. **Change it ONCE, with the factor-layer rewrite (B3/B4) — not as separate
+   churn.** Draws are sequential, so any change moves every published figure;
+   doing it twice means re-baselining twice.
+3. **This baseline EXPIRES when the sampler changes.** It characterises the
+   current two-factor model; under 6+ correlated OU factors dispersion widens, so
+   **the test must be re-run after B3/B4** — against these numbers, which is why
+   it ran first.
+4. **B1 does not unblock the methodology page.** It closes "is 3,000 enough" and
+   opens the sharper question: the intervals are **stable and still understated**,
+   and the honest page must say both.
+
+Full tables: `docs/reports/2026-07-28-b1-convergence.md`.
+Tooling: `scripts/convergence_study.py` (re-runnable, validates its own replica).
 
 ## L.3 ⭐ THE REGRESSION PASSES SIT AT POSITION 4 DELIBERATELY
 
