@@ -3477,6 +3477,54 @@ one the product ships*.
    by the template writer (`ingest.py:138`) and **never checked on the way in** —
    the one marker that is unambiguous, per-sheet, and survives partial editing.
 
+### ⭐ AXIOM DID NOT MIX SAMPLE DATA WITH CUSTOMER DATA — SAY SO PLAINLY
+
+**The uploaded workbook itself carried the template's sample values in its
+financial sheets.** No other company's data was read, no defaults were injected,
+nothing was substituted at ingest. Dataset 52 is bound to company 39, on company
+39's own tenant, and every displayed figure traces to it exactly.
+
+⭐ **THE DEFECT IS THAT AN INCOMPLETELY-FILLED TEMPLATE IS INDISTINGUISHABLE
+FROM A COMPLETE ONE, BECAUSE EVERY INPUT CELL SHIPS PRE-POPULATED WITH A
+PLAUSIBLE NUMBER.**
+
+**An empty template fails loudly. A pre-filled one fails silently.** A blank cell
+is missing input and every layer complains; a sample cell is *valid* input and no
+layer has grounds to object. The pre-population converts a loud failure into a
+silent one — which is the whole of the harm.
+
+### OPEN DESIGN QUESTION — SHOULD THE TEMPLATE SHIP SAMPLE VALUES IN INPUT CELLS AT ALL?
+
+For ruling. Three options, with what the template writer would have to change and
+what would break:
+
+**(a) BLANK INPUTS, worked examples on a separate reference sheet.**
+*Writer:* stop writing sample values into the statement sheets; add a
+`Reference` / `Example` sheet carrying the same worked figures. *Ingest:* blank
+statement cells already fail validation loudly, so the silent path closes by
+construction. *Breaks:* nothing already uploaded — existing datasets are parsed
+and stored. New downloads change shape; anyone mid-fill on an old template can
+still upload, since the parser keys on sheet and row labels, not on the presence
+of samples. **Strongest option: it removes the failure mode instead of detecting
+it.**
+
+**(b) PRE-FILLED, GATED ON CLEARING A SAMPLE-DATA FLAG.**
+*Writer:* keep samples, add an explicit flag cell (e.g. Company sheet
+`SAMPLE DATA PRESENT = YES`) the user must set to `NO`. *Ingest:* reject while
+the flag reads YES. *Breaks:* every workbook already in circulation lacks the
+cell, so ingest needs a missing-flag fallback — and that fallback is exactly
+where the silent path returns. Adds a step the customer can satisfy without
+touching the numbers.
+
+**(c) STATUS QUO + WATERMARK CHECK.**
+*Writer:* unchanged. *Ingest:* read row 2 of each statement sheet and reject any
+still carrying `SAMPLE DATA (illustrative…)`. *Breaks:* nothing — the watermark
+is already written by every template version that ships it. **Smallest change,
+survives partial editing, and is the immediate fix regardless of which option is
+ruled for the longer term.**
+
+(a) and (c) are complementary: (c) closes the hole now, (a) removes the class.
+
 ### WHAT A CUSTOMER SEES
 
 Nothing. `validation.warnings` was **empty**. No error, no warning, no banner —
@@ -3488,6 +3536,33 @@ a complete, confident, board-ready valuation over untouched sample figures.
 sheet still carrying `SAMPLE DATA (illustrative…)` in row 2 is *declared*
 untouched, whatever its numbers. Reading the marker converts an inference problem
 into a fact.
+
+### PRODUCTION AUDIT — RUN BEFORE ANY FIX (28 Jul)
+
+Scanned **all 31 production datasets**, using dataset 52 (a known-untouched
+template upload) as the reference for the shipped sample:
+
+```
+datasets holding template sample figures: 1
+    dataset 52 (company 39) — exact match on income_statement, balance_sheet, cash_flow
+```
+
+**No other tenant is affected.** Milliner, Meridian and every other company are
+clean on this reference.
+
+⚠ **BUT THE AUDIT IS BOUNDED BY ITS REFERENCE, AND MUST NOT BE READ AS
+CONCLUSIVE.** Dataset 52 is template `7M-v7.5`. Production uploads span **five
+template versions plus eleven unversioned uploads**:
+
+```
+7M-v6.1 x2   7M-v6.2 x2   7M-v7.0 x1   7M-v7.2 x2   7M-v7.5 x2   (none) x11
+20 upload-sourced datasets in total
+```
+
+Earlier versions shipped **different sample figures**, which this reference
+cannot detect. **18 of the 20 uploads are outside the audit's reach.** Closing
+that needs each version's shipped sample, or — better — the watermark check
+applied retroactively to the stored original workbooks.
 
 **LAUNCH-BLOCKING.** The failure is silent, reaches the most consequential
 artefact AXIOM produces, and the customer has no way to detect it.
