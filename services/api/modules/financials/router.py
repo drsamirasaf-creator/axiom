@@ -281,7 +281,18 @@ def _pvm_line_values(full: dict) -> dict:
         out["ebit"][ys] = d["ebit"][i]
         out["net_income"][ys] = d["net_income"][i]
         out["capex"][ys] = CF["capex"].get(ys)
-        out["nwc_change"][ys] = round(d["nwc"][i] - d["nwc"][i - 1], 4) if i > 0 else None
+        # ⭐ THE SECOND SITE OF THE SAME DEFECT, AND IT WAS LIVE FOR DAYS.
+        # `extend_method=ensemble&horizon=10` — which is exactly what the
+        # /valuation page sends — 500'd here with
+        #   TypeError: unsupported operand type(s) for -: 'NoneType' and 'float'
+        # derive_series now PROPAGATES absence rather than inventing a zero, so
+        # d["nwc"][i] is None for any period the extended plan does not cover.
+        # Note `gross_profit` four lines up already guards; this line did not.
+        # One function, one data source, two different answers to the same
+        # question — the two-owners shape at statement level.
+        out["nwc_change"][ys] = (
+            engines._n(lambda a, b: round(a - b, 4), d["nwc"][i], d["nwc"][i - 1])
+            if i > 0 else None)
         out["fcff"][ys] = d["fcff"][i]
     return out
 

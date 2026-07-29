@@ -98,15 +98,35 @@ def _fit_drivers(data):
     rev_h = [IS["revenue"][str(y)] for y in hist]
     def per(fn):
         return _avg([fn(str(y)) for y in hist if IS["revenue"][str(y)]])
-    m_ebit = per(lambda ys: (IS["revenue"][ys] - IS["cogs"][ys] - IS["opex"][ys]
-                             - IS["depreciation_amortization"][ys]) / IS["revenue"][ys])
-    p_da = per(lambda ys: IS["depreciation_amortization"][ys] / IS["revenue"][ys])
-    p_capex = per(lambda ys: CF["capex"][ys] / IS["revenue"][ys])
-    p_nwc = per(lambda ys: (BS["other_current_assets"][ys]
-                            - BS["current_liabilities_ex_debt"][ys]) / IS["revenue"][ys])
-    p_cl = per(lambda ys: BS["current_liabilities_ex_debt"][ys] / IS["revenue"][ys])
-    cogs_share = _avg([IS["cogs"][str(y)] / (IS["cogs"][str(y)] + IS["opex"][str(y)])
-                       for y in hist if (IS["cogs"][str(y)] + IS["opex"][str(y)])])
+    # ⭐ THE THIRD SITE OF THE SAME DEFECT, AND THIS FILE WAS NEVER SCANNED.
+    # `per()` guards ONE operand — revenue — and every ratio below reads two or
+    # three. A period whose balance-sheet line is absent raised
+    #   TypeError: unsupported operand type(s) for -: 'NoneType' and 'float'
+    # rather than being skipped. check-none-arithmetic.py could not have caught
+    # it: services/api/forecast_studio.py is not in its TARGETS list, so the
+    # module that fits every forecast driver was outside the coverage of the
+    # checker written for exactly this class.
+    #
+    # _n() returns None when any operand is absent and _avg() already drops None,
+    # so an incomplete period is EXCLUDED from the fit rather than crashing it or
+    # contributing a fabricated zero. A driver averaged over the periods that
+    # have data is honest; one averaged over an invented 0.0 is not.
+    _r_ = fin._n
+    m_ebit = per(lambda ys: _r_(lambda r, c, o, d: (r - c - o - d) / r,
+                                IS["revenue"][ys], IS["cogs"][ys], IS["opex"][ys],
+                                IS["depreciation_amortization"][ys]))
+    p_da = per(lambda ys: _r_(lambda d, r: d / r,
+                              IS["depreciation_amortization"][ys], IS["revenue"][ys]))
+    p_capex = per(lambda ys: _r_(lambda c, r: c / r,
+                                 CF["capex"][ys], IS["revenue"][ys]))
+    p_nwc = per(lambda ys: _r_(lambda a, l, r: (a - l) / r,
+                               BS["other_current_assets"][ys],
+                               BS["current_liabilities_ex_debt"][ys], IS["revenue"][ys]))
+    p_cl = per(lambda ys: _r_(lambda l, r: l / r,
+                              BS["current_liabilities_ex_debt"][ys], IS["revenue"][ys]))
+    cogs_share = _avg([_r_(lambda c, o: c / (c + o) if (c + o) else None,
+                           IS["cogs"][str(y)], IS["opex"][str(y)])
+                       for y in hist])
     cagr = fin._cagr(rev_h[0], rev_h[-1], len(hist) - 1) if len(hist) > 1 else 0.03
     return {"rev_hist": rev_h, "hist": hist, "cagr": cagr, "m_ebit": m_ebit,
             "p_da": p_da, "p_capex": p_capex, "p_nwc": p_nwc, "p_cl": p_cl,
@@ -152,7 +172,19 @@ def _project(data, rev_path, drivers):
         out["income_statement"]["opex"][ys] = r(opex)
         out["income_statement"]["depreciation_amortization"][ys] = r(da)
         out["income_statement"]["interest_expense"][ys] = r(d["interest"])
-        nca = prev_nca + capex - da
+        # ⭐ THE BALANCE-SHEET ROLL-FORWARD PROPAGATES ABSENCE FROM ITS OPENING
+        # BALANCE. prev_nca / prev_oca / prev_cl / prev_cash are seeded from the
+        # LAST HISTORICAL period, and any of them can be absent — at which point
+        # every figure rolled from it is unknowable, not zero. This chain raised
+        #   d_nwc = (oca - cl) - (prev_oca - prev_cl)
+        #   TypeError: unsupported operand type(s) for -: 'NoneType' and 'float'
+        #
+        # Seeding a missing opening balance with 0.0 would be the worse bug: it
+        # produces a confident forecast cash balance built on a balance sheet
+        # nobody supplied. None flows forward through prev_* on the next
+        # iteration, which is correct — once the opening balance is unknown, so
+        # is every balance after it.
+        nca = fin._n(lambda p, c, dd: p + c - dd, prev_nca, capex, da)
         out["balance_sheet"]["other_current_assets"][ys] = r(oca)
         out["balance_sheet"]["current_liabilities_ex_debt"][ys] = r(cl)
         out["balance_sheet"]["noncurrent_assets"][ys] = r(nca)
@@ -161,14 +193,16 @@ def _project(data, rev_path, drivers):
         out["cash_flow"]["capex"][ys] = r(capex)
         out["cash_flow"]["net_borrowing"][ys] = 0.0
         out["cash_flow"]["dividends"][ys] = 0.0
-        d_nwc = (oca - cl) - (prev_oca - prev_cl)
-        fcfe = ni + da - capex - d_nwc
-        cash = prev_cash + fcfe
+        d_nwc = fin._n(lambda a, l, pa, pl: (a - l) - (pa - pl),
+                       oca, cl, prev_oca, prev_cl)
+        fcfe = fin._n(lambda n_, dd, c, w: n_ + dd - c - w, ni, da, capex, d_nwc)
+        cash = fin._n(lambda p, f: p + f, prev_cash, fcfe)
         out["balance_sheet"]["cash"][ys] = r(cash)
-        assets = cash + oca + nca
-        out["balance_sheet"]["total_equity"][ys] = r(
-            assets - cl - carry["short_term_debt"] - carry["long_term_debt"]
-            - carry["preferred_equity"] - carry["minority_interest"])
+        assets = fin._n(lambda c, o, n_: c + o + n_, cash, oca, nca)
+        out["balance_sheet"]["total_equity"][ys] = r(fin._n(
+            lambda a, l, sd, ld, pe, mi: a - l - sd - ld - pe - mi,
+            assets, cl, carry["short_term_debt"], carry["long_term_debt"],
+            carry["preferred_equity"], carry["minority_interest"]))
         prev_oca, prev_cl, prev_nca, prev_cash = oca, cl, nca, cash
     return out
 

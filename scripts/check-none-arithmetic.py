@@ -34,6 +34,30 @@ WHAT IT FLAGS
   · `x / y if y else None` guards the DIVISOR only. A None numerator still
     raises, and that idiom is common here — so those are flagged deliberately.
 
+  · ⭐⭐ IT DOES NOT MODEL THE DOMINANT SHAPE, AND "clean" MUST NOT BE READ AS
+    "no defects of this class". This checker knows one source of None: a
+    `.get()` with no default. But the dataset's OWN VALUES are None —
+    `data["balance_sheet"]["cash"]["2024"]` is None for any period a line item
+    does not cover — and those are reached by PLAIN SUBSCRIPT, which this treats
+    as safe because a missing key would raise KeyError rather than yield None.
+
+    On 2026-07-30 that blind spot cost three live production sites on
+    GET /plan-vs-methods?extend_method=ensemble&horizon=10:
+        modules/financials/router.py:284   d["nwc"][i] - d["nwc"][i-1]
+        forecast_studio.py:105             BS[...][ys] - BS[...][ys]
+        forecast_studio.py:184             (oca - cl) - (prev_oca - prev_cl)
+    All three were found by a browser crawl and a unit test. This checker
+    reported 0 findings across every run, including on the files that held them,
+    and continues to report them clean when the defects are reintroduced —
+    verified, not assumed.
+
+    An experimental rule that treats subscript chains rooted at a statement
+    block (income_statement / balance_sheet / cash_flow) as nullable surfaces
+    ~195 candidate sites across these 8 modules — including auto_forecast:400,
+    the same shape as the bug that started this. That is a triage lane, not a
+    gate: shipping 195 unactionable findings is how a checker gets muted. The
+    measurement is recorded here so the number is known rather than rediscovered.
+
 The remedy is `_n(fn, *vals)` in financials/engines.py: absence propagates, and
 never `or 0`, because a missing revenue is not zero revenue.
 """
@@ -43,6 +67,19 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TARGETS = [
+    # ⭐ forecast_studio.py WAS MISSING FROM THIS LIST UNTIL 2026-07-30, AND IT
+    # HELD TWO LIVE INSTANCES OF THE EXACT CLASS THIS CHECKER EXISTS FOR — the
+    # driver fit (`per()` guarded revenue and nothing else) and the balance-sheet
+    # roll-forward (`(oca - cl) - (prev_oca - prev_cl)` from an absent opening
+    # balance). The checker reported "0 unguarded sites" across 7 modules while
+    # both were 500ing /plan-vs-methods.
+    #
+    # A hand-written target list is the coverage floor this codebase keeps
+    # relearning: "0 problems in 0 files" and "0 problems in every file" print
+    # the same tick. The list is still hand-written — that is a known weakness,
+    # not a solved problem — but the module that fits every forecast driver is
+    # now inside it.
+    "services/api/forecast_studio.py",
     "services/api/modules/financials/engines.py",
     "services/api/modules/financials/proforma.py",
     "services/api/modules/financials/oci.py",
