@@ -1,4 +1,5 @@
 """AXIOM API — modular monolith entrypoint (SPEC-008 §19.2/§19.3). REQ-CORE-003."""
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +34,41 @@ from .modules.twin.router import router as twin_router
 from .modules.platform.router import router as platform_router
 from .modules.intelligence.router import router as intelligence_router
 from .accounts import include_accounts
+
+# ⭐ ERROR MONITORING, ERRORS ONLY. On 29 Jul a missing migration made every read
+# of ax_initiatives raise UndefinedColumn — six anonymous demo surfaces returned
+# 500 for about thirty minutes, on the front door, and it was found by a human
+# looking rather than by anything telling us. Sentry would have fired on the first
+# request.
+#
+# traces_sample_rate=0 deliberately: this is not APM and should cost nothing per
+# request. `environment` separates the showcase demo from real tenants so a
+# seeded-data error cannot be mistaken for a customer one. Unset DSN = disabled,
+# and the app must boot identically without it — a monitoring dependency that can
+# take the service down is worse than no monitoring.
+def _init_sentry():
+    dsn = os.environ.get("SENTRY_DSN", "").strip()
+    if not dsn:
+        return False
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.starlette import StarletteIntegration
+        sentry_sdk.init(
+            dsn=dsn,
+            environment=os.environ.get("AXIOM_ENV", "production"),
+            release=os.environ.get("RAILWAY_GIT_COMMIT_SHA") or None,
+            traces_sample_rate=0.0,
+            send_default_pii=False,
+            integrations=[StarletteIntegration(), FastApiIntegration()],
+        )
+        return True
+    except Exception:
+        # Never let monitoring break boot.
+        return False
+
+
+_SENTRY_ON = _init_sentry()
 
 app = FastAPI(
     title="AXIOM",

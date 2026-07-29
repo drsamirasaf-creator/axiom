@@ -5982,11 +5982,20 @@ def _ini_event(db, ini, actor, etype, frm, to, note):
 
 
 def _display_code(i):
-    """Within-band display code = band letter + rank ("A1", "B3"); unranked → band
-    letter alone ("A"). The band comes from the CURRENT priority/status."""
+    """Within-band display code — "A1", "B3", or "A—" when unranked.
+
+    ⭐ RANK IS A DECISION AND ITS ABSENCE IS ITS OWN STATE (§7.48). This returned a
+    BARE BAND LETTER for an unranked initiative, which is indistinguishable from a
+    truncated ranked code: six of Meridian's fifteen showed "A" beside neighbours
+    showing "A1"…"A8", and the standing suite caught it and was disbelieved twice.
+    An em-dash suffix says "no rank" rather than implying a missing digit.
+
+    ⭐ AND `if rank` WAS FALSY, NOT NULL — rank == 0 rendered bare exactly as None
+    did. The column contract is 1..N with null = unranked, so 0 is out of contract
+    today and was one seed edit from being in it."""
     band = _band_of(i.status, i.current_priority)
     rank = getattr(i, "rank", None)
-    return f"{band}{rank}" if rank else band
+    return f"{band}{rank}" if rank is not None else f"{band}\u2014"
 
 
 def _ini_out(i):
