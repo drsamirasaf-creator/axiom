@@ -33,20 +33,21 @@ says plainly that it does not catch the conditional-binding class.
 import ast, builtins, sys, os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TARGETS = [
-    "services/api/accounts.py",
-    "services/api/overrides.py",
-    "services/api/modules/valuation/engines.py",
-    "services/api/modules/financials/engines.py",
-    "services/api/modules/financials/ingest.py",
-    "services/api/modules/financials/proforma.py",
-    "services/api/modules/intelligence/engines.py",
-    "services/api/modules/twin/engines.py",
-    "services/api/report_pdf.py",
-    "services/api/reporting.py",
-    "services/api/report_format.py",
-    "services/api/participant_upload.py",
-]
+# ⭐ ENUMERATED, NOT LISTED. This was twelve hardcoded module paths — a list that
+# goes stale the moment a module is added, and then reports "✓ none" over files it
+# has never opened. The same class as proxy-sweep's ROUTER_FILES, which let six
+# 500s pass a green sweep. The tree is walked instead.
+def _targets():
+    out = []
+    for dirpath, dirs, files in os.walk(os.path.join(ROOT, "services", "api")):
+        dirs[:] = [d for d in dirs if d != "__pycache__"]
+        for f in files:
+            if f.endswith(".py"):
+                out.append(os.path.relpath(os.path.join(dirpath, f), ROOT))
+    return sorted(out)
+
+
+TARGETS = _targets()
 BUILTINS = set(dir(builtins)) | {"__file__", "__name__", "__doc__", "self", "cls"}
 
 

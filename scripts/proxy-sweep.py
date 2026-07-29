@@ -57,26 +57,18 @@ BACKEND = os.environ.get(
 PROXY = "/api/public/axiom-proxy?path="
 
 # Router modules to sweep, with the prefix each mounts at.
-# ⭐ accounts.py WAS MISSING AND THAT IS THE WHOLE LESSON. This sweep reported
-# "33/33 clean · every swept route answered on the browser's path" at the exact
-# moment SIX anonymous routes were returning 500 — /assessment/swot,
-# /departments, /initiatives, /initiatives/cockpit, /assessment/sentiment and
-# /assessment/axis/{code}/comments. Every one of them lives in accounts.py, which
-# was not in this list.
+# ⭐ NO HAND-MAINTAINED ROUTER LIST. This file used to carry ROUTER_FILES and
+# parse decorators out of source. accounts.py was missing from it, and the sweep
+# reported "33/33 clean · every swept route answered" while SIX anonymous routes
+# were returning 500. The file's own docstring warned that a hardcoded list "goes
+# stale silently and then reports green over routes it has never heard of" — and
+# the same mistake was sitting one constant above the warning.
 #
-# This file's own docstring warns that a hardcoded list "goes stale silently and
-# then reports green over routes it has never heard of". That warning was written
-# about the endpoint map, and then the same mistake was made one constant above
-# it. A sweep is only as wide as its inventory, and the inventory needs the same
-# suspicion as the thing it inventories.
-ROUTER_FILES = [
-    "services/api/accounts.py",
-    "services/api/modules/intelligence/router.py",
-    "services/api/modules/financials/router.py",
-    "services/api/modules/valuation/router.py",
-    "services/api/modules/twin/router.py",
-]
-
+# The app is now asked what it serves. `app.openapi()` is the flattened,
+# authoritative view: this FastAPI keeps `_IncludedRouter` objects in app.routes
+# rather than flattening them, so a naive walk of app.routes finds SEVEN routes
+# and the spec finds 161. A list that cannot disagree with the app is the only
+# kind worth having.
 EXIT_MEANING = {
     0: "ok", 16: "HTTP/2 framing", 92: "HTTP/2 stream", 28: "timeout",
     35: "TLS", 56: "recv error", 7: "connect failed", 6: "DNS",
@@ -113,43 +105,31 @@ def _required_query_params(src, decorator_end):
 
 
 def routes_from_source():
-    """Every GET route in the swept routers, with its prefix and required query
-    params.
+    """Every GET route the APP SERVES, with its required query params.
 
-    Only GETs: a sweep must not issue writes, and the demo surfaces a prospect
-    touches are reads."""
+    Only GETs: a sweep must not issue writes, and the surfaces a prospect touches
+    are reads. Required query params come from the spec's own `parameters`, which
+    is more reliable than reading handler signatures."""
+    import tempfile
+    os.environ.setdefault("DATABASE_URL",
+                          "sqlite:///" + tempfile.mktemp(suffix=".db"))
+    sys.path.insert(0, ROOT)
+    import logging
+    logging.disable(logging.INFO)
+    from services.api.main import app          # noqa: E402
+    spec = app.openapi()
     out = []
-    for rel in ROUTER_FILES:
-        path = os.path.join(ROOT, rel)
-        if not os.path.exists(path):
+    for path, ops in spec.get("paths", {}).items():
+        op = ops.get("get")
+        if op is None:
             continue
-        src = open(path, encoding="utf-8").read()
-        # ⭐ POSITIONAL, NOT A NAME->PREFIX DICT. accounts.py rebinds the name
-        # `router` SIX times with different prefixes (/auth, /auth/oauth, none,
-        # /me, /admin, none). A dict keyed on the variable name keeps only the
-        # last, which would have mis-prefixed every route in the file. The prefix
-        # that applies is the nearest PRECEDING assignment to that same name.
-        assigns = [(m.start(), m.group(1), m.group(2) or "")
-                   for m in re.finditer(
-                       r'(\w+)\s*=\s*APIRouter\((?:prefix="([^"]*)")?', src)]
-
-        def prefix_at(name, pos):
-            best = None
-            for start, var, pfx in assigns:
-                if var == name and start < pos:
-                    best = pfx
-            return best
-
-        for m in re.finditer(r'@(\w+)\.get\("([^"]+)"', src):
-            router, route = m.group(1), m.group(2)
-            prefix = prefix_at(router, m.start())
-            if prefix is None:
-                continue
-            in_path = set(re.findall(r"\{(\w+)\}", route))
-            need = [q for q in _required_query_params(src, m.end())
-                    if q not in in_path]
-            out.append((rel, prefix + route, tuple(need)))
+        need = tuple(
+            p["name"] for p in (op.get("parameters") or [])
+            if p.get("in") == "query" and p.get("required"))
+        out.append(("app.openapi()", path, need))
     return sorted(set(out), key=lambda t: t[1])
+
+
 
 
 def fill(route, need, dataset_id, company_id):
@@ -225,7 +205,7 @@ def main():
 
     through_proxy = args.proxy and not args.direct
     where = "THROUGH the Worker proxy" if through_proxy else "DIRECT to the backend (the browser's path)"
-    print(f"  {len(routes)} GET route(s) from {len(ROUTER_FILES)} router module(s), "
+    print(f"  {len(routes)} GET route(s) enumerated from the running app, "
           f"{args.repeat}x each, {where}")
     if skipped:
         print(f"  {len(skipped)} skipped (unfillable path params) — NOT counted as passing:")

@@ -165,14 +165,23 @@ def test_no_identity_anywhere_in_the_payload(_app, world):
 
 def test_floor_counts_people_not_comments(_app, world):
     """Three comments from ONE person must suppress. A floor on the comment count
-    would let this through — which is the worse exposure, not the safer one."""
+    would let this through — which is the worse exposure, not the safer one.
+
+    ⭐ THIS ASSERTION USED TO REQUIRE n_participants == 1 UNDER SUPPRESSION, and
+    that was the leak. Returning "1" while withholding the wording tells the
+    reader exactly one person spoke here — and with the unsliced list readable,
+    the visible comments can be partitioned across cells by elimination until a
+    department that contributed exactly one is isolated. The text was protected;
+    the ATTRIBUTION was not. Counts are now withheld with the wording."""
     r = _get(_app, world, world["b"])
     body = r.json()
     assert body["suppressed"] is True, body
-    assert body["n_participants"] == 1, body
-    assert body["n_comments"] >= 2, body
     assert body["comments"] == []
     assert body["reason"] == "below_anonymity_floor"
+    assert body["n_participants"] is None, "participant count leaked under suppression"
+    assert body["n_comments"] is None, "comment count leaked under suppression"
+    assert all(it["n_comments"] is None for it in body["items"]), \
+        "per-sub-item counts leaked — they sum to the suppressed slice total"
 
 
 def test_axis_with_no_comments_uses_the_existing_vocabulary(_app, world):

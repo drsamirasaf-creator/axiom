@@ -9081,6 +9081,33 @@ _SENIORITY_LOOKUP = {s.lower(): s for s in SENIORITY_BANDS}
 _SENIORITY_RANK = {s: i for i, s in enumerate(SENIORITY_BANDS)}
 
 
+def _slice_filters(db, company_id: int, department, seniority):
+    """Resolve a (department, seniority) slice, FAILING CLOSED on either.
+
+    ⭐ THIS FAILED OPEN IN THREE HANDLERS AND THAT IS A DISCLOSURE BUG, NOT A
+    VALIDATION NICETY. Each caught the 422 from `_norm_seniority` and set the band
+    to None — which does not mean "invalid", it means NO FILTER. So
+    `?seniority=C-suite` (not a real band; the bands are Executive, Senior
+    management, Mid-level, Junior, External partner) returned the FULL UNSLICED
+    SET while echoing `seniority_filter: null`. A caller asking for one band was
+    handed everyone, and the only signal was a null they had to notice.
+
+    The department id had the same shape: an id that does not resolve, or belongs
+    to another company, silently became "no department filter" rather than an
+    error — so a mistyped id widened the result instead of rejecting it.
+
+    ⭐ A FILTER THAT SILENTLY BECOMES NO FILTER IS THE WORST DIRECTION TO FAIL IN.
+    Failing closed returns nothing and is obvious; failing open returns MORE than
+    was asked for and looks like an answer."""
+    dep = None
+    if department is not None:
+        dep = db.get(Department, department)
+        if not dep or dep.company_id != company_id:
+            raise HTTPException(422, "department not found for this company")
+    band = _norm_seniority(seniority)      # raises 422 on an unknown band
+    return dep, band
+
+
 def _norm_seniority(v):
     """None/blank → None; otherwise canonicalise to a known band or 422."""
     if v is None:
@@ -9817,10 +9844,7 @@ def assessment_summary(company_id: int, department: int | None = None,
             if isinstance(_entry, dict) and _code in item_titles:
                 _entry.setdefault("title", item_titles[_code])
     from .assessment_engine import _cross_key as _x_cross_key
-    try:
-        _sen_band = _norm_seniority(seniority)
-    except HTTPException:
-        _sen_band = None
+    _sen_band = _norm_seniority(seniority)      # 422 on an unknown band; never unfiltered
     return {"revision": fw.revision,
             "current_cycle_id": latest.id if latest else None,
             "current_cycle_closed": bool(latest and latest.closed_at),
@@ -10119,13 +10143,8 @@ def assessment_sentiment(company_id: int, department: int | None = None,
                 "message": "No comment sentiment yet — sentiment appears once respondents "
                            "leave written comments (analysed at cycle close)."}
     # slice resolution
-    _dept_obj = db.get(Department, department) if department is not None else None
-    _dept = ({"id": _dept_obj.id, "name": _dept_obj.name}
-             if (_dept_obj and _dept_obj.company_id == company_id) else None)
-    try:
-        _sen = _norm_seniority(seniority)
-    except HTTPException:
-        _sen = None
+    _dept_obj, _sen = _slice_filters(db, company_id, department, seniority)
+    _dept = {"id": _dept_obj.id, "name": _dept_obj.name} if _dept_obj else None
     sliced = bool(_dept or _sen)
     # Tone is cohort-level (Haiku ran on all comments at close); a slice filters only
     # the comment COUNTS shown. cohort_counts gate whether an axis's tone is shown at
@@ -11533,6 +11552,31 @@ def assessment_comments(company_id: int, cid: int,
             "overall": overall_out}
 
 
+def _sibling_cell_counts(db, company_id: int, cyc, id_map, l1_code: str,
+                         by_department: bool) -> dict:
+    """{cell_key: {comments, participants}} for every cell in ONE dimension.
+
+    Used only to decide complement-inference suppression: a cell's own size does
+    not tell you whether disclosing it exposes a neighbour."""
+    out = {}
+    for r in db.query(AssessmentResponse).filter_by(cycle_id=cyc.id).all():
+        if not (r.comment and r.comment.strip()):
+            continue
+        meta = id_map.get(r.item_id)
+        if not meta or meta.get("l1_code") != l1_code:
+            continue
+        if by_department:
+            dep = _resolve_department(db, company_id, r.department) if r.department else None
+            key = dep.id if dep else None
+        else:
+            key = r.seniority
+        cell = out.setdefault(key, {"comments": 0, "refs": set()})
+        cell["comments"] += 1
+        cell["refs"].add(r.participant_ref)
+    return {k: {"comments": v["comments"], "participants": len(v["refs"])}
+            for k, v in out.items()}
+
+
 @router.get("/companies/{company_id}/assessment/axis/{l1_code}/comments")
 def assessment_axis_comments(company_id: int, l1_code: str,
                              department: int | None = None,
@@ -11596,13 +11640,8 @@ def assessment_axis_comments(company_id: int, l1_code: str,
         raise HTTPException(404, "axis not found for this cycle's framework")
     snap = latest.snapshot or {}
 
-    _dept_obj = db.get(Department, department) if department is not None else None
-    _dept = ({"id": _dept_obj.id, "name": _dept_obj.name}
-             if (_dept_obj and _dept_obj.company_id == company_id) else None)
-    try:
-        _sen = _norm_seniority(seniority)
-    except HTTPException:
-        _sen = None
+    _dept_obj, _sen = _slice_filters(db, company_id, department, seniority)
+    _dept = {"id": _dept_obj.id, "name": _dept_obj.name} if _dept_obj else None
     base = {**base, "title": title, "cycle_id": latest.id,
             "department_filter": _dept, "seniority_filter": _sen}
 
@@ -11660,11 +11699,51 @@ def assessment_axis_comments(company_id: int, l1_code: str,
                 "n_participants": 0, "n_comments": 0,
                 "message": "No comment signal on this axis."}
     if n_participants < KFLOOR:
-        return {**base, "has_data": True, "items": items, "suppressed": True,
-                "n_participants": n_participants, "n_comments": n_comments,
+        # ⭐ THE COUNTS ARE SUPPRESSED WITH THE TEXT, AND THE COUNTS WERE THE
+        # ACTUAL LEAK. Withholding the wording while returning n=1 told a reader
+        # that exactly one person in that slice commented — and with the
+        # unsliced list readable, plus a count per department and per band, the
+        # four visible comments could be partitioned across cells by elimination
+        # until a single department contributed exactly one. The text was
+        # protected and the ATTRIBUTION was not, which is the thing anonymity is
+        # for.
+        #
+        # Nothing numeric survives: no n, no participants, no per-item counts.
+        # `items` is re-emitted with its comment counts stripped for the same
+        # reason — a per-sub-item count under a suppressed slice reconstructs the
+        # slice total by addition.
+        blind = [{**it, "n_comments": None} for it in items]
+        return {**base, "has_data": True, "items": blind, "suppressed": True,
+                "n_participants": None, "n_comments": None,
                 "reason": "below_anonymity_floor",
-                "message": "Too few respondents commented here to show the wording "
-                           "without identifying them."}
+                "message": "Too few people commented in this group to show anything "
+                           "about it without identifying them. Counts are withheld "
+                           "as well as the wording."}
+
+    # ⭐ COMPLEMENT-INFERENCE SUPPRESSION (standing law). Suppressing a small cell
+    # is not enough on its own: the unsliced list is readable, so its total is
+    # always COUNTABLE, and total minus a disclosed sibling isolates the hidden
+    # one. If Finance shows n=9 and the axis total is 10, the remaining
+    # department's single commenter is named by subtraction — no matter how firmly
+    # that cell itself refused to answer.
+    #
+    # So a slice that is ITSELF above the floor is still withheld when disclosing
+    # it would leave exactly one non-empty sibling below the floor. Two or more
+    # hidden siblings share the residual and nobody is isolated.
+    if _dept or _sen is not None:
+        sib = _sibling_cell_counts(db, company_id, latest, id_map, l1_code,
+                                   by_department=bool(_dept))
+        this_key = (_dept["id"] if _dept else _sen)
+        hidden = [k for k, v in sib.items()
+                  if k != this_key and 0 < v["participants"] < KFLOOR]
+        if len(hidden) == 1:
+            blind = [{**it, "n_comments": None} for it in items]
+            return {**base, "has_data": True, "items": blind, "suppressed": True,
+                    "n_participants": None, "n_comments": None,
+                    "reason": "complement_inference",
+                    "message": "Showing this group would identify another group too "
+                               "small to protect, because the remainder can be "
+                               "worked out by subtraction."}
 
     random.shuffle(rows)
     l1_sent = (snap.get("l1_sentiment") or {}).get(l1_code) or {}

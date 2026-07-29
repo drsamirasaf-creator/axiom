@@ -235,5 +235,3 @@ def create_checkout_session(user, quantity: int = 1,
         cancel_url=config.billing_cancel_url(),
         allow_promotion_codes=True)
     return {"url": session.url, "session_id": session.id}
-    session = stripe.checkout.Session.create(**kwargs)
-    return {"url": session.url, "session_id": session.id}

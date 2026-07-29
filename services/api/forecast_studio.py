@@ -323,7 +323,11 @@ def generate(db, company_id, methods, horizon):
     ds = _active_company_dataset(db, company_id)
     if not ds or not isinstance(ds.data, dict):
         raise HTTPException(409, "No active dataset for this company — upload data first.")
-    _freq = (data.get("periods", {}) or {}).get("frequency") or "annual"
+    # ⭐ WAS `data.get(...)` — a name this function never binds. A live NameError
+    # on every call that got past the guard above, found only when
+    # check-unbound-names.py stopped reading a hardcoded twelve-module list and
+    # walked the tree instead. forecast_studio.py had never been checked.
+    _freq = (ds.data.get("periods", {}) or {}).get("frequency") or "annual"
     _lo, _hi = horizon_bounds(_freq)
     if not (_lo <= horizon <= _hi):
         raise HTTPException(422, f"horizon must be between {_lo} and {_hi} "
