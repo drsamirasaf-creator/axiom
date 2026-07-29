@@ -28,6 +28,13 @@ jobs:
       # history — fetch-depth: 0 above.
       - name: model columns have migration lines
         run: python scripts/check-model-columns.py
+      # ⭐ A FILTER THAT SILENTLY BECOMES NO FILTER. Three handlers independently
+      # swallowed _norm_seniority's 422 and set the band to None — which means NO
+      # FILTER, so an invalid band returned the FULL unsliced set on a k-floored
+      # surface. Failing open returns more than was asked for and looks like an
+      # answer.
+      - name: sliced handlers fail closed
+        run: python scripts/check-slice-filters.py
       # ⭐ THE BACKEND HALF OF THE PERIOD-LABEL CONTRACT, AND THE ONE THAT FAILS
       # OPEN. This script checks the emitter set FIRST and hard-fails before it
       # ever looks at the frontend, so it is fully meaningful here: a sixth

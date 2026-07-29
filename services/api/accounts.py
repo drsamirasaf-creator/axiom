@@ -4864,6 +4864,135 @@ class SeedOkrIn(BaseModel):
     dry_run: bool = False
 
 
+class SeedCommentsIn(BaseModel):
+    dry_run: bool = False
+
+
+# The seeded commentary. Written so §4u-b is DEMONSTRABLE rather than merely
+# present: the marquee case is an axis scoring 9.0 whose written tone is negative,
+# which is the whole argument for reading the words instead of the number.
+_SEED_COMMENTS = {
+    "1.0": [   # Strategy, Purpose & Governance — score 9.0, tone NEGATIVE (divergence)
+        "Lots of ambition, little follow-through on the plan.",
+        "Strategy shifts every quarter — teams can't keep up.",
+        "Governance is slow; decisions get re-litigated.",
+        "We score well on paper but priorities aren't communicated.",
+        "The strategy deck is excellent. Nobody below director level has seen it.",
+        "Two reorganisations in eighteen months. Neither was explained.",
+        "We are measured on last year's objectives and asked about next year's.",
+        "Board reporting is polished; the underlying decisions still take months.",
+        "Everyone can recite the vision. Nobody can name their part in it.",
+    ],
+    "8.0": [   # Technology, Data & Innovation — score 5.6, tone NEGATIVE (aligned)
+        "Tooling decisions are made without the people who use the tools.",
+        "Our data is accurate and three weeks old by the time anyone sees it.",
+        "Innovation budget exists; the approval path makes it unusable.",
+        "We have four systems that hold the same customer record differently.",
+        "Engineering time goes to keeping the lights on, not to new capability.",
+        "Every integration is a project. None of them are the last one.",
+        "Reporting requests take a fortnight because nothing is self-serve.",
+        "We buy tools to fix process problems and then keep the process.",
+        "The roadmap is real. The capacity to deliver it is not.",
+    ],
+}
+
+# Departments that must CLEAR the floor, and the one that must not.
+_SEED_TARGET_DEPTS = ["Finance", "Operations", "Sales & Marketing"]
+_SEED_MIN_COMMENTERS = 4          # comfortably above KFLOOR=3
+
+
+@router.post("/companies/{company_id}/assessment/seed-comments")
+def seed_assessment_comments(company_id: int, body: SeedCommentsIn,
+                             member=Depends(require_company_admin),
+                             user: User = Depends(get_current_user),
+                             db=Depends(get_db)):
+    """Attach seeded commentary to the latest closed showcase cycle.
+
+    ⭐ IT ATTACHES TO EXISTING RESPONSES AND NEVER CREATES ONE. Adding respondents
+    would move every derived number — participation, department CEI, the
+    enterprise index — and the demo's arithmetic is the thing the seed exists to
+    make honest. A comment is a column on a response that already exists, so the
+    entire CEI surface is untouched by construction.
+
+    ⭐ SHOWCASE ONLY, for the reason seed-history states: this must be unable to
+    write synthetic commentary into a real tenant's assessment by any path.
+
+    IDEMPOTENT: a response that already carries a comment is skipped, so a re-run
+    adds nothing and a partial run can simply be repeated. Deterministic RNG per
+    (cycle, department, axis) so a re-run after a wipe reproduces the same demo.
+
+    ⭐ SUPPLY CHAIN IS LEFT BELOW THE FLOOR ON PURPOSE. It has two respondents, so
+    it CANNOT reach KFLOOR=3 however many comments are attached — the suppression
+    state is therefore a property of the seed rather than a contrivance, and the
+    demo shows protection working rather than an empty axis.
+
+    NOTE ON PROVENANCE: AssessmentResponse carries neither `source` nor `is_demo`
+    — the seed marker on this table is the participant_ref convention that
+    seed-history already established. Recorded rather than invented, so nobody
+    later assumes a column exists.
+    """
+    if not _is_showcase_company(db, company_id):
+        raise HTTPException(
+            403, "seed-comments is restricted to showcase companies — refusing to "
+                 "write synthetic commentary into a real tenant's assessment.")
+    import random
+    closed = closed_cycles_with_results(db, company_id)
+    if not closed:
+        raise HTTPException(409, "no closed cycle to attach commentary to")
+    cyc = closed[-1]
+    id_map, _l1 = _l1_maps(db, cyc.framework_id)
+
+    planned, skipped = [], 0
+    for axis, pool in _SEED_COMMENTS.items():
+        items = [iid for iid, m in id_map.items() if m.get("l1_code") == axis]
+        if not items:
+            continue
+        for dept in _SEED_TARGET_DEPTS:
+            rng = random.Random(f"{cyc.id}|{dept}|{axis}")
+            rows = (db.query(AssessmentResponse)
+                    .filter(AssessmentResponse.cycle_id == cyc.id,
+                            AssessmentResponse.department == dept,
+                            AssessmentResponse.item_id.in_(items))
+                    .order_by(AssessmentResponse.participant_ref,
+                              AssessmentResponse.item_id).all())
+            by_ref = {}
+            for r in rows:
+                by_ref.setdefault(r.participant_ref, []).append(r)
+            already = {ref for ref, rs in by_ref.items()
+                       if any(x.comment and x.comment.strip() for x in rs)}
+            need = max(0, _SEED_MIN_COMMENTERS - len(already))
+            candidates = [ref for ref in sorted(by_ref) if ref not in already]
+            rng.shuffle(candidates)
+            for ref in candidates[:need]:
+                target = by_ref[ref][0]
+                text = pool[(abs(hash(f"{ref}|{axis}")) % len(pool))]
+                planned.append({"axis": axis, "department": dept,
+                                "participant_ref": ref, "response_id": target.id,
+                                "comment": text})
+                if not body.dry_run:
+                    target.comment = text
+            skipped += len(already)
+
+    if body.dry_run:
+        return {"dry_run": True, "cycle_id": cyc.id, "would_write": len(planned),
+                "already_commented": skipped,
+                "by_axis_department": _seed_comment_tally(planned)}
+    db.commit()
+    audit(db, user.id, "assessment_comments_seeded", "company", company_id,
+          detail=f"cycle {cyc.id} · {len(planned)} comments")
+    return {"cycle_id": cyc.id, "written": len(planned),
+            "already_commented": skipped,
+            "by_axis_department": _seed_comment_tally(planned)}
+
+
+def _seed_comment_tally(planned) -> dict:
+    out = {}
+    for p in planned:
+        out.setdefault(p["axis"], {}).setdefault(p["department"], 0)
+        out[p["axis"]][p["department"]] += 1
+    return out
+
+
 @router.post("/companies/{company_id}/assessment/seed-okrs")
 def seed_okrs(company_id: int, body: SeedOkrIn,
               member=Depends(require_company_admin),
