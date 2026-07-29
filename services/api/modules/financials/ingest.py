@@ -154,8 +154,9 @@ PERIOD_FORMATS = {
 # names the encoding instead.
 PERIOD_PROMPT_TITLE = "Period format"
 PERIOD_PROMPTS = {
-    "quarterly": ("Enter the period as 2024Q1. 2024-Q1, 2024 Q1 and Q1 2024 "
-                  "are also accepted; AXIOM reports how it read each one."),
+    "quarterly": ("Enter the period as 2024Q1. 2024-Q1, 2024 Q1 and Q1 2024 are "
+                  "also accepted; AXIOM reports how it read each one. Figures on "
+                  "this sheet are PER QUARTER, not annual totals."),
     "annual": ("Enter the period as a four-digit year — 2026. "
                "Displays as 2026-E."),
 }
@@ -459,7 +460,10 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
         "   AXIOM formats for display. Leaving any sheet's sample data in is rejected.",
         f"2. Enter {ncols} {'years' if frequency=='annual' else 'quarters'} across the statement sheets.",
         "   Row 4 = the period label; row 3 marks Historical or Forecast.",
-        *(["   Periods are typed as 2024Q1. 2024-Q1, 2024 Q1 and Q1 2024 also work,",
+        *(["   ⚠ FIGURES ARE PER QUARTER, not annual totals. A quarterly workbook wants",
+           "   each quarter's own revenue, capex and cash flows — not the year's figure",
+           "   repeated. AXIOM never rescales what you enter.",
+           "   Periods are typed as 2024Q1. 2024-Q1, 2024 Q1 and Q1 2024 also work,",
            "   and AXIOM reports how it read each one so you can check it agreed",
            "   with you. The historical columns are already filled in as examples."]
           if frequency == "quarterly" else []),

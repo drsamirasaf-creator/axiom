@@ -55,6 +55,22 @@ SITES = [
     (re.compile(r'dataKey\s*=\s*"year"'), "chart axis/series keyed on raw year"),
     (re.compile(r'\.map\(\s*\(?\s*' + PERIOD_VARS + r'\s*\)?\s*=>\s*(?:String\()?\s*' + PERIOD_VARS),
      "a period list mapped straight to strings"),
+    # ⭐ PROSE RENDERS A PERIOD TOO — BUT ONLY THE NARROW PATTERN IS USABLE.
+    # A generic `${y}` inside a template literal was tried and abandoned: `y` is
+    # the conventional name for an SVG y-coordinate, so it flagged arc paths
+    # (`M 10 100 A ${r} ${r} 0 ${large} 1 ${end.x} ${end.y}`) and CSS class
+    # builders far more often than captions. What remains matches an
+    # interpolation drawn from a PERIOD LIST, which is what a caption actually
+    # does, plus a bare 5-digit YYYYQ appearing in prose. A caption reading "forecast years
+    # (20231–20241)" is a render site the JSX-expression patterns cannot see —
+    # the period is inside a template literal, not an interpolation slot of its
+    # own. Added after a caption shipped with raw periods AND the wrong unit word.
+    (re.compile(r'`[^`]*\$\{[^}]*(?:years|forecast_years|historical_years)\s*\[[^]]*\][^}]*\}'),
+     "template literal interpolates a period from a list"),
+    (re.compile(r'`[^`]*\b(?:19|20)\d{2}[1-4]\b[^`]*`'),
+     "prose contains a literal YYYYQ period"),
+    (re.compile(r'(?:forecast|historical)\s+years\b', re.I),
+     "caption says 'years' — must follow the dataset frequency"),
 ]
 CONSUMES = re.compile(r'periodLabels?\s*\(|year_label|period_labels|tickFormatter')
 SKIP_DIRS = {"node_modules", "dist", ".output", "__pycache__", ".git"}
@@ -67,6 +83,9 @@ EXEMPT = re.compile(
     r'|<(?:line|text|circle|rect|path|polygon|g)\b'      # SVG geometry
     r'|\b(?:x|y|cx|cy|x1|y1|x2|y2|dx|dy|r)\s*=\s*\{'      # coordinate props
     r'|\bkey\s*=\s*\{'                                 # React keys are not renders
+    r'|translate\(|rotate\(|scale\(|\bd\s*=\s*[`"]'      # SVG transforms and paths
+    r'|\bx\(|\by\(|xOf\(|yOf\(|cxOf\(|cyOf\('           # coordinate helpers
+    r'|\.toFixed\('                                          # coordinate rounding
     r'|textAnchor|dominantBaseline|transform=',
     re.I)
 

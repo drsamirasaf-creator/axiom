@@ -322,7 +322,11 @@ def auto_forecast(data: dict, assumptions: dict | None = None) -> dict:
     """
     a = dict(assumptions or {})
     horizon = int(a.get("horizon", 5))
-    if not (1 <= horizon <= 15):
+    # ⭐ THE SECOND HARDCODED 15. Fixing the constant in forecast_studio left this
+    # copy behind, so a quarterly caller cleared that bound and failed here.
+    from ...forecast_studio import horizon_bounds as _hb, period_word as _pw
+    _lo, _hi = _hb(_freq_of(data))
+    if not (1 <= horizon <= _hi):
         raise ValueError("horizon must be between 1 and 15 years")
     hist = list(data["periods"]["historical"])
     if data["periods"].get("forecast"):
@@ -540,7 +544,7 @@ GLOSSARY = {
     "Net Debt": "Short-term plus long-term debt minus cash and equivalents.",
     "Current Ratio": "Current assets (cash + other current assets) / current liabilities including short-term debt. A liquidity gauge.",
     "Debt / Equity": "Total debt divided by total equity — the leverage of the capital structure.",
-    "Revenue CAGR (hist)": "Compound annual growth rate of revenue across the historical years supplied.",
+    "Revenue CAGR (hist)": "Compound annual growth rate of revenue across the historical periods supplied (annualised when the workbook is quarterly).",
     "Enterprise Value (DCF)": "Present value of forecast free cash flows to the firm plus the discounted terminal value.",
     "Risk-Adjusted Enterprise Value": "RAEV = (1 - lambda) x mean + lambda x CVaR95 of the Monte Carlo enterprise-value distribution; lambda is the risk-aversion dial (0 = risk-neutral, 1 = tail-only).",
     # ---- health & status ----------------------------------------------------

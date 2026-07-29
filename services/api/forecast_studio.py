@@ -38,7 +38,23 @@ from .modules.financials.periods import forecast_periods as _fc_periods, frequen
 _log = logging.getLogger("axiom.forecast_studio")
 
 METHODS = ("trend", "driver", "smoothing", "montecarlo", "ensemble")
-HORIZON_MIN, HORIZON_MAX = 3, 15
+# ⭐ HORIZON IS COUNTED IN PERIODS, SO ITS BOUNDS ARE PER FREQUENCY.
+# 3–15 annual and 12–60 quarterly are the same span of real time — roughly one
+# to fifteen years — expressed in the unit the engine actually steps in. The old
+# single pair meant a quarterly customer could not ask for more than 3.75 years
+# while the control implied fifteen.
+HORIZON_BOUNDS = {"annual": (3, 15), "quarterly": (12, 60)}
+HORIZON_MIN, HORIZON_MAX = HORIZON_BOUNDS["annual"]     # back-compat for annual callers
+
+
+def horizon_bounds(frequency: str) -> tuple[int, int]:
+    return HORIZON_BOUNDS.get(frequency or "annual", HORIZON_BOUNDS["annual"])
+
+
+def period_word(frequency: str, n: int = 2) -> str:
+    """The unit a horizon is counted in — 'quarter(s)' or 'year(s)'."""
+    w = "quarter" if frequency == "quarterly" else "year"
+    return w if n == 1 else w + "s"
 MC_PATHS = 2000
 MC_SEED = 26202
 DAMP_PHI, DAMP_ALPHA, DAMP_BETA = 0.85, 0.6, 0.2
@@ -307,8 +323,11 @@ def generate(db, company_id, methods, horizon):
     ds = _active_company_dataset(db, company_id)
     if not ds or not isinstance(ds.data, dict):
         raise HTTPException(409, "No active dataset for this company — upload data first.")
-    if not (HORIZON_MIN <= horizon <= HORIZON_MAX):
-        raise HTTPException(422, f"horizon must be between {HORIZON_MIN} and {HORIZON_MAX} years")
+    _freq = (data.get("periods", {}) or {}).get("frequency") or "annual"
+    _lo, _hi = horizon_bounds(_freq)
+    if not (_lo <= horizon <= _hi):
+        raise HTTPException(422, f"horizon must be between {_lo} and {_hi} "
+                                 f"{period_word(_freq)}")
     base = _historicals_only(ds.data)
     if len(base["periods"]["historical"]) < 2:
         raise HTTPException(422, "at least 2 historical years are required to forecast")

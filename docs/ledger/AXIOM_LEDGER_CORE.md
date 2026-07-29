@@ -3675,6 +3675,49 @@ Weak evidence is worth surfacing. It is not worth blocking on. The failure here
 was not the detection; it was **letting the confidence of the response outrun the
 confidence of the finding.**
 
+## §7.46 ⭐ CHECKER CALIBRATION IS THE WORK, NOT OVERHEAD
+
+**Three instances, 29 Jul. Every static checker written here produced mostly
+noise on its first run, and in every case the calibration took longer than the
+detection logic.**
+
+| checker | first output | after calibration | what the noise was |
+| --- | --- | --- | --- |
+| period-label consumption | 53 sites | **19** | SVG geometry (`<line y1={cy} y2={y}>`), React keys, dict lookups, the checker's own docstring quoting the defect |
+| unbound-name gate | 8 findings | **0** | nested closures reading an enclosing scope |
+| C2 template-literal extension | 18 sites | **8** | SVG arc paths and CSS class builders — `y` is the conventional coordinate name, so a generic `${y}` pattern is unusable |
+
+### ⭐ WHY THIS DECIDES WHETHER THE CHECKER SURVIVES
+
+**A checker whose first output is mostly false positives gets muted within a
+week — and a muted checker is worse than no checker, because it still looks like
+coverage.** The repo keeps the file, CI keeps running it, and everyone stops
+reading it. Nothing announces that transition.
+
+So the calibration pass is not tidying before the real work. It IS the work:
+detection logic is usually twenty lines and obvious, while deciding what is
+genuinely a hit is the part that requires reading the codebase.
+
+### THE RULE
+
+**Every exclusion is specific and named, never a blanket lowering of
+sensitivity.** `EXEMPT = re.compile(r'<(?:line|text|circle)\b|key\s*=\s*\{|...')`
+with a comment per class, so the next reader can judge each one and add to it —
+rather than a threshold quietly tuned until the noise stops, which also tunes
+away the signal.
+
+**And a pattern that cannot be calibrated should be dropped, not weakened.** The
+generic `${y}`-in-a-template-literal pattern was removed entirely: `y` names an
+SVG coordinate far more often than a period, and no exclusion list makes that
+distinguishable. What replaced it — interpolations drawn from a period LIST, a
+literal YYYYQ in prose, and copy saying "years" — matches the caption defect and
+nothing else.
+
+**Corollary: a checker's first run is a draft.** Reporting its raw count as a
+finding ("82 sites are broken") is reporting the draft. The number that means
+anything is the one after the noise is removed and each exclusion can be
+defended.
+
 ## §7.45 ⭐⭐ THE COMPENSATING-DEFECTS CLASS — CORRECT OUTPUT FROM TWO ERRORS CANCELLING
 
 **29 Jul, Plan vs Forecast.** Two independent defects had coexisted since
