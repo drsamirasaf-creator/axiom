@@ -11178,6 +11178,149 @@ def assessment_comments(company_id: int, cid: int,
             "overall": overall_out}
 
 
+@router.get("/companies/{company_id}/assessment/axis/{l1_code}/comments")
+def assessment_axis_comments(company_id: int, l1_code: str,
+                             department: int | None = None,
+                             seniority: str | None = None,
+                             member=Depends(_summary_access), db=Depends(get_db)):
+    """VERBATIM comments for ONE axis of the latest closed cycle, with the axis's
+    L2 decomposition.
+
+    ⭐ RULED: THE CXO READS THE WORDS. Anonymity means the assessor's NAME is not
+    shown — nothing further was promised, and the assessor-facing consent line now
+    says exactly that before they write. What this endpoint must therefore
+    guarantee is narrower and harder than "aggregate only": the TEXT is returned
+    and the PERSON is not reconstructible from it.
+
+    Four mechanisms, none of them new — this reuses what
+    /assessment/cycles/{cid}/comments already established:
+
+      · `participant_ref` is NEVER emitted. Not for anonymous cycles, not for
+        identified ones. It is pseudonymous, stable across a cycle, and joining
+        two comments by it reconstructs one person's set of opinions — with
+        `department` and `seniority` on the same row, that is a name in a small
+        department. A field present in a response is exposed whether or not the
+        UI prints it.
+      · Comments are SHUFFLED, so list order cannot be aligned with roster order.
+      · The k-anonymity floor counts DISTINCT PARTICIPANTS, not comments. Five
+        comments from one person is n=1 and stays suppressed: five sentences from
+        one identifiable person is a worse exposure than five from five.
+      · `department` / `seniority` never travel back on a comment.
+
+    ⭐ TONE IS PER ITEM, NOT PER COMMENT. `_sentiment_layer` batches an L1's
+    comments and receives one verdict per item and one per category; the
+    individual comment's contribution is not recoverable and is not stored. So
+    each comment carries its ITEM's tone under `item_sentiment`, named for what it
+    is. Labelling it `sentiment` would read as a judgement of the sentence in
+    front of you when it is a judgement of the group.
+
+    ⭐ ONE SLICE DIMENSION AT A TIME, DELIBERATELY REFUSED RATHER THAN FUDGED.
+    department AND seniority together is rejected (422). Crossing both narrows the
+    verbatim list to a cell that is frequently one person — "Engineering" ∩
+    "C-suite" is the CTO — and the k-floor cannot save it, because the floor sees
+    a compliant participant count while the CELL identifies the author. The
+    aggregate panel may keep both selectors; the verbatim list takes one."""
+    import random
+    from .assessment_engine import KFLOOR
+    if department is not None and seniority:
+        raise HTTPException(422, "The verbatim list narrows on ONE dimension: pass "
+                                 "department or seniority, not both. Crossing them "
+                                 "identifies the author in a small cell.")
+    closed = closed_cycles_with_results(db, company_id)
+    latest = closed[-1] if closed else None
+    base = {"company_id": company_id, "l1_code": l1_code, "title": None,
+            "cycle_id": None, "has_data": False, "comments": [], "items": [],
+            "n_participants": 0, "n_comments": 0,
+            "department_filter": None, "seniority_filter": None}
+    if latest is None:
+        return {**base, "message": "No closed assessment cycle yet."}
+
+    id_map, l1_title = _l1_maps(db, latest.framework_id)
+    title = l1_title.get(l1_code)
+    if title is None:
+        raise HTTPException(404, "axis not found for this cycle's framework")
+    snap = latest.snapshot or {}
+
+    _dept_obj = db.get(Department, department) if department is not None else None
+    _dept = ({"id": _dept_obj.id, "name": _dept_obj.name}
+             if (_dept_obj and _dept_obj.company_id == company_id) else None)
+    try:
+        _sen = _norm_seniority(seniority)
+    except HTTPException:
+        _sen = None
+    base = {**base, "title": title, "cycle_id": latest.id,
+            "department_filter": _dept, "seniority_filter": _sen}
+
+    q = db.query(AssessmentResponse).filter_by(cycle_id=latest.id)
+    if _dept:
+        names = [n.strip().lower() for n in _dept_name_variants(db, company_id, _dept_obj)]
+        q = q.filter(func.lower(func.trim(AssessmentResponse.department)).in_(names))
+    if _sen is not None:
+        q = q.filter(AssessmentResponse.seniority == _sen)
+
+    item_sent = snap.get("item_sentiment") or {}
+    rows, refs = [], set()
+    for r in q.all():
+        if not (r.comment and r.comment.strip()):
+            continue
+        meta = id_map.get(r.item_id)
+        if not meta or meta.get("l1_code") != l1_code:
+            continue
+        refs.add(r.participant_ref)
+        rows.append({"comment": r.comment.strip(),
+                     "item_code": meta["code"], "item_title": meta["title"],
+                     "item_sentiment": (item_sent.get(meta["code"]) or {}).get("sentiment"),
+                     "item_theme": (item_sent.get(meta["code"]) or {}).get("theme") or None})
+
+    # The axis's L2 decomposition — already computed at close, surfaced not recomputed.
+    item_rag = snap.get("item_rag") or {}
+    item_div = snap.get("item_divergence") or {}
+    # ⭐ `item_dispersion` IS AT THE SNAPSHOT ROOT, and `snap["cei"]` is the
+    # enterprise CEI NUMBER, not a container. Two wrong guesses in a row here —
+    # `latest.results` (no such attribute) then `snap["cei"]["item_dispersion"]`
+    # (float has no .get) — both caught by the tests rather than by reading,
+    # which is the argument for writing them first.
+    disp = snap.get("item_dispersion") or {}
+    counts = {}
+    for row in rows:
+        counts[row["item_code"]] = counts.get(row["item_code"], 0) + 1
+    items = []
+    for meta in id_map.values():
+        if meta.get("l1_code") != l1_code:
+            continue
+        code = meta["code"]
+        items.append({"item_code": code, "title": meta["title"],
+                      "score": (disp.get(code) or {}).get("mean"),
+                      "score_rag": item_rag.get(code),
+                      "sentiment": (item_sent.get(code) or {}).get("sentiment"),
+                      "theme": (item_sent.get(code) or {}).get("theme") or None,
+                      "divergence": bool(item_div.get(code)),
+                      "n_comments": counts.get(code, 0)})
+    items.sort(key=lambda i: (not i["divergence"], str(i["item_code"])))
+
+    n_participants, n_comments = len(refs), len(rows)
+    if n_comments == 0:
+        # B3: the existing vocabulary, not a second one.
+        return {**base, "has_data": True, "items": items,
+                "n_participants": 0, "n_comments": 0,
+                "message": "No comment signal on this axis."}
+    if n_participants < KFLOOR:
+        return {**base, "has_data": True, "items": items, "suppressed": True,
+                "n_participants": n_participants, "n_comments": n_comments,
+                "reason": "below_anonymity_floor",
+                "message": "Too few respondents commented here to show the wording "
+                           "without identifying them."}
+
+    random.shuffle(rows)
+    l1_sent = (snap.get("l1_sentiment") or {}).get(l1_code) or {}
+    subs = {str(o.get("code")): o for o in (snap.get("l1_subscores") or [])}
+    return {**base, "has_data": True, "comments": rows, "items": items,
+            "n_participants": n_participants, "n_comments": n_comments,
+            "sentiment": l1_sent.get("sentiment"), "theme": l1_sent.get("theme") or None,
+            "score": (subs.get(str(l1_code)) or {}).get("score"),
+            "divergence": bool((snap.get("l1_divergence") or {}).get(l1_code))}
+
+
 @router.post("/assessment/redeem-assess-invite", status_code=201)
 def redeem_assess_invite(body: AssessRedeemIn, db=Depends(get_db)):
     """Magic-link participant access — NO auth. Validates the invite token,
