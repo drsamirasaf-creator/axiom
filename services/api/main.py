@@ -126,9 +126,23 @@ def health():
     # ever captured. "Deployed" and "running" are different claims and only one of
     # them was true. The environment tag is echoed too, so a demo error can never
     # be mistaken for a production one by whoever reads the dashboard.
+    # ⭐ THE RELEASE IS ECHOED BECAUSE PUSHED IS NOT PUBLISHED. A crawl run on
+    # 2026-07-29 recorded plan-vs-methods 500s on two datasets and was written up
+    # as a live defect; the endpoint was already fixed and the crawl had simply
+    # started before Railway finished deploying the fix. 20/20 clean minutes
+    # later. A verification tool that cannot name the build it tested produces
+    # findings nobody can attribute — the red belonged to a commit that no longer
+    # existed. Sentry already tags this same value as `release`, so an event and
+    # a crawl can now be tied to one build.
+    #
+    # None means the platform did not inject the SHA. It is reported as null
+    # rather than "unknown" or "": a caller must be able to tell "this build has
+    # no identity" from "this build is at commit ''", and asserters MUST refuse
+    # on null rather than treat it as a match.
     return {"status": "ok", "service": "axiom-api", "phase": 18,
             "monitoring": bool(_SENTRY_ON),
-            "environment": os.environ.get("AXIOM_ENV", "production")}
+            "environment": os.environ.get("AXIOM_ENV", "production"),
+            "release": os.environ.get("RAILWAY_GIT_COMMIT_SHA") or None}
 
 
 # ---- Brand assets (Phase 18.4, ADR-021) -------------------------------------

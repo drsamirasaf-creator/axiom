@@ -1128,6 +1128,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", default="all", choices=["anonymous", "operator", "member", "all"])
     ap.add_argument("--headed", action="store_true")
+    ap.add_argument("--allow-release-drift", action="store_true",
+                    help="run even if the deployed release is not the commit under "
+                         "test; the report will say so")
     ap.add_argument("--interactions", action="store_true",
                     help="also click every interactive control per route (authed) and "
                          "report a route·control·outcome table — report-only, does not grade")
@@ -1138,6 +1141,26 @@ def main():
     except ImportError:
         print("ERROR: playwright not installed. `pip install playwright && playwright install chromium`")
         sys.exit(2)
+
+    # ⭐ THE RELEASE GATE RUNS BEFORE ANY BROWSER STARTS. A crawl on 2026-07-29
+    # recorded plan-vs-methods 500s that belonged to the commit BEFORE the fix —
+    # it started while Railway was still publishing. The findings were real and
+    # about a build that no longer existed. Refusing here costs one HTTP call;
+    # not refusing costs a report that has to be retracted, and the retraction
+    # teaches everyone to discount the next red.
+    #
+    # --allow-release-drift exists for the deliberate case (testing an old
+    # backend on purpose) and SAYS SO in the output, so a drifting run can never
+    # be mistaken for a pinned one.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from release_gate import assert_release, local_head
+
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if args.allow_release_drift:
+        print("  ! release gate BYPASSED (--allow-release-drift) — findings from "
+              "this run\n    cannot be attributed to the commit under test.\n")
+    else:
+        assert_release(f"https://{BACKEND}", expect=local_head(repo), label="crawler")
 
     modes = ["anonymous", "operator", "member"] if args.mode == "all" else [args.mode]
     # operator's heavy authed pages need browser recycling; the others complete on
