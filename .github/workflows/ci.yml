@@ -8,6 +8,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # check-model-columns.py diffs against HEAD~1
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -19,6 +21,13 @@ jobs:
         run: python scripts/check-unbound-names.py
       - name: route shadowing
         run: python scripts/check-route-shadowing.py
+      # ⭐ A MODEL COLUMN WITHOUT A MIGRATION LINE TAKES EVERY READ OF THAT TABLE
+      # DOWN, and the suite cannot see it: tests build SQLite from the models via
+      # create_all(), so the test schema always has the column. 796 green tests
+      # shipped a 500 on four anonymous demo surfaces. Needs two commits of
+      # history — fetch-depth: 0 above.
+      - name: model columns have migration lines
+        run: python scripts/check-model-columns.py
       # ⭐ THE BACKEND HALF OF THE PERIOD-LABEL CONTRACT, AND THE ONE THAT FAILS
       # OPEN. This script checks the emitter set FIRST and hard-fails before it
       # ever looks at the frontend, so it is fully meaningful here: a sixth
