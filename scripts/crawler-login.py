@@ -48,21 +48,88 @@ def login(browser, email, password, label):
 
     A fresh context per role is the point: sharing one would let the operator's
     storage leak into the member session and the privilege assertion below would
-    be testing the operator twice."""
+    be testing the operator twice.
+
+    ⭐ INSTRUMENTED, BECAUSE THE FIRST VERSION REPORTED "FAILED" AND NOTHING ELSE.
+    An operator login that works by hand and fails here produced one line of
+    output — no status, no message, no URL — so every hypothesis was equally
+    consistent with the evidence and none could be eliminated. The login POST's
+    STATUS is the decisive signal and it was being thrown away:
+
+        401 -> wrong credentials (very likely a shell-mangled value)
+        403 -> account disabled, or email not yet verified
+        200 -> the backend accepted it and the failure is client-side
+
+    Nothing secret is emitted: statuses, key NAMES, value LENGTHS, and the
+    on-screen error text the app itself displays."""
     ctx = browser.new_context(viewport={"width": 1440, "height": 1000})
     pg = ctx.new_page()
+
+    seen = {}
+
+    def on_response(r):
+        if "/auth/login" in r.url and r.request.method == "POST":
+            seen["status"] = r.status
+            try:
+                body = r.json()
+                # the backend's own words; never the payload's token
+                seen["detail"] = str(body.get("detail"))[:120] if isinstance(body, dict) else None
+            except Exception:
+                seen["detail"] = None
+
+    pg.on("response", on_response)
     pg.goto(f"{APP}/login", wait_until="domcontentloaded", timeout=60000)
-    pg.wait_for_timeout(2500)
+    pg.wait_for_selector('input[type="email"]', timeout=30000)
+    pg.wait_for_timeout(800)
     pg.fill('input[type="email"]', email)
     pg.fill('input[type="password"]', password)
-    pg.click('button[type="submit"]')
-    pg.wait_for_timeout(7000)
+
+    # ⭐ WAIT FOR THE RESPONSE, NOT A FIXED SLEEP. A fixed 7s both wastes time and
+    # races: it can read localStorage before the write on a slow round trip.
+    try:
+        with pg.expect_response(
+                lambda r: "/auth/login" in r.url and r.request.method == "POST",
+                timeout=45000):
+            pg.click('button[type="submit"]')
+    except Exception:
+        seen.setdefault("status", None)
+        pg.click('button[type="submit"]')
+    pg.wait_for_timeout(3500)
+
     token = pg.evaluate(f"() => window.localStorage.getItem({TOKEN_KEY!r})")
-    ok = bool(token)
-    print(f"    {label:<9} sign-in: {'ok' if ok else 'FAILED'}"
-          f"{'' if ok else ' — no bearer in localStorage'}"
-          f"{f' (token length {len(token)})' if ok else ''}")
-    return token, pg, ctx
+    if token:
+        print(f"    {label:<9} sign-in: ok (token length {len(token)})")
+        return token, pg, ctx
+
+    # ── failure: say everything that is not a secret ────────────────────────
+    keys = pg.evaluate("""() => Object.keys(window.localStorage)
+        .filter(k => k.startsWith('axiom.'))
+        .map(k => k + ' (len ' + (window.localStorage.getItem(k)||'').length + ')')""")
+    # ⭐ NO REGEX HERE ON PURPOSE. The first version embedded \n inside a JS
+    # regex written from Python, and Python turned it into a real newline —
+    # breaking the JS at runtime, inside the very handler meant to explain a
+    # failure. Line-splitting in JS needs no escapes at all.
+    err = pg.evaluate("""() => {
+        const lines = (document.body.innerText || '').split(String.fromCharCode(10));
+        const hit = lines.find(l => /invalid|sign in failed|activate|disabled|incorrect/i.test(l));
+        return hit ? hit.trim().slice(0, 160) : null;
+    }""")
+    print(f"    {label:<9} sign-in: FAILED — no bearer in localStorage")
+    print(f"      login POST status : {seen.get('status')}")
+    print(f"      backend detail    : {seen.get('detail')}")
+    print(f"      on-screen message : {err}")
+    print(f"      final URL         : {pg.url}")
+    print(f"      axiom.* keys      : {keys or '(none)'}")
+    if seen.get("status") == 401:
+        print("      ⭐ 401 means the BACKEND rejected the pair. The value this script\n"
+              "         received is not the value that works by hand — check for shell\n"
+              "         mangling (smart quotes, history expansion on '!' in double quotes).")
+    elif seen.get("status") == 403:
+        print("      ⭐ 403 is an account state, not a typo: disabled, or email not verified.")
+    elif seen.get("status") == 200:
+        print("      ⭐ 200 means the backend ACCEPTED it and the token never reached\n"
+              "         localStorage — a client-side write or navigation defect.")
+    return None, pg, ctx
 
 
 def sees_operator_surface(pg, label):
