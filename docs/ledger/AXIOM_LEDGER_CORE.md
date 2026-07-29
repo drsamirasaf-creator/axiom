@@ -1302,7 +1302,7 @@ PENDING)**
 
 User added to the build sequence (after DEI). NOT yet defined --- likely
 external-customer feedback capture (fitting the external-stakeholder
-assessment machinery; overlaps the §4p Innovation Hub external-input
+assessment machinery; overlaps the §4p Feedback Hub external-input
 side), but UNCONFIRMED. Get a one-line definition from user before
 speccing. Recorded so it doesn\'t fall through.
 
@@ -1401,6 +1401,144 @@ than it should, from a narrower set of people, forever. **Same shape as the
 declared-but-unbound class recorded earlier today: the intent is stated, the
 enforcement is absent.** The enumeration above is the enforcement.
 
+### ⭐⭐ §4p RESCOPED AND RENAMED — INNOVATION HUB → **FEEDBACK HUB** (29 Jul)
+
+**Ledger only. Nothing built. Supersedes the §4p scope and attribution rules
+above where they conflict; the catchment enumeration and the §4j spine
+instruction are UNCHANGED and now stronger.**
+
+#### 1. Three content types, not one
+
+Stakeholders submit at any time; submissions land in a management queue that can
+view, disposition and act.
+
+| type | what it is |
+| --- | --- |
+| **IDEAS** | a proposal for something to do |
+| **PROBLEMS / ISSUES** | something wrong that someone has noticed |
+| **COMMENTS** | an observation that may need nothing but acknowledgement |
+
+#### 2. ⭐ DISPOSITION PATHS DIFFER BY TYPE — AND THIS IS WHY THE RENAME MATTERS
+
+§4p had ONE path: accepted → Initiative. That path does not cover the space.
+
+* **idea accepted → Initiative**, crediting the submitter
+* **problem accepted → may become an Initiative, a SWOT WEAKNESS, or leadership
+  attention that never becomes work.** Three destinations, and the third is a
+  legitimate terminal state, not a failure to act.
+* **comment → may need only acknowledgement.**
+
+⭐ **"ACCEPTED" AND "BECOMES WORK" ARE NOW DIFFERENT THINGS, WHICH THE SINGLE
+PATH CONFLATED.** A queue whose only accept action mints an Initiative teaches
+its operators to reject anything they do not intend to staff — so a true, useful
+problem report gets *declined* because the honest response to it was attention
+rather than a project. The taxonomy of outcomes has to be as wide as the taxonomy
+of inputs, or the disposition step quietly narrows what people are willing to
+submit.
+
+Named because the name was doing work: "Innovation Hub" describes one of the
+three types and implies the single destination. A hub that mostly receives
+problems while being called an innovation hub will be read as underperforming at
+innovation rather than performing at feedback.
+
+#### 3. ⭐ ATTRIBUTION IS NOW TYPE-DEPENDENT — supersedes §4p's blanket "attributed by default"
+
+* **ideas — ATTRIBUTED by default.** Recognition needs a name.
+* **problems — ANONYMOUS by default.** Someone reporting that their director is
+  the bottleneck needs anonymity more than credit, and **forcing attribution
+  suppresses exactly the reports most worth having.**
+* **both overridable by the submitter.**
+
+⭐ **THE DEFAULT IS THE WHOLE MECHANISM, NOT A CONVENIENCE.** Whichever way it is
+set, most people will not change it — so the default decides what gets reported.
+An attributed-by-default problem channel does not produce fewer honest problem
+reports that are signed; it produces fewer honest problem reports.
+
+The §4p anonymity collision with assessment **still stands and is now sharper**:
+assessment is anonymous with a k-floor, ideas are attributed, problems are
+anonymous-by-default. Three regimes now meet on one surface. Submission must be
+**explicitly separated from the anonymous assessment flow and clearly marked** —
+the requirement is unchanged, and there is now more to mark.
+
+#### 4. The §4j overlap is STRONGER, not weaker
+
+Same spine end to end:
+
+    submit → thank-you → queue → disposition with reasons → notify →
+    accepted becomes work
+
+Different **audience** (a customer's employees vs AXIOM's own customers) and
+different **destinations**. The standing instruction holds without modification:
+**design the shared spine once; do not build two parallel systems.** The
+catchment ruling at CARRY TO THE SHARED SPINE below — neither entry point may
+gate submission on a role the other admits — applies to all three content types.
+
+#### 5. ⭐ NEW OPEN QUESTION — DOES A FEEDBACK HUB CANNIBALISE STRUCTURED ASSESSMENT?
+
+If people can say anything at any time, some feedback that today arrives
+**scored and inside the CEI** will instead arrive here — unstructured and outside
+it. The CEI's value is that it is comparable across cycles, departments and
+seniority bands; a channel that drains signal out of it degrades that quietly and
+without any surface reporting a fault.
+
+It may be acceptable, or even desirable — an assessment that only sees what fits
+its items is not measuring everything either. **The point is that the
+relationship between the two channels should be DELIBERATE rather than
+emergent.** Recorded as open; needs a ruling before the Hub ships, not after the
+first cycle where CEI comment volume drops.
+
+#### 6. Carried forward from §4p, still unanswered
+
+* external submitters and the reward path
+* one tab or two surfaces
+* whether the shared spine is built once (the instruction says yes; nothing is
+  built either way)
+
+#### 7. ✅ ANSWERED (29 Jul) — assessor access IS cycle-scoped, and it sizes the phase
+
+Measured, not assumed — full report:
+`docs/reports/2026-07-29-idea-submission-spine.md`.
+
+* **A magic-link token is scoped to ONE cycle** — `scope=f"assessment:{cycle_id}"`,
+  30-day TTL, minted at `accounts.py:11324` and enforced at `:10256`.
+* **It reaches exactly THREE endpoints**, all the questionnaire: participant
+  questionnaire, save draft, submit.
+* **There is no standing access between cycles of any kind.** The credential
+  outlives its usefulness by design: after close it still authenticates and
+  reaches nothing.
+* **An assessor is not a `User`.** `AssessmentInvite` holds an email and a jti;
+  `Participant` is a roster row. Neither is an account.
+
+⭐ **SO "SUBMIT ANYTIME" REQUIRES A PERSISTENT PARTICIPANT IDENTITY, AND THAT IS
+A LARGER CHANGE THAN THE HUB SURFACE ITSELF.** The catchment ruling makes it
+unavoidable rather than optional: §4j's catchment is *any user — member / CXO /
+viewer*, and neither entry point may gate submission on a role the other admits.
+A cycle-scoped credential cannot satisfy that, so the identity work is the
+critical path and the Hub UI is downstream of it.
+
+**Two further findings that size the phase, both measured:**
+
+* **NO SPINE EXISTS.** All 70 `ax_*` tables enumerated: no `ax_ideas`, no
+  `ax_change_requests`, no ticket table. The nearest neighbours
+  (`ax_recommendation_dispositions`, `ax_document_proposals`, `ax_csf_proposals`,
+  `ax_report_issues`) are each bound to a different object and lifecycle.
+* **⭐ `CAP_SUBMIT_IDEA` IS DECLARED AND GATES NOTHING.** It sits in
+  `permissions.py:20`, is granted to the `assessor` role, and **no endpoint
+  references it** — all nine `require_capability` call sites ask for
+  `dispose_recommendations`. Anyone auditing the role model reads "assessors may
+  submit ideas" and concludes the surface exists and is protected; both halves
+  are false. The declared-but-unbound class, in the security layer.
+* **And the disposition machinery cannot be generalised as-is.** A
+  "recommendation" has **no stored row** — `_rec_by_fp` recomputes it from the
+  active dataset every request, and the disposition row holds a decision about a
+  fingerprint with no title, description or body. `adopt_recommendation` 404s on
+  anything not in the engine's output and gates on `value_creating` /
+  `expected_ev_impact`, which a human submission does not have. The spine
+  therefore needs a **content-bearing** table; dispositions become one source
+  feeding it, not the thing being widened.
+
+---
+
 ### CARRY TO THE SHARED SPINE (§4j ↔ §4p)
 
 The standing instruction — §4j and §4p overlap and must **share one
@@ -1434,8 +1572,9 @@ touch HOW submissions are attributed.
     = UX call.
 
 -   **⚠ ANONYMITY RULE (critical):** assessment/CEI is ANONYMOUS
-    (k-floor, load-bearing for honest feedback); Innovation Hub ideas
-    are ATTRIBUTED (reward needs to know who). These are OPPOSITE
+    (k-floor, load-bearing for honest feedback); Feedback Hub IDEAS
+    are ATTRIBUTED (reward needs to know who) while PROBLEMS are
+    ANONYMOUS BY DEFAULT (see the 29 Jul rescope). These are OPPOSITE
     requirements in the same questionnaire. So idea-submission MUST be
     explicitly separated + clearly marked: \"assessment is anonymous,
     but submit an idea you can be credited for here (optional).\"
@@ -4673,7 +4812,7 @@ public launch.**
 This supersedes any assumption that a launch cut would be taken. There is no
 cut: the ~30 designed features are the launch.
 
-**Launch scope:** Innovation Hub §4p + Customer Change Requests §4j (shared
+**Launch scope:** Feedback Hub §4p (renamed from Innovation Hub, 29 Jul) + Customer Change Requests §4j (shared
 spine) · Survey Designer · Initiative Execution Suite §7m · CXO Priorities
 Registry · Dictionary §4w · Free Pilot motion · Partner Program · DEI · VOC ·
 Prescience engines · Performance Monitoring · the commercial layer (pricing
@@ -4689,7 +4828,7 @@ admins.
 | 3 | **Dataroom §4y** — coupling diagnosis FIRST | most features touch data; building them against a template-coupled model means rebuilding them after |
 | 4 | **The four regression passes** | see L.3 — deliberately before the feature run |
 | 5 | **Dictionary §4w** | definitions are referenced by OKRs, KPIs, CXO Priorities and the Registry |
-| 6 | **Innovation Hub + Change Requests shared spine** | one spine, two entry points |
+| 6 | **Feedback Hub + Change Requests shared spine** | one spine, two entry points, three content types |
 | 7 | **CXO Priorities Registry**, then **Initiative Execution Suite §7m** | Registry is the dependency |
 | 8 | **Survey Designer, DEI, VOC** | all extend the assessment instrument |
 | 9 | **Prescience engines, Performance Monitoring** | |
