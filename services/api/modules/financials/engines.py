@@ -239,6 +239,7 @@ def derive_series(data: dict) -> dict:
         "expected": 0.0, "pass": identity_gap_max < 1e-6}]
     return {
         "years": years, "period_labels": _p_labels(years, _freq_of(data)),
+        "frequency": _freq_of(data),
         "n_historical": len(hist), "n_forecast": len(fcst),
         "revenue": [_r(v) for v in rev], "ebit": [_r(v) for v in ebit],
         "net_income": [_r(v) for v in ni], "nwc": [_r(v) for v in nwc],
@@ -508,6 +509,7 @@ def dashboard_metrics(data: dict, valuation_result: dict | None = None) -> dict:
                                     else "value-eroding (ROIC < WACC)"),
             "chart_data": {"years": derived["years"],
                        "period_labels": _p_labels(derived["years"], _freq_of(data)),
+                           "frequency": _freq_of(data),
                            "n_historical": hist_n,
                            "revenue": derived["revenue"],
                            "ebit": derived["ebit"],
@@ -789,6 +791,7 @@ def data_coverage(data: dict) -> dict:
     return {
         "historical_years": hist, "forecast_years": fcst,
         "period_labels": _p_labels(list(hist) + list(fcst), _freq_of(data)),
+        "frequency": _freq_of(data),
         "historical_count": len(hist), "forecast_count": len(fcst),
         "total_years": len(all_years),
         "span": (f"{all_years[0]}\u2013{all_years[-1]}" if all_years else None),

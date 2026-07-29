@@ -119,6 +119,13 @@ def main():
                         pass
     else:
         print(f"  (frontend not found at {SRC} — skipped, NOT passed)")
+        # ⭐ AND THEN IT SAID "✓ every period render site consumes the supplied
+        # label" — over a directory it had not opened. Saying "NOT passed" and
+        # then printing a tick is worse than either alone: the banner scrolls
+        # past and the tick is what gets believed. In CI, where the sibling
+        # frontend is not checked out, this is the ONLY path that ever ran.
+        print("  SKIPPED — no frontend to scan. This gate proved nothing.")
+        return 0
 
     for p in BACKEND_RENDERERS:
         if not os.path.exists(p):

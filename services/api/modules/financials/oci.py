@@ -169,6 +169,7 @@ def statement_of_comprehensive_income(data: dict, n_paths: int = 3000,
             "any_oci_on_file": any_present,
             "forecast_years": fyears,
             "period_labels": _p_labels(fyears, _freq_of(data)),
+            "frequency": _freq_of(data),
             "statements": statements,
             "ifrs_reclassification": {
                 "will_be_reclassified": [OCI_DRIVER_SCHEMA[k]["label"]
