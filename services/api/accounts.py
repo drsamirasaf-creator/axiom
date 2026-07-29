@@ -245,6 +245,23 @@ class Initiative(Base):
     department_id = Column(Integer, index=True, nullable=True)   # §4s → ax_departments.id
     is_demo = Column(Boolean, default=False, server_default="false", nullable=False)  # PES: seeded demo project
     rank = Column(Integer, nullable=True)                        # within-band rank (1..N); null = unranked
+    # ⭐ C4: "NO LINKS" IS DECLARABLE, AND ABSENCE IS NOT A DECLARATION. Before
+    # this, the only representation of "this initiative targets nothing" was the
+    # absence of link rows — identical to an initiative created thirty seconds ago
+    # and identical to one whose author never saw a link picker. Set when a human
+    # has considered the question, whichever way they answered; NULL means nobody
+    # has been asked yet.
+    #
+    # The distinction already existed one module away, for template KPI links: a
+    # v7.4 upload that clears every link DECLARES "no links"; a v7.3 workbook has
+    # no G/H columns and is SILENT, and silence must flag nothing. Same problem,
+    # already solved, not carried across until now.
+    #
+    # It is load-bearing for the Cockpit: without it "unlinked" is unusable as an
+    # attention signal, because the never-triaged backlog drowns the deliberate
+    # ones.
+    links_considered_at = Column(DateTime, nullable=True)
+    links_considered_by = Column(Integer, nullable=True)
 
 
 class InitiativeEvent(Base):
@@ -669,6 +686,22 @@ class KeyResult(Base):
     dataset_id = Column(Integer, index=True, nullable=False)
     row_index = Column(Integer, nullable=False)
     objective_id = Column(String(40), nullable=True)
+    # ⭐ STABLE IDENTITY, MINTED NOT DERIVED (uuid4 hex). Every other OKR entity
+    # has one — Objective.obj_key, Department.dept_key, KpiAlias.kpi_key — and
+    # KeyResult was the only one without, so a KR had no identity at all: every
+    # upload RE-CREATED it as a new row, and reconciliation matched on
+    # (parent obj_key, normalised text). Revising a target — "reduce churn to 4%"
+    # -> "3.5%" — reads as a rename, produced a NEW row, and dropped the old one
+    # with every link attached to it. That is the department incident exactly, and
+    # dept_key already records the ruling: NOT derived from the display text,
+    # because a rename must not look like a new entity.
+    kr_key = Column(String(64), index=True, nullable=True)
+    # ⭐ C3: OPTIONAL, AND A KR WITHOUT ONE IS NOT SECOND-CLASS. A KR may name a
+    # KPI as its measure, or carry its own target directly — "increase retention
+    # 82% -> 90%" needs no pre-existing KPI. Nullable is the whole design: making
+    # it required would force a KPI into existence for every KR, and KPIs are
+    # INDEPENDENT ongoing measures, not children of key results.
+    kpi_key = Column(String(64), index=True, nullable=True)
     key_result = Column(Text, nullable=False)
     unit = Column(String(40), nullable=True)
     baseline = Column(Float, nullable=True)
@@ -706,6 +739,36 @@ class KpiAlias(Base):
     kpi_key = Column(String(64), index=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     __table_args__ = (UniqueConstraint("company_id", "scope_key", name="uq_kpi_alias"),)
+
+
+class KrAlias(Base):
+    """Every (objective, text) a key result has answered to -> its stable kr_key.
+
+    ⭐ COPIES KpiAlias EXACTLY, INCLUDING THE SENTINEL. Scoped by the PARENT
+    OBJECTIVE deliberately: objective A's "Reduce churn to 4%" is not objective
+    B's "Reduce churn to 4%". Keying on text alone would merge two objectives'
+    key results — the same collision KpiAlias avoids by scoping to department.
+
+    `scope_key` is "<obj_key or 0>|<text_norm>" as ONE column rather than an
+    (obj_key, text_norm) pair, for the reason KpiAlias states: a NULL parent
+    would make the unique constraint useless, because in SQL NULLs are distinct
+    from each other, so every parentless KR of the same text would be permitted.
+    The 0 sentinel closes that hole — and parentless KRs are not hypothetical
+    here, the orphan case is in the migration fixture.
+
+    A RENAME ADDS AN ALIAS; IT DOES NOT REPLACE ONE. That is the whole mechanism:
+    the old spelling keeps resolving, so a link made last quarter still resolves
+    after this quarter's wording change."""
+    __tablename__ = "ax_kr_aliases"
+    __table_args__ = (UniqueConstraint("company_id", "scope_key", name="uq_kr_alias"),)
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    kr_key = Column(String(64), index=True, nullable=False)
+    obj_key = Column(String(64), index=True, nullable=True)
+    text_norm = Column(String(300), nullable=False)
+    text = Column(Text, nullable=False)
+    scope_key = Column(String(400), index=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 class KpiObjectiveLink(Base):
@@ -758,13 +821,48 @@ class GoalInitiativeLink(Base):
     initiative. Objectives/goals are snapshot-scoped (re-upload mints new rows),
     so a link is keyed to STABLE text identity — (company_id, goal_key) — where
     goal_key = a normalized hash of the objective/goal text. Re-uploading the same
-    text keeps its links; initiatives are stable by id."""
+    text keeps its links; initiatives are stable by id.
+
+    ⭐ `source` AND `flagged_absent` WERE MISSING HERE AND PRESENT ON BOTH SIBLING
+    LINK TABLES, which document them as load-bearing rather than bookkeeping:
+    without `source`, a re-upload whose template omits a link DELETES a link a
+    human created in the app; without `flagged_absent`, an omission is
+    indistinguishable from a deletion. This table was safe only because nothing
+    in the upload path writes it yet — the protection was absent because the
+    threat had not arrived. Adding a third link table without fixing this would
+    have left the oldest one as the odd member of three."""
     __tablename__ = "ax_goal_initiative_links"
     __table_args__ = (UniqueConstraint("company_id", "goal_key", "initiative_id", name="uq_goal_ini"),)
     id = Column(Integer, primary_key=True)
     company_id = Column(Integer, index=True, nullable=False)
     goal_key = Column(String(64), index=True, nullable=False)
     initiative_id = Column(Integer, index=True, nullable=False)
+    source = Column(String(16), default="template", nullable=False)   # template|in_app
+    flagged_absent = Column(Boolean, default=False, nullable=False)
+    created_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class KrInitiativeLink(Base):
+    """KR -> initiative, many-to-many, keyed on kr_key.
+
+    The third member of a set that now shares ONE contract with
+    GoalInitiativeLink and KpiInitiativeLink: the snapshot-scoped side by stable
+    key, the durable side by initiative id, plus source and flagged_absent.
+
+    ⭐ THIS TABLE COULD NOT EXIST BEFORE kr_key. A link needs something stable to
+    point at, and a KeyResult had neither a durable row id (every upload
+    re-created it) nor a stable parent code (next_oid() renumbers O{n} in each
+    snapshot). The only persisting handle was the KR's own text."""
+    __tablename__ = "ax_kr_initiative_links"
+    __table_args__ = (UniqueConstraint("company_id", "kr_key", "initiative_id",
+                                       name="uq_kr_initiative_link"),)
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    kr_key = Column(String(64), index=True, nullable=False)
+    initiative_id = Column(Integer, index=True, nullable=False)
+    source = Column(String(16), default="template", nullable=False)
+    flagged_absent = Column(Boolean, default=False, nullable=False)
     created_by = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -2465,6 +2563,135 @@ def _resolve_kpi_key(db, company_id: int, department_id, name: str):
     return row.kpi_key if row else None
 
 
+def _kr_scope_key(obj_key, text: str) -> str:
+    """"<obj_key or 0>|<text_norm>" — ONE column, for KpiAlias's stated reason:
+    a NULL parent would make the unique constraint useless, because NULLs are
+    distinct from each other in SQL, so every parentless KR of the same text
+    would be permitted. Orphan KRs are not hypothetical; the migration fixture
+    has one because production does."""
+    return f"{obj_key or 0}|{_norm_kpi_key(text)}"
+
+
+def _new_kr_key() -> str:
+    return uuid.uuid4().hex
+
+
+def _kr_alias_add(db, company_id: int, kr_key: str, obj_key, text: str):
+    """Record that (objective, text) resolves to this kr_key. Idempotent."""
+    sk = _kr_scope_key(obj_key, text)
+    exists = db.query(KrAlias).filter_by(company_id=company_id, scope_key=sk).first()
+    if exists:
+        return exists
+    row = KrAlias(company_id=company_id, scope_key=sk, kr_key=kr_key,
+                  obj_key=(obj_key or None), text_norm=_norm_kpi_key(text)[:300],
+                  text=(text or "")[:2000])
+    db.add(row)
+    return row
+
+
+def resolve_kr_key(db, company_id: int, obj_key, text: str, prior_key: str | None = None):
+    """The kr_key (objective, text) resolves to, minting an alias on a RENAME.
+
+    ⭐ THE RENAME PATH IS THE POINT. When an upload presents text that resolves to
+    nothing but the caller knows which KR this row IS (`prior_key` — matched by
+    position, or by the row the template is updating), the new spelling is
+    recorded as ANOTHER alias for the same key rather than becoming a new key
+    result. The old spelling keeps resolving, so a link made last quarter still
+    resolves after this quarter's wording change.
+
+    Without this, "reduce churn to 4%" -> "3.5%" is a new KR and the old one is
+    dropped — the department incident, which duplicated an entire org tree."""
+    hit = (db.query(KrAlias)
+           .filter_by(company_id=company_id, scope_key=_kr_scope_key(obj_key, text))
+           .first())
+    if hit:
+        return hit.kr_key
+    if prior_key:
+        _kr_alias_add(db, company_id, prior_key, obj_key, text)
+        db.flush()
+        return prior_key
+    return None
+
+
+def backfill_kr_keys(db, company_id: int | None = None) -> dict:
+    """Assign kr_key to every KeyResult lacking one, and seed the aliases.
+
+    Written against the department re-key failure, exactly as _backfill_kpi_keys
+    is, and for the same three reasons:
+
+      * IDENTITY COMES FROM AN IN-MEMORY DICT, never a per-row db.query().
+        SessionLocal is autoflush=False, so a query inside the loop cannot see
+        rows added earlier in the same loop — two rows would both believe they
+        are the first to claim a key and the unique constraint fires at commit.
+      * EACH ROW IS ITS OWN SAVEPOINT, so one unusable row cannot abort a pass
+        over thousands.
+      * OLDEST DATASET FIRST, so the earliest occurrence of a KR owns the key and
+        every later snapshot inherits it. Newest-first would give the key to the
+        most recent upload and orphan the history it should be continuous with.
+
+    Dirty data it is built to survive, all of it present in the test fixture:
+    the same KR text twice under one objective (kept SEPARATE — two rows are two
+    key results), a KR whose parent objective_id matches nothing, blank text, and
+    archived rows (still keyed; archived is not deleted).
+    """
+    res = {"scanned": 0, "assigned": 0, "reused": 0, "aliases": 0,
+           "blank_text": 0, "orphans": 0, "errors": 0}
+    q = db.query(KeyResult).filter(KeyResult.kr_key.is_(None))
+    if company_id is not None:
+        q = q.filter(KeyResult.company_id == company_id)
+    rows = q.order_by(KeyResult.dataset_id, KeyResult.row_index, KeyResult.id).all()
+
+    # obj_key lookup per (company, dataset, objective_id short code)
+    objs = {}
+    for o in db.query(Objective).all():
+        objs[(o.company_id, o.dataset_id, o.objective_id)] = o.obj_key
+
+    claimed: dict[tuple[int, str], str] = {}
+    for a in db.query(KrAlias).all():
+        claimed[(a.company_id, a.scope_key)] = a.kr_key
+
+    for r in rows:
+        res["scanned"] += 1
+        text = (r.key_result or "").strip()
+        obj_key = objs.get((r.company_id, r.dataset_id, r.objective_id))
+        if obj_key is None:
+            res["orphans"] += 1          # keyed anyway; an orphan is still a row
+        if not text:
+            # Blank text has no identity to share, so it gets its own key rather
+            # than collapsing every blank row into one key result.
+            res["blank_text"] += 1
+            try:
+                with db.begin_nested():
+                    r.kr_key = _new_kr_key()
+                res["assigned"] += 1
+            except Exception:
+                res["errors"] += 1
+            continue
+        ck = (r.company_id, _kr_scope_key(obj_key, text))
+        try:
+            with db.begin_nested():
+                existing = claimed.get(ck)
+                if existing:
+                    # ⭐ SAME TEXT, SAME PARENT, DIFFERENT ROW = A DUPLICATE, AND A
+                    # DUPLICATE IS TWO KEY RESULTS. Sharing one key would merge
+                    # them, and a link would then point at "whichever". Each row
+                    # keeps its own key; only the FIRST claims the alias.
+                    r.kr_key = _new_kr_key()
+                    res["assigned"] += 1
+                    res["reused"] += 1
+                else:
+                    key = _new_kr_key()
+                    r.kr_key = key
+                    _kr_alias_add(db, r.company_id, key, obj_key, text)
+                    claimed[ck] = key
+                    res["assigned"] += 1
+                    res["aliases"] += 1
+        except Exception:
+            res["errors"] += 1
+    db.commit()
+    return res
+
+
 def _backfill_kpi_keys(db, company_id: int | None = None) -> dict:
     """Assign kpi_key to every KpiPlan row that lacks one, and seed the aliases.
 
@@ -2703,7 +2930,14 @@ def _reconcile_okr_upload(db, company_id, new_ds, prior, objectives, key_results
     Keys: objective = obj_key (stable text hash); KPI = normalized name; KR =
     (parent obj_key, normalized text)."""
     res = {"carried_in_app": {"objectives": 0, "key_results": 0, "kpis": 0},
-           "flagged_absent": {"objectives": 0, "kpis": 0}, "conflicts": []}
+           # ⭐ key_results ADDED. The column existed on the model and NOTHING EVER
+           # SET IT: a template KR absent from a new upload was silently dropped
+           # while objectives and KPIs in the identical situation were flagged and
+           # never deleted. Half-done supersession — the column was added for the
+           # protection, the writer was never wired, and the summary reported zero
+           # flagged because nothing could flag.
+           "flagged_absent": {"objectives": 0, "kpis": 0, "key_results": 0},
+           "conflicts": []}
     if prior is None or prior.id == new_ds.id:
         return res
 
@@ -2754,6 +2988,7 @@ def _reconcile_okr_upload(db, company_id, new_ds, prior, objectives, key_results
             db.add(KeyResult(company_id=company_id, dataset_id=new_ds.id,
                              row_index=next_ri(db.query(KeyResult).filter_by(company_id=company_id, dataset_id=new_ds.id).all(), 1000),
                              objective_id=oid, key_result=kr.key_result, unit=kr.unit,
+                             kr_key=kr.kr_key, kpi_key=kr.kpi_key,
                              baseline=kr.baseline, target=kr.target, current=kr.current,
                              due_date=kr.due_date, uploaded_at=now, source=(kr.source or "in_app"),
                              created_at=(kr.created_at or now), created_by_user_id=kr.created_by_user_id,
@@ -2799,9 +3034,38 @@ def _reconcile_okr_upload(db, company_id, new_ds, prior, objectives, key_results
                          objective_id=newp.objective_id, key_result=kr.key_result, unit=kr.unit,
                          baseline=kr.baseline, target=kr.target, current=kr.current, due_date=kr.due_date,
                          uploaded_at=now, source="in_app", created_at=(kr.created_at or now),
-                         created_by_user_id=kr.created_by_user_id, created_by_name=kr.created_by_name))
+                         created_by_user_id=kr.created_by_user_id, created_by_name=kr.created_by_name,
+                         kr_key=kr.kr_key, kpi_key=kr.kpi_key))
         db.flush()
         res["carried_in_app"]["key_results"] += 1
+
+    # ⭐ TEMPLATE KRs ABSENT FROM THIS UPLOAD: FLAGGED, NEVER DROPPED. This loop
+    # did not exist. A template KR that vanished from a workbook simply ceased to
+    # be, while an objective or KPI in the same position was carried forward with
+    # flagged_absent=True so a human could see it had gone. Same discipline, same
+    # function, one entity left out.
+    for kr in prior_krs:
+        parent = prior_obj_by_oid.get(kr.objective_id)
+        if not parent or (kr.source or "template") != "template":
+            continue
+        if parent.obj_key not in up_obj:
+            continue                      # its objective is gone; carry_obj handled it
+        if (parent.obj_key, _norm_kpi_key(kr.key_result)) in up_kr:
+            continue                      # still present in the upload
+        newp = new_obj_by_key.get(parent.obj_key)
+        if not newp:
+            continue
+        db.add(KeyResult(company_id=company_id, dataset_id=new_ds.id,
+                         row_index=next_ri(db.query(KeyResult).filter_by(company_id=company_id, dataset_id=new_ds.id).all(), 1000),
+                         objective_id=newp.objective_id, key_result=kr.key_result, unit=kr.unit,
+                         baseline=kr.baseline, target=kr.target, current=kr.current,
+                         due_date=kr.due_date, uploaded_at=now, source="template",
+                         created_at=(kr.created_at or now),
+                         created_by_user_id=kr.created_by_user_id,
+                         created_by_name=kr.created_by_name,
+                         kr_key=kr.kr_key, kpi_key=kr.kpi_key, flagged_absent=True))
+        db.flush()
+        res["flagged_absent"]["key_results"] += 1
 
     def kpi_content(k):
         return {"kpi_name": k.kpi_name, "unit": k.unit, "ytd_plan": k.ytd_plan,
@@ -5619,8 +5883,24 @@ _BAND = {"high": "A", "medium": "B", "low": "C", "unset": "U"}   # U = unpriorit
 
 
 class InitiativeCreate(BaseModel):
+    """⭐ C5: LINKS AND DEPARTMENT ARE ACCEPTED AT WRITE TIME, NOT ONLY AFTER.
+
+    Creation used to take neither, so contextual creation was POST-then-PATCH:
+    two writes, with a window in which the initiative existed unassigned and
+    unlinked. That window is what a Cockpit query sees, and it is indistinguishable
+    from an initiative nobody has triaged.
+
+    `links_considered` is the C4 declaration and is DELIBERATELY SEPARATE from the
+    link lists: sending three empty lists is not the same statement as saying "I
+    considered links and there are none", and a surface that conflates them puts
+    the never-asked and the deliberately-empty in the same bucket."""
     title: str
     description: str = ""
+    department_id: int | None = None
+    objective_keys: list[str] = []          # goal_key
+    kr_keys: list[str] = []                 # kr_key
+    kpi_keys: list[str] = []                # kpi_key
+    links_considered: bool = False
     importance: str
     urgency: str
     current_priority: str
@@ -5733,6 +6013,67 @@ def _ini_out(i):
             "completed_at": i.completed_at}
 
 
+def _set_initiative_links(db, company_id: int, iid: int, user_id: int,
+                          objective_keys, kr_keys, kpi_keys, source: str = "in_app"):
+    """Write an initiative's three link kinds. Additive and idempotent."""
+    for gk in {(k or "").strip() for k in (objective_keys or [])} - {""}:
+        if not db.query(GoalInitiativeLink).filter_by(
+                company_id=company_id, goal_key=gk, initiative_id=iid).first():
+            db.add(GoalInitiativeLink(company_id=company_id, goal_key=gk,
+                                      initiative_id=iid, source=source,
+                                      created_by=user_id))
+    for kk in {(k or "").strip() for k in (kr_keys or [])} - {""}:
+        if not db.query(KrInitiativeLink).filter_by(
+                company_id=company_id, kr_key=kk, initiative_id=iid).first():
+            db.add(KrInitiativeLink(company_id=company_id, kr_key=kk,
+                                    initiative_id=iid, source=source,
+                                    created_by=user_id))
+    for pk in {(k or "").strip() for k in (kpi_keys or [])} - {""}:
+        if not db.query(KpiInitiativeLink).filter_by(
+                company_id=company_id, kpi_key=pk, initiative_id=iid).first():
+            db.add(KpiInitiativeLink(company_id=company_id, kpi_key=pk,
+                                     initiative_id=iid, source=source,
+                                     created_by=user_id))
+    db.flush()
+
+
+def initiative_targets(db, company_id: int, iid: int) -> dict:
+    """An initiative's targets, with STORED and INHERITED kept apart.
+
+    ⭐ THE DISTINCTION IS THE POINT, AND IT IS WHY OBJECTIVE LINKS ARE STORED
+    EXPLICITLY RATHER THAN DERIVED FROM KRs. A bare objective with no KRs yet is
+    legal and must be linkable, so "this initiative targets objective X" cannot be
+    inferred from "it targets a KR under X". And where an initiative DOES link a
+    KR, that KR's objective is real context a reader needs — but it is context,
+    not a target the author chose.
+
+    Collapsing the two would make an initiative appear to target objectives nobody
+    selected, and there would be no way to remove one, because it was never
+    stored. So: `objectives` is what was chosen; `objectives_inherited` is what
+    the chosen KRs imply, with the KR that implies it named.
+    """
+    stored = [l.goal_key for l in db.query(GoalInitiativeLink).filter_by(
+        company_id=company_id, initiative_id=iid, flagged_absent=False).all()]
+    kr_links = db.query(KrInitiativeLink).filter_by(
+        company_id=company_id, initiative_id=iid, flagged_absent=False).all()
+    kpi_links = db.query(KpiInitiativeLink).filter_by(
+        company_id=company_id, initiative_id=iid, flagged_absent=False).all()
+
+    # each linked KR's parent objective, via the alias table's obj_key
+    inherited = []
+    seen = set(stored)
+    for l in kr_links:
+        a = db.query(KrAlias).filter_by(company_id=company_id, kr_key=l.kr_key).first()
+        gk = a.obj_key if a else None
+        if gk and gk not in seen:
+            seen.add(gk)
+            inherited.append({"goal_key": gk, "via_kr_key": l.kr_key})
+    return {"objectives": stored,
+            "objectives_inherited": inherited,
+            "key_results": [l.kr_key for l in kr_links],
+            "kpis": [l.kpi_key for l in kpi_links]}
+
+
 @router.post("/companies/{company_id}/initiatives", status_code=201)
 def create_initiative(company_id: int, body: InitiativeCreate,
                       member=Depends(require_company_admin),
@@ -5758,9 +6099,14 @@ def create_initiative(company_id: int, body: InitiativeCreate,
         expected_impact_amount=body.expected_impact_amount,
         impact_currency=body.impact_currency, owner_name=body.owner_name,
         target_date=body.target_date, linked_item_code=body.linked_item_code,
+        department_id=_dept_id_valid(db, company_id, body.department_id),
+        links_considered_at=(datetime.utcnow() if body.links_considered else None),
+        links_considered_by=(user.id if body.links_considered else None),
         created_by=user.id)
     db.add(ini)
     db.flush()
+    _set_initiative_links(db, company_id, ini.id, user.id,
+                          body.objective_keys, body.kr_keys, body.kpi_keys)
     _ini_event(db, ini, user.id, "created", None, ref, f"created as {body.status}")
     _ensure_initiative_thread(db, company_id, ini)      # auto discussion thread (7e-A)
     audit(db, user.id, "initiative_created", "company", company_id,
@@ -7090,6 +7436,15 @@ def initiative_detail(company_id: int, iid: int, member=Depends(_summary_access)
     d["is_demo"] = bool(getattr(ini, "is_demo", False))
     d["department"] = _dept_out(dept_idx.get(getattr(ini, "department_id", None)))
     d["serves_objectives"] = _initiative_served_objectives(db, company_id, iid)
+    d["targets"] = initiative_targets(db, company_id, iid)
+    # C4: three states, not two — never considered / considered and empty / linked.
+    t = d["targets"]
+    n_links = len(t["objectives"]) + len(t["key_results"]) + len(t["kpis"])
+    ini_row = db.get(Initiative, iid)
+    considered = bool(ini_row and ini_row.links_considered_at)
+    d["links_state"] = ("linked" if n_links
+                        else "declared_none" if considered
+                        else "not_considered")
     d.update(_initiative_rollups(db, ini))
     cad = (db.query(InitiativeCadenceUpdate).filter_by(initiative_id=iid)
              .order_by(InitiativeCadenceUpdate.created_at.desc()).all())
@@ -12237,6 +12592,19 @@ def _ensure_ax_columns(engine):
                 conn.execute(_text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
 
     # 7d-3 rider: orientation on assessment items, linked_item_code on initiatives
+    # ⭐ KR stable identity (the one OKR entity that had none) + the alias table.
+    # create_all() makes ax_kr_aliases because it is a NEW table; kr_key is a new
+    # column on a table that already exists, so it comes through here.
+    _add("ax_key_results", "kr_key", "kr_key VARCHAR(64)")
+    _add("ax_key_results", "kpi_key", "kpi_key VARCHAR(64)")
+    # GoalInitiativeLink brought up to the contract its two sibling link tables
+    # already document as load-bearing: without `source` a re-upload deletes a
+    # link a human made; without `flagged_absent` an omission is indistinguishable
+    # from a deletion.
+    _add("ax_goal_initiative_links", "source",
+         "source VARCHAR(16) NOT NULL DEFAULT 'template'")
+    _add("ax_goal_initiative_links", "flagged_absent",
+         "flagged_absent BOOLEAN NOT NULL DEFAULT false")
     _add("ax_assessment_items", "orientation", "orientation VARCHAR(16)")
     _add("ax_initiatives", "linked_item_code", "linked_item_code VARCHAR(40)")
     # 7e: discussion linkage + leader RAG on initiatives
