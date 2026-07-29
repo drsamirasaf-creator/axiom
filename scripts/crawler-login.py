@@ -80,7 +80,30 @@ def login(browser, email, password, label):
     pg.on("response", on_response)
     pg.goto(f"{APP}/login", wait_until="domcontentloaded", timeout=60000)
     pg.wait_for_selector('input[type="email"]', timeout=30000)
-    pg.wait_for_timeout(800)
+
+    # ⭐⭐ THE DEFECT, MEASURED: THE FORM EXISTS BEFORE REACT BINDS IT.
+    # wait_for_selector returns as soon as the input is in the DOM — which it is
+    # immediately, because the page is server-rendered. React has not yet attached
+    # its handlers at that moment, so `click` lands on a button with no submit
+    # handler and NOTHING IS SENT. Isolated, 5 attempts each:
+    #
+    #     no settle   0/5 logged in   login POST status: None x5  (never fired)
+    #     800ms       5/5 logged in   login POST status: 200 x5
+    #
+    # That is why the operator failed and the member did not: operator runs FIRST
+    # against a cold Vite, member second against a warm one, and the same race
+    # resolves differently. The old fixed 7s sleep AFTER the click could not help
+    # — there was no request in flight to wait for.
+    #
+    # So the wait is for the HANDLER, not for a duration: poll until React has
+    # attached to the form, then act. A sleep would work today and rot on a slower
+    # machine; this is the condition the code actually depends on.
+    pg.wait_for_function(
+        """() => {
+            const f = document.querySelector('input[type=email]');
+            if (!f) return false;
+            return Object.keys(f).some(k => k.startsWith('__react'));
+        }""", timeout=30000)
     pg.fill('input[type="email"]', email)
     pg.fill('input[type="password"]', password)
 
