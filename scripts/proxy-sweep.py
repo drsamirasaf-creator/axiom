@@ -57,7 +57,20 @@ BACKEND = os.environ.get(
 PROXY = "/api/public/axiom-proxy?path="
 
 # Router modules to sweep, with the prefix each mounts at.
+# ⭐ accounts.py WAS MISSING AND THAT IS THE WHOLE LESSON. This sweep reported
+# "33/33 clean · every swept route answered on the browser's path" at the exact
+# moment SIX anonymous routes were returning 500 — /assessment/swot,
+# /departments, /initiatives, /initiatives/cockpit, /assessment/sentiment and
+# /assessment/axis/{code}/comments. Every one of them lives in accounts.py, which
+# was not in this list.
+#
+# This file's own docstring warns that a hardcoded list "goes stale silently and
+# then reports green over routes it has never heard of". That warning was written
+# about the endpoint map, and then the same mistake was made one constant above
+# it. A sweep is only as wide as its inventory, and the inventory needs the same
+# suspicion as the thing it inventories.
 ROUTER_FILES = [
+    "services/api/accounts.py",
     "services/api/modules/intelligence/router.py",
     "services/api/modules/financials/router.py",
     "services/api/modules/valuation/router.py",
@@ -111,11 +124,25 @@ def routes_from_source():
         if not os.path.exists(path):
             continue
         src = open(path, encoding="utf-8").read()
-        prefixes = dict(re.findall(
-            r'(\w+)\s*=\s*APIRouter\(prefix="([^"]+)"', src))
+        # ⭐ POSITIONAL, NOT A NAME->PREFIX DICT. accounts.py rebinds the name
+        # `router` SIX times with different prefixes (/auth, /auth/oauth, none,
+        # /me, /admin, none). A dict keyed on the variable name keeps only the
+        # last, which would have mis-prefixed every route in the file. The prefix
+        # that applies is the nearest PRECEDING assignment to that same name.
+        assigns = [(m.start(), m.group(1), m.group(2) or "")
+                   for m in re.finditer(
+                       r'(\w+)\s*=\s*APIRouter\((?:prefix="([^"]*)")?', src)]
+
+        def prefix_at(name, pos):
+            best = None
+            for start, var, pfx in assigns:
+                if var == name and start < pos:
+                    best = pfx
+            return best
+
         for m in re.finditer(r'@(\w+)\.get\("([^"]+)"', src):
             router, route = m.group(1), m.group(2)
-            prefix = prefixes.get(router)
+            prefix = prefix_at(router, m.start())
             if prefix is None:
                 continue
             in_path = set(re.findall(r"\{(\w+)\}", route))
@@ -207,16 +234,23 @@ def main():
 
     results = sweep(routes, through_proxy, args.repeat, args.workers)
 
-    transport, http_err, clean = [], [], 0
+    transport, http_err, clean, n_gated = [], [], 0, 0
     exit_tally = {}
     for path, (statuses, exits) in sorted(results.items()):
         bad_exit = [e for e in exits if e != 0]
         for e in exits:
             exit_tally[e] = exit_tally.get(e, 0) + 1
+        # ⭐ 401/403 IS A CORRECTLY GATED ROUTE, NOT A BROKEN ONE. An anonymous
+        # sweep can only assert what is anonymously readable; counting auth
+        # refusals as failures would bury the real 500s under noise and get the
+        # whole sweep muted.
         bad_http = [s for s, e in zip(statuses, exits)
-                    if e == 0 and not s.startswith("2")]
+                    if e == 0 and not s.startswith("2") and s not in ("401", "403")]
+        gated = [s for s, e in zip(statuses, exits) if e == 0 and s in ("401", "403")]
         if bad_exit:
             transport.append((path, len(bad_exit), len(exits), sorted(set(bad_exit))))
+        elif gated and not bad_http:
+            n_gated += 1
         elif bad_http:
             http_err.append((path, sorted(set(bad_http)), len(bad_http), len(exits)))
         else:
@@ -236,7 +270,8 @@ def main():
         for path, codes, n, of in http_err:
             print(f"    {n}/{of}  {path}  -> {','.join(codes)}")
 
-    print(f"\n  clean routes: {clean}/{len(routes)}   "
+    print(f"\n  auth-gated (401/403, correctly refused anonymously): {n_gated}")
+    print(f"  clean routes: {clean}/{len(routes)}   "
           f"requests: {total_reqs}   transport failures: {fails} "
           f"({100.0 * fails / total_reqs:.1f}%)" if total_reqs else "")
     print("  curl exit tally: " + "  ".join(
