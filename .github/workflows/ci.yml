@@ -19,9 +19,26 @@ jobs:
         run: python scripts/check-unbound-names.py
       - name: route shadowing
         run: python scripts/check-route-shadowing.py
-      # Period formatting must stay backend-owned. Written while zero TS
-      # instances exist — the only cheap moment.
-      - name: no period formatting in TypeScript
+      # ⭐ THE BACKEND HALF OF THE PERIOD-LABEL CONTRACT, AND THE ONE THAT FAILS
+      # OPEN. This script checks the emitter set FIRST and hard-fails before it
+      # ever looks at the frontend, so it is fully meaningful here: a sixth
+      # `period_labels` emitter appearing with no endpoint mapping breaks the
+      # build. That is exactly the defect this lane fixed — labels emitted by the
+      # backend that no frontend fetch ever publishes — and it originates in THIS
+      # repo. The frontend scan inside it skips (see below); the cross-check does
+      # not.
+      - name: period_labels emitter cross-check (backend half — enforced)
+        run: python scripts/check-period-labels-published.py
+      # ⭐ THE FOLLOWING GATE DOES NOT ENFORCE ANYTHING ON THIS RUNNER, AND SAYING
+      # SO IS THE POINT. It reads the sibling `optimization-anchor` checkout via
+      # AXIOM_FRONTEND, which does not exist in CI, so it skips. It was wired here
+      # when it was written and has never checked a single file. It is kept
+      # because it costs nothing and becomes real the moment a frontend checkout
+      # is added — but a green tick on this step is NOT coverage, and the step
+      # name has to carry that or the run reads as proof it isn't.
+      # Real enforcement for the TS-side gates is the pre-push hook in the
+      # frontend repo (.githooks/pre-push). See docs/reports/2026-07-29-two-outstanding.md.
+      - name: no period formatting in TypeScript (SKIPS — no frontend checkout in CI)
         run: python scripts/check-no-ts-period-format.py
       - run: pytest -q
       # Proves the tests guarding the assessment read path are not vacuous, by

@@ -206,7 +206,14 @@ def main():
         # ⭐ ZERO SITES IS NOT ALL SITES. Reporting "8 of 8 publish" and
         # "0 of 0 publish" with the same tick is how a gate that never ran
         # reads as a gate that passed.
-        print(f"  SKIPPED — no frontend at {FRONTEND}/src. This gate proved nothing.")
+        # Be precise about WHICH half ran. The emitter cross-check above is
+        # complete and passed — it reads only this repo. It is the frontend scan
+        # that has nothing to scan. Reporting both as "skipped" would understate
+        # the check that just ran; reporting both as "passed" would overstate the
+        # one that did not.
+        print(f"  ✓ emitter cross-check: {len(KNOWN_EMITTERS)} emitters, all mapped.")
+        print(f"  SKIPPED — frontend scan needs a checkout at {FRONTEND}/src. "
+              f"That half proved nothing (see the pre-push hook).")
         return 0
     findings, checked = scan_frontend()
     for rel, line, fn, url in findings:

@@ -3675,6 +3675,116 @@ Weak evidence is worth surfacing. It is not worth blocking on. The failure here
 was not the detection; it was **letting the confidence of the response outrun the
 confidence of the finding.**
 
+## §7.47 ⭐⭐ THE MISSING STABLE KEY — KEYRESULT IS THE ONLY OKR ENTITY WITHOUT ONE
+
+**Recorded 29 Jul. Report only, unfixed. Blocks initiative↔KR linkage, and the
+remedy is a migration, not a UI lane.**
+
+Every other entity in the OKR graph carries a stable identity that survives a
+template re-upload. KeyResult does not.
+
+| entity | stable key | why it exists |
+| --- | --- | --- |
+| Objective | `obj_key` — normalised hash of the objective text | re-upload mints new rows; links must survive |
+| Department | `dept_key` — opaque uuid4 minted at creation | a hash of the display name made a rename look like a new department, which duplicated an entire org tree |
+| KPI | `kpi_key` via `ax_kpi_aliases`, scoped `<department_id or 0>\|<name_norm>` | IT's "On-time delivery %" is not Operations' |
+| **Key Result** | **none** | — |
+
+`KeyResult` (`accounts.py:663`) carries `objective_id` — a **short code** (`O1`)
+scoped to one dataset snapshot — and a row `id` that is re-minted on every
+upload. Neither is stable.
+
+### ⭐ WHY THIS IS NOT A UI PROBLEM
+
+The three existing link tables all encode the same asymmetry deliberately: the
+*snapshot-scoped* side is keyed by a stable text hash, the *durable* side by id.
+`ax_goal_initiative_links` is `(company_id, goal_key, initiative_id)`;
+`ax_kpi_initiative_links` is `(company_id, kpi_key, initiative_id)`. An
+initiative↔KR link would be `(company_id, ???, initiative_id)` — **and there is
+nothing to put in the middle.** A link to `KeyResult.id` dies at the next
+upload; a link to `objective_id` points at an objective, not a key result.
+
+So the contextual-creation feature cannot offer "link to a KR" as a checkbox
+beside "link to an Objective" and "link to a KPI". The other two are one endpoint
+call. This one is a schema change plus a backfill plus a reconciliation rule,
+and it must land before the UI that assumes it.
+
+### ⭐ THE DESIGN QUESTION THE MIGRATION HAS TO ANSWER
+
+`obj_key` hashes the objective **text**, so re-uploading the same wording keeps
+the links. A KR's text is far more volatile than an objective's — "Reduce churn
+to 4%" becomes "Reduce churn to 3.5%" next quarter and is *the same key result
+with a revised target*. A text hash would drop the link on every target revision,
+which is the failure mode the department `dept_key` decision already rejected
+once ("a hash of the display name made a rename look like a new department").
+
+That points at a minted opaque key with reconciliation on (objective, position or
+text-similarity) rather than a pure hash — the `dept_key` shape, not the
+`obj_key` shape. **Ruling owed before any migration is written.**
+
+---
+
+## §7.48 ⭐⭐ TWO IDENTIFIERS, DIFFERENT COMPLETENESS GUARANTEES, THREE RENDER EXPRESSIONS
+
+**Recorded 29 Jul. Report only, unfixed. Surfaced by the standing suite, which
+was right.**
+
+An initiative has two codes, and only one of them is always complete.
+
+| field | produced by | guarantee |
+| --- | --- | --- |
+| `ref_code` | `_next_ref` at creation, stored | **always** band letter + number (`A9`) |
+| `display_code` | `_display_code(i)` per request, derived | band + rank, **or a bare band letter when unranked** (`A`) |
+
+`accounts.py:5704`:
+
+```python
+def _display_code(i):
+    band = _band_of(i.status, i.current_priority)
+    rank = getattr(i, "rank", None)
+    return f"{band}{rank}" if rank else band
+```
+
+### ⭐ THREE RENDER EXPRESSIONS FOR ONE FACT
+
+* `initiatives.tsx:632` — `{row.display_code ?? row.ref}`
+* `initiatives.tsx:967` — `{initiative.ref}`
+* `LeaderInitiatives.tsx:83` — `i.ref || i.ref_code || String(i.id)`
+
+**The `??` fallback can never fire.** It guards against *null*, and the failure
+mode is not null — it is the string `"A"`, which is truthy and non-null. The
+fallback is written, is unreachable, and reads as protection. That is the
+declared-but-unbound shape in a single operator.
+
+The three expressions also disagree with each other: for an unranked initiative
+the list badge shows `A` and the other two show `A9`.
+
+### ⭐ AND `if rank` IS FALSY, NOT NULL
+
+`rank = 0` renders a bare band letter exactly as `None` does. The column comment
+says `rank (1..N); null = unranked`, so 0 is out of contract today — but it is
+one seed edit from being in it, and this codebase has been bitten by
+falsy-vs-`None` before.
+
+### WHAT IT COST, AND WHAT WAS RIGHT
+
+Six of Meridian's fifteen showcase initiatives (`ref_code` A9–A14) have
+`rank IS NULL` and render a bare `A`. **The standing suite caught it and was
+disbelieved twice** — first as "pre-existing, therefore not mine", then as a
+possible stale expectation. Both readings were wrong. Its own comment states the
+intent exactly: *"Guards the showcase against a future seed edit reintroducing an
+unranked initiative."* The guard fired for its stated reason.
+
+⭐ **PRE-EXISTING IS NOT THE SAME AS NOT-A-DEFECT.** Confirming a failure
+reproduces without your changes establishes attribution and nothing else. It was
+recorded as "unrelated standing failure" when the correct record was "unrelated
+standing failure, cause unknown, needs a lane".
+
+The data fix — a ranking pass over Meridian's A-band — is showcase data and needs
+its own named write lane, with the care the cycle-37 question established.
+
+---
+
 ## §7.46 ⭐ CHECKER CALIBRATION IS THE WORK, NOT OVERHEAD
 
 **Three instances, 29 Jul. Every static checker written here produced mostly
