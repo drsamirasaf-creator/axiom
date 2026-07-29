@@ -54,7 +54,38 @@ TARGETS = [
 ARITH = (ast.Sub, ast.Add, ast.Mult, ast.Div)
 
 
-def nullable_factories(tree):
+def nullable_dict_keys(tree):
+    """{function_name: {keys whose value can be None}} for dict-returning factories.
+
+    ⭐ WHOLE-DICT TAINTING IS A PERMANENTLY-FLAGGED FINDING, WHICH TRAINS PEOPLE
+    TO IGNORE THE CHECKER. `picture()` returns a dict where only `equity_value`
+    uses `.get()`; every other key is a plain subscript that would raise KeyError,
+    not yield None. Tainting the whole return flagged
+    `scen["enterprise_value"] - base["enterprise_value"]` forever — a finding
+    nobody can act on and nobody can close.
+
+    So nullability is tracked PER KEY."""
+    out = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for r in ast.walk(node):
+            if not isinstance(r, ast.Return) or not isinstance(r.value, ast.Dict):
+                continue
+            keys = set()
+            for k, v in zip(r.value.keys, r.value.values):
+                if not isinstance(k, ast.Constant) or not isinstance(k.value, str):
+                    continue
+                for sub in ast.walk(v):
+                    if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute) \
+                            and sub.func.attr == "get" and len(sub.args) == 1:
+                        keys.add(k.value); break
+            if keys:
+                out.setdefault(node.name, set()).update(keys)
+    return out
+
+
+def nullable_factories(tree, dict_keyed=()):
     """Functions in this module that RETURN a possibly-None series or value.
 
     ⭐ WITHOUT THIS THE CHECKER FAILED ITS OWN NEGATIVE CONTROL. Reintroducing the
@@ -69,6 +100,8 @@ def nullable_factories(tree):
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
+        if node.name in dict_keyed:
+            continue          # handled per-key, not wholesale
         for r in ast.walk(node):
             if not isinstance(r, ast.Return) or r.value is None:
                 continue
@@ -80,8 +113,10 @@ def nullable_factories(tree):
 
 
 class Scan(ast.NodeVisitor):
-    def __init__(self, factories=()):
+    def __init__(self, factories=(), dict_keys=None):
         self.factories = set(factories)
+        self.dict_keys = dict_keys or {}      # fn -> {nullable key names}
+        self.from_fn = {}                     # local name -> factory it came from
         self.risky = set()      # names bound to a possibly-None expression
         self.hits = []
         self.fn = "<module>"
@@ -97,6 +132,13 @@ class Scan(ast.NodeVisitor):
             if isinstance(f, ast.Name) and f.id in self.factories:
                 return True
         if isinstance(node, ast.Subscript):
+            # a dict from a per-key factory: only the nullable keys are risky
+            if isinstance(node.value, ast.Name) and node.value.id in self.from_fn:
+                fn = self.from_fn[node.value.id]
+                k = node.slice
+                if isinstance(k, ast.Constant) and isinstance(k.value, str):
+                    return k.value in self.dict_keys.get(fn, set())
+                return False
             return self._nullable(node.value) or (
                 isinstance(node.value, ast.Name) and node.value.id in self.risky)
         if isinstance(node, ast.Name):
@@ -114,6 +156,12 @@ class Scan(ast.NodeVisitor):
         self.fn, self.risky = prev, prev_risky
 
     def visit_Assign(self, node):
+        # remember which per-key factory a local came from
+        if isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name) \
+                and node.value.func.id in self.dict_keys:
+            for t in node.targets:
+                if isinstance(t, ast.Name):
+                    self.from_fn[t.id] = node.value.func.id
         if self._nullable(node.value):
             for t in node.targets:
                 if isinstance(t, ast.Name):
@@ -181,7 +229,8 @@ def main():
             continue
         src = open(path, encoding="utf-8").read()
         tree = ast.parse(src)
-        sc = Scan(nullable_factories(tree))
+        dk = nullable_dict_keys(tree)
+        sc = Scan(nullable_factories(tree, dk), dk)
         sc.visit(tree)
         # a site already routed through _n() is handled
         hits = [h for h in sc.hits if "_n(" not in h[2]]

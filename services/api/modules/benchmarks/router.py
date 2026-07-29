@@ -14,6 +14,7 @@ router = APIRouter(prefix="/api/v1/benchmarks", tags=["benchmarking"])
 from ..identity.deps import read_tenant as _tenant  # noqa: E402
 from ..identity.deps import write_tenant as _writer  # noqa: E402
 from ..identity.deps import is_authenticated as _authed  # noqa: E402
+from ...response_schemas import (BenchmarksCompareOut)  # noqa: E402
 
 
 class CompareRequest(BaseModel):
@@ -30,7 +31,7 @@ def list_sectors():
                      for k, m in data.KPI_META.items()]}
 
 
-@router.post("/compare")
+@router.post("/compare", responses={200: {"model": BenchmarksCompareOut}})
 def compare(body: CompareRequest, db: Session = Depends(get_db),
             tenant: str = Depends(_tenant)):
     ds = db.get(fin_models.FinancialDataset, body.dataset_id)

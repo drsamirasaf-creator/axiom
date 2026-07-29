@@ -194,3 +194,66 @@ class TwinLineageOut(BaseModel):
     root_dataset_id: int | None = None
     versions: list[dict[str, Any]] | None = None
     syncs_completed: int | None = None
+
+
+class TwinSimulateOut(BaseModel):
+    scenario: str | None = None
+    shifts: dict[str, Any] | None = None
+    seed: int | None = None
+    n_paths: int | None = None
+    drivers_used: dict[str, Any] | None = None
+    financing_assumption: str | None = None
+    years: list[int] | None = None
+    revenue_fan: list[dict[str, Any]] | None = None
+    fcff_fan: list[dict[str, Any]] | None = None
+    cash_fan: list[dict[str, Any]] | None = None
+    p_negative_fcff_by_year: list[float] | None = None
+    p_cash_below_zero_ever: float | None = None
+    sample_paths: dict[str, Any] | None = None
+    sample_paths_note: str | None = None
+    ergodicity: dict[str, Any] | None = None
+    checkpoints: list[dict[str, Any]] | None = None
+    all_checkpoints_pass: bool | None = None
+
+
+class RealOptionsSuiteOut(BaseModel):
+    subject: str | None = None
+    underlying_enterprise_value: float | None = None
+    options: dict[str, Any] | None = None
+    total_flexibility_value: float | None = None
+    note: str | None = None
+    all_checkpoints_pass: bool | None = None
+
+
+class ValuationMultiplesOut(BaseModel):
+    subject: str | None = None
+    ebitda: float | None = None
+    ebit: float | None = None
+    bridge_to_equity: float | None = None
+    net_debt: float | None = None
+    preferred_equity: float | None = None
+    minority_interest: float | None = None
+    dlom: float | None = None
+    trailing_year: int | None = None
+    sector: str | None = None
+    methods: list[dict[str, Any]] | None = None
+    implied_ev_range: dict[str, Any] | None = None
+    intrinsic_dcf_ev: float | None = None
+    narrative: list[str] | None = None
+    checkpoints: list[dict[str, Any]] | None = None
+    all_checkpoints_pass: bool | None = None
+
+
+class BenchmarksCompareOut(BaseModel):
+    company: str | None = None
+    sector: str | None = None
+    as_of_year: int | None = None
+    currency: str | None = None
+    source: dict[str, Any] | None = None
+    benchmark_performance_index: float | None = None
+    verdict: str | None = None
+    rag_rule: dict[str, Any] | None = None
+    kpis: list[dict[str, Any]] | None = None
+    narrative: list[str] | None = None
+    checkpoints: list[dict[str, Any]] | None = None
+    all_checkpoints_pass: bool | None = None

@@ -7,6 +7,7 @@ from ..financials import models as fin_models
 from ..identity.deps import read_tenant as _tenant  # noqa: E402
 from ..identity.deps import write_tenant as _writer  # noqa: E402
 from ..identity.deps import is_authenticated as _authed  # noqa: E402
+from ...response_schemas import (TwinLineageOut, TwinSimulateOut)  # noqa: E402
 from . import engines
 
 router = APIRouter(prefix="/api/v1/twin", tags=["digital-twin"])
@@ -48,7 +49,7 @@ def submit_actuals(body: ActualsIn, db: Session = Depends(get_db),
             "report": report}
 
 
-@router.get("/lineage/{dataset_id}")
+@router.get("/lineage/{dataset_id}", responses={200: {"model": TwinLineageOut}})
 def lineage(dataset_id: int, db: Session = Depends(get_db),
             tenant: str = Depends(_tenant)):
     """The version chain: walk parents to the root, then all descendants —
@@ -128,7 +129,7 @@ class SimulateIn(BaseModel):
     custom: dict | None = None
 
 
-@router.post("/simulate")
+@router.post("/simulate", responses={200: {"model": TwinSimulateOut}})
 def simulate_enterprise(body: SimulateIn, db: Session = Depends(get_db),
                         tenant: str = Depends(_tenant)):
     """The Business-grade Dynamics & Simulation: the client's enterprise

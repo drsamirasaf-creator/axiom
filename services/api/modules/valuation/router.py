@@ -58,6 +58,7 @@ def _transient(dataset_id: int, mode: str, params: dict, result: dict):
 from ..identity.deps import read_tenant as _tenant  # noqa: E402
 from ..identity.deps import write_tenant as _writer  # noqa: E402
 from ..identity.deps import is_authenticated as _authed  # noqa: E402
+from ...response_schemas import (RealOptionsSuiteOut, ValuationMultiplesOut)  # noqa: E402
 
 
 @router.get("/modes")
@@ -179,7 +180,7 @@ class MultiplesIn(BaseModel):
     ev_ebit: float | None = None
 
 
-@router.post("/multiples")
+@router.post("/multiples", responses={200: {"model": ValuationMultiplesOut}})
 def multiples_valuation(body: MultiplesIn, db: Session = Depends(get_db),
                         tenant: str = Depends(_tenant)):
     """Comparable-company multiples valuation, triangulated against the DCF
@@ -228,7 +229,7 @@ def real_option_route(body: RealOptionIn, db: Session = Depends(get_db),
         raise HTTPException(status_code=422, detail=str(e))
 
 
-@router.get("/real-options/{dataset_id}")
+@router.get("/real-options/{dataset_id}", responses={200: {"model": RealOptionsSuiteOut}})
 def real_options_suite_route(dataset_id: int, db: Session = Depends(get_db),
                              tenant: str = Depends(_tenant)):
     """All three canonical real options at firm-scaled defaults (ADR-016)."""
