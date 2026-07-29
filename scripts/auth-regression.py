@@ -1140,6 +1140,31 @@ def main():
               "the client plan even with a stale persisted dataset; zero ERROR states")
     print("==================================================")
 
+    # ⭐ ROUTE COVERAGE ON THE PATH USERS TRAVERSE (GRADED).
+    # The DOM checks above prove a page rendered; they do not prove every route
+    # that page calls answered. A Worker proxy sat in front of the API for a day
+    # and failed 67.4% of anonymous route requests with HTTP/2 framing errors —
+    # no HTTP status at all, so nothing status-shaped could see it — while this
+    # run reported 50/50 green. Both were true, and the demo was broken.
+    print("\n=========== ROUTE SWEEP — BROWSER PATH (§17.3) ===========")
+    try:
+        import subprocess as _sp
+        _r = _sp.run([sys.executable,
+                      os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "proxy-sweep.py"), "--repeat", "3"],
+                     capture_output=True, text=True, timeout=600)
+        _tail = [ln for ln in (_r.stdout or "").split("\n") if ln.strip()][-4:]
+        for ln in _tail:
+            print(ln)
+        if _r.returncode != 0:
+            any_fail = True
+            print("      FAIL: a route a prospect can reach did not answer.")
+    except Exception as _e:
+        # Never a silent pass: an un-run sweep is reported as un-run.
+        print(f"  SKIPPED — route sweep did not run ({type(_e).__name__}). "
+              f"This proved nothing.")
+    print("==========================================================")
+
     if args.interactions:
         print("\n============ INTERACTION SWEEP (report-only) ============")
         for r in results:

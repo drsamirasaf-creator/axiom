@@ -8,8 +8,16 @@ it through a same-origin Worker proxy (frontend `src/routes/api.public.axiom-pro
 The failure lives on the hop the sweep did not traverse.
 
 ⭐ A SWEEP THAT BYPASSES THE PATH USERS TAKE PROVES NOTHING ABOUT WHAT USERS
-EXPERIENCE. That is the whole point of this file. `--direct` exists only so the
-two can be compared in one run — it is never the default.
+EXPERIENCE. That is the whole point of this file, and it is why the DEFAULT
+follows the topology rather than a fixed choice of hop.
+
+The Worker proxy was removed (frontend 086c27d) after it was measured at 67.4%
+transport failure against 0.0% direct, so browsers call the backend DIRECTLY
+again and direct is now the default here. `--proxy` remains for the day someone
+reintroduces a hop: the flag to reach for is the one that matches what the
+browser does, and if that ever changes, THIS DEFAULT MUST CHANGE WITH IT. A
+sweep whose default silently stops matching the browser is exactly the failure
+this file was written after — 50/50 green over a path no browser took.
 
 ⭐ AND IT SEPARATES TRANSPORT FAILURE FROM HTTP STATUS. "Failed to fetch" is not
 a status code: there is no response at all, so a sweep that records only status
@@ -170,8 +178,10 @@ def sweep(routes, through_proxy, repeat, workers):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--proxy", action="store_true",
+                    help="route through the Worker proxy (only if one is reintroduced)")
     ap.add_argument("--direct", action="store_true",
-                    help="bypass the proxy (for COMPARISON only — never the default)")
+                    help="explicit direct mode; direct is already the default")
     ap.add_argument("--repeat", type=int, default=6,
                     help="requests per route; the failure is intermittent, so >1 is the point")
     ap.add_argument("--workers", type=int, default=4)
@@ -186,7 +196,8 @@ def main():
         (routes if f else skipped).append(f or route)
     routes = sorted(set(routes))
 
-    where = "DIRECT to the backend" if args.direct else "THROUGH the browser's proxy"
+    through_proxy = args.proxy and not args.direct
+    where = "THROUGH the Worker proxy" if through_proxy else "DIRECT to the backend (the browser's path)"
     print(f"  {len(routes)} GET route(s) from {len(ROUTER_FILES)} router module(s), "
           f"{args.repeat}x each, {where}")
     if skipped:
@@ -194,7 +205,7 @@ def main():
         for s in skipped:
             print(f"      skip {s}")
 
-    results = sweep(routes, not args.direct, args.repeat, args.workers)
+    results = sweep(routes, through_proxy, args.repeat, args.workers)
 
     transport, http_err, clean = [], [], 0
     exit_tally = {}
