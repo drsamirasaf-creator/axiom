@@ -141,3 +141,23 @@ def test_the_pdf_column_headers_use_the_shared_formatter():
     assert period_headers([20231, 20232], "quarterly") == ["2023Q1", "2023Q2"]
     assert period_headers([2024, 2025], "annual") == ["2024", "2025"]
     assert period_headers(None, "annual") == []
+
+
+# ── V2 (owed from the original lane): screen, PDF and PPTX are ONE label ────
+@pytest.mark.parametrize("value,freq", [
+    (20231, "quarterly"), (20234, "quarterly"), (20241, "quarterly"),
+    (2024, "annual"), (2030, "annual"),
+])
+def test_screen_pdf_and_pptx_labels_are_identical(value, freq):
+    """⭐ IDENTICAL, NOT EACH CORRECT. Two renderers self-consistent and mutually
+    inconsistent is exactly how the money formatters diverged; the assertion has
+    to compare them to each other."""
+    screen = format_period(value, freq)
+    assert pdf_period(value, freq) == screen
+    assert pptx_period(value, freq) == screen
+
+
+def test_the_board_pack_column_headers_are_the_screen_labels():
+    from services.api.report_pdf import period_headers
+    qs = [20231, 20232, 20233, 20234]
+    assert period_headers(qs, "quarterly") == [format_period(q, "quarterly") for q in qs]

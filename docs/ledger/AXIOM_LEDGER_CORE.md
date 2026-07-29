@@ -3865,6 +3865,24 @@ This matters most for redundant fields added deliberately — `year_label` besid
 the two is ever computed on, and a guard that stops guarding removes the only
 thing making the redundancy safe.
 
+### ⭐ ENTRY 6 — "DOES NOT RAISE" IS VACUOUS THE MOMENT THE CRASH IS FIXED
+
+An exception-absence assertion tests the loud symptom, not the defect. Once the
+crash is gone the same defect returns as a **silent wrong answer** and passes
+straight through it.
+
+Observed 29 Jul on plan-vs-methods. With the dropped declaration and the
+duplicate `_historicals_only` fixed, restoring the period subtraction no longer
+crashed — it compared the client plan against a **20-period** method series
+instead of an 8-period one, and `assert out.get("line_items")` was satisfied. The
+mutation harness surfaced it; review would not have.
+
+**A test written during a crash must be rewritten once the crash is gone**, to
+pin the ANSWER rather than the absence of an exception. Both tests here moved
+from "does not raise" to asserting the exact compared periods — and the baseline
+gate then caught the rewrites failing on correct code, because the assumed
+payload keys were wrong. Two guards, two catches, one hour apart.
+
 ### ⭐ ENTRY 5 IS THE ONE THE HARNESS ITSELF HIDES
 
 The first four make a mutation SURVIVE, which the harness reports loudly. **Entry
