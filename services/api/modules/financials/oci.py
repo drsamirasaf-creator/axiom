@@ -68,6 +68,22 @@ def _driver_present(oci: dict, key: str) -> bool:
     return key in oci and oci[key] is not None
 
 
+
+def _horizon_bounds(frequency: str) -> list:
+    """Horizon bounds for a frequency, as a JSON list, from THE one definition.
+
+    ⭐ EMITTED SO THE FRONTEND STOPS OWNING A SECOND COPY. The horizon control
+    had `quarterly ? [1, 20] : [3, 15]` hardcoded in TypeScript while
+    forecast_studio.HORIZON_BOUNDS said `quarterly: (12, 60)` — so the UI offered a
+    1-quarter horizon the engine rejects, and capped at 20 where the engine allows
+    60. Same two-owners shape as the client-side period formatter, in the same
+    file, found the same week.
+
+    Imported inside the function because forecast_studio imports this package;
+    engines.py already dodges that cycle the same way at its horizon check."""
+    from ...forecast_studio import horizon_bounds as _hb
+    return list(_hb(frequency))
+
 def statement_of_comprehensive_income(data: dict, n_paths: int = 3000,
                                       seed: int = SEED, horizon: int | None = None):
     """Assemble the stochastic Statement of Comprehensive Income, standard
@@ -170,6 +186,7 @@ def statement_of_comprehensive_income(data: dict, n_paths: int = 3000,
             "forecast_years": fyears,
             "period_labels": _p_labels(fyears, _freq_of(data)),
             "frequency": _freq_of(data),
+            "horizon_bounds": _horizon_bounds(_freq_of(data)),
             "statements": statements,
             "ifrs_reclassification": {
                 "will_be_reclassified": [OCI_DRIVER_SCHEMA[k]["label"]

@@ -169,6 +169,22 @@ def validate_dataset(data: dict) -> dict:
     return {"errors": errors, "warnings": warnings}
 
 
+
+def _horizon_bounds(frequency: str) -> list:
+    """Horizon bounds for a frequency, as a JSON list, from THE one definition.
+
+    ⭐ EMITTED SO THE FRONTEND STOPS OWNING A SECOND COPY. The horizon control
+    had `quarterly ? [1, 20] : [3, 15]` hardcoded in TypeScript while
+    forecast_studio.HORIZON_BOUNDS said `quarterly: (12, 60)` — so the UI offered a
+    1-quarter horizon the engine rejects, and capped at 20 where the engine allows
+    60. Same two-owners shape as the client-side period formatter, in the same
+    file, found the same week.
+
+    Imported inside the function because forecast_studio imports this package;
+    engines.py already dodges that cycle the same way at its horizon check."""
+    from ...forecast_studio import horizon_bounds as _hb
+    return list(_hb(frequency))
+
 def derive_series(data: dict) -> dict:
     """Per-year derived statements, FCFF/FCFE, and ratio center
     (Product §7.13, Math §3.9). Chart-ready parallel arrays."""
@@ -240,6 +256,7 @@ def derive_series(data: dict) -> dict:
     return {
         "years": years, "period_labels": _p_labels(years, _freq_of(data)),
         "frequency": _freq_of(data),
+        "horizon_bounds": _horizon_bounds(_freq_of(data)),
         "n_historical": len(hist), "n_forecast": len(fcst),
         "revenue": [_r(v) for v in rev], "ebit": [_r(v) for v in ebit],
         "net_income": [_r(v) for v in ni], "nwc": [_r(v) for v in nwc],
@@ -510,6 +527,7 @@ def dashboard_metrics(data: dict, valuation_result: dict | None = None) -> dict:
             "chart_data": {"years": derived["years"],
                        "period_labels": _p_labels(derived["years"], _freq_of(data)),
                            "frequency": _freq_of(data),
+                           "horizon_bounds": _horizon_bounds(_freq_of(data)),
                            "n_historical": hist_n,
                            "revenue": derived["revenue"],
                            "ebit": derived["ebit"],
@@ -792,6 +810,7 @@ def data_coverage(data: dict) -> dict:
         "historical_years": hist, "forecast_years": fcst,
         "period_labels": _p_labels(list(hist) + list(fcst), _freq_of(data)),
         "frequency": _freq_of(data),
+        "horizon_bounds": _horizon_bounds(_freq_of(data)),
         "historical_count": len(hist), "forecast_count": len(fcst),
         "total_years": len(all_years),
         "span": (f"{all_years[0]}\u2013{all_years[-1]}" if all_years else None),
