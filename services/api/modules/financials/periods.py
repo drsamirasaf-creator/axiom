@@ -61,6 +61,45 @@ def format_period(value: int, frequency: str) -> str:
     return f"{year}Q{q}" if frequency == "quarterly" else str(year)
 
 
+def advance(period: int, n: int, frequency: str) -> int:
+    """The period `n` steps after `period`.
+
+    ⭐ A COUNT IS NOT A PERIOD AND CANNOT BE ADDED TO ONE. `hist_last + hz` reads
+    as "hz periods later" and is not: 20224 + 10 is 20234, which is 2023 Q4 —
+    three quarters later, not ten. Correct for years by coincidence, because
+    there the encoding and the count share a unit."""
+    p = period
+    for _ in range(max(0, int(n))):
+        p = next_period(p, frequency)
+    return p
+
+
+def period_span(earlier: int, later: int, frequency: str) -> int:
+    """How many periods separate two encoded periods. Negative if `later` precedes.
+
+    ⭐ SUBTRACTION IS NOT A COUNT. `20244 - 20224` is 20; the true distance is 8
+    quarters. The difference is right for annual and wrong for quarterly by a
+    factor that varies with how many year boundaries the range crosses, so it
+    produces a plausible number rather than an obviously broken one — which is
+    how it survived from d3c70cb until a live 500.
+
+    Walks rather than computing, so the rule lives in `next_period` alone."""
+    if earlier == later:
+        return 0
+    if later < earlier:
+        return -period_span(later, earlier, frequency)
+    n, p = 0, earlier
+    limit = 4000                       # ~1000 years; a runaway guard, never reached
+    while p < later and n < limit:
+        p = next_period(p, frequency)
+        n += 1
+    if p != later:
+        # `later` is not on the lattice — an invalid quarter, say. Say so rather
+        # than return a count that silently describes a different period.
+        raise ValueError(f"{later} is not a valid {frequency} period after {earlier}")
+    return n
+
+
 def forecast_periods(last_historical: int, n: int, frequency: str) -> list[int]:
     """The `n` periods that follow `last_historical`, in that frequency.
 

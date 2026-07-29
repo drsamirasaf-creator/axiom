@@ -61,6 +61,8 @@ READ = "tests/unit/test_assessment_read_path_execution.py"
 PUT = "tests/unit/test_participant_upload.py"
 RFT = "tests/unit/test_report_format.py"
 FPS = "tests/unit/test_forecast_period_succession.py"
+PVM = "tests/unit/test_plan_vs_methods_quarterly.py"
+RTR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services/api/modules/financials/router.py")
 PEL = "tests/unit/test_period_entry_and_labels.py"
 COV = "tests/unit/test_coverage_rename_and_suppression.py"
 
@@ -340,6 +342,40 @@ MUTATIONS = [
      "    return {k: format_period(k, frequency) for k in keys}",
      "    return {format_period(k, frequency): k for k in keys}",
      f"{PEL}::test_period_labels_is_a_map_keyed_on_the_raw_value"),
+
+
+    # ── plan-vs-methods, quarterly ───────────────────────────────────────────
+    ("plan_span goes back to subtraction (20 instead of 8 quarters)", RTR,
+     "    plan_span = _period_span(hist_last, plan_last, _pfreq)",
+     "    plan_span = plan_last - hist_last",
+     # Paired with the EXPLICIT-HORIZON test: with horizon=None the clamp
+     # `hz = min(plan_span, 15)` makes `plan_span >= hz` always true, so the
+     # subtraction cannot change the outcome there. It only surfaces when an
+     # explicit horizon exceeds the plan's span.
+     f"{PVM}::test_an_explicit_horizon_extends_the_comparison_by_that_many_QUARTERS"),
+
+    ("the horizon is added to a period again", RTR,
+     "    hz_last = _advance(hist_last, hz, _pfreq)",
+     "    hz_last = hist_last + hz",
+     f"{PVM}::test_an_explicit_horizon_extends_the_comparison_by_that_many_QUARTERS"),
+
+    ("_pvm_full drops the frequency declaration", RTR,
+     '                       "frequency": (base_hist.get("periods") or {}).get("frequency") or "annual"},',
+     "                       },",
+     f"{PVM}::test_every_payload_builder_carries_the_frequency_declaration"),
+
+    ("the router grows its own _historicals_only again", RTR,
+     "from .proforma import _historicals_only  # noqa: E402",
+     "def _historicals_only(data):\n"
+     "    out = dict(data)\n"
+     "    out['periods'] = {'historical': list(data['periods']['historical']), 'forecast': []}\n"
+     "    return out",
+     f"{PVM}::test_there_is_only_one_historicals_only"),
+
+    ("period_span accepts a period off the lattice", PER,
+     '        raise ValueError(f"{later} is not a valid {frequency} period after {earlier}")',
+     "        return n",
+     f"{PVM}::test_period_span_refuses_a_period_off_the_lattice"),
 
     ("sigma reports the clamp as an estimate again", VAL,
      '            if sd < 0.15:\n                return 0.15, ("floor (0.15) — this company\'s historical revenue is too "\n'

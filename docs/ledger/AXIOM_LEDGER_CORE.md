@@ -3675,6 +3675,56 @@ Weak evidence is worth surfacing. It is not worth blocking on. The failure here
 was not the detection; it was **letting the confidence of the response outrun the
 confidence of the finding.**
 
+## §7.45 ⭐⭐ THE COMPENSATING-DEFECTS CLASS — CORRECT OUTPUT FROM TWO ERRORS CANCELLING
+
+**29 Jul, Plan vs Forecast.** Two independent defects had coexisted since
+`d3c70cb`, and the surface worked:
+
+* `plan_last - hist_last` — a period DIFFERENCE. `20244 - 20224` is 20; the true
+  distance is 8 quarters.
+* `[hist_last + k for k in range(1, n+1)]` — a period GENERATOR producing
+  `20225 … 20244`, quarters that do not exist.
+
+**The wrong span and the wrong generator produced arrays of the same length that
+lined up.** Nothing rendered incorrectly, because the errors were inverse.
+
+Fixing the generator alone (`e99d3b1`) removed the compensation and produced a
+live HTTP 500 on a customer surface. **The fix was correct and the crash was its
+consequence.**
+
+### ⭐ WHY THIS CLASS IS DANGEROUS BEYOND THE FIRST CRASH
+
+**THE INSTINCT ON SEEING THE CRASH IS TO REVERT — WHICH RESTORES THE
+COMPENSATION, NOT THE CORRECTNESS.** The system returns to "working" while both
+defects are back, and the next person to touch either one triggers it again with
+less context. A revert here is not a rollback to a good state; it is a rollback
+to a state that was already wrong and merely quiet.
+
+**AND THE FIRST FIX WILL LOOK LIKE THE CAUSE.** The bisect points at the commit
+that removed the compensation, not at the commit that introduced the imbalance —
+which was four months earlier and touched a different line.
+
+### THE RULE
+
+**When a fix produces a crash, ask what was cancelling it before assuming the fix
+is wrong.** Concretely, on this one: the span fix and the generator fix were both
+necessary, and applying either alone leaves the system broken in a different
+direction.
+
+Recognising it also required accepting that the surface had been showing
+plausible numbers built on two errors — and there is no way to know how long a
+compensating pair has been producing right-looking output for wrong reasons.
+
+### FOOTNOTE — the mutation harness found the same shape in the TESTS
+
+The mutation "restore the subtraction" SURVIVED once the other defects were
+fixed: with `hz = min(plan_span, HORIZON_MAX)`, the predicate `plan_span >= hz`
+is always true, so a wrong span cannot change the outcome on the default path. It
+only surfaces when an EXPLICIT horizon exceeds the plan's span. The mutation was
+real and the pairing was wrong — a reminder that "this mutation cannot be killed"
+sometimes means "not by that test", and sometimes means the code path genuinely
+cannot express the defect.
+
 ## §7.41 ⭐⭐ THE DROPPED-DECLARATION CLASS — THE VALUES SURVIVE, THE DECLARATION DOES NOT
 
 **Second sighting. The first was `statement_units` (ed7e85a): stored on every

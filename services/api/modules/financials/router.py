@@ -21,7 +21,8 @@ from ..identity.deps import read_tenant as _tenant  # noqa: E402
 from ..identity.deps import write_tenant as _writer  # noqa: E402
 from ..identity.deps import is_authenticated as _authed  # noqa: E402
 from ..identity.deps import viewer_company as _scoped  # noqa: E402
-from .periods import forecast_periods as _fc_periods, frequency_of as _freq_of
+from .periods import (forecast_periods as _fc_periods, frequency_of as _freq_of,
+                      period_span as _period_span, advance as _advance)
 
 
 def _get_dataset(db: Session, tenant: str, dataset_id: int,
@@ -43,21 +44,14 @@ def _enforce_company_limit(db, authorization):
     enforce_company_limit(db, user, creating_new=True)
 
 
-def _historicals_only(data: dict) -> dict:
-    """A view of a dataset with any existing pro forma stripped, so the trend
-    forecast can be (re)generated from the historicals. The showcase reference
-    companies ship WITH a plan (forecast years), so /forecast would otherwise
-    422 ('already contains pro forma years'); re-forecasting from historicals
-    is the sensible Financial-Forecasts behaviour."""
-    hist = {str(y) for y in data["periods"]["historical"]}
-    out = dict(data)
-    out["periods"] = {"historical": list(data["periods"]["historical"]), "forecast": []}
-    for block in ("income_statement", "balance_sheet", "cash_flow"):
-        blk = data.get(block)
-        if isinstance(blk, dict):
-            out[block] = {key: {y: v for y, v in (series or {}).items() if y in hist}
-                          for key, series in blk.items()}
-    return out
+# ⭐ ONE `_historicals_only`, NOT TWO. This was a byte-near-identical copy of
+# proforma._historicals_only, and when that one was taught to carry `frequency`
+# this one was not — so `compute_plan_vs_methods` stripped the plan, lost the
+# declaration, every reader defaulted to annual, and the method series came back
+# keyed 20225..20232. Same defect, same day, second copy: the IMPORT-DIRECTION
+# WALL (§7.42) does not apply here — proforma is importable from this module —
+# so the duplicate had no justification at all.
+from .proforma import _historicals_only  # noqa: E402
 
 
 def _store(db, tenant, name, data, source, warnings, enterprise_id=None):
@@ -245,8 +239,13 @@ def _pvm_full(base_hist: dict, forecast_stmts: dict, fyears: list) -> dict:
     cash_flow, forecast-only), so derive_series can produce apples-to-apples lines."""
     hist = list(base_hist["periods"]["historical"])
     keep = {str(y) for y in hist}
+    # ⭐ THE DECLARATION IS CARRIED, NOT REBUILT AWAY (§7.41, third instance).
+    # This wrote a fresh periods dict with only historical/forecast, so every
+    # downstream reader of the assembled dataset defaulted to annual.
     out = {"company": base_hist["company"],
-           "periods": {"historical": hist, "forecast": [int(y) for y in fyears]},
+           "periods": {"historical": hist,
+                       "forecast": [int(y) for y in fyears],
+                       "frequency": (base_hist.get("periods") or {}).get("frequency") or "annual"},
            "income_statement": {}, "balance_sheet": {}, "cash_flow": {}}
     for block, keys in (("income_statement", engines.IS_KEYS),
                         ("balance_sheet", engines.BS_KEYS),
@@ -333,12 +332,19 @@ def compute_plan_vs_methods(data: dict, horizon: int | None = None,
                         "against AXIOM's methods."}
 
     base = _historicals_only(data)
+    _pfreq = _freq_of(data)
     hist_last, plan_last = hist[-1], max(fc_years)
-    plan_span = plan_last - hist_last
+    # ⭐ SPANS ARE COUNTED, NOT SUBTRACTED, AND HORIZONS ARE WALKED, NOT ADDED.
+    # `plan_last - hist_last` gave 20 where the true distance is 8 quarters, and
+    # `hist_last + hz` gave a period three quarters out when ten were meant. Both
+    # are correct for annual by coincidence — there the encoding and the count
+    # share a unit — which is why they survived from d3c70cb until a live 500.
+    plan_span = _period_span(hist_last, plan_last, _pfreq)
     hz = max(1, min(horizon or plan_span, HORIZON_MAX))
-    all_last = max(plan_last, hist_last + hz)
-    method_hz = all_last - hist_last
-    method_years = _fc_periods(hist_last, method_hz, _freq_of(data))
+    hz_last = _advance(hist_last, hz, _pfreq)
+    all_last = plan_last if plan_span >= hz else hz_last
+    method_hz = _period_span(hist_last, all_last, _pfreq)
+    method_years = _fc_periods(hist_last, method_hz, _pfreq)
 
     # AXIOM method series — fit on HISTORY, projected across the full range.
     method_out = {m: compute_method(base, m, method_hz) for m in FS_METHODS}
@@ -351,13 +357,15 @@ def compute_plan_vs_methods(data: dict, horizon: int | None = None,
     ext_years, extension = [], None
     plan_fyears = list(fc_years)
     plan_forecast = _pvm_forecast_only(data, fc_years)
+    # A comparison is SAFE — YYYYQ is monotonic, so ordering holds even though
+    # differences do not. Left as an ordinary comparison deliberately.
     if extend_method in FS_METHODS and all_last > plan_last:
         pseudo = {"company": data["company"],
                   "periods": {"historical": list(fc_years), "forecast": []},
                   **_pvm_forecast_only(data, fc_years)}
-        ext_hz = all_last - plan_last
+        ext_hz = _period_span(plan_last, all_last, _pfreq)
         ext_stmts, ext_extra = compute_method(pseudo, extend_method, ext_hz)
-        ext_years = _fc_periods(plan_last, ext_hz, _freq_of(data))
+        ext_years = _fc_periods(plan_last, ext_hz, _pfreq)
         # splice the extension onto the plan's forecast statements
         for block in ("income_statement", "balance_sheet", "cash_flow"):
             for k, series in (ext_stmts.get(block) or {}).items():
