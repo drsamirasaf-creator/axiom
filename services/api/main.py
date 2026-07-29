@@ -120,7 +120,15 @@ async def _cors_safe_500(request, exc):
 
 @app.get("/health", tags=["platform"])
 def health():
-    return {"status": "ok", "service": "axiom-api", "phase": 18}
+    # ⭐ MONITORING STATE IS OBSERVABLE, NOT ASSERTED. Sentry was recorded as
+    # "shipped" in a previous session while it was inert — the code was deployed
+    # and SENTRY_DSN was unset, so _init_sentry() returned False and nothing was
+    # ever captured. "Deployed" and "running" are different claims and only one of
+    # them was true. The environment tag is echoed too, so a demo error can never
+    # be mistaken for a production one by whoever reads the dashboard.
+    return {"status": "ok", "service": "axiom-api", "phase": 18,
+            "monitoring": bool(_SENTRY_ON),
+            "environment": os.environ.get("AXIOM_ENV", "production")}
 
 
 # ---- Brand assets (Phase 18.4, ADR-021) -------------------------------------
