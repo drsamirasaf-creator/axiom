@@ -517,12 +517,29 @@ def dashboard_metrics(data: dict, valuation_result: dict | None = None) -> dict:
     company = dict(data["company"])
     ys = str(derived["years"][i])
     bs = data["balance_sheet"]
-    company["_debt_book"] = bs["short_term_debt"][ys] + bs["long_term_debt"][ys]
+    # ⭐ THE KPI STRIP RAISED ON ABSENCE — ON FIVE LINES, INCLUDING EVA ITSELF.
+    # invested_capital and nopat are built with _n() precisely so they CAN be
+    # None; every line below then did raw arithmetic on them. Verified against
+    # the live code before the fix:
+    #   latest year missing total_equity -> TypeError: unsupported operand
+    #       type(s) for *: 'float' and 'NoneType'          (eva_cur)
+    #   latest year missing revenue      -> TypeError: '<=' not supported
+    #       between 'NoneType' and 'int'                    (_cagr)
+    #
+    # A negative EVA asserts the business destroyed value. One produced by a
+    # missing balance-sheet line asserts it falsely — the silently-wrong-but-
+    # plausible failure, which is worse than the 500 it replaced. Absence now
+    # propagates to an em dash and the KPI reads as not computable.
+    company["_debt_book"] = _n(lambda s, l: s + l,
+                               bs["short_term_debt"][ys], bs["long_term_debt"][ys])
     w = wacc(company)
     rev_h = derived["revenue"][:hist_n]
-    cagr = _cagr(rev_h[0], rev_h[-1], hist_n - 1) if hist_n > 1 else 0.0
-    eva_cur = cur["nopat"] - w["wacc"] * cur["invested_capital"]
-    eva_prev = prev["nopat"] - w["wacc"] * prev["invested_capital"]
+    cagr = (_n(lambda a, b: _cagr(a, b, hist_n - 1), rev_h[0], rev_h[-1])
+            if hist_n > 1 else 0.0)
+    _eva = lambda nopat_, ic_: _n(                                   # noqa: E731
+        lambda n_, i_: n_ - w["wacc"] * i_, nopat_, ic_)
+    eva_cur = _eva(cur["nopat"], cur["invested_capital"])
+    eva_prev = _eva(prev["nopat"], prev["invested_capital"])
 
     def kpi(name, c, p, fmt="number"):
         trend = None if p in (None, 0) or c is None else _r((c - p) / abs(p), 4)
@@ -554,14 +571,28 @@ def dashboard_metrics(data: dict, valuation_result: dict | None = None) -> dict:
                          ra.get("raev"), det.get("enterprise_value")))
     hi = health_index(cur["roic"], w["wacc"], cur["current_ratio"],
                       cur["debt_to_equity"], cagr)
+    # ⭐ THE THIRD COPY. A checkpoint that recomputes the metric it checks is a
+    # second description of one fact — and this one raised on exactly the inputs
+    # the first was just taught to survive, so the "self-check" was the thing
+    # that would 500. It now goes through the SAME _eva as the value above, so
+    # the checkpoint cannot drift from the figure it certifies and cannot
+    # outlive its absence handling.
     checkpoints = [{"name": "eva_definition",
                     "value": _r(eva_cur),
-                    "expected": _r(cur["nopat"] - w["wacc"] * cur["invested_capital"]),
+                    "expected": _r(_eva(cur["nopat"], cur["invested_capital"])),
                     "pass": True}]
     return {"as_of_year": derived["years"][i], "kpi_strip": strip,
             "health": hi, "wacc": w,
-            "optimization_status": ("value-creating (ROIC > WACC)"
-                                    if (cur["roic"] or 0) > w["wacc"]
+            # ⭐ `(cur["roic"] or 0) > w["wacc"]` TURNED AN UNKNOWN ROIC INTO A
+            # VERDICT OF VALUE DESTRUCTION. `or 0` made a missing ROIC read as
+            # 0%, which is below every plausible WACC, so the surface asserted
+            # "value-eroding" about a company whose return on capital was simply
+            # not computable. That is rule 5's exact failure — an accusation
+            # manufactured from an absent input — and it is a sentence a board
+            # reads, not a number they can sanity-check.
+            "optimization_status": (None if cur["roic"] is None else
+                                    "value-creating (ROIC > WACC)"
+                                    if cur["roic"] > w["wacc"]
                                     else "value-eroding (ROIC < WACC)"),
             "chart_data": {"years": derived["years"],
                        "period_labels": _p_labels(derived["years"], _freq_of(data)),

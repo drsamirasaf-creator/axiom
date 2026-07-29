@@ -91,6 +91,95 @@ TARGETS = [
 ARITH = (ast.Sub, ast.Add, ast.Mult, ast.Div)
 
 
+def absence_built_keys(tree):
+    """Dict keys whose value is BUILT WITH `_n(...)` — nullable by construction.
+
+    ⭐ THIS EXISTS BECAUSE THE SAME EXPRESSION 500'd FROM THREE DIFFERENT LINES.
+
+        eva_cur  = cur["nopat"] - w["wacc"] * cur["invested_capital"]   # :524
+        eva_prev = prev["nopat"] - w["wacc"] * prev["invested_capital"] # :525
+        "expected": _r(cur["nopat"] - w["wacc"] * cur["invested_capital"])  # :559
+
+    Fixing them one at a time is how a pair becomes a trio. The durable
+    statement is not "line 524 is wrong" but "`nopat` and `invested_capital` are
+    None by construction, so arithmetic on them is unguarded wherever it
+    appears" — which is what this returns.
+
+    ⭐ IT IS DERIVED, NOT HAND-LISTED. A literal set of key names in this file
+    would be a second description of what engines.py builds, and would drift the
+    moment a new `_n()`-built key is added — the two-owners defect, inside the
+    checker. So the keys are read out of the dict literals that construct them:
+    any key whose value expression calls `_n` is nullable, transitively through
+    `_r(_n(...))`.
+
+    Deliberately NOT included: keys built with `or 0`. Those never yield None —
+    they yield a FABRICATED zero, which is the other half of this class and
+    needs a different check, not this one.
+
+    ⭐ THE FIRST VERSION FAILED ITS OWN NEGATIVE CONTROL. It matched only an
+    inline `_n(...)` inside the dict value, so it found `"ebitda": _r(_n(...))`
+    but not `"nopat": _r(nopat)` — where the `_n` call is one assignment earlier.
+    Reintroducing all three EVA copies produced ZERO findings: the checker was
+    decorative for precisely the expression it was extended to catch. So a local
+    assigned from `_n(...)` carries the taint into the dict that returns it.
+
+    The dataflow is deliberately restricted to `_n` and nothing else. A general
+    taint pass was tried on 30 Jul and produced 195 findings while still missing
+    the live bug; `_n` is narrow because its entire contract is "returns None
+    when any operand is absent", so following it cannot be wrong.
+    """
+    keys, plain = set(), set()
+
+    def _calls_n(node):
+        return any(isinstance(s, ast.Call) and isinstance(s.func, ast.Name)
+                   and s.func.id == "_n" for s in ast.walk(node))
+
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef,
+                               ast.Module)):
+            continue
+        # locals bound to an _n(...) result, anywhere in this scope
+        n_locals = set()
+        for a in ast.walk(fn):
+            if isinstance(a, ast.Assign) and _calls_n(a.value):
+                for t in a.targets:
+                    if isinstance(t, ast.Name):
+                        n_locals.add(t.id)
+        for node in ast.walk(fn):
+            if not isinstance(node, ast.Dict):
+                continue
+            for k, v in zip(node.keys, node.values):
+                if not isinstance(k, ast.Constant) or not isinstance(k.value, str):
+                    continue
+                if _calls_n(v) or any(isinstance(s, ast.Name) and s.id in n_locals
+                                      for s in ast.walk(v)):
+                    keys.add(k.value)
+                else:
+                    plain.add(k.value)
+
+    # ⭐ A KEY BUILT BOTH WAYS IS AMBIGUOUS, SO IT IS DROPPED. Matching on the
+    # key NAME is what makes this holder-agnostic — the whole point, since the
+    # EVA expression must be caught whoever holds the dict. The cost is
+    # collisions on generic names: `expected` is absence-built in the EVA
+    # checkpoint and plainly built in data_coverage, and flagging
+    # `is_c["expected"] + bs_c["expected"]` is a false positive that would teach
+    # people to ignore the checker within a week.
+    #
+    # `nopat` and `invested_capital` survive because nothing in these modules
+    # builds them any other way. Dropping the ambiguous names loses coverage
+    # rather than inventing precision — the honest trade, and it is stated
+    # rather than hidden.
+    #
+    # ⭐ THE SUBTRACTION MUST BE GLOBAL, AND DOING IT PER FILE WAS A BUG. A key
+    # absence-built in financials/engines.py and plainly built in
+    # valuation/engines.py survived, because this file's own `plain` did not
+    # contain it. That kept `net_debt` in the set and produced five false
+    # positives in valuation, where net_debt is
+    # `company["_debt_book"] - bs["cash"][ys]` — raw arithmetic, not _n. The
+    # caller unions both sets and subtracts once, across every target.
+    return keys, plain
+
+
 def nullable_dict_keys(tree):
     """{function_name: {keys whose value can be None}} for dict-returning factories.
 
@@ -150,8 +239,9 @@ def nullable_factories(tree, dict_keyed=()):
 
 
 class Scan(ast.NodeVisitor):
-    def __init__(self, factories=(), dict_keys=None):
+    def __init__(self, factories=(), dict_keys=None, absence_keys=()):
         self.factories = set(factories)
+        self.absence_keys = set(absence_keys)
         self.dict_keys = dict_keys or {}      # fn -> {nullable key names}
         self.from_fn = {}                     # local name -> factory it came from
         self.risky = set()      # names bound to a possibly-None expression
@@ -169,6 +259,13 @@ class Scan(ast.NodeVisitor):
             if isinstance(f, ast.Name) and f.id in self.factories:
                 return True
         if isinstance(node, ast.Subscript):
+            # ⭐ a key that engines.py builds with _n() is None BY CONSTRUCTION,
+            # whoever is holding the dict. This is what makes the EVA expression
+            # a finding at every site rather than at the one that happened to be
+            # reported.
+            k0 = node.slice
+            if isinstance(k0, ast.Constant) and k0.value in self.absence_keys:
+                return True
             # a dict from a per-key factory: only the nullable keys are risky
             if isinstance(node.value, ast.Name) and node.value.id in self.from_fn:
                 fn = self.from_fn[node.value.id]
@@ -260,6 +357,15 @@ class Scan(ast.NodeVisitor):
 def main():
     total = 0
     per_file = []
+    absence_keys, plain_keys = set(), set()
+    for rel in TARGETS:
+        path = os.path.join(ROOT, rel)
+        if os.path.exists(path):
+            k, pl = absence_built_keys(
+                ast.parse(open(path, encoding="utf-8").read()))
+            absence_keys |= k
+            plain_keys |= pl
+    absence_keys -= plain_keys
     for rel in TARGETS:
         path = os.path.join(ROOT, rel)
         if not os.path.exists(path):
@@ -267,7 +373,7 @@ def main():
         src = open(path, encoding="utf-8").read()
         tree = ast.parse(src)
         dk = nullable_dict_keys(tree)
-        sc = Scan(nullable_factories(tree, dk), dk)
+        sc = Scan(nullable_factories(tree, dk), dk, absence_keys)
         sc.visit(tree)
         # a site already routed through _n() is handled
         hits = [h for h in sc.hits if "_n(" not in h[2]]
