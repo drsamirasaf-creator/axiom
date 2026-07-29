@@ -63,7 +63,12 @@ EXPECTED_SIDEBAR_LINKS = [
 # render at their own URL — they're just no longer top-level sidebar links — so
 # they are asserted via EXPECTED_SIDEBAR_LINKS' absence, not here.
 FORBIDDEN_SIDEBAR_HREFS = {"/reports", "/benchmarking"}
-EXPECTED_GROUPS = ["ANALYZE", "STRATEGIZE", "EXECUTE & MONITOR", "UTILITY"]
+# ⭐ "EXECUTE & MONITOR" WAS RENAMED TO "EXECUTE" IN THE APP (AppLayout.tsx:124)
+# and this list kept asserting the old label. The assertion was not wrong once —
+# it went STALE, which is the failure mode a hardcoded contract has. Verified
+# against source before changing: the rendered group labels are ANALYZE,
+# STRATEGIZE, EXECUTE, UTILITY (plus WORKSPACE, never asserted here).
+EXPECTED_GROUPS = ["ANALYZE", "STRATEGIZE", "EXECUTE", "UTILITY"]
 
 # old path -> where it should land + a content needle proving the destination.
 # VERIFY-ON-FIRST-RUN (see module docstring): dest/needle are reconstructed.
@@ -73,7 +78,11 @@ ALIASES = {
     # assertion proves the destination actually rendered (not just the shell).
     "/reports":             {"dest": "/dashboard?tab=reports",            "needle": "Dashboard & Reports"},
     "/benchmarking":        {"dest": "/risk-analysis?section=benchmarking","needle": "Benchmark Performance Index"},
-    "/cei":                 {"dest": "/cei",                              "needle": "Collaborative Assessment"},
+    # ⭐ RECONSTRUCTED NEEDLE, NOW VERIFIED. The docstring flagged this as
+    # unverified and it was wrong: /cei renders "Stakeholder Engagement"
+    # (cei.tsx:1045). "Collaborative Assessment" was folded into that page in the
+    # 2026-07 nav restructure. A needle nobody checked is a red nobody can act on.
+    "/cei":                 {"dest": "/cei",                              "needle": "Stakeholder Engagement"},
     "/twin":                {"dest": "/twin",                             "needle": "Performance Monitoring"},
     # /data-input is NOT an alias — it renders its own page (the upload door). Its
     # reachability is asserted by the dedicated DATA-UPLOAD probe + sidebar link below.
@@ -787,15 +796,29 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
     # ---- sub-tabs ----
     if authed:
         for path, _kind in SUBTABS.items():
+            why = ""
             try:
                 _safe_goto(st["pg"], APP_BASE + path)
                 st["pg"].wait_for_timeout(SETTLE_MS)
                 n_tabs = st["pg"].locator(TAB_SELECTOR).count()
-            except Exception:
+                # ⭐ SAY WHERE IT LANDED AND WHAT IT SAW. This reported only
+                # "MISSING", and it failed for OPERATOR while passing for MEMBER on
+                # the same route — which a stale selector cannot explain, so the
+                # bare message sent the reader to the wrong suspect. The selector
+                # already covers RouteTabs' plain route links
+                # (a[class*='border-b-2']); what it could not say was whether the
+                # page was even the one asked for.
+                landed = _norm_href(st["pg"].url)
+                if n_tabs < 1:
+                    anchors = st["pg"].locator("a[href^='/']").count()
+                    why = (f" :: landed on {landed}, {anchors} internal link(s) "
+                           f"present, 0 matched the tab selector")
+            except Exception as e:
                 n_tabs = 0
+                why = f" :: navigation/query error {type(e).__name__}"
             tick()
             if n_tabs < 1:
-                fails.append(f"{mode} sub-tabs MISSING on {path}")
+                fails.append(f"{mode} sub-tabs MISSING on {path}{why}")
 
     # ---- demo-surface element presence (anonymous Meridian IS the showcase) ----
     # Sidebar-presence discipline for the Part-2 surfaces: a silent-empty chip/tab is
@@ -882,7 +905,12 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
             markers = any(m in body for m in (
                 "download template", "financial data", "additional documents",
                 "select a company", "upload"))
-            if final != "/data-input":
+            # ⭐ A DEFAULT TAB IS NOT A REDIRECT AWAY. The app lands on
+            # /data-input?tab=financial — the same page with a tab pre-selected —
+            # and this compared the full href including the query, reading a
+            # working door as a broken one. custody-10 cares that the PATH is
+            # still /data-input; which tab opens is a UI choice.
+            if final.split("?")[0] != "/data-input":
                 up_ok, up_why = False, f"redirected away to {final}"
             elif not (has_file or markers):
                 up_ok, up_why = False, "no upload control / data-input surface rendered"
