@@ -12595,6 +12595,17 @@ def _ensure_ax_columns(engine):
     # ⭐ KR stable identity (the one OKR entity that had none) + the alias table.
     # create_all() makes ax_kr_aliases because it is a NEW table; kr_key is a new
     # column on a table that already exists, so it comes through here.
+    # ⭐ THESE TWO WERE MISSED AND TOOK THE DEMO DOWN. The model gained
+    # links_considered_at/by in the same commit and the migration entries were
+    # written in a separate edit that never checked the two lists agreed.
+    # create_all() creates missing TABLES, never missing COLUMNS — the first line
+    # of this function's docstring — so SQLAlchemy emitted the columns on every
+    # Initiative query and Postgres rejected the statement. Every read touching
+    # ax_initiatives returned 500: org structure, SWOT, initiatives, the cockpit.
+    # Nothing was destroyed; nothing could be read. scripts/check-model-columns.py
+    # now fails the build on this class.
+    _add("ax_initiatives", "links_considered_at", "links_considered_at TIMESTAMP")
+    _add("ax_initiatives", "links_considered_by", "links_considered_by INTEGER")
     _add("ax_key_results", "kr_key", "kr_key VARCHAR(64)")
     _add("ax_key_results", "kpi_key", "kpi_key VARCHAR(64)")
     # GoalInitiativeLink brought up to the contract its two sibling link tables
