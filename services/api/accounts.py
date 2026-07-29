@@ -4896,9 +4896,21 @@ _SEED_COMMENTS = {
     ],
 }
 
-# Departments that must CLEAR the floor, and the one that must not.
+# Departments that must CLEAR the floor.
 _SEED_TARGET_DEPTS = ["Finance", "Operations", "Sales & Marketing"]
 _SEED_MIN_COMMENTERS = 4          # comfortably above KFLOOR=3
+
+# ⭐ TWO DEPARTMENTS BELOW THE FLOOR, NOT ONE — AND THE FIRST SEED GOT THIS WRONG.
+# With a single hidden sibling, complement-inference correctly suppresses the
+# VISIBLE departments as well: total 13 minus three disclosed 4s leaves exactly 1,
+# which names the hidden cell by subtraction. So a demo with one protected
+# department shows nothing at all, and the law is what makes that so.
+#
+# Two hidden cells share the residual, nobody is isolated, and the demo can show
+# both states at once: three departments readable, two protected. The protection
+# is visible as a FEATURE rather than as an absence.
+_SEED_BELOW_FLOOR_DEPTS = ["Technology", "Supply Chain"]
+_SEED_BELOW_FLOOR_COMMENTERS = 2  # deliberately under KFLOOR=3
 
 
 @router.post("/companies/{company_id}/assessment/seed-comments")
@@ -4947,7 +4959,9 @@ def seed_assessment_comments(company_id: int, body: SeedCommentsIn,
         items = [iid for iid, m in id_map.items() if m.get("l1_code") == axis]
         if not items:
             continue
-        for dept in _SEED_TARGET_DEPTS:
+        for dept, want in ([(d, _SEED_MIN_COMMENTERS) for d in _SEED_TARGET_DEPTS] +
+                           [(d, _SEED_BELOW_FLOOR_COMMENTERS)
+                            for d in _SEED_BELOW_FLOOR_DEPTS]):
             rng = random.Random(f"{cyc.id}|{dept}|{axis}")
             rows = (db.query(AssessmentResponse)
                     .filter(AssessmentResponse.cycle_id == cyc.id,
@@ -4960,7 +4974,7 @@ def seed_assessment_comments(company_id: int, body: SeedCommentsIn,
                 by_ref.setdefault(r.participant_ref, []).append(r)
             already = {ref for ref, rs in by_ref.items()
                        if any(x.comment and x.comment.strip() for x in rs)}
-            need = max(0, _SEED_MIN_COMMENTERS - len(already))
+            need = max(0, want - len(already))
             candidates = [ref for ref in sorted(by_ref) if ref not in already]
             rng.shuffle(candidates)
             for ref in candidates[:need]:
