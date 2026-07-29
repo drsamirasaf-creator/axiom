@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
+from ...response_schemas import (RiskDashboardOut, OptimizeOut, ExecutiveBriefOut, IntelligenceHealthOut, ScenarioLeversOut)  # noqa: E402
 from ...core.db import get_db
 from ...core.config import ai_model
 from ..financials import models as fin_models
@@ -151,7 +152,8 @@ def _get_dataset(db, tenant, dataset_id) -> fin_models.FinancialDataset:
     return row
 
 
-@router.get("/health/{dataset_id}")
+@router.get("/health/{dataset_id}",
+            responses={200: {"model": IntelligenceHealthOut}})
 def reo_health(dataset_id: int, db: Session = Depends(get_db),
                tenant: str = Depends(_tenant)):
     """Enterprise Health Index v1 — REO distance (ADR-006 §3)."""
@@ -264,7 +266,8 @@ def apply_readiness(body: ReadinessApplyIn, db: Session = Depends(get_db),
                 "delta_applied": delta}}
 
 
-@router.get("/optimize/{dataset_id}")
+@router.get("/optimize/{dataset_id}",
+            responses={200: {"model": OptimizeOut}})
 def dynamic_optimize(dataset_id: int, horizon: int = 5,
                      db: Session = Depends(get_db),
                      tenant: str = Depends(_tenant)):
@@ -282,7 +285,8 @@ class BriefIn(BaseModel):
     readiness_responses: dict | None = None
 
 
-@router.get("/executive-brief/{dataset_id}")
+@router.get("/executive-brief/{dataset_id}",
+            responses={200: {"model": ExecutiveBriefOut}})
 def executive_brief_get(dataset_id: int, db: Session = Depends(get_db),
                         tenant: str = Depends(_tenant)):
     ds = _get_dataset(db, tenant, dataset_id)
@@ -331,7 +335,8 @@ def optimize_analytics_route(dataset_id: int, horizon: int = 5,
         raise _H(status_code=422, detail=str(e))
 
 
-@router.get("/risk-dashboard/{dataset_id}")
+@router.get("/risk-dashboard/{dataset_id}",
+            responses={200: {"model": RiskDashboardOut}})
 def risk_dashboard_route(dataset_id: int, db: Session = Depends(get_db),
                          tenant: str = Depends(_tenant)):
     """The complete Business Risk Analysis page (ADR-014): distributions,
@@ -435,7 +440,8 @@ def board_report_route(dataset_id: int, confidential: bool = False,
     return report
 
 
-@router.get("/scenario/levers")
+@router.get("/scenario/levers",
+            responses={200: {"model": ScenarioLeversOut}})
 def scenario_levers():
     """The five executive scenario levers with bounds and help text."""
     return engines.SCENARIO_LEVERS

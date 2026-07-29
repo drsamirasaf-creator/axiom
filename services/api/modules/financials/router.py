@@ -4,6 +4,7 @@
 from fastapi import (APIRouter, Depends, Header, HTTPException, UploadFile,
                      File, Form, Response)
 from sqlalchemy.orm import Session
+from ...response_schemas import (DatasetProfileOut)  # noqa: E402
 from ...core.db import get_db
 from . import engines, models, schemas, templates
 
@@ -136,7 +137,8 @@ def get_dataset(dataset_id: int, db: Session = Depends(get_db),
     return _get_dataset(db, tenant, dataset_id, scoped)
 
 
-@router.get("/datasets/{dataset_id}/profile")
+@router.get("/datasets/{dataset_id}/profile",
+            responses={200: {"model": DatasetProfileOut}})
 def enterprise_profile(dataset_id: int, db: Session = Depends(get_db),
                        tenant: str = Depends(_tenant),
                        scoped: int | None = Depends(_scoped)):

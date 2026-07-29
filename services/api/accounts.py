@@ -51,6 +51,10 @@ def get_db():
 # security
 # ======================================================================
 import hashlib
+from .response_schemas import (  # noqa: E402
+    AssessmentSummaryOut, AssessmentCurrentOut, InitiativeListOut,
+    ObjectivesOut, UrgentItemsOut, AssessmentSwotOut,
+)
 import uuid
 import hmac
 import os
@@ -4024,7 +4028,8 @@ def _active_objective_keys(db, company_id):
     return {r["obj_key"] for r in rows}
 
 
-@router.get("/companies/{company_id}/objectives")
+@router.get("/companies/{company_id}/objectives",
+            responses={200: {"model": ObjectivesOut}})
 def company_objectives(company_id: int, department: int | None = None,
                        member=Depends(_summary_access), db=Depends(get_db)):
     """OKR objectives for the active dataset — grouped by horizon (Short→Medium→Long),
@@ -6267,7 +6272,8 @@ def create_initiative(company_id: int, body: InitiativeCreate,
     return _ini_out(ini)
 
 
-@router.get("/companies/{company_id}/initiatives")
+@router.get("/companies/{company_id}/initiatives",
+            responses={200: {"model": InitiativeListOut}})
 def list_initiatives(company_id: int, department: int | None = None,
                      member=Depends(_summary_access),
                      db=Depends(get_db)):
@@ -7769,7 +7775,8 @@ def initiatives_cockpit(company_id: int, member=Depends(_summary_access), db=Dep
             "by_department": departments}
 
 
-@router.get("/companies/{company_id}/urgent-items")
+@router.get("/companies/{company_id}/urgent-items",
+            responses={200: {"model": UrgentItemsOut}})
 def urgent_items(company_id: int, member=Depends(_summary_access), db=Depends(get_db)):
     """Executive 'Urgent Items' — a read-only, strictly DESCRIPTIVE cross-domain
     aggregation into INTERVENTION (underperformance) and RECOGNITION (outperformance).
@@ -9807,7 +9814,8 @@ def _summary_rags(cei: dict, snapshot: dict | None) -> dict:
             "sentiment_available": bool(item_sent or l1_sent)}
 
 
-@router.get("/companies/{company_id}/assessment/summary")
+@router.get("/companies/{company_id}/assessment/summary",
+            responses={200: {"model": AssessmentSummaryOut}})
 def assessment_summary(company_id: int, department: int | None = None,
                        seniority: str | None = None,
                        member=Depends(_summary_access),
@@ -10557,7 +10565,8 @@ def assessment_item_drill(company_id: int, item_code: str,
 # companies are additionally readable ANONYMOUSLY, mirroring the carve-out the other
 # showcase read endpoints already honor (_summary_access / require_report_read).
 # Showcase ids come from tenant='showcase', never hardcoded.
-@router.get("/companies/{company_id}/assessment/swot")
+@router.get("/companies/{company_id}/assessment/swot",
+            responses={200: {"model": AssessmentSwotOut}})
 def assessment_swot(company_id: int, department: int | None = None,
                     seniority: str | None = None,
                     _role=Depends(_summary_access), db=Depends(get_db)):
@@ -10996,7 +11005,8 @@ def get_assess_invite_link(company_id: int, invite_id: int,
             "alt_email": inv.alt_email, "expires_at": expires_at}
 
 
-@router.get("/companies/{company_id}/assessment/current")
+@router.get("/companies/{company_id}/assessment/current",
+            responses={200: {"model": AssessmentCurrentOut}})
 def current_cycle_status(company_id: int, member=Depends(_summary_access),
                          db=Depends(get_db)):
     """CE surface: the open cycle (if any) with invited/responded counts."""
