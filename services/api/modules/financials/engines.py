@@ -62,6 +62,30 @@ def _r(x, nd=6):
     return None if x is None else round(float(x), nd)
 
 
+def _n(fn, *vals):
+    """Arithmetic that PROPAGATES ABSENCE instead of inventing a zero.
+
+    ⭐ THIS EXISTS BECAUSE `rev[i] - cogs[i] - opex[i] - da[i]` RAISED
+    TypeError: unsupported operand for -: 'NoneType' and 'NoneType' IN PRODUCTION,
+    on GET /plan-vs-methods, twice, across two datasets and two accounts.
+
+    `_series` returns `vals.get(str(y))`, which is None for any period a line item
+    does not cover — and `_pvm_full` deliberately assembles historicals and a
+    forecast whose keys need not align, so None is a NORMAL value here, not a
+    corrupt one.
+
+    ⭐ AND THE FIX IS NOT `or 0`. A missing revenue is not zero revenue: coercing
+    would turn "we have no figure for this period" into "the figure is nought",
+    which produces a confident EBIT from nothing and is precisely the fabricated
+    measurement this codebase is built against. The frontend reached the same
+    conclusion today in lib/num.ts — a missing value renders an em dash, never
+    0.00. This is that rule on the server, where the number is made.
+
+    So a derived figure whose inputs are incomplete is None, and callers already
+    handle None in these series: fcff/fcfe are None at i == 0 by construction."""
+    return None if any(v is None for v in vals) else fn(*vals)
+
+
 def _series(block: dict, key: str, years: list) -> list:
     vals = block.get(key, {}) or {}
     return [vals.get(str(y)) for y in years]
@@ -206,22 +230,27 @@ def derive_series(data: dict) -> dict:
     ebit, ni, nwc, fcff, fcfe = [], [], [], [], []
     identity_gap_max = 0.0
     for i, y in enumerate(years):
-        e = rev[i] - cogs[i] - opex[i] - da[i]
-        pretax = e - interest[i]
-        tax = T * max(pretax, 0.0)
-        n = pretax - tax
-        w = (BS["other_current_assets"][str(y)]
-             - BS["current_liabilities_ex_debt"][str(y)])
+        e = _n(lambda r, c, o, d: r - c - o - d, rev[i], cogs[i], opex[i], da[i])
+        pretax = _n(lambda a, b: a - b, e, interest[i])
+        tax = _n(lambda p: T * max(p, 0.0), pretax)
+        n = _n(lambda a, b: a - b, pretax, tax)
+        w = _n(lambda a, b: a - b,
+               BS["other_current_assets"].get(str(y)),
+               BS["current_liabilities_ex_debt"].get(str(y)))
         ebit.append(e); ni.append(n); nwc.append(w)
         if i == 0:
             fcff.append(None); fcfe.append(None)
         else:
-            d_nwc = w - nwc[i - 1]
-            f = e * (1 - T) + da[i] - capex[i] - d_nwc
-            fe = f - interest[i] * (1 - T) + nb[i]
+            d_nwc = _n(lambda a, b: a - b, w, nwc[i - 1])
+            f = _n(lambda ee, dd, cc, dn: ee * (1 - T) + dd - cc - dn,
+                   e, da[i], capex[i], d_nwc)
+            fe = _n(lambda ff, ii, bb: ff - ii * (1 - T) + bb, f, interest[i], nb[i])
             # FCFE identity check: NI + D&A - CapEx - dNWC + NB
-            fe_id = ni[i] + da[i] - capex[i] - d_nwc + nb[i]
-            if pretax >= 0:  # identity exact only when tax = T*pretax
+            fe_id = _n(lambda nn, dd, cc, dn, bb: nn + dd - cc - dn + bb,
+                       n, da[i], capex[i], d_nwc, nb[i])
+            # identity exact only when tax = T*pretax, and only checkable when
+            # every term is present
+            if pretax is not None and pretax >= 0 and fe is not None and fe_id is not None:
                 identity_gap_max = max(identity_gap_max, abs(fe - fe_id))
             fcff.append(f); fcfe.append(fe)
 
@@ -229,24 +258,34 @@ def derive_series(data: dict) -> dict:
     ratios = []
     for i, y in enumerate(years):
         ys = str(y)
-        assets = BS["cash"][ys] + BS["other_current_assets"][ys] + BS["noncurrent_assets"][ys]
-        debt = BS["short_term_debt"][ys] + BS["long_term_debt"][ys]
-        equity = BS["total_equity"][ys]
-        cl = BS["current_liabilities_ex_debt"][ys] + BS["short_term_debt"][ys]
-        ic = debt + equity + BS["preferred_equity"][ys] + BS["minority_interest"][ys] - BS["cash"][ys]
-        nopat = ebit[i] * (1 - T)
+        # ⭐ THE SAME ABSENCE PROBLEM, ONE LOOP DOWN. Every term here is a balance
+        # sheet lookup that can be None on an assembled dataset, and `x / y if y`
+        # already guards a None DIVISOR — but never a None NUMERATOR, and never
+        # the sums feeding it. The 500 landed in the loop above only because that
+        # one runs first.
+        cash = BS["cash"].get(ys)
+        oca = BS["other_current_assets"].get(ys)
+        assets = _n(lambda a, b, c: a + b + c, cash, oca, BS["noncurrent_assets"].get(ys))
+        debt = _n(lambda a, b: a + b,
+                  BS["short_term_debt"].get(ys), BS["long_term_debt"].get(ys))
+        equity = BS["total_equity"].get(ys)
+        cl = _n(lambda a, b: a + b,
+                BS["current_liabilities_ex_debt"].get(ys), BS["short_term_debt"].get(ys))
+        ic = _n(lambda d, e, pe, mi, c: d + e + pe + mi - c, debt, equity,
+                BS["preferred_equity"].get(ys), BS["minority_interest"].get(ys), cash)
+        nopat = _n(lambda e: e * (1 - T), ebit[i])
         ratios.append({
             "year": y, "year_label": _fmt_period(y, _freq),
-            "ebitda": _r(ebit[i] + da[i]), "ebit": _r(ebit[i]),
-            "ebit_margin": _r(ebit[i] / rev[i] if rev[i] else None),
+            "ebitda": _r(_n(lambda a, b: a + b, ebit[i], da[i])), "ebit": _r(ebit[i]),
+            "ebit_margin": _r(_n(lambda a, b: a / b, ebit[i], rev[i]) if rev[i] else None),
             "net_income": _r(ni[i]),
-            "roa": _r(ni[i] / assets if assets else None),
-            "roe": _r(ni[i] / equity if equity else None),
-            "roic": _r(nopat / ic if ic else None),
-            "current_ratio": _r((BS["cash"][ys] + BS["other_current_assets"][ys]) / cl
+            "roa": _r(_n(lambda a, b: a / b, ni[i], assets) if assets else None),
+            "roe": _r(_n(lambda a, b: a / b, ni[i], equity) if equity else None),
+            "roic": _r(_n(lambda a, b: a / b, nopat, ic) if ic else None),
+            "current_ratio": _r(_n(lambda a, b, c: (a + b) / c, cash, oca, cl)
                                 if cl else None),
-            "debt_to_equity": _r(debt / equity if equity else None),
-            "net_debt": _r(debt - BS["cash"][ys]),
+            "debt_to_equity": _r(_n(lambda a, b: a / b, debt, equity) if equity else None),
+            "net_debt": _r(_n(lambda a, b: a - b, debt, cash)),
             "invested_capital": _r(ic), "nopat": _r(nopat),
         })
 
