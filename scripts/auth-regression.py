@@ -36,6 +36,7 @@ import json
 import argparse
 
 APP_BASE = os.environ.get("APP_URL", "https://axiomdynamics.app").rstrip("/")
+_LOCAL_TARGET = "localhost" in APP_BASE or "127.0.0.1" in APP_BASE
 BACKEND = os.environ.get("BACKEND_HOST", "web-production-0e3de.up.railway.app")
 TOKEN_KEY = "axiom.auth.token"          # localStorage key the app reads on boot
 NAV_SEL = "nav a, aside a, [role='navigation'] a, [class*='sidebar'] a"
@@ -109,7 +110,14 @@ TAB_SELECTOR = ("[role='tab'], a[href*='tab='], a[href*='section='], "
 # 'load' instead, then settle SETTLE_MS for the async data fetches (the ones that
 # fire the backend calls we grade) to complete and be recorded.
 WAIT_UNTIL = "load"
-SETTLE_MS = 2600
+# ⭐ THE LOCAL TARGET IS SLOWER THAN THE CDN AND 2600ms WAS A FALSE NEGATIVE.
+# Against localhost the Cockpit reported MISSING while rendering perfectly in a
+# screenshot of the same route — the dev server compiles a route on first request,
+# so the first paint lands after a CDN-tuned settle has already given up. A
+# timing artifact reported as a missing surface is worse than a slow check: it
+# sends someone to look for a defect that is not there.
+SETTLE_MS = int(os.environ.get("SETTLE_MS", "0")) or (
+    9000 if "localhost" in APP_BASE or "127.0.0.1" in APP_BASE else 2600)
 
 # ── retry policy (RATIFIED) — connection-class ONLY ──────────────────────────
 # page.goto() RAISES only when no response arrived (connection died / navigation
@@ -815,8 +823,15 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
                 present = False
             tick()
             if not present:
-                fails.append(f"{mode} demo-surface MISSING: {label} at {path} "
-                             f"(needs a Lovable Publish of the Part-2 frontend)")
+                # ⭐ NAME THE CAUSE THE TARGET ACTUALLY IMPLIES. "Needs a Lovable
+                # Publish" is true of the CDN and nonsense against localhost,
+                # where the code is already whatever the working tree says. A
+                # failure message that misattributes cause sends the next reader
+                # to the wrong place.
+                _why = ("the local build does not render it — check the route, "
+                        "not the publish" if _LOCAL_TARGET
+                        else "needs a Lovable Publish of the Part-2 frontend")
+                fails.append(f"{mode} demo-surface MISSING: {label} at {path} ({_why})")
             print(f"    {mode} demo-element {label} -> {'ok' if present else 'MISSING'}", flush=True)
 
         # ---- demo ranking guard: EVERY Underway row shows a full display code
@@ -830,7 +845,16 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
             codes = st["pg"].evaluate(
                 "() => Array.from(document.querySelectorAll('span.font-mono.bg-secondary'))"
                 ".map(e => (e.textContent||'').trim())"
-                ".filter(t => /^[A-Z][0-9]*$/.test(t))")
+                ".filter(t => /^[A-Z](?:[0-9]+|\\u2014)?$/.test(t))")
+            # ⭐ THE §7.48 FIX SILENTLY SHRANK THIS GUARD'S COVERAGE. Unranked
+            # initiatives now render "A—" instead of a bare "A", and the old
+            # pattern ^[A-Z][0-9]*$ does not match an em dash — so six rows
+            # stopped being COUNTED at all and the guard passed by looking at
+            # fewer things. The coded-row count fell 15 -> 9 and nothing said so.
+            #
+            # The pattern now admits the unranked rendering, so the count stays
+            # whole. "Bare" means a LETTER ALONE: "A—" is a deliberate unranked
+            # state and is fine; "A" is the ambiguous truncation §7.48 removed.
             bare = [t for t in (codes or []) if len(t) == 1]
             ok_rank = bool(codes) and not bare
         except Exception:
