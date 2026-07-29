@@ -1,7 +1,7 @@
 """AXIOM API — modular monolith entrypoint (SPEC-008 §19.2/§19.3). REQ-CORE-003."""
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Header
 from fastapi.middleware.cors import CORSMiddleware
 from .core.db import init_db
 
@@ -129,6 +129,45 @@ def health():
     return {"status": "ok", "service": "axiom-api", "phase": 18,
             "monitoring": bool(_SENTRY_ON),
             "environment": os.environ.get("AXIOM_ENV", "production")}
+
+
+# ⭐⭐ TEMPORARY — SENTRY DELIVERY PROBE. REMOVE IN THIS SAME PASS.
+#
+# `/health` reporting monitoring:true proves the SDK INITIALISED. It does not
+# prove an event ever reaches the dashboard — the transport can fail on a bad
+# DSN, a blocked egress, or a project that rejects the key, and every one of
+# those looks identical from inside the process. "Initialised" and "delivering"
+# are different claims, and the previous session already recorded one of them as
+# the other.
+#
+# So this raises a real exception, captures it, and returns the EVENT ID. The id
+# is the handoff: it can be searched in the dashboard, which is the only place
+# delivery can actually be observed from.
+#
+# ADMIN-GATED AND 404 WITHOUT THE SECRET. If AXIOM_ADMIN_TOKEN is unset the route
+# does not exist at all, so a deployment without the secret cannot be made to
+# throw by a stranger. It is removed in the same commit sequence that adds it.
+@app.post("/__ops/sentry-probe", include_in_schema=False, tags=["platform"])
+def _sentry_probe(x_axiom_admin: str = Header(default="")):
+    from fastapi import HTTPException as _H
+    from .core.config import admin_token as _tok
+    secret = _tok()
+    if not secret or x_axiom_admin != secret:
+        raise _H(404, "Not Found")
+    if not _SENTRY_ON:
+        return {"monitoring": False, "event_id": None,
+                "message": "Sentry did not initialise; nothing to deliver."}
+    import sentry_sdk
+    try:
+        raise RuntimeError(
+            "AXIOM sentry delivery probe — deliberate, ignore. "
+            "Verifies events reach the dashboard, not merely that the SDK loaded.")
+    except RuntimeError:
+        event_id = sentry_sdk.capture_exception()
+    sentry_sdk.flush(timeout=8)
+    return {"monitoring": True, "event_id": event_id,
+            "environment": os.environ.get("AXIOM_ENV", "production"),
+            "search": f"Search this id in Sentry: {event_id}"}
 
 
 # ---- Brand assets (Phase 18.4, ADR-021) -------------------------------------
