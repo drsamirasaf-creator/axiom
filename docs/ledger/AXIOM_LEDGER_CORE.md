@@ -3774,6 +3774,47 @@ in one case by the person who had just written this taxonomy.**
 | 4 | **PASSING-FOR-THE-WRONG-REASON** — assertion right, input cannot discriminate | a lowercase department still matched after case-insensitivity was removed, because the lookup key was already lowered |
 | 5 | **ALWAYS-FAILING** — fails on CORRECT code | an end-to-end test raised `KeyError` on an incomplete fixture |
 
+### ⭐ THE TWO REMEDIES, RECORDED AS RULES
+
+Both were learned by repetition, not by reasoning, which is why they are written
+down rather than left as judgement.
+
+**(a) WRONG-BINDING IS CLOSED BY GIVING THE CONSTRUCTION A NAME — NOT BY WIDENING
+THE ASSERTION.** Third occurrence (29 Jul). The instinct each time was to make
+the existing assertion stricter, and each time that would have failed again,
+because the problem is not that the assertion is weak: it is that **the thing
+that can break has no handle a test can hold.**
+
+    `assert pdf_period is format_period`  — asserts the IMPORT, which stays
+    true while the header construction below it is rewritten to `str(y)`.
+
+Widening it cannot help; there is nothing else to assert *about the import*. The
+fix is to extract the construction:
+
+    def period_headers(periods, frequency): ...
+
+Now the mutation has something to target and the test has something to call. **A
+thing worth guarding needs a name to be called by** — and if a guard cannot be
+written without inspecting source text or rebuilding a PDF, that is the signal
+that a name is missing, not that the guard is hard.
+
+**(b) ANY TEST ASSERTING A CONSTRAINT ON A FIELD NEEDS A PAIRED ASSERTION THAT
+THE FIELD EXISTS.** The vacuous guard is entry 5's sibling: entry 5 is a test
+that always FAILS and so kills every mutation; this is a test that always PASSES
+because it constrains something absent.
+
+    test_year_label_is_never_computed_on()          — passes trivially if
+                                                      nothing emits year_label
+    test_year_label_is_actually_present(...)        — the pair that makes the
+                                                      first one mean something
+
+The shape generalises: a guard phrased as "X is never done to F" is satisfied by
+F not existing. Every such guard carries a companion asserting F is still there.
+This matters most for redundant fields added deliberately — `year_label` beside
+`year` — because the whole justification for the redundancy is that only one of
+the two is ever computed on, and a guard that stops guarding removes the only
+thing making the redundancy safe.
+
 ### ⭐ ENTRY 5 IS THE ONE THE HARNESS ITSELF HIDES
 
 The first four make a mutation SURVIVE, which the harness reports loudly. **Entry
