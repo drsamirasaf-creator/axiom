@@ -154,8 +154,8 @@ PERIOD_FORMATS = {
 # names the encoding instead.
 PERIOD_PROMPT_TITLE = "Period format"
 PERIOD_PROMPTS = {
-    "quarterly": ("Enter the period as YYYYQ — 20231 for 2023 Q1. "
-                  "Displays as 2023'Q1-E."),
+    "quarterly": ("Enter the period as 2024Q1. 2024-Q1, 2024 Q1 and Q1 2024 "
+                  "are also accepted; AXIOM reports how it read each one."),
     "annual": ("Enter the period as a four-digit year — 2026. "
                "Displays as 2026-E."),
 }
@@ -459,6 +459,10 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
         "   AXIOM formats for display. Leaving any sheet's sample data in is rejected.",
         f"2. Enter {ncols} {'years' if frequency=='annual' else 'quarters'} across the statement sheets.",
         "   Row 4 = the period label; row 3 marks Historical or Forecast.",
+        *(["   Periods are typed as 2024Q1. 2024-Q1, 2024 Q1 and Q1 2024 also work,",
+           "   and AXIOM reports how it read each one so you can check it agreed",
+           "   with you. The historical columns are already filled in as examples."]
+          if frequency == "quarterly" else []),
         "   At least one historical period is required.",
         f"2b. OPTIONAL — the {nfcst} pale 'Forecast' columns on the right hold YOUR OWN",
         "   plan. Put a year in row 4 and fill the lines to enter it; AXIOM keeps it",
@@ -531,9 +535,19 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
             letter = get_column_letter(c); letters.append(letter)
             _input(ws[f"{letter}3"]); ws[f"{letter}3"].number_format = "General"
             _input(ws[f"{letter}4"])
-            ws[f"{letter}4"].number_format = PERIOD_FORMATS[(frequency, "historical")]
+            if frequency == "quarterly":
+                # ⭐ TEXT, AND THE CANONICAL ENTRY FORM. A 5-digit number in a
+                # period cell is what Excel reaches for a date with, and it is
+                # unreadable besides — 20201 tells a customer nothing. Writing
+                # "2020Q1" as TEXT with an explicit Text format means Excel never
+                # coerces it and the customer can see the form they are meant to
+                # type in the forecast columns.
+                ws[f"{letter}4"].number_format = "@"
+                ws[f"{letter}4"] = _entry_label(sample_periods[i], frequency)
+            else:
+                ws[f"{letter}4"].number_format = PERIOD_FORMATS[(frequency, "historical")]
+                ws[f"{letter}4"] = sample_periods[i]
             ws[f"{letter}3"] = "Historical"
-            ws[f"{letter}4"] = sample_periods[i]            # sample period label
             dv.add(ws[f"{letter}3"])
             ws.column_dimensions[letter].width = 14
         # v7: optional CLIENT-PLAN forecast columns — pre-labelled "Forecast" but
@@ -544,7 +558,10 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
             letter = get_column_letter(c); fcst_letters.append(letter)
             _input(ws[f"{letter}3"]); ws[f"{letter}3"].number_format = "General"
             _input(ws[f"{letter}4"])
-            ws[f"{letter}4"].number_format = PERIOD_FORMATS[(frequency, "forecast")]
+            # Forecast cells are the ones the client TYPES, so they carry the
+            # Text format whatever the frequency — the coercion risk is the same.
+            ws[f"{letter}4"].number_format = ("@" if frequency == "quarterly"
+                                              else PERIOD_FORMATS[(frequency, "forecast")])
             period_dv.add(ws[f"{letter}4"])
             ws[f"{letter}3"] = "Forecast"
             # row 3 is the Historical/Forecast DROPDOWN — an unlocked input, so it keeps
@@ -817,7 +834,8 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
 # imports, and which therefore cannot import `ingest` — can reach it too. These
 # names are re-exported for the validator below and for existing callers.
 from .periods import (decode_period, period_is_valid, next_period,
-                      format_period, forecast_periods, frequency_of)
+                      format_period, forecast_periods, frequency_of,
+                      parse_period, PeriodParseError, entry_label as _entry_label)
 
 
 def read_upload_metadata(content: bytes) -> dict | None:
@@ -926,6 +944,8 @@ def parse_and_validate(content: bytes, expected_company_id: int,
                            "message": f"'{label}' must be numeric"})
 
     # ---- Statement sheets ----
+    interpretations = []
+
     def read_cols(ws):
         """Every period column on the sheet.
 
@@ -947,22 +967,23 @@ def parse_and_validate(content: bytes, expected_company_id: int,
         for c in range(FIRST_COL, ws.max_column + 1):
             letter = get_column_letter(c)
             y, k = ws[f"{letter}4"].value, ws[f"{letter}3"].value
-            if y in (None, ""):
+            if y in (None, "") or (isinstance(y, str) and not y.strip()):
                 continue
+            # ⭐ NORMALISE, AND SAY HOW IT WAS READ. `parse_period` accepts the
+            # canonical 2024Q1 plus the forms a customer plausibly types, and
+            # hands back both the stored integer and a human interpretation. The
+            # interpretation is REPORTED rather than assumed silently: the
+            # near-ambiguous forms are exactly the ones where a customer needs to
+            # see that AXIOM agreed with them.
+            raw = y
             try:
-                y = int(y)
-            except (TypeError, ValueError):
+                y, how = parse_period(raw, freq)
+            except PeriodParseError as e:
                 errors.append({"sheet": ws.title, "cell": f"{letter}4",
-                               "message": "period must be an integer"})
+                               "message": str(e)})
                 continue
-            if not period_is_valid(y, freq):
-                errors.append({"sheet": ws.title, "cell": f"{letter}4",
-                               "message": (f"'{y}' is not a valid quarterly period — "
-                                           "use YYYYQ with a quarter of 1-4 "
-                                           "(20231 = 2023 Q1)")
-                               if freq == "quarterly" else
-                               f"'{y}' is not a valid year"})
-                continue
+            interpretations.append({"sheet": ws.title, "cell": f"{letter}4",
+                                    "read": str(raw), "as": how})
             kind = str(k or "").strip().lower()
             if kind not in ("historical", "forecast"):
                 errors.append({"sheet": ws.title, "cell": f"{letter}3",
@@ -1203,6 +1224,7 @@ def parse_and_validate(content: bytes, expected_company_id: int,
         pass
 
     if errors:
+        meta = dict(meta or {}); meta["period_interpretations"] = interpretations
         return None, errors, meta, warnings
 
     # ---- (a) normalize statement figures to the canonical MILLIONS scale ----
@@ -1212,6 +1234,10 @@ def parse_and_validate(content: bytes, expected_company_id: int,
             for row in data[block].values():
                 for ys in list(row):
                     row[ys] = row[ys] * factor
+    # ⭐ REPORTED ON SUCCESS TOO, NOT ONLY ON FAILURE. "read 2024Q1 as 2024 Q1"
+    # is worth showing when the upload WORKED — that is when a customer can still
+    # correct a period they meant differently.
+    meta = dict(meta or {}); meta["period_interpretations"] = interpretations
     return data, [], meta, warnings
 
 

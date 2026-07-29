@@ -42,6 +42,7 @@ RAGHEX = {"green": "#1FA971", "amber": "#E0A82E", "red": "#D9534F", "A": "#1FA97
 SEVCOL = {"opportunity": TEAL, "insight": NAVY, "risk": RED, "strength": GREEN, "action": AMBER}
 # Symbols, money, percent, number, KPI selection and plan selection all live in
 # report_format so the PPTX cannot drift from the PDF. See that module.
+from .modules.financials.periods import format_period as _fmt_period
 from .report_format import (currency_symbol as _sym_for, money as _money,
                             percent as _pc, number as _num,
                             kpi_value as _kpi_value, plan_value as _plan_value)
@@ -114,6 +115,17 @@ def _hist_chart(h):
     ax.set_title("Enterprise value — Monte Carlo distribution", fontsize=9, color="#0B1F3A", fontweight="bold", loc="left")
     ax.set_xlabel("Enterprise value", fontsize=7.5, color="#5A6B7B"); _style(ax)
     fig.tight_layout(pad=0.3); return _img(fig, 5.9, 2.2)
+
+
+def period_headers(periods, frequency: str) -> list[str]:
+    """Column headers for a statement table.
+
+    ⭐ NAMED SO IT CAN BE TESTED. Inline, this was `[str(y) for y in pfy]` — a
+    board read "20231" in a PDF column header — and the mutation that restored
+    that survived, because the only test in reach asserted the IMPORT was the
+    right function rather than that this construction used it. Wrong-binding,
+    the third instance. A thing worth guarding needs a name to be called by."""
+    return [_fmt_period(y, frequency) for y in (periods or [])]
 
 
 def build_board_pdf(report: dict, extras: dict, meta: dict) -> bytes:
@@ -399,7 +411,8 @@ def build_board_pdf(report: dict, extras: dict, meta: dict) -> bytes:
     _pfy_all = PFsec["forecast_years"]; _pfs_all = PFsec["statements"]
     _PF_CAP = 5
     pfy = _pfy_all[:_PF_CAP]; pfs = _pfs_all[:_PF_CAP]
-    YHDR = [str(y) for y in pfy]
+    _pfreq = (R.get("periods") or {}).get("frequency") or "annual"
+    YHDR = period_headers(pfy, _pfreq)
     _pf_truncated = len(_pfy_all) > _PF_CAP
     _PF_NOTE = (f"Showing the first {_PF_CAP} of {len(_pfy_all)} forecast years — "
                 f"the full {len(_pfy_all)}-year horizon is available in the AXIOM app."

@@ -495,6 +495,7 @@ def _chart_rail(d, kicker, headline, png, rail_cards=None, rail_bullets=None, in
 # PDF rendered "$4.1M" for the same payload, and its zero decimals collapsed 3.6,
 # 4.0 and 4.4 into one figure. `_fmt` agreed with the PDF's percent formatter,
 # which made it the next instance of this class rather than a safe one.
+from .modules.financials.periods import format_period as _fmt_period
 from .report_format import (money as _big_money, percent as _pct, number as _plain,
                             currency_symbol as _currency_symbol, score as _score)
 
@@ -696,7 +697,9 @@ def build_pptx_comprehensive(report, extras, meta, data=None) -> bytes:
                 else:
                     cells.append("—")
             rows.append(cells)
-        d.table(s, ["Line"] + [str(y) for y in yrs], rows, col_w=[2.4] + [ (9.7/len(yrs)) ]*len(yrs),
+        # Same function as the PDF and the screen — see report_pdf's YHDR note.
+        _yfreq = (report.get("periods") or {}).get("frequency") or "annual"
+        d.table(s, ["Line"] + [_fmt_period(y, _yfreq) for y in yrs], rows, col_w=[2.4] + [ (9.7/len(yrs)) ]*len(yrs),
                 anchors={l[1] for l in lines if l[2]}, fsize=10, row_h=0.62)
     band_table("IS", "Pro-forma income statement, with plan-attainment odds",
                [("revenue", "Revenue", True), ("ebit", "EBIT", True), ("ebitda", "EBITDA", True), ("net_income", "Net income", True)])

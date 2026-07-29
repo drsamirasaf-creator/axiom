@@ -81,3 +81,105 @@ def frequency_of(data: dict) -> str:
     Datasets written before the key existed are annual, which is correct — and
     it is a DECLARATION, never inferred from how the periods happen to look."""
     return ((data or {}).get("periods", {}) or {}).get("frequency") or "annual"
+
+
+# ── entry parsing (Part B) ──────────────────────────────────────────────────
+import re as _re
+
+_QUARTER_FORMS = (
+    _re.compile(r"^(?P<y>\d{4})\s*[-/ ]?\s*[Qq](?P<q>[1-4])$"),   # 2024Q1, 2024-Q1, 2024 Q1
+    _re.compile(r"^[Qq](?P<q>[1-4])\s*[-/ ]?\s*(?P<y>\d{4})$"),   # Q1 2024, Q1-2024
+)
+
+
+class PeriodParseError(ValueError):
+    """Raised with a message naming what was seen and what forms are accepted."""
+
+
+def parse_period(raw, frequency: str) -> tuple[int, str]:
+    """Customer-typed period -> (stored integer, human interpretation).
+
+    ⭐ IT RETURNS THE INTERPRETATION, NOT JUST THE VALUE. A parser that silently
+    accepts "2024Q1" leaves the customer to trust that AXIOM read it the way they
+    meant. Handing back "read '2024Q1' as 2024 Q1" lets them check, which matters
+    most for the forms that are genuinely near-ambiguous.
+
+    Accepted quarterly forms: 2024Q1, 2024-Q1, 2024 Q1, Q1 2024, 2024q1, and the
+    legacy 5-digit 20241. Annual: a 4-digit year, as an int or a string.
+
+    ⭐ LEGACY YYYYQ IS STILL ACCEPTED because files in the wild carry it — the
+    template shipped that form and customers have those workbooks. Rejecting it
+    would repeat the version-stamp mistake: refusing a real, complete file over a
+    representation AXIOM itself chose earlier."""
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        raise PeriodParseError("period is empty")
+
+    if frequency != "quarterly":
+        try:
+            y = int(str(raw).strip())
+        except (TypeError, ValueError):
+            raise PeriodParseError(
+                f"'{raw}' is not a year — enter a four-digit year such as 2024")
+        if not (1900 <= y <= 2200):
+            raise PeriodParseError(f"'{raw}' is not a plausible year")
+        return y, str(y)
+
+    text = str(raw).strip()
+
+    # legacy 5-digit YYYYQ, and the integer Excel hands back for a typed number
+    if _re.fullmatch(r"\d{5}", text):
+        val = int(text)
+        if not period_is_valid(val, "quarterly"):
+            year, q = decode_period(val, "quarterly")
+            raise PeriodParseError(
+                f"'{text}' has quarter {q} — quarters run 1 to 4. "
+                f"Enter it as {year}Q1 … {year}Q4")
+        y, q = decode_period(val, "quarterly")
+        return val, f"{y} Q{q}"
+
+    for rx in _QUARTER_FORMS:
+        m = rx.fullmatch(text)
+        if m:
+            y, q = int(m.group("y")), int(m.group("q"))
+            if not (1900 <= y <= 2200):
+                raise PeriodParseError(f"'{text}' is not a plausible year")
+            return y * 10 + q, f"{y} Q{q}"
+
+    raise PeriodParseError(
+        f"'{text}' is not a period AXIOM can read. Use 2024Q1 "
+        f"(2024-Q1, 2024 Q1 and Q1 2024 are also accepted)")
+
+
+def entry_label(value: int, frequency: str) -> str:
+    """The CANONICAL ENTRY FORM — what the template asks a customer to type.
+
+    Distinct from `format_period`, which is the DISPLAY label. They are the same
+    string today for quarters ("2024Q1" vs "2024Q1"), and they are separate
+    functions because they answer different questions and could reasonably
+    diverge — a display might gain a space or a fiscal-year prefix without
+    changing what the workbook accepts."""
+    year, q = decode_period(value, frequency)
+    return f"{year}Q{q}" if frequency == "quarterly" else str(year)
+
+
+def period_labels(values, frequency: str) -> dict:
+    """`{20231: "2023Q1", …}` — ONE map per response, for the six LIST-shaped
+    payloads (periods, years, chart_data.years, forecast_years,
+    historical_years, simulation_baseline.years).
+
+    ⭐ THE ASYMMETRY WITH `year_label` IS DELIBERATE — DO NOT HARMONISE THEM.
+    Statement ROWS carry a per-row `year_label` because Recharts reads its axis
+    key off each datum, so a parallel array cannot serve a chart and the
+    alternative is a tickFormatter at ~10 TS call sites, which is the seventh
+    money-formatter waiting to happen. LIST responses have no such constraint, so
+    they get one map instead of six sibling fields.
+
+    Two shapes, two reasons. Collapsing them either puts a redundant field on
+    every row of every list, or puts period formatting back in TypeScript."""
+    keys = []
+    for v in (values or []):
+        try:
+            keys.append(int(v))
+        except (TypeError, ValueError):
+            continue
+    return {k: format_period(k, frequency) for k in keys}

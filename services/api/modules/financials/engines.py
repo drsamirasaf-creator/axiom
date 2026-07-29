@@ -28,6 +28,7 @@ NI + D&A - CapEx - dNWC + net_borrowing on every run).
 """
 import math
 from .periods import forecast_periods as _fc_periods, frequency_of as _freq_of
+from .periods import format_period as _fmt_period, frequency_of as _freq_of, period_labels as _p_labels
 
 IS_KEYS = ["revenue", "cogs", "opex", "depreciation_amortization",
            "interest_expense"]
@@ -208,6 +209,7 @@ def derive_series(data: dict) -> dict:
                 identity_gap_max = max(identity_gap_max, abs(fe - fe_id))
             fcff.append(f); fcfe.append(fe)
 
+    _freq = _freq_of(data)
     ratios = []
     for i, y in enumerate(years):
         ys = str(y)
@@ -218,7 +220,7 @@ def derive_series(data: dict) -> dict:
         ic = debt + equity + BS["preferred_equity"][ys] + BS["minority_interest"][ys] - BS["cash"][ys]
         nopat = ebit[i] * (1 - T)
         ratios.append({
-            "year": y,
+            "year": y, "year_label": _fmt_period(y, _freq),
             "ebitda": _r(ebit[i] + da[i]), "ebit": _r(ebit[i]),
             "ebit_margin": _r(ebit[i] / rev[i] if rev[i] else None),
             "net_income": _r(ni[i]),
@@ -236,7 +238,8 @@ def derive_series(data: dict) -> dict:
         "name": "fcfe_identity_max_gap", "value": _r(identity_gap_max),
         "expected": 0.0, "pass": identity_gap_max < 1e-6}]
     return {
-        "years": years, "n_historical": len(hist), "n_forecast": len(fcst),
+        "years": years, "period_labels": _p_labels(years, _freq_of(data)),
+        "n_historical": len(hist), "n_forecast": len(fcst),
         "revenue": [_r(v) for v in rev], "ebit": [_r(v) for v in ebit],
         "net_income": [_r(v) for v in ni], "nwc": [_r(v) for v in nwc],
         "fcff": [_r(v) for v in fcff], "fcfe": [_r(v) for v in fcfe],
@@ -500,6 +503,7 @@ def dashboard_metrics(data: dict, valuation_result: dict | None = None) -> dict:
                                     if (cur["roic"] or 0) > w["wacc"]
                                     else "value-eroding (ROIC < WACC)"),
             "chart_data": {"years": derived["years"],
+                       "period_labels": _p_labels(derived["years"], _freq_of(data)),
                            "n_historical": hist_n,
                            "revenue": derived["revenue"],
                            "ebit": derived["ebit"],
@@ -780,6 +784,7 @@ def data_coverage(data: dict) -> dict:
     oci = data.get("oci") or {}
     return {
         "historical_years": hist, "forecast_years": fcst,
+        "period_labels": _p_labels(list(hist) + list(fcst), _freq_of(data)),
         "historical_count": len(hist), "forecast_count": len(fcst),
         "total_years": len(all_years),
         "span": (f"{all_years[0]}\u2013{all_years[-1]}" if all_years else None),

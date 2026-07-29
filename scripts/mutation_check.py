@@ -47,6 +47,8 @@ The source file is restored after every mutation, including on failure.
 import subprocess, sys, shutil, os, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ING = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services/api/modules/financials/ingest.py")
+PDF = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services/api/report_pdf.py")
 PER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services/api/modules/financials/periods.py")
 ENG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services/api/modules/financials/engines.py")
 RF = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services/api/report_format.py")
@@ -59,6 +61,7 @@ READ = "tests/unit/test_assessment_read_path_execution.py"
 PUT = "tests/unit/test_participant_upload.py"
 RFT = "tests/unit/test_report_format.py"
 FPS = "tests/unit/test_forecast_period_succession.py"
+PEL = "tests/unit/test_period_entry_and_labels.py"
 COV = "tests/unit/test_coverage_rename_and_suppression.py"
 
 # (label, file, find, replace, test-node-id)
@@ -299,6 +302,44 @@ MUTATIONS = [
      "    return year + 1",
      "    return year * 10 + 1",
      f"{FPS}::test_annual_generation_is_plain_year_succession"),
+
+
+    # ── period entry + labels ────────────────────────────────────────────────
+    ("the parser stops accepting the spaced/reversed forms", PER,
+     "    for rx in _QUARTER_FORMS:",
+     "    for rx in _QUARTER_FORMS[:0]:",
+     f"{PEL}::test_every_accepted_form_normalises_to_the_stored_integer"),
+
+    ("legacy YYYYQ is rejected, refusing files already in the wild", PER,
+     '    if _re.fullmatch(r"\\d{5}", text):',
+     '    if False:',
+     f"{PEL}::test_legacy_yyyyq_is_still_accepted"),
+
+    ("an impossible quarter is accepted through the legacy path", PER,
+     '        if not period_is_valid(val, "quarterly"):',
+     '        if False:',
+     f"{PEL}::test_genuine_ambiguity_is_rejected"),
+
+    ("the interpretation stops naming the quarter", PER,
+     '        return val, f"{y} Q{q}"',
+     '        return val, str(val)',
+     f"{PEL}::test_the_interpretation_is_reported_not_assumed"),
+
+    ("quarterly row 4 goes back to a coercible number", ING,
+     '                ws[f"{letter}4"].number_format = "@"\n'
+     '                ws[f"{letter}4"] = _entry_label(sample_periods[i], frequency)',
+     '                ws[f"{letter}4"] = sample_periods[i]',
+     f"{PEL}::test_quarterly_row4_is_text_in_the_canonical_entry_form"),
+
+    ("the PDF renders the raw period again", PDF,
+     "    return [_fmt_period(y, frequency) for y in (periods or [])]",
+     "    return [str(y) for y in (periods or [])]",
+     f"{PEL}::test_the_pdf_column_headers_use_the_shared_formatter"),
+
+    ("period_labels keys on the label instead of the raw value", PER,
+     "    return {k: format_period(k, frequency) for k in keys}",
+     "    return {format_period(k, frequency): k for k in keys}",
+     f"{PEL}::test_period_labels_is_a_map_keyed_on_the_raw_value"),
 
     ("sigma reports the clamp as an estimate again", VAL,
      '            if sd < 0.15:\n                return 0.15, ("floor (0.15) — this company\'s historical revenue is too "\n'

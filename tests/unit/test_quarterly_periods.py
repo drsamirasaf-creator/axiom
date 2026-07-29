@@ -219,10 +219,27 @@ def test_quarterly_ships_forty_forecast_columns_annual_untouched():
 
 
 def test_period_display_formats_are_display_only():
-    """B2: the CELL VALUE must stay an integer or both parser paths change."""
+    """⭐ SUPERSEDED FOR QUARTERLY BY THE ENTRY-FORMAT LANE (29 Jul).
+
+    v7.6 wrote quarterly periods as the 5-digit integer 20201 with a display
+    format that rendered it "2020'Q1-A". A customer typing into the forecast
+    columns then had to know the YYYYQ encoding, and Excel treats a bare 5-digit
+    number in a period cell as a date candidate. Quarterly row 4 is now TEXT in
+    the canonical entry form with an explicit Text number format ("@"), so
+    nothing coerces and the customer can see the form they are asked to type.
+
+    ANNUAL IS UNCHANGED — a four-digit year is not ambiguous and is not coerced,
+    so it keeps its integer value and the -A/-E display format."""
+    ws = load_workbook(io.BytesIO(_template("quarterly")))["Income Statement"]
+    assert ws["B4"].value == "2020Q1", ws["B4"].value
+    assert ws["B4"].number_format == "@", ws["B4"].number_format
+    first_fcst = next(get_col(c) for c in range(2, ws.max_column + 1)
+                      if str(ws.cell(row=3, column=c).value or "").lower() == "forecast")
+    assert ws[f"{first_fcst}4"].number_format == "@"
+    assert ws[f"{first_fcst}4"].value is None, "forecast labels must still ship blank"
+
     for freq, hist_fmt, fcst_fmt, sample in (
-            ("quarterly", '0000"\'Q"0"-A"', '0000"\'Q"0"-E"', 20201),
-            ("annual", '0000"-A"', '0000"-E"', 2020)):
+            ("annual", '0000"-A"', '0000"-E"', 2020),):
         ws = load_workbook(io.BytesIO(_template(freq)))["Income Statement"]
         assert ws["B4"].number_format == hist_fmt, f"{freq} historical format"
         assert ws["B4"].value == sample, "value must remain an integer"
@@ -240,7 +257,9 @@ def get_col(idx):
 def test_the_period_tooltip_matches_the_frequency():
     """B3: a single shared message would tell an ANNUAL client to type 20231 —
     a confident instruction to enter a value the annual validator rejects."""
-    for freq, must_contain in (("quarterly", "YYYYQ"), ("annual", "four-digit year")):
+    # The quarterly prompt now teaches the CANONICAL ENTRY FORM rather than the
+    # storage encoding — a customer should never need to know YYYYQ exists.
+    for freq, must_contain in (("quarterly", "2024Q1"), ("annual", "four-digit year")):
         ws = load_workbook(io.BytesIO(_template(freq)))["Income Statement"]
         prompts = [d for d in ws.data_validations.dataValidation if d.promptTitle]
         assert len(prompts) == 1, f"{freq}: expected exactly one prompt validation"

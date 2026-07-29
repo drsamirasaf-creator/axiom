@@ -22,6 +22,8 @@ Design principles:
     debt follows the plan's net borrowing. The accounting identity is
     enforced and verified.
 """
+from .periods import (format_period as _fmt_period, frequency_of as _freq_of,
+                      period_labels as _p_labels)
 SEED = 26123
 SIGMA_G = 0.02
 SIGMA_M = 0.01
@@ -189,7 +191,8 @@ def stochastic_statements(data, n_paths: int = 3000, seed: int = SEED,
         det = {k: _r(plan_rows[y][k]) for k in
                ["cogs","opex","da","interest","ebt","tax","oca","nca",
                 "cl","st_debt","lt_debt","total_liab_equity","cfi","cff","capex"]}
-        statements.append({"year": y, "stochastic": line_out, "deterministic": det,
+        statements.append({"year": y, "year_label": _fmt_period(y, _freq_of(plan)),
+                           "stochastic": line_out, "deterministic": det,
                            "balance_ok": plan_rows[y]["balance_ok"]})
 
     cumulative = {ln: {"p_meets_plan_every_year": round(beat_cum[ln]/n_paths, 4),
@@ -218,7 +221,9 @@ def stochastic_statements(data, n_paths: int = 3000, seed: int = SEED,
     from ..platform.content import STATEMENTS_DISCLAIMER
     return {"mode": mode, "seed": seed, "n_paths": n_paths,
             "disclaimer": STATEMENTS_DISCLAIMER,
-            "forecast_years": fyears, "statements": statements,
+            "forecast_years": fyears,
+            "period_labels": _p_labels(fyears, _freq_of(plan)),
+            "statements": statements,
             "cumulative_attainment": cumulative,
             "plan_cagr": {"revenue": cagr("revenue"), "ebit": cagr("ebit"),
                           "net_income": cagr("net_income"), "fcff": cagr("fcff")},

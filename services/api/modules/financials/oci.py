@@ -30,6 +30,8 @@ Standard awareness:
     and a flat OCI section for US GAAP, and labels the framework on the
     statement.
 """
+from .periods import (format_period as _fmt_period, frequency_of as _freq_of,
+                      period_labels as _p_labels)
 SEED = 26124
 
 OCI_DRIVER_SCHEMA = {
@@ -137,7 +139,7 @@ def statement_of_comprehensive_income(data: dict, n_paths: int = 3000,
                 "reclassifiable": OCI_DRIVER_SCHEMA[k]["reclassifiable"],
                 "status": "modeled" if present[k] else "not on file"}
         statements.append({
-            "year": y,
+            "year": y, "year_label": _fmt_period(y, _freq_of(data)),
             "net_income": {"plan": ni_plan, "expected": ni_by_year[y]["expected"],
                            "p_meets_plan": ni_by_year[y]["p_meets_plan"]},
             "oci_lines": oci_lines,
@@ -165,7 +167,9 @@ def statement_of_comprehensive_income(data: dict, n_paths: int = 3000,
     return {"framework": framework, "standard": standard,
             "disclaimer": STATEMENTS_DISCLAIMER,
             "any_oci_on_file": any_present,
-            "forecast_years": fyears, "statements": statements,
+            "forecast_years": fyears,
+            "period_labels": _p_labels(fyears, _freq_of(data)),
+            "statements": statements,
             "ifrs_reclassification": {
                 "will_be_reclassified": [OCI_DRIVER_SCHEMA[k]["label"]
                                          for k in reclassifiable],
