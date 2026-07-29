@@ -36,6 +36,11 @@ turns an unbounded question into a finite list — not a proof.
 """
 import os, re, sys
 
+# ⭐ A COVERAGE FLOOR. This gate exited 0 with the frontend ABSENT, having opened
+# no file at all — "0 unwired sites" over nothing, printed with a tick. A guard
+# that finds nothing to check must be red.
+MIN_SCANNED_FILES = 60
+
 FRONTEND = os.environ.get(
     "AXIOM_FRONTEND",
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -106,6 +111,7 @@ def scan_text(rel, text):
 
 
 def main():
+    _scanned = 0
     hits = []
     if os.path.isdir(SRC):
         for dp, dn, fn in os.walk(SRC):
@@ -114,6 +120,7 @@ def main():
                 if f.endswith((".ts", ".tsx")):
                     p = os.path.join(dp, f)
                     try:
+                        _scanned += 1
                         hits += scan_text(os.path.relpath(p, FRONTEND), open(p, encoding="utf-8").read())
                     except Exception:
                         pass
@@ -125,6 +132,14 @@ def main():
         # past and the tick is what gets believed. In CI, where the sibling
         # frontend is not checked out, this is the ONLY path that ever ran.
         print("  SKIPPED — no frontend to scan. This gate proved nothing.")
+        # ⭐ A MISSING FRONTEND IS A FAILURE UNLESS SOMEONE SAYS OTHERWISE. This
+        # returned 0 — green, over zero files — which is the exact shape the
+        # coverage floor exists to forbid, and the floor never ran because the
+        # skip returned first. Set AXIOM_FRONTEND_OPTIONAL=1 to permit it, which
+        # makes "this run enforced nothing" an explicit statement in the CI step
+        # rather than a silent tick.
+        if os.environ.get("AXIOM_FRONTEND_OPTIONAL") != "1":
+            return 1
         return 0
 
     for p in BACKEND_RENDERERS:
@@ -157,6 +172,10 @@ def main():
             print(f"    :{i:<5} {what}\n           {src}")
 
     print(f"\n  {'='*66}")
+    if _scanned < MIN_SCANNED_FILES:
+        print(f"  FAIL — scanned only {_scanned} frontend file(s), floor is "
+              f"{MIN_SCANNED_FILES}. A clean result over nothing is not clean.")
+        return 1
     print(f"  UNWIRED PERIOD RENDER SITES: {len(hits)}")
     if hits:
         print(f"  Each must consume the supplied label — `year_label` on statement rows,\n"

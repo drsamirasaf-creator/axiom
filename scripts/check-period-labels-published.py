@@ -84,6 +84,19 @@ URL_MARKERS = ["/pro-forma", "/comprehensive-income", "/metrics/dashboard/",
 PUBLISHERS = ("publishPeriods", "setPeriodLabels")
 
 
+
+# ⭐ A COVERAGE FLOOR. A guard that finds NOTHING TO CHECK must be red, never
+# green: "0 problems in 0 files" and "0 problems in 400 files" print the same
+# tick and mean opposite things. Two of these gates already exited 0 with the
+# frontend absent, having opened no file at all.
+#
+# The floor is the observed count at the time of writing. It is not a target —
+# it is the assertion that the SELECTOR still selects. Raise it when the real
+# number grows; lowering it is only correct alongside a deliberate deletion, and
+# should be argued for in the commit that does so.
+MIN_FETCH_SITES = 6
+
+
 def backend_emitters():
     """Enclosing function name of every `"period_labels":` emission in the API."""
     found = set()
@@ -214,6 +227,14 @@ def main():
         print(f"  ✓ emitter cross-check: {len(KNOWN_EMITTERS)} emitters, all mapped.")
         print(f"  SKIPPED — frontend scan needs a checkout at {FRONTEND}/src. "
               f"That half proved nothing (see the pre-push hook).")
+        # ⭐ A MISSING FRONTEND IS A FAILURE UNLESS SOMEONE SAYS OTHERWISE. This
+        # returned 0 — green, over zero files — which is the exact shape the
+        # coverage floor exists to forbid, and the floor never ran because the
+        # skip returned first. Set AXIOM_FRONTEND_OPTIONAL=1 to permit it, which
+        # makes "this run enforced nothing" an explicit statement in the CI step
+        # rather than a silent tick.
+        if os.environ.get("AXIOM_FRONTEND_OPTIONAL") != "1":
+            return 1
         return 0
     findings, checked = scan_frontend()
     for rel, line, fn, url in findings:
@@ -222,6 +243,11 @@ def main():
     if findings:
         print(f"\nFAIL — {len(findings)} of {checked} fetch site(s) drop the labels "
               f"their payload carries. The axis falls back to the raw period.")
+        return 1
+    if checked < MIN_FETCH_SITES:
+        print(f"FAIL — inspected only {checked} fetch site(s), floor is "
+              f"{MIN_FETCH_SITES}. A pass over nothing is the failure this gate was "
+              f"written after.")
         return 1
     print(f"✓ period-labels-published: {checked} fetch site(s) across "
           f"{len(KNOWN_EMITTERS)} emitters, all publish. "

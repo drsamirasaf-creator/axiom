@@ -21,6 +21,15 @@ following reassignments of the decorated variable in file order.
 """
 import re, sys, pathlib, collections
 
+# ⭐ A COVERAGE FLOOR. A guard that finds NOTHING TO CHECK must be red, never
+# green: "0 shadowed routes in 0 registrations" and "0 in 338" print the same
+# tick and mean opposite things.
+#
+# The floor is the observed count when written. It is not a target — it is the
+# assertion that the COLLECTOR still collects.
+MIN_REGISTRATIONS = 300
+
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent / "services" / "api"
 DEC = re.compile(r'^\s*@(\w+)\.(get|post|put|patch|delete)\(\s*([\'"])(.*?)\3')
 NEWROUTER = re.compile(r'^\s*(\w+)\s*=\s*APIRouter\((.*)$')
@@ -64,6 +73,11 @@ dupes = {k: v for k, v in seen.items() if len(v) > 1}
 exempt = {k: v for k, v in dupes.items() if k in ALLOWLIST}
 dupes = {k: v for k, v in dupes.items() if k not in ALLOWLIST}
 print(f"  scanned {len(seen)} unique (method, path) registrations")
+if len(seen) < MIN_REGISTRATIONS:
+    print(f"\nFAIL — scanned only {len(seen)} registration(s), floor is "
+          f"{MIN_REGISTRATIONS}. The route collector stopped collecting, so "
+          f"'no shadowing' means 'no routes seen'.")
+    raise SystemExit(1)
 for (method, path), locs in sorted(exempt.items()):
     print(f"  ALLOWED (dated, pending a named lane): {method} {path}")
     print(f"      {ALLOWLIST[(method, path)]}")

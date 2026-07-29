@@ -51,6 +51,19 @@ TARGETS = _targets()
 BUILTINS = set(dir(builtins)) | {"__file__", "__name__", "__doc__", "self", "cls"}
 
 
+
+# ⭐ A COVERAGE FLOOR. A guard that finds NOTHING TO CHECK must be red, never
+# green: "0 problems in 0 files" and "0 problems in 400 files" print the same
+# tick and mean opposite things. Two of these gates already exited 0 with the
+# frontend absent, having opened no file at all.
+#
+# The floor is the observed count at the time of writing. It is not a target —
+# it is the assertion that the SELECTOR still selects. Raise it when the real
+# number grows; lowering it is only correct alongside a deliberate deletion, and
+# should be argued for in the commit that does so.
+MIN_MODULES = 80
+
+
 def bound_in(node):
     """Names this scope binds, WITHOUT descending into nested function scopes."""
     out = set()
@@ -133,6 +146,12 @@ def main():
         for fn, line, name in found:
             print(f"  {rel}:{line}  {fn}() loads unbound name {name!r}")
         total += len(found)
+    scanned = sum(1 for rel in TARGETS if os.path.exists(os.path.join(ROOT, rel)))
+    if scanned < MIN_MODULES:
+        print(f"\nFAIL — inspected only {scanned} module(s), floor is {MIN_MODULES}. "
+              f"The selector stopped selecting; a clean result over nothing is not a "
+              f"clean result.")
+        return 1
     if total:
         print(f"\nFAIL — {total} unbound name(s). Each is a NameError waiting for the "
               f"branch that reaches it.")

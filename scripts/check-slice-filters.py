@@ -65,6 +65,19 @@ SLICE_PARAMS = {"seniority"}
 RESOLVERS = {"_norm_seniority", "_slice_filters"}
 
 
+
+# ⭐ A COVERAGE FLOOR. A guard that finds NOTHING TO CHECK must be red, never
+# green: "0 problems in 0 files" and "0 problems in 400 files" print the same
+# tick and mean opposite things. Two of these gates already exited 0 with the
+# frontend absent, having opened no file at all.
+#
+# The floor is the observed count at the time of writing. It is not a target —
+# it is the assertion that the SELECTOR still selects. Raise it when the real
+# number grows; lowering it is only correct alongside a deliberate deletion, and
+# should be argued for in the commit that does so.
+MIN_HANDLERS = 3
+
+
 def _is_route_handler(fn):
     """A function mounted as an HTTP endpoint — the boundary untrusted input
     crosses. Internal helpers are out of scope by design."""
@@ -139,6 +152,11 @@ def main():
                              "through _slice_filters()"))
 
     print(f"  {checked} route handler(s) take a seniority parameter")
+    if checked < MIN_HANDLERS:
+        print(f"\nFAIL — inspected only {checked} handler(s), floor is {MIN_HANDLERS}. "
+              f"Either the sliced endpoints were deleted or the AST selector broke; "
+              f"both must be loud.")
+        return 1
     for name, line, why in findings:
         print(f"    accounts.py:{line}  {name}() — {why}")
     if findings:

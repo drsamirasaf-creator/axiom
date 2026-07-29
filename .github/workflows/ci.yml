@@ -54,8 +54,17 @@ jobs:
       # name has to carry that or the run reads as proof it isn't.
       # Real enforcement for the TS-side gates is the pre-push hook in the
       # frontend repo (.githooks/pre-push). See docs/reports/2026-07-29-two-outstanding.md.
-      - name: no period formatting in TypeScript (SKIPS — no frontend checkout in CI)
-        run: python scripts/check-no-ts-period-format.py
+      # ⭐ THE SKIP IS NOW EXPLICIT. These gates used to exit 0 with no frontend
+      # checked out — green over zero files, which is the exact shape their own
+      # coverage floors forbid. A missing frontend is now a FAILURE unless
+      # AXIOM_FRONTEND_OPTIONAL=1 says otherwise, so "this step enforced nothing"
+      # is a statement in the workflow rather than a silent tick.
+      - name: TS-side period gates (SKIP ACKNOWLEDGED — no frontend checkout here)
+        env:
+          AXIOM_FRONTEND_OPTIONAL: "1"
+        run: |
+          python scripts/check-no-ts-period-format.py
+          python scripts/check-period-labels-consumed.py
       - run: pytest -q
       # Proves the tests guarding the assessment read path are not vacuous, by
       # reintroducing a plausible defect per test and requiring each to fail.
