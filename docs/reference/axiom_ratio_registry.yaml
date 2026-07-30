@@ -22,7 +22,7 @@
 # in place. Do not proceed to formula evaluation until the vocabulary is real.
 
 schema_version: 1
-registry_version: "7r.5"   # Segment B: debt-as-argument   # founder rulings 31 Jul; headline set = 14
+registry_version: "7r.6"   # Segment B: debt-as-argument   # founder rulings 31 Jul; headline set = 14
 # 7r.5 — CHAINING RULE RELOCATED, NOT RELAXED. Founder ruling. The
 #   no-ratio-of-ratios prohibition applied to everything and was written in
 #   evaluation.forbidden; it now lives in client_extension.no_ratio_of_ratios,
@@ -140,97 +140,322 @@ evaluation:
            provenance."
 
 # ---------------------------------------------------------------------------
-# TOKEN VOCABULARY  (PLACEHOLDER NAMES — see OPEN ITEM above)
+# TOKEN VOCABULARY — RECONCILED AGAINST THE BACKEND, 7r.6
 # ---------------------------------------------------------------------------
-# collected: true  = present in template v8, computable today
-# collected: false = absence-by-design until a template collects it
+# ⭐ THIS BLOCK WAS PLACEHOLDER NAMES. It is now reconciled against the real
+# canonical schema (engines.IS_KEYS / BS_KEYS / CF_KEYS, COMPANY_FIELDS).
+# There is NO translation layer: the mapping lives here and nowhere else,
+# because a second copy of it would be a second owner.
+#
+# source: stored   backed by a real field. `field:` names it EXACTLY.
+# source: derived  computed from other tokens. `expr:` is the arithmetic;
+#                  `at:` cites the implementation where one exists.
+#                  ⭐ A DERIVED TOKEN CHANGES THE SHAPE THE SCAN SEEKS —
+#                  bs.total_debt is not a column, it is an addition.
+# collected:false  no backing field and no derivation. `requires:` says what
+#                  would have to exist.
+#
+# ⭐ FOUR TOKENS WERE MARKED collected: true AND ARE NOT COLLECTED —
+# bs.payables, bs.retained_earnings, cf.operating_cash_flow, and the
+# is.depreciation / is.amortisation pair (one combined field). Every one was
+# a claim the schema did not support. cf.operating_cash_flow blocks a
+# HEADLINE ratio (axiom.cash_conversion_quality).
 vocabulary:
 
   income_statement:
-    is.revenue:                     {collected: true}
-    is.cogs:                        {collected: true}
-    is.gross_profit:                {collected: true}
-    is.operating_expenses:          {collected: true}
-    is.sga:                         {collected: true}
-    is.depreciation:                {collected: true}
-    is.amortisation:                {collected: true}
-    is.ebitda:                      {collected: true}
-    is.ebit:                        {collected: true}
-    is.interest_expense:            {collected: true}
-    is.interest_income:             {collected: true}
-    is.pbt:                         {collected: true}
-    is.tax_expense:                 {collected: true}
-    is.pat:                         {collected: true}
-    is.rd_expense:                  {collected: false, requires: "R&D line"}
-    is.bad_debt_expense:            {collected: false, requires: "bad debt / allowance lines"}
-    is.purchases:                   {collected: false, requires: "purchases as distinct from COGS"}
-    is.lease_expense:               {collected: false, requires: "lease expense line"}
+    is.revenue:
+      source: stored
+      collected: true
+      field: revenue
+    is.cogs:
+      source: stored
+      collected: true
+      field: cogs
+    is.gross_profit:
+      source: derived
+      collected: true
+      expr: "is.revenue - is.cogs"
+    is.operating_expenses:
+      source: stored
+      collected: true
+      field: opex
+    is.sga:
+      source: absent
+      collected: false
+      requires: "SG&A is not split out; opex is a single line"
+    is.depreciation:
+      source: absent
+      collected: false
+      requires: "⭐ D&A IS ONE COMBINED FIELD (depreciation_amortization). Two registry tokens map to one stored line, so neither can be resolved alone."
+    is.amortisation:
+      source: absent
+      collected: false
+      requires: "⭐ see is.depreciation — same single combined field."
+    is.ebitda:
+      source: derived
+      collected: true
+      expr: "is.revenue - is.cogs - is.operating_expenses"
+    is.ebit:
+      source: derived
+      collected: true
+      expr: "is.ebitda - depreciation_amortization"
+      at: "engines.py:280"
+    is.interest_expense:
+      source: stored
+      collected: true
+      field: interest_expense
+    is.interest_income:
+      source: absent
+      collected: false
+      requires: "not collected and not derived; net interest is not split"
+    is.pbt:
+      source: derived
+      collected: true
+      expr: "is.ebit - is.interest_expense"
+      at: "engines.py:281"
+    is.tax_expense:
+      source: derived
+      collected: true
+      expr: "po.tax_rate_policy * max(is.pbt, 0)"
+      at: "engines.py:282"
+    is.pat:
+      source: derived
+      collected: true
+      expr: "is.pbt - is.tax_expense"
+      at: "engines.py:283"
+    is.rd_expense:
+      source: absent
+      collected: false
+      requires: "R&D line"
+    is.bad_debt_expense:
+      source: absent
+      collected: false
+      requires: "bad debt / allowance lines"
+    is.purchases:
+      source: absent
+      collected: false
+      requires: "purchases as distinct from COGS"
+    is.lease_expense:
+      source: absent
+      collected: false
+      requires: "lease expense line"
 
   balance_sheet:
-    bs.cash:                        {collected: true}
-    bs.receivables:                 {collected: false, requires: "template v9 — other_current_assets split"}
-    bs.inventory:                   {collected: false, requires: "template v9 — other_current_assets split"}
-    bs.other_current_assets:        {collected: true, note: "v8 aggregate,
-      labelled 'Receivables, Inventory, etc.' Splitting it is the same shape
-      as the v8 non-current split. Blocks the entire working-capital family."}
-    bs.current_assets:              {collected: true}
-    bs.ppe_net:                     {collected: true}
-    bs.intangibles:                 {collected: true}
-    bs.total_assets:                {collected: true}
-    bs.payables:                    {collected: true}
-    bs.short_term_debt:             {collected: true}
-    bs.other_current_liabilities:   {collected: true}
-    bs.current_liabilities:         {collected: true}
-    bs.long_term_debt:              {collected: true}
-    bs.total_liabilities:           {collected: true}
-    bs.equity:                      {collected: true}
-    bs.minority_interest:           {collected: true}
-    bs.preferred:                   {collected: true, note: "Preferred equity.
-      Backend field is `preferred_equity` (ingest.py, engines.py); the registry
-      name is shortened for formula readability. Added in 7r.4 — it was always
-      collected and always used by the code, and only the spec omitted it."}
-    bs.total_debt:                  {collected: true}
-    bs.secured_debt:                {collected: false, requires: "debt composition — secured/unsecured"}
-    bs.floating_rate_debt:          {collected: false, requires: "debt composition — fixed/floating"}
-    bs.allowance_doubtful:          {collected: false, requires: "allowance line"}
-    bs.retained_earnings:           {collected: true}
+    bs.cash:
+      source: stored
+      collected: true
+      field: cash
+    bs.receivables:
+      source: absent
+      collected: false
+      requires: "template v9 — other_current_assets split"
+    bs.inventory:
+      source: absent
+      collected: false
+      requires: "template v9 — other_current_assets split"
+    bs.other_current_assets:
+      source: stored
+      collected: true
+      field: other_current_assets
+    bs.current_assets:
+      source: derived
+      collected: true
+      expr: "bs.cash + bs.other_current_assets"
+    bs.ppe_net:
+      source: stored
+      collected: true
+      field: property_plant_equipment_net
+    bs.intangibles:
+      source: stored
+      collected: true
+      field: intangible_assets_net
+      note: "goodwill is a SEPARATE stored field and is not included here"
+    bs.total_assets:
+      source: derived
+      collected: true
+      expr: "bs.current_assets + noncurrent_assets"
+    bs.payables:
+      source: absent
+      collected: false
+      requires: "⭐ WAS collected: true AND IS NOT COLLECTED. `payables` appears nowhere in ingest.py or engines.py. Only current_liabilities_ex_debt exists, as an aggregate."
+    bs.short_term_debt:
+      source: stored
+      collected: true
+      field: short_term_debt
+    bs.other_current_liabilities:
+      source: stored
+      collected: true
+      field: current_liabilities_ex_debt
+      note: "the stored field is the whole ex-debt aggregate, not an 'other' residual"
+    bs.current_liabilities:
+      source: derived
+      collected: true
+      expr: "bs.other_current_liabilities + bs.short_term_debt"
+    bs.long_term_debt:
+      source: stored
+      collected: true
+      field: long_term_debt
+    bs.total_liabilities:
+      source: derived
+      collected: true
+      expr: "bs.current_liabilities + bs.long_term_debt + other_noncurrent_liabilities"
+    bs.equity:
+      source: stored
+      collected: true
+      field: total_equity
+    bs.minority_interest:
+      source: stored
+      collected: true
+      field: minority_interest
+    bs.preferred:
+      source: stored
+      collected: true
+      field: preferred_equity
+      note: "added 7r.4"
+    bs.total_debt:
+      source: derived
+      collected: true
+      expr: "bs.short_term_debt + bs.long_term_debt"
+      at: "⭐ DERIVED, NOT STORED. A token resolving to an EXPRESSION changes the arithmetic shape the scan must look for."
+    bs.secured_debt:
+      source: absent
+      collected: false
+      requires: "debt composition — secured/unsecured"
+    bs.floating_rate_debt:
+      source: absent
+      collected: false
+      requires: "debt composition — fixed/floating"
+    bs.allowance_doubtful:
+      source: absent
+      collected: false
+      requires: "allowance line"
+    bs.retained_earnings:
+      source: absent
+      collected: false
+      requires: "⭐ WAS collected: true AND IS NOT COLLECTED. Appears nowhere in ingest.py or engines.py."
 
   cash_flow:
-    cf.operating_cash_flow:         {collected: true}
-    cf.capex:                       {collected: true}
-    cf.maintenance_capex:           {collected: false, requires: "maintenance vs growth capex split"}
-    cf.growth_capex:                {collected: false, requires: "maintenance vs growth capex split"}
-    cf.investing_cash_flow:         {collected: true}
-    cf.financing_cash_flow:         {collected: true}
-    cf.dividends_paid:              {collected: true}
-    cf.debt_raised:                 {collected: true}
-    cf.debt_repaid:                 {collected: true}
-    cf.cash_from_customers:         {collected: false, requires: "direct-method CF"}
-    cf.buybacks:                    {collected: false, requires: "share transactions"}
+    cf.operating_cash_flow:
+      source: absent
+      collected: false
+      requires: "⭐ WAS collected: true AND HAS NO OWNER. Derivable as is.pat + depreciation_amortization - change_in_nwc — every term exists — but NOTHING COMPUTES IT TODAY. Blocks axiom.cash_conversion_quality, a headline ratio."
+    cf.capex:
+      source: stored
+      collected: true
+      field: capex
+    cf.maintenance_capex:
+      source: absent
+      collected: false
+      requires: "maintenance vs growth capex split"
+    cf.growth_capex:
+      source: absent
+      collected: false
+      requires: "maintenance vs growth capex split"
+    cf.investing_cash_flow:
+      source: absent
+      collected: false
+      requires: "not collected"
+    cf.financing_cash_flow:
+      source: absent
+      collected: false
+      requires: "not collected"
+    cf.dividends_paid:
+      source: stored
+      collected: true
+      field: dividends
+    cf.debt_raised:
+      source: absent
+      collected: false
+      requires: "⭐ only NET borrowing is stored (net_borrowing). Gross raised/repaid cannot be recovered from a net figure."
+    cf.debt_repaid:
+      source: absent
+      collected: false
+      requires: "⭐ see cf.debt_raised — net_borrowing only."
+    cf.cash_from_customers:
+      source: absent
+      collected: false
+      requires: "not collected"
+    cf.buybacks:
+      source: absent
+      collected: false
+      requires: "not collected"
 
   market_and_shares:
-    mk.shares_outstanding:          {collected: false, requires: "share count"}
-    mk.share_price:                 {collected: false, requires: "market data / user entry"}
-    mk.market_cap:                  {collected: false, requires: "share count + price"}
-    mk.dps:                         {collected: false, requires: "dividend per share"}
+    mk.shares_outstanding:
+      source: stored
+      collected: true
+      field: company.shares_outstanding
+      note: "company-level field, not a statement line"
+    mk.share_price:
+      source: stored
+      collected: true
+      field: company.share_price
+      note: "company-level; public companies only"
+    mk.market_cap:
+      source: derived
+      collected: true
+      expr: "mk.share_price * mk.shares_outstanding"
+    mk.dps:
+      source: absent
+      collected: false
+      requires: "dividend per share not collected"
 
   policy_and_assumptions:
-    po.tax_rate_policy:             {collected: true}   # v8 row
-    po.cost_of_equity:              {collected: true}   # valuation inputs
-    po.cost_of_debt:                {collected: true}
-    po.days_in_period:              {collected: true, derived: true}
+    po.tax_rate_policy:
+      source: stored
+      collected: true
+      field: company.tax_rate
+      note: "company-level policy input"
+    po.cost_of_equity:
+      source: derived
+      collected: true
+      expr: "CAPM: risk_free_rate + beta * market_risk_premium + premia"
+      at: "ratios.py::cost_of_equity_at"
+    po.cost_of_debt:
+      source: stored
+      collected: true
+      field: company.cost_of_debt
+    po.days_in_period:
+      source: derived
+      collected: true
+      expr: "365 | 366 | 90 by period basis"
+      at: "a convention, not an input"
 
   human_capital:
-    hc.headcount:                   {collected: false, requires: "headcount collection"}
-    hc.payroll_cost:                {collected: false, requires: "payroll line"}
+    hc.headcount:
+      source: absent
+      collected: false
+      requires: "headcount not collected"
+    hc.payroll_cost:
+      source: absent
+      collected: false
+      requires: "payroll cost not collected"
 
   saas:
-    sa.arr:                         {collected: false, requires: "SaaS operating metrics — not a statement item"}
-    sa.mrr:                         {collected: false, requires: "SaaS operating metrics"}
-    sa.gross_churn:                 {collected: false, requires: "SaaS operating metrics"}
-    sa.nrr:                         {collected: false, requires: "SaaS operating metrics"}
-    sa.cac:                         {collected: false, requires: "SaaS operating metrics"}
-    sa.customers:                   {collected: false, requires: "SaaS operating metrics"}
+    sa.arr:
+      source: absent
+      collected: false
+      requires: "SaaS metrics not collected"
+    sa.mrr:
+      source: absent
+      collected: false
+      requires: "SaaS metrics not collected"
+    sa.gross_churn:
+      source: absent
+      collected: false
+      requires: "SaaS metrics not collected"
+    sa.nrr:
+      source: absent
+      collected: false
+      requires: "SaaS metrics not collected"
+    sa.cac:
+      source: absent
+      collected: false
+      requires: "SaaS metrics not collected"
+    sa.customers:
+      source: absent
+      collected: false
+      requires: "SaaS metrics not collected"
 
 # ---------------------------------------------------------------------------
 # CANONICAL RATIOS
