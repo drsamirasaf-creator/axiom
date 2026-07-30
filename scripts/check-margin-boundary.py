@@ -42,7 +42,19 @@ OWNER = os.path.join("services", "api", "modules", "financials", "ratios.py")
 # Measured 2026-07-30. Lower a number when sites move to the owner; never raise
 # one. A module absent from this dict may not compute a margin at all.
 ALLOWED = {
-    os.path.join("services", "api", "modules", "financials", "engines.py"): 7,
+    # ⭐ 7 -> 8 ON 30 Jul, AND IT IS A COUNTER CORRECTION, NOT A NEW MARGIN.
+    # The EBIT-margin driver fit was being excluded as a GROWTH RATE: the
+    # numerator (revenue - cogs - opex - d&a) shares the word "revenue" with the
+    # denominator, and the growth-exclusion heuristic keys on exactly that
+    # overlap. Wrapping the fit in _n() moved the numerator to lambda parameters,
+    # the overlap vanished, and the site was counted for the first time.
+    #
+    # THE HEURISTIC HAS A FALSE-NEGATIVE MODE, recorded here rather than fixed:
+    # any margin whose numerator mentions its own denominator's line item reads
+    # as a growth rate. rev[i]/rev[i-1] must stay excluded, so the fix is not to
+    # drop the rule — it is to compare the RESOLVED operands rather than their
+    # source text. Queued, not done.
+    os.path.join("services", "api", "modules", "financials", "engines.py"): 8,
     os.path.join("services", "api", "modules", "benchmarks", "engines.py"): 7,
     os.path.join("services", "api", "modules", "intelligence", "engines.py"): 4,
     os.path.join("services", "api", "accounts.py"): 1,

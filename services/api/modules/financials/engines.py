@@ -450,6 +450,31 @@ def _avg(xs):
     return sum(xs) / len(xs) if xs else 0.0
 
 
+def _fit(xs, name: str):
+    """Mean of the periods that HAVE the inputs — and a refusal when none do.
+
+    ⭐ `_avg` RETURNS 0.0 ON AN EMPTY LIST, AND THAT IS A FABRICATED DRIVER. It is
+    correct for a mean over present values and wrong as a driver fit: with the
+    plain subscripts converted, a line item absent in EVERY historical period no
+    longer raises — it yields an all-None list, and `_avg` turns that into
+    `ebit_margin: 0.0` and `da_pct_revenue: 0.0`. Measured, not supposed: nulling
+    depreciation_amortization across every period produced exactly those two
+    values, and the forecast was then built on them.
+
+    That trades a LOUD failure for a SILENT fabrication, which is the worse of
+    the two and the thing this codebase already learned from the coerced DLOM.
+    A driver nobody can fit is not a driver of zero.
+
+    Refuses by NAME so the message says which line item is missing, rather than
+    surfacing as arithmetic on None three frames away.
+    """
+    vals = [x for x in xs if x is not None]
+    if not vals:
+        raise ValueError(
+            f"cannot fit {name}: no historical period carries the inputs it needs")
+    return sum(vals) / len(vals)
+
+
 def auto_forecast(data: dict, assumptions: dict | None = None) -> dict:
     """Integrated Forecasting, trend mode (Product §7.12 'Historical Trends'
     + 'Manual Assumptions', §8.9). Given historicals, builds a pro forma
@@ -485,27 +510,35 @@ def auto_forecast(data: dict, assumptions: dict | None = None) -> dict:
     T = float(company["tax_rate"])
     IS, BS, CF = data["income_statement"], data["balance_sheet"], data["cash_flow"]
 
-    rev_h = [IS["revenue"][str(y)] for y in hist]
+    rev_h = [_at(IS, "revenue", str(y)) for y in hist]
     g = float(a.get("revenue_growth", min(_cagr(rev_h[0], rev_h[-1], len(hist) - 1), 0.25))) \
         if len(hist) > 1 else float(a.get("revenue_growth", 0.03))
-    m_ebit = float(a.get("ebit_margin", _avg(
-        [(IS["revenue"][str(y)] - IS["cogs"][str(y)] - IS["opex"][str(y)]
-          - IS["depreciation_amortization"][str(y)]) / IS["revenue"][str(y)]
-         for y in hist if IS["revenue"][str(y)]])))
-    p_da = float(a.get("da_pct_revenue", _avg(
-        [IS["depreciation_amortization"][str(y)] / IS["revenue"][str(y)]
-         for y in hist if IS["revenue"][str(y)]])))
-    p_capex = float(a.get("capex_pct_revenue", _avg(
-        [CF["capex"][str(y)] / IS["revenue"][str(y)]
-         for y in hist if IS["revenue"][str(y)]])))
-    p_nwc = float(a.get("nwc_pct_revenue", _avg(
-        [(BS["other_current_assets"][str(y)] - BS["current_liabilities_ex_debt"][str(y)])
-         / IS["revenue"][str(y)] for y in hist if IS["revenue"][str(y)]])))
+    m_ebit = float(a.get("ebit_margin", _fit(
+        [_n(lambda r, c, o, d: (r - c - o - d) / r,
+            _at(IS, "revenue", str(y)), _at(IS, "cogs", str(y)),
+            _at(IS, "opex", str(y)), _at(IS, "depreciation_amortization", str(y)))
+         for y in hist if _at(IS, "revenue", str(y))], "ebit_margin")))
+    p_da = float(a.get("da_pct_revenue", _fit(
+        [_n(lambda d, r: d / r, _at(IS, "depreciation_amortization", str(y)),
+            _at(IS, "revenue", str(y)))
+         for y in hist if _at(IS, "revenue", str(y))], "da_pct_revenue")))
+    p_capex = float(a.get("capex_pct_revenue", _fit(
+        [_n(lambda c, r: c / r, _at(CF, "capex", str(y)),
+            _at(IS, "revenue", str(y)))
+         for y in hist if _at(IS, "revenue", str(y))], "capex_pct_revenue")))
+    p_nwc = float(a.get("nwc_pct_revenue", _fit(
+        [_n(lambda a, b, r: (a - b) / r,
+            _at(BS, "other_current_assets", str(y)),
+            _at(BS, "current_liabilities_ex_debt", str(y)),
+            _at(IS, "revenue", str(y)))
+         for y in hist if _at(IS, "revenue", str(y))], "nwc_pct_revenue")))
     interest = float(a.get("interest_expense",
-                           IS["interest_expense"][str(hist[-1])]))
+                           _at(IS, "interest_expense", str(hist[-1]))))
     # keep historical current-liability share so NWC lands on p_nwc exactly
-    p_cl = _avg([BS["current_liabilities_ex_debt"][str(y)] / IS["revenue"][str(y)]
-                 for y in hist if IS["revenue"][str(y)]])
+    p_cl = _avg([_n(lambda c, r: c / r,
+                    _at(BS, "current_liabilities_ex_debt", str(y)),
+                    _at(IS, "revenue", str(y)))
+                 for y in hist if _at(IS, "revenue", str(y))])
 
     out = {"company": dict(company),
            "periods": {"historical": hist,
@@ -519,8 +552,9 @@ def auto_forecast(data: dict, assumptions: dict | None = None) -> dict:
     y_prev = str(hist[-1])
     rev = rev_h[-1]
     # historical COGS share of (revenue - EBIT - D&A) split kept constant
-    cogs_share = _avg([IS["cogs"][str(y)] /
-                       (IS["cogs"][str(y)] + IS["opex"][str(y)]) for y in hist])
+    cogs_share = _avg([_n(lambda c, o: c / (c + o),
+                          _at(IS, "cogs", str(y)), _at(IS, "opex", str(y)))
+                       for y in hist])
     for y in out["periods"]["forecast"]:
         ys = str(y)
         rev *= (1 + g)

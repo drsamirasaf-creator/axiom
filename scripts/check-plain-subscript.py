@@ -63,7 +63,9 @@ ARITH = (ast.Add, ast.Sub, ast.Mult, ast.Div)
 # ⭐ FOUND BY TRACING A RAISE THE GUARD SAID COULD NOT EXIST — engines.py:502
 # still raised after the module was reported converted. A guard is only as good
 # as the last thing that contradicted it.
-EXPECTED_TOTAL = 97
+EXPECTED_TOTAL = 86
+# LOWERED 97 -> 86 ON 30 Jul: financials/engines.py converted, 11 -> 0 under the
+# current model. Downward only; the 97 above was itself a counter correction.
 # ⭐ RAISED 69 -> 97 ON 30 Jul, AND THE RAISE IS A COUNTER CORRECTION WITH THE
 # CODEBASE UNCHANGED — the permitted category, not a new defect. Modelling the
 # LOCAL-BINDING HOP (`pref = bs["preferred_equity"][ys]` then `ev - pref - mino`,
