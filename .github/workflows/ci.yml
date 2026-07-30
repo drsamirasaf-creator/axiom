@@ -104,6 +104,14 @@ jobs:
       # happened. Static, no corpus, ~1s.
       - name: route table (independent-route ratchet)
         run: python scripts/route-table.py
+      # ⭐ A TOOLING FAILURE THAT KILLS A MEASUREMENT LANE IS A FALSE GREEN IN
+      # REVERSE: the lane reports "undecidable" when the truth is "instrument
+      # down". psycopg failed to import mid-lane in two consecutive lanes. This
+      # runs the import + fallback audit only (no DB needed in CI) so a broken
+      # or unpinned client is caught here rather than halfway through a
+      # measurement.
+      - name: db client preflight (import + fallback audit)
+        run: python scripts/check-db-client.py
       - run: pytest -q
       # Proves the tests guarding the assessment read path are not vacuous, by
       # reintroducing a plausible defect per test and requiring each to fail.
