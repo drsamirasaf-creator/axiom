@@ -1,0 +1,1566 @@
+# AXIOM RATIO REGISTRY
+# Canonical source for §7r Ratio Analysis.
+#
+# STATUS: draft for founder review. Nothing here is locked until it is in
+# AXIOM_MASTER_LEDGER as §7r-R.
+#
+# PURPOSE: single machine-readable owner of every ratio AXIOM computes.
+# Code DERIVES from this file. Claude Code must not hand-write formulas in
+# engines.py that also appear here — that is the two-owners shape that has
+# already produced three trio-class defects.
+#
+# CONSUMERS (all read, none redefine):
+#   - §7r Ratio Analysis tab
+#   - optimization_status  (roic, wacc — was reading cur["roic"] directly)
+#   - §7n EVA             (engines.py:524)
+#   - valuation surface   (wacc, net_debt)
+#   - §7i viability kernel (state indicators only, not published scores)
+#
+# OPEN ITEM FOR CLAUDE CODE: every token in `vocabulary` below is a PLACEHOLDER
+# name. First build task is to reconcile these against the actual v8 template
+# row identifiers and the ingest canonical schema, then rewrite the token list
+# in place. Do not proceed to formula evaluation until the vocabulary is real.
+
+schema_version: 1
+registry_version: "7r.3"   # Segment B: debt-as-argument   # founder rulings 31 Jul; headline set = 14
+canonical_units: millions   # matches post-ingest normalisation
+period_support: [annual, quarterly]
+
+# ---------------------------------------------------------------------------
+# EVALUATION CONTRACT
+# ---------------------------------------------------------------------------
+evaluation:
+  parser: safe_ast          # tokenise -> AST -> evaluate. eval() is forbidden.
+  operators: ["+", "-", "*", "/", "(", ")"]
+  functions:
+    avg:    "avg(x)          mean of opening and closing balance for the period"
+    prior:  "prior(x)        same line item, immediately preceding period"
+    abs:    "abs(x)"
+    min:    "min(x, y, ...)"
+    max:    "max(x, y, ...)"
+  forbidden:
+    - free-text formula entry
+    - literal numbers other than 1, 2, 100, 365, 366, 12, 4
+    - any token not present in `vocabulary`
+    - any reference to another ratio's OUTPUT (no ratio-of-ratios in v1;
+      chained definitions make provenance unresolvable)
+
+  absence:
+    rule: "Absence propagates. Never coerced to zero."
+    missing_input: em_dash
+    zero_denominator: em_dash
+    negative_under_sqrt: em_dash
+    display_on_absence: "— (requires: <list of missing tokens>)"
+
+  averaging:
+    rule: "FOUNDER RULING, 31 Jul. Every ratio with basis: average requires
+      (opening + closing)/2, which needs the v8 Opening column. NO STORED
+      DATASET HAS ONE — v8 shipped 30 Jul and nobody has re-uploaded. So on
+      day one every period on every company falls back to opening balances."
+    fallback: beginning_of_period
+    rejected_alternative: "Closing balances. Printing a closing-balance number
+      under an avg() formula is fabrication in the same class as the coerced
+      ROIC — a number rendered under a formula it did not use."
+    why_bop_not_neutral: "BOP inflates returns relative to true average for a
+      growing company, directionally. It is defensible on its own terms — a
+      flow measured against the capital actually held at the start — but it is
+      not a like-for-like substitution and the banner must say so."
+    display:
+      explainer: "The explainer shows the formula ACTUALLY USED. Under
+        fallback it reads 'PAT / Opening Total Assets', never
+        'PAT / avg(Total Assets)' with a footnote. The displayed formula is
+        the formula used."
+      banner: "ONE dataset-scoped banner, not thirteen per-ratio labels:
+        'Average-balance ratios computed on opening balances; re-upload on
+        template v9 to enable period averaging.'"
+      self_extinguish: "The banner disappears the moment the dataset carries
+        an Opening column. Furniture with an expiry, not permanent furniture."
+    first_period:
+      rule: "The earliest period has no prior close, therefore no BOP. It is
+        an em dash, handled by the not-available list — NOT by the banner.
+        'Every period falls back to BOP' cannot be true for period one."
+
+  anchoring:
+    rule: "§7p applies. Last actual period distinctly marked; historical and
+           forecast visually separated. A ratio computed from forecast inputs
+           is labelled forecast."
+
+  explainer:
+    rule: "§7n-A applies. Every ratio, canonical or client, must return:
+           definition, formula (human-readable), this period's numerator and
+           denominator as numbers, source statement lines, period basis, and
+           provenance."
+
+# ---------------------------------------------------------------------------
+# TOKEN VOCABULARY  (PLACEHOLDER NAMES — see OPEN ITEM above)
+# ---------------------------------------------------------------------------
+# collected: true  = present in template v8, computable today
+# collected: false = absence-by-design until a template collects it
+vocabulary:
+
+  income_statement:
+    is.revenue:                     {collected: true}
+    is.cogs:                        {collected: true}
+    is.gross_profit:                {collected: true}
+    is.operating_expenses:          {collected: true}
+    is.sga:                         {collected: true}
+    is.depreciation:                {collected: true}
+    is.amortisation:                {collected: true}
+    is.ebitda:                      {collected: true}
+    is.ebit:                        {collected: true}
+    is.interest_expense:            {collected: true}
+    is.interest_income:             {collected: true}
+    is.pbt:                         {collected: true}
+    is.tax_expense:                 {collected: true}
+    is.pat:                         {collected: true}
+    is.rd_expense:                  {collected: false, requires: "R&D line"}
+    is.bad_debt_expense:            {collected: false, requires: "bad debt / allowance lines"}
+    is.purchases:                   {collected: false, requires: "purchases as distinct from COGS"}
+    is.lease_expense:               {collected: false, requires: "lease expense line"}
+
+  balance_sheet:
+    bs.cash:                        {collected: true}
+    bs.receivables:                 {collected: false, requires: "template v9 — other_current_assets split"}
+    bs.inventory:                   {collected: false, requires: "template v9 — other_current_assets split"}
+    bs.other_current_assets:        {collected: true, note: "v8 aggregate,
+      labelled 'Receivables, Inventory, etc.' Splitting it is the same shape
+      as the v8 non-current split. Blocks the entire working-capital family."}
+    bs.current_assets:              {collected: true}
+    bs.ppe_net:                     {collected: true}
+    bs.intangibles:                 {collected: true}
+    bs.total_assets:                {collected: true}
+    bs.payables:                    {collected: true}
+    bs.short_term_debt:             {collected: true}
+    bs.other_current_liabilities:   {collected: true}
+    bs.current_liabilities:         {collected: true}
+    bs.long_term_debt:              {collected: true}
+    bs.total_liabilities:           {collected: true}
+    bs.equity:                      {collected: true}
+    bs.minority_interest:           {collected: true}
+    bs.total_debt:                  {collected: true}
+    bs.secured_debt:                {collected: false, requires: "debt composition — secured/unsecured"}
+    bs.floating_rate_debt:          {collected: false, requires: "debt composition — fixed/floating"}
+    bs.allowance_doubtful:          {collected: false, requires: "allowance line"}
+    bs.retained_earnings:           {collected: true}
+
+  cash_flow:
+    cf.operating_cash_flow:         {collected: true}
+    cf.capex:                       {collected: true}
+    cf.maintenance_capex:           {collected: false, requires: "maintenance vs growth capex split"}
+    cf.growth_capex:                {collected: false, requires: "maintenance vs growth capex split"}
+    cf.investing_cash_flow:         {collected: true}
+    cf.financing_cash_flow:         {collected: true}
+    cf.dividends_paid:              {collected: true}
+    cf.debt_raised:                 {collected: true}
+    cf.debt_repaid:                 {collected: true}
+    cf.cash_from_customers:         {collected: false, requires: "direct-method CF"}
+    cf.buybacks:                    {collected: false, requires: "share transactions"}
+
+  market_and_shares:
+    mk.shares_outstanding:          {collected: false, requires: "share count"}
+    mk.share_price:                 {collected: false, requires: "market data / user entry"}
+    mk.market_cap:                  {collected: false, requires: "share count + price"}
+    mk.dps:                         {collected: false, requires: "dividend per share"}
+
+  policy_and_assumptions:
+    po.tax_rate_policy:             {collected: true}   # v8 row
+    po.cost_of_equity:              {collected: true}   # valuation inputs
+    po.cost_of_debt:                {collected: true}
+    po.days_in_period:              {collected: true, derived: true}
+
+  human_capital:
+    hc.headcount:                   {collected: false, requires: "headcount collection"}
+    hc.payroll_cost:                {collected: false, requires: "payroll line"}
+
+  saas:
+    sa.arr:                         {collected: false, requires: "SaaS operating metrics — not a statement item"}
+    sa.mrr:                         {collected: false, requires: "SaaS operating metrics"}
+    sa.gross_churn:                 {collected: false, requires: "SaaS operating metrics"}
+    sa.nrr:                         {collected: false, requires: "SaaS operating metrics"}
+    sa.cac:                         {collected: false, requires: "SaaS operating metrics"}
+    sa.customers:                   {collected: false, requires: "SaaS operating metrics"}
+
+# ---------------------------------------------------------------------------
+# CANONICAL RATIOS
+# ---------------------------------------------------------------------------
+# Fields:
+#   id            stable, namespaced, immutable once locked
+#   tier          core | advanced | industry
+#   unit          percent | times | days | currency | ratio
+#   polarity      higher_better | lower_better | band | context
+#   basis         point_in_time | average   (average => needs v8 Opening column)
+#   single_owner  true => this registry is the ONLY computation; see CONSUMERS
+#   headline      true => appears in the v1 executive dashboard
+#
+# v1 SCOPE = every row with `headline: true`. Everything else is the staged
+# library. User never sees more than ~20 rows on one screen.
+#
+# HEADLINE SET — 14, LOCKED 31 Jul:
+#   margins   gross, EBITDA, operating (EBIT), net
+#   returns   ROIC, ROE, ROA
+#   leverage  net debt/EBITDA, debt/equity, interest coverage
+#   liquidity current ratio
+#   cash      FCF conversion
+#   value     ROIC - WACC spread
+#   growth    revenue growth (YoY)
+# FOURTEENTH ADDED 31 Jul. Revenue growth is the ratio whose absence started
+# §7r — "the app can't tell you your revenue growth rate." Shipping the
+# executive dashboard without the question that created it is the wrong shape.
+# ONE growth row only: EBITDA and PAT growth stay in the library. Three growth
+# rows on a 14-row dashboard would make it a growth page.
+#   "FCF conversion" = axiom.cash_conversion_quality (OCF/EBITDA), NOT FCFF.
+# EVA and WACC are OWNED by the library but are NOT headline ratios — EVA is a
+# currency figure, WACC a rate. They are exposed so the spread cannot drift
+# from its own terms.
+
+ratios:
+
+  # --- 1. PROFITABILITY -----------------------------------------------------
+  - id: axiom.gross_margin
+    name: Gross Margin
+    category: Profitability
+    tier: core
+    headline: true
+    formula: "is.gross_profit / is.revenue * 100"
+    unit: percent
+    polarity: higher_better
+    basis: point_in_time
+    definition: "Gross profit as a percentage of revenue. Measures production
+      or delivery efficiency before overhead."
+
+  - id: axiom.ebitda_margin
+    name: EBITDA Margin
+    category: Profitability
+    tier: core
+    headline: true
+    formula: "is.ebitda / is.revenue * 100"
+    unit: percent
+    polarity: higher_better
+    basis: point_in_time
+    definition: "EBITDA as a percentage of revenue. Cash operating
+      profitability before capital structure and depreciation policy."
+
+  - id: axiom.operating_margin
+    name: Operating Margin
+    category: Profitability
+    tier: core
+    headline: true
+    formula: "is.ebit / is.revenue * 100"
+    unit: percent
+    polarity: higher_better
+    basis: point_in_time
+    definition: "EBIT as a percentage of revenue. Core operating
+      profitability after all operating costs."
+
+  - id: axiom.pbt_margin
+    name: PBT Margin
+    category: Profitability
+    tier: core
+    headline: false
+    formula: "is.pbt / is.revenue * 100"
+    unit: percent
+    polarity: higher_better
+    basis: point_in_time
+    definition: "Profit before tax as a percentage of revenue."
+
+  - id: axiom.net_margin
+    name: Net Margin
+    category: Profitability
+    tier: core
+    headline: true
+    formula: "is.pat / is.revenue * 100"
+    unit: percent
+    polarity: higher_better
+    basis: point_in_time
+    definition: "Profit after tax as a percentage of revenue."
+
+  - id: axiom.effective_tax_rate
+    name: Effective Tax Rate
+    category: Profitability
+    tier: core
+    headline: false
+    formula: "is.tax_expense / is.pbt * 100"
+    unit: percent
+    polarity: context
+    basis: point_in_time
+    definition: "Tax expense as a percentage of profit before tax. Compare
+      against the statutory rate in po.tax_rate_policy."
+
+  # --- 2. RETURNS -----------------------------------------------------------
+  - id: axiom.roa
+    name: Return on Assets
+    category: Returns
+    tier: core
+    headline: true
+    formula: "is.pat / avg(bs.total_assets) * 100"
+    unit: percent
+    polarity: higher_better
+    basis: average
+    definition: "Profit after tax over average total assets."
+
+  - id: axiom.roe
+    name: Return on Equity
+    category: Returns
+    tier: core
+    headline: true
+    formula: "is.pat / avg(bs.equity) * 100"
+    unit: percent
+    polarity: higher_better
+    basis: average
+    definition: "Profit after tax over average shareholders' equity."
+
+  - id: axiom.invested_capital
+    name: Invested Capital
+    category: Returns
+    tier: core
+    headline: false
+    formula: "bs.total_debt + bs.equity + bs.minority_interest - bs.cash"
+    unit: currency
+    polarity: context
+    basis: point_in_time
+    single_owner: true
+    definition: "Debt plus equity plus minority interest less cash. The
+      capital base against which ROIC is measured."
+
+  - id: axiom.roic
+    name: ROIC
+    category: Returns
+    tier: core
+    headline: true
+    formula: "is.ebit * (1 - po.tax_rate_policy) / avg(axiom.invested_capital)"
+    unit: percent
+    polarity: higher_better
+    basis: average
+    single_owner: true
+    owner_note: "FOUNDER RULING. This is the ONLY ROIC in AXIOM.
+      optimization_status must consume this and must not compute its own.
+      Previously it read cur['roic'] and, when incomputable, published
+      'value-eroding (ROIC < WACC)' from a coerced zero."
+    exception_to_no_ratio_refs: true
+    definition: "After-tax operating profit over average invested capital."
+
+  - id: axiom.wacc
+    name: WACC
+    category: Returns
+    tier: core
+    headline: false
+    formula: "wacc_at(actual_leverage)"
+    exposed_not_headline: true   # a rate, not a ratio; exposed to anchor the spread
+    parameterised: true
+    parameterised_form: "wacc_at(x) where x = D/E:
+      po.cost_of_equity / (1 + x) +
+      po.cost_of_debt * (1 - po.tax_rate_policy) * x / (1 + x)"
+    unit: percent
+    polarity: lower_better
+    basis: point_in_time
+    single_owner: true
+    owner_note: "FOUNDER RULING, 31 Jul. ONE implementation of the blend.
+      The audit found two: financials:382 (we*ke + wd*kd*(1-T)) and
+      intelligence:145 (the levered-WACC-vs-D/E curve in health_reo). These
+      are the same algebra in different notation — D+E basis vs D/E basis —
+      not a deliberate second implementation. Both become wacc_at().
+      The headline WACC is wacc_at(actual_leverage), NOT a separate
+      expression that happens to agree. Book weights in v1; market weights
+      when mk.market_cap exists.
+      OPEN FINDING, do not fix in the consolidation session: check whether
+      intelligence:145 relevers ke as x sweeps or holds it fixed. If fixed,
+      the WACC-minimising point reported by the Enterprise Health Index sits
+      too far right, because the equity holder is charged nothing for rising
+      risk. Report; a change there moves the health index for every company
+      and needs its own diff and its own ruling."
+    definition: "Weighted average cost of capital at book weights."
+
+  # --- 3. VALUE CREATION ----------------------------------------------------
+  - id: axiom.roic_wacc_spread
+    name: ROIC − WACC Spread
+    category: Value Creation
+    tier: core
+    headline: true
+    formula: "axiom.roic - axiom.wacc"
+    unit: percent
+    polarity: higher_better
+    basis: average
+    exception_to_no_ratio_refs: true
+    definition: "The value-creation spread. Positive creates economic value;
+      negative erodes it."
+    display_rule: "Never state 'value-eroding' unless BOTH terms computed.
+      If either is an em dash, the spread is an em dash."
+
+  - id: axiom.eva
+    name: Economic Value Added
+    category: Value Creation
+    tier: core
+    headline: false   # not in the locked 13
+    formula: "(axiom.roic - axiom.wacc) / 100 * avg(axiom.invested_capital)"
+    unit: currency
+    polarity: higher_better
+    basis: average
+    single_owner: true
+    exposed_not_headline: true
+    exception_to_no_ratio_refs: true
+    owner_note: "FOUNDER RULING. §7n consumes this. engines.py:524 becomes a
+      consumer, not a second computation. EVA is EXPOSED but NOT headline —
+      it is a currency figure, not a ratio. Exposed so the ROIC-WACC spread
+      cannot drift from its own terms."
+    definition: "Spread multiplied by invested capital. Currency value
+      created or destroyed in the period."
+
+  # --- 4. LIQUIDITY ---------------------------------------------------------
+  - id: axiom.current_ratio
+    name: Current Ratio
+    category: Liquidity
+    tier: core
+    headline: true
+    formula: "bs.current_assets / bs.current_liabilities"
+    unit: times
+    polarity: band
+    basis: point_in_time
+    definition: "Current assets over current liabilities."
+    convention: "FOUNDER RULING, 31 Jul. The denominator INCLUDES short-term
+      debt, matching the incumbent behaviour at financials:312 and the
+      standard definition. Stated in the explainer. An operating variant
+      excluding debt would be a SEPARATELY NAMED RATIO, never a toggle — a
+      toggle makes one name mean two numbers."
+
+  - id: axiom.quick_ratio
+    name: Quick Ratio
+    category: Liquidity
+    tier: core
+    headline: false   # blocked until v9; cannot be in the 13
+    formula: "(bs.current_assets - bs.inventory) / bs.current_liabilities"
+    unit: times
+    polarity: band
+    basis: point_in_time
+    availability: requires_data
+    requires: ["template v9 — other_current_assets split into receivables and inventory"]
+    blocked_inputs: "bs.inventory"
+    definition: "Current assets excluding inventory over current liabilities."
+
+  - id: axiom.cash_ratio
+    name: Cash Ratio
+    category: Liquidity
+    tier: core
+    headline: false
+    formula: "bs.cash / bs.current_liabilities"
+    unit: times
+    polarity: band
+    basis: point_in_time
+    definition: "Cash over current liabilities. The most conservative
+      liquidity measure."
+
+  - id: axiom.cash_runway_months
+    name: Cash Runway
+    category: Liquidity
+    tier: core
+    headline: false   # not in the locked 13
+    formula: "bs.cash / ((is.operating_expenses + is.cogs - is.depreciation -
+              is.amortisation) / 12)"
+    unit: months
+    polarity: higher_better
+    basis: point_in_time
+    kernel_input: true
+    definition: "Months of cash operating costs covered by cash on hand."
+    kernel_note: "Feeds §7i as a survival-horizon constraint. Published
+      distress scores do NOT feed the kernel."
+
+  # --- 5. SOLVENCY AND LEVERAGE --------------------------------------------
+  - id: axiom.net_debt
+    name: Net Debt
+    category: Solvency
+    tier: core
+    headline: false   # not in the locked 13
+    formula: "bs.short_term_debt + bs.long_term_debt - bs.cash"
+    unit: currency
+    polarity: lower_better
+    basis: point_in_time
+    single_owner: true
+    owner_note: "FOUNDER RULING. Single net debt. The valuation surface
+      consumes this. Debt and cash remain SEPARATE SIGNED LINES in the
+      EV-to-equity bridge — this aggregate is for ratio use, not for
+      collapsing the bridge display.
+      OPERANDS ARE EXPLICIT, NOT bs.total_debt. A total_debt token could
+      quietly pick up leases and diverge from the sites this replaces.
+
+      *** AMENDED 31 Jul, SEGMENT B FINDING — BINDING ON THE BUILD ***
+      net_debt MUST TAKE DEBT AS AN ARGUMENT. It must NOT recompute debt from
+      balance-sheet tokens.
+
+      The Segment B trace found four _debt_book injectors and they do NOT all
+      supply the same value. prescience_decision:241 injects a DELIBERATELY
+      SHOCKED debt figure. _debt_book is therefore not 'total debt' — it is
+      'the debt THIS computation should use'. A library that recomputes net
+      debt from the balance sheet would silently UN-SHOCK every prescience
+      scenario, and the scenarios would still render, still typecheck, and be
+      wrong in a direction nobody would look for.
+
+      Signature: net_debt(debt, cash) — both passed in.
+      Callers supply their own debt basis. The library owns the ARITHMETIC and
+      the definition; it does not own the operand source.
+
+      The four sites still collapse to one implementation. What does not
+      collapse is the right of a caller to state which debt it means."
+    definition: "Total debt less cash."
+
+  - id: axiom.debt_to_equity
+    name: Debt / Equity
+    category: Solvency
+    tier: core
+    headline: true
+    formula: "bs.total_debt / bs.equity"
+    unit: times
+    polarity: lower_better
+    basis: point_in_time
+    definition: "Total debt over shareholders' equity."
+
+  - id: axiom.debt_to_ebitda
+    name: Debt / EBITDA
+    category: Solvency
+    tier: core
+    headline: false   # not in the locked 13
+    formula: "bs.total_debt / is.ebitda"
+    unit: times
+    polarity: lower_better
+    basis: point_in_time
+    definition: "Total debt as a multiple of EBITDA. The standard leverage
+      covenant metric."
+
+  - id: axiom.net_debt_to_ebitda
+    name: Net Debt / EBITDA
+    category: Solvency
+    tier: core
+    headline: true
+    formula: "axiom.net_debt / is.ebitda"
+    unit: times
+    polarity: lower_better
+    basis: point_in_time
+    exception_to_no_ratio_refs: true
+    kernel_input: true
+    definition: "Net debt as a multiple of EBITDA."
+
+  - id: axiom.equity_ratio
+    name: Equity Ratio
+    category: Solvency
+    tier: core
+    headline: false
+    formula: "bs.equity / bs.total_assets * 100"
+    unit: percent
+    polarity: higher_better
+    basis: point_in_time
+    definition: "Equity as a percentage of total assets."
+
+  - id: axiom.financial_leverage
+    name: Financial Leverage
+    category: Solvency
+    tier: advanced
+    headline: false
+    formula: "avg(bs.total_assets) / avg(bs.equity)"
+    unit: times
+    polarity: context
+    basis: average
+    definition: "Average assets over average equity. The leverage term in
+      DuPont decomposition."
+
+  # --- 6. COVERAGE ----------------------------------------------------------
+  - id: axiom.interest_coverage
+    name: Interest Coverage
+    category: Coverage
+    tier: core
+    headline: true
+    formula: "is.ebit / is.interest_expense"
+    unit: times
+    polarity: higher_better
+    basis: point_in_time
+    kernel_input: true
+    definition: "EBIT over interest expense. Times interest earned."
+
+  - id: axiom.ebitda_interest_coverage
+    name: EBITDA Interest Coverage
+    category: Coverage
+    tier: core
+    headline: false
+    formula: "is.ebitda / is.interest_expense"
+    unit: times
+    polarity: higher_better
+    basis: point_in_time
+    definition: "EBITDA over interest expense."
+
+  - id: axiom.debt_service_coverage
+    name: Debt Service Coverage
+    category: Coverage
+    tier: core
+    headline: false
+    formula: "is.ebitda / (is.interest_expense + cf.debt_repaid)"
+    unit: times
+    polarity: higher_better
+    basis: point_in_time
+    definition: "EBITDA over interest plus scheduled principal repayment."
+
+  - id: axiom.cash_flow_coverage
+    name: Operating Cash Flow Coverage
+    category: Coverage
+    tier: advanced
+    headline: false
+    formula: "cf.operating_cash_flow / bs.total_debt * 100"
+    unit: percent
+    polarity: higher_better
+    basis: point_in_time
+    definition: "Operating cash flow as a percentage of total debt."
+
+  # --- 7. EFFICIENCY --------------------------------------------------------
+  - id: axiom.asset_turnover
+    name: Asset Turnover
+    category: Efficiency
+    tier: core
+    headline: false   # not in the locked 13
+    formula: "is.revenue / avg(bs.total_assets)"
+    unit: times
+    polarity: higher_better
+    basis: average
+    definition: "Revenue over average total assets."
+
+  - id: axiom.fixed_asset_turnover
+    name: Fixed Asset Turnover
+    category: Efficiency
+    tier: advanced
+    headline: false
+    formula: "is.revenue / avg(bs.ppe_net)"
+    unit: times
+    polarity: higher_better
+    basis: average
+    definition: "Revenue over average net fixed assets."
+
+  - id: axiom.inventory_turnover
+    name: Inventory Turnover
+    category: Efficiency
+    tier: core
+    headline: false
+    formula: "is.cogs / avg(bs.inventory)"
+    unit: times
+    polarity: higher_better
+    basis: average
+    availability: requires_data
+    requires: ["template v9 — other_current_assets split into receivables and inventory"]
+    blocked_inputs: "bs.inventory"
+    definition: "COGS over average inventory."
+
+  - id: axiom.receivable_days
+    name: Receivable Days (DSO)
+    category: Efficiency
+    tier: core
+    headline: false   # blocked until v9; cannot be in the 13
+    formula: "avg(bs.receivables) / is.revenue * po.days_in_period"
+    unit: days
+    polarity: lower_better
+    basis: average
+    availability: requires_data
+    requires: ["template v9 — other_current_assets split into receivables and inventory"]
+    blocked_inputs: "bs.receivables"
+    definition: "Average days to collect receivables."
+
+  - id: axiom.inventory_days
+    name: Inventory Days (DIO)
+    category: Efficiency
+    tier: core
+    headline: false   # blocked until v9; cannot be in the 13
+    formula: "avg(bs.inventory) / is.cogs * po.days_in_period"
+    unit: days
+    polarity: lower_better
+    basis: average
+    availability: requires_data
+    requires: ["template v9 — other_current_assets split into receivables and inventory"]
+    blocked_inputs: "bs.inventory"
+    definition: "Average days inventory is held."
+
+  - id: axiom.payable_days
+    name: Payable Days (DPO)
+    category: Efficiency
+    tier: core
+    headline: false   # not in the locked 13
+    formula: "avg(bs.payables) / is.cogs * po.days_in_period"
+    unit: days
+    polarity: context
+    basis: average
+    definition: "Average days to pay suppliers. Uses COGS as the denominator
+      proxy until is.purchases is collected."
+    denominator_note: "Convention choice. Purchases is the textbook
+      denominator; COGS is the available one. Stated in the explainer."
+
+  - id: axiom.cash_conversion_cycle
+    name: Cash Conversion Cycle
+    category: Efficiency
+    tier: core
+    headline: false   # blocked until v9; cannot be in the 13
+    formula: "axiom.receivable_days + axiom.inventory_days - axiom.payable_days"
+    unit: days
+    polarity: lower_better
+    basis: average
+    exception_to_no_ratio_refs: true
+    availability: requires_data
+    requires: ["template v9 — other_current_assets split into receivables and inventory"]
+    blocked_inputs: "bs.receivables, bs.inventory (via DSO/DIO)"
+    definition: "DSO plus DIO less DPO. Days between paying suppliers and
+      collecting from customers."
+
+  # --- 8. WORKING CAPITAL ---------------------------------------------------
+  - id: axiom.working_capital
+    name: Working Capital
+    category: Working Capital
+    tier: core
+    headline: false
+    formula: "bs.current_assets - bs.current_liabilities"
+    unit: currency
+    polarity: context
+    basis: point_in_time
+    definition: "Current assets less current liabilities."
+
+  - id: axiom.working_capital_to_revenue
+    name: Working Capital / Revenue
+    category: Working Capital
+    tier: advanced
+    headline: false
+    formula: "(bs.current_assets - bs.current_liabilities) / is.revenue * 100"
+    unit: percent
+    polarity: context
+    basis: point_in_time
+    definition: "Working capital intensity of the revenue base."
+
+  # --- 9. CASH FLOW ---------------------------------------------------------
+  - id: axiom.ocf_margin
+    name: Operating Cash Flow Margin
+    category: Cash Flow
+    tier: core
+    headline: false   # not in the locked 13
+    formula: "cf.operating_cash_flow / is.revenue * 100"
+    unit: percent
+    polarity: higher_better
+    basis: point_in_time
+    definition: "Operating cash flow as a percentage of revenue."
+
+  - id: axiom.cash_conversion_quality
+    name: Cash Conversion (OCF / EBITDA)
+    category: Cash Flow
+    tier: core
+    headline: true
+    formula: "cf.operating_cash_flow / is.ebitda * 100"
+    unit: percent
+    polarity: higher_better
+    basis: point_in_time
+    definition: "How much reported EBITDA arrives as operating cash. A
+      persistent gap signals working capital absorption or earnings quality."
+    headline_alias: "FCF conversion"
+    convention: "FOUNDER RULING 31 Jul: the headline 'FCF conversion' row is
+      THIS ratio — operating cash flow over EBITDA — not FCFF/EBITDA.
+      MANDATORY EXPLAINER CAVEAT: operating cash flow is stated AFTER interest
+      and tax; EBITDA is stated BEFORE both. The ratio therefore sits
+      structurally below 100% for any leveraged taxpaying company, and it moves
+      with leverage and tax rate as well as with conversion quality. It is a
+      trend and peer measure, not an absolute one. A CFO who reads 72% as
+      '28% of profit leaked' without that sentence has been misled by the
+      label, so the sentence is not optional."
+    rejected_alternative: "FCFF / EBITDA. It conflates conversion with capital
+      intensity — a capex-heavy firm scores badly for reasons unrelated to how
+      well profit becomes cash. That question is already answered separately by
+      capex/revenue and capex/depreciation. axiom.fcff remains in the library
+      as a currency line."
+
+  - id: axiom.fcff
+    name: Free Cash Flow to Firm
+    category: Cash Flow
+    tier: core
+    headline: false   # not in the locked 13
+    formula: "is.ebit * (1 - po.tax_rate_policy) + is.depreciation +
+              is.amortisation - cf.capex -
+              ((bs.current_assets - bs.current_liabilities) -
+               prior(bs.current_assets - bs.current_liabilities))"
+    unit: currency
+    polarity: higher_better
+    basis: point_in_time
+    single_owner: true
+    owner_note: "FOUNDER RULING. FCFF and FCFE are kept SEPARATE. Never
+      substituted for one another, never labelled interchangeably."
+    definition: "Cash available to all capital providers."
+
+  - id: axiom.fcfe
+    name: Free Cash Flow to Equity
+    category: Cash Flow
+    tier: core
+    headline: false
+    formula: "cf.operating_cash_flow - cf.capex + cf.debt_raised - cf.debt_repaid"
+    unit: currency
+    polarity: higher_better
+    basis: point_in_time
+    single_owner: true
+    owner_note: "Separate from FCFF per founder ruling."
+    definition: "Cash available to equity holders after debt service."
+
+  - id: axiom.capex_to_revenue
+    name: Capex / Revenue
+    category: Cash Flow
+    tier: core
+    headline: false
+    formula: "cf.capex / is.revenue * 100"
+    unit: percent
+    polarity: context
+    basis: point_in_time
+    definition: "Capital intensity."
+
+  - id: axiom.capex_to_depreciation
+    name: Capex / Depreciation
+    category: Cash Flow
+    tier: advanced
+    headline: false
+    formula: "cf.capex / is.depreciation"
+    unit: times
+    polarity: context
+    basis: point_in_time
+    definition: "Above 1.0 suggests expansion; below suggests the asset base
+      is not being replaced."
+
+  - id: axiom.maintenance_capex_ratio
+    name: Maintenance Capex / Total Capex
+    category: Cash Flow
+    tier: advanced
+    headline: false
+    formula: "cf.maintenance_capex / cf.capex * 100"
+    unit: percent
+    polarity: lower_better
+    basis: point_in_time
+    availability: requires_data
+    requires: ["maintenance vs growth capex split"]
+    definition: "Share of capex required simply to sustain operations."
+
+  # --- 10. GROWTH -----------------------------------------------------------
+  # BASIS RULING NEEDED. Registry default: YoY headline, PoP available,
+  # CAGR over full span shown separately (reuses long-run variance machinery).
+  - id: axiom.revenue_growth_yoy
+    name: Revenue Growth (YoY)
+    category: Growth
+    tier: core
+    headline: true
+    formula: "(is.revenue - prior(is.revenue)) / prior(is.revenue) * 100"
+    unit: percent
+    polarity: higher_better
+    basis: point_in_time
+    growth_basis: yoy
+    definition: "Year-over-year revenue growth. For quarterly data, compares
+      against the same quarter of the prior year."
+    origin_note: "This is the ratio whose absence started §7r."
+
+  - id: axiom.ebitda_growth_yoy
+    name: EBITDA Growth (YoY)
+    category: Growth
+    tier: core
+    headline: false   # not in the locked 13
+    formula: "(is.ebitda - prior(is.ebitda)) / prior(is.ebitda) * 100"
+    unit: percent
+    polarity: higher_better
+    basis: point_in_time
+    growth_basis: yoy
+    definition: "Year-over-year EBITDA growth."
+    display_rule: "Sign flips are meaningless when the prior period is
+      negative. Suppress and state 'prior period negative'."
+
+  - id: axiom.pat_growth_yoy
+    name: PAT Growth (YoY)
+    category: Growth
+    tier: core
+    headline: false   # not in the locked 13
+    formula: "(is.pat - prior(is.pat)) / prior(is.pat) * 100"
+    unit: percent
+    polarity: higher_better
+    basis: point_in_time
+    growth_basis: yoy
+    definition: "Year-over-year profit after tax growth."
+    display_rule: "Same negative-base suppression as EBITDA growth."
+
+  - id: axiom.revenue_cagr
+    name: Revenue CAGR
+    category: Growth
+    tier: core
+    headline: false   # not in the locked 13
+    formula: "cagr(is.revenue)"
+    unit: percent
+    polarity: higher_better
+    basis: point_in_time
+    growth_basis: cagr
+    definition: "Compound annual growth rate over the full available span.
+      Span stated explicitly in the label."
+
+  - id: axiom.operating_leverage
+    name: Operating Leverage
+    category: Growth
+    tier: advanced
+    headline: false
+    formula: "axiom.ebit_growth_yoy / axiom.revenue_growth_yoy"
+    unit: times
+    polarity: higher_better
+    basis: point_in_time
+    exception_to_no_ratio_refs: true
+    definition: "Percentage change in EBIT per percentage change in revenue."
+
+  # --- 11. COMMON-SIZE (separate surface, not a ratio table) ---------------
+  - id: axiom.common_size_is
+    name: Common-Size Income Statement
+    category: Common-Size
+    tier: core
+    headline: false
+    surface: full_statement
+    formula: "<every IS line> / is.revenue * 100"
+    unit: percent
+    polarity: context
+    basis: point_in_time
+    definition: "Every income statement line as a percentage of revenue."
+    note: "A full-statement view, NOT a row in the ratio panel. Separate tab
+      section per founder's both-surfaces requirement."
+
+  - id: axiom.common_size_bs
+    name: Common-Size Balance Sheet
+    category: Common-Size
+    tier: core
+    headline: false
+    surface: full_statement
+    formula: "<every BS line> / bs.total_assets * 100"
+    unit: percent
+    polarity: context
+    basis: point_in_time
+    definition: "Every balance sheet line as a percentage of total assets."
+
+  # --- 12. DUPONT -----------------------------------------------------------
+  - id: axiom.dupont_three_step
+    name: DuPont Decomposition (3-step)
+    category: DuPont
+    tier: advanced
+    headline: false
+    surface: decomposition
+    formula: "axiom.net_margin * axiom.asset_turnover * axiom.financial_leverage"
+    unit: percent
+    polarity: higher_better
+    basis: average
+    exception_to_no_ratio_refs: true
+    definition: "ROE decomposed into margin, turnover, and leverage."
+    display_rule: "Must reconcile to axiom.roe. If it does not, show the
+      residual rather than hiding it."
+
+  # --- 13. DISTRESS SCREENS ------------------------------------------------
+  # FOUNDER RULING: these sit BESIDE the viability kernel as an independent
+  # read. They do NOT feed it. Agreement/divergence is surfaced.
+  - id: axiom.altman_z
+    name: Altman Z-Score (public manufacturing)
+    category: Distress Screens
+    tier: advanced
+    headline: false
+    formula: "1.2 * ((bs.current_assets - bs.current_liabilities) /
+                     bs.total_assets) +
+              1.4 * (bs.retained_earnings / bs.total_assets) +
+              3.3 * (is.ebit / bs.total_assets) +
+              0.6 * (mk.market_cap / bs.total_liabilities) +
+              1.0 * (is.revenue / bs.total_assets)"
+    unit: score
+    polarity: higher_better
+    basis: point_in_time
+    availability: requires_data
+    requires: ["market capitalisation"]
+    is_screen: true
+    fitted_population: "US public manufacturers, 1960s"
+    definition: "Original Altman Z. A SCREEN, not a verdict."
+    display_rule: "Label as screen. Explainer must state fitted population.
+      Never rendered as a solvency conclusion."
+
+  - id: axiom.altman_z_prime
+    name: Altman Z′ (private manufacturing)
+    category: Distress Screens
+    tier: advanced
+    headline: false
+    formula: "0.717 * ((bs.current_assets - bs.current_liabilities) /
+                       bs.total_assets) +
+              0.847 * (bs.retained_earnings / bs.total_assets) +
+              3.107 * (is.ebit / bs.total_assets) +
+              0.420 * (bs.equity / bs.total_liabilities) +
+              0.998 * (is.revenue / bs.total_assets)"
+    unit: score
+    polarity: higher_better
+    basis: point_in_time
+    is_screen: true
+    fitted_population: "Private manufacturers"
+    definition: "Altman Z′ for private companies. Book equity replaces
+      market cap. A SCREEN, not a verdict."
+
+  - id: axiom.altman_z_double_prime
+    name: Altman Z″ (non-manufacturing / emerging market)
+    category: Distress Screens
+    tier: advanced
+    headline: false
+    formula: "6.56 * ((bs.current_assets - bs.current_liabilities) /
+                      bs.total_assets) +
+              3.26 * (bs.retained_earnings / bs.total_assets) +
+              6.72 * (is.ebit / bs.total_assets) +
+              1.05 * (bs.equity / bs.total_liabilities)"
+    unit: score
+    polarity: higher_better
+    basis: point_in_time
+    is_screen: true
+    fitted_population: "Non-manufacturing and emerging-market firms"
+    definition: "Altman Z″. Asset-turnover term dropped. A SCREEN."
+
+  - id: axiom.springate
+    name: Springate Score
+    category: Distress Screens
+    tier: advanced
+    headline: false
+    formula: "1.03 * ((bs.current_assets - bs.current_liabilities) /
+                      bs.total_assets) +
+              3.07 * (is.ebit / bs.total_assets) +
+              0.66 * (is.pbt / bs.current_liabilities) +
+              0.40 * (is.revenue / bs.total_assets)"
+    unit: score
+    polarity: higher_better
+    basis: point_in_time
+    is_screen: true
+    fitted_population: "Canadian industrials, 1978"
+    definition: "Springate four-factor distress screen."
+
+  - id: axiom.zmijewski
+    name: Zmijewski Score
+    category: Distress Screens
+    tier: advanced
+    headline: false
+    formula: "-4.336 - 4.513 * (is.pat / bs.total_assets) +
+              5.679 * (bs.total_liabilities / bs.total_assets) +
+              0.004 * (bs.current_assets / bs.current_liabilities)"
+    unit: score
+    polarity: lower_better
+    basis: point_in_time
+    is_screen: true
+    fitted_population: "US public firms, 1972-78"
+    definition: "Zmijewski probit distress screen. Lower is safer — note the
+      inverted polarity relative to Altman."
+
+  - id: axiom.ohlson_o
+    name: Ohlson O-Score
+    category: Distress Screens
+    tier: advanced
+    headline: false
+    formula: "<nine-term specification — see ohlson.md>"
+    unit: score
+    polarity: lower_better
+    basis: point_in_time
+    availability: requires_data
+    requires: ["GNP price index deflator", "two prior periods of net income"]
+    is_screen: true
+    fitted_population: "US public firms, 1970-76"
+    definition: "Ohlson nine-variable logit screen."
+    build_note: "Formula deliberately not expanded here. It needs a macro
+      deflator that the industry-context layer does not yet supply, and a
+      half-specified nine-term model in the registry is worse than an
+      honest placeholder."
+
+  # --- 14. HUMAN CAPITAL ---------------------------------------------------
+  - id: axiom.revenue_per_employee
+    name: Revenue per Employee
+    category: Human Capital
+    tier: advanced
+    headline: false
+    formula: "is.revenue / hc.headcount"
+    unit: currency
+    polarity: higher_better
+    basis: point_in_time
+    availability: requires_data
+    requires: ["headcount collection"]
+    definition: "Revenue divided by period-end headcount."
+
+  - id: axiom.profit_per_employee
+    name: Profit per Employee
+    category: Human Capital
+    tier: advanced
+    headline: false
+    formula: "is.pat / hc.headcount"
+    unit: currency
+    polarity: higher_better
+    basis: point_in_time
+    availability: requires_data
+    requires: ["headcount collection"]
+    definition: "Profit after tax divided by headcount."
+
+  - id: axiom.payroll_to_revenue
+    name: Payroll / Revenue
+    category: Human Capital
+    tier: advanced
+    headline: false
+    formula: "hc.payroll_cost / is.revenue * 100"
+    unit: percent
+    polarity: lower_better
+    basis: point_in_time
+    availability: requires_data
+    requires: ["payroll line"]
+    definition: "Payroll cost as a percentage of revenue."
+
+  # --- 15. MARKET AND VALUATION --------------------------------------------
+  - id: axiom.eps
+    name: Earnings per Share
+    category: Market
+    tier: advanced
+    headline: false
+    formula: "is.pat / mk.shares_outstanding"
+    unit: currency
+    polarity: higher_better
+    basis: point_in_time
+    availability: requires_data
+    requires: ["share count"]
+    definition: "Profit after tax per share outstanding."
+
+  - id: axiom.pe_ratio
+    name: P/E Ratio
+    category: Market
+    tier: advanced
+    headline: false
+    formula: "mk.market_cap / is.pat"
+    unit: times
+    polarity: context
+    basis: point_in_time
+    availability: requires_data
+    requires: ["market capitalisation"]
+    definition: "Market capitalisation over profit after tax."
+
+  - id: axiom.ev_ebitda
+    name: EV / EBITDA
+    category: Market
+    tier: advanced
+    headline: false
+    formula: "(mk.market_cap + axiom.net_debt) / is.ebitda"
+    unit: times
+    polarity: context
+    basis: point_in_time
+    availability: requires_data
+    requires: ["market capitalisation"]
+    exception_to_no_ratio_refs: true
+    definition: "Enterprise value over EBITDA."
+    owner_note: "The valuation surface's editable market multiple consumes
+      the same net_debt as this row. One net debt."
+
+  - id: axiom.dividend_payout
+    name: Dividend Payout Ratio
+    category: Market
+    tier: advanced
+    headline: false
+    formula: "cf.dividends_paid / is.pat * 100"
+    unit: percent
+    polarity: context
+    basis: point_in_time
+    definition: "Dividends paid as a percentage of profit after tax."
+
+  - id: axiom.dividend_yield
+    name: Dividend Yield
+    category: Market
+    tier: advanced
+    headline: false
+    formula: "mk.dps / mk.share_price * 100"
+    unit: percent
+    polarity: higher_better
+    basis: point_in_time
+    availability: requires_data
+    requires: ["dividend per share", "share price"]
+    definition: "Dividend per share over share price."
+
+  # --- 16. DEBT COMPOSITION ------------------------------------------------
+  - id: axiom.short_term_debt_share
+    name: Short-Term Debt Share
+    category: Debt Composition
+    tier: advanced
+    headline: false
+    formula: "bs.short_term_debt / bs.total_debt * 100"
+    unit: percent
+    polarity: lower_better
+    basis: point_in_time
+    kernel_input: true
+    definition: "Share of debt maturing within twelve months. A refinancing
+      exposure measure."
+
+  - id: axiom.floating_rate_share
+    name: Floating-Rate Debt Share
+    category: Debt Composition
+    tier: advanced
+    headline: false
+    formula: "bs.floating_rate_debt / bs.total_debt * 100"
+    unit: percent
+    polarity: context
+    basis: point_in_time
+    availability: requires_data
+    requires: ["debt composition — fixed/floating"]
+    kernel_input: true
+    definition: "Share of debt exposed to rate movements. A genuine shock
+      dimension for the kernel."
+
+  - id: axiom.secured_debt_share
+    name: Secured Debt Share
+    category: Debt Composition
+    tier: advanced
+    headline: false
+    formula: "bs.secured_debt / bs.total_debt * 100"
+    unit: percent
+    polarity: context
+    basis: point_in_time
+    availability: requires_data
+    requires: ["debt composition — secured/unsecured"]
+    definition: "Share of debt secured against assets."
+
+  - id: axiom.average_cost_of_debt
+    name: Average Cost of Debt (actual)
+    category: Debt Composition
+    tier: advanced
+    headline: false
+    formula: "is.interest_expense / avg(bs.total_debt) * 100"
+    unit: percent
+    polarity: lower_better
+    basis: average
+    definition: "Interest expense over average debt. The realised cost, to be
+      compared against po.cost_of_debt used in WACC."
+
+  # --- 17. EARNINGS QUALITY ------------------------------------------------
+  - id: axiom.accruals_ratio
+    name: Accruals Ratio
+    category: Earnings Quality
+    tier: advanced
+    headline: false
+    formula: "(is.pat - cf.operating_cash_flow) / avg(bs.total_assets) * 100"
+    unit: percent
+    polarity: lower_better
+    basis: average
+    definition: "The gap between accounting profit and operating cash,
+      scaled by assets. Persistently high accruals are an earnings-quality
+      warning."
+
+  - id: axiom.bad_debt_ratio
+    name: Bad Debt / Revenue
+    category: Earnings Quality
+    tier: advanced
+    headline: false
+    formula: "is.bad_debt_expense / is.revenue * 100"
+    unit: percent
+    polarity: lower_better
+    basis: point_in_time
+    availability: requires_data
+    requires: ["bad debt / allowance lines"]
+    definition: "Bad debt expense as a percentage of revenue."
+
+  - id: axiom.allowance_coverage
+    name: Allowance / Gross Receivables
+    category: Earnings Quality
+    tier: advanced
+    headline: false
+    formula: "bs.allowance_doubtful / (bs.receivables + bs.allowance_doubtful) * 100"
+    unit: percent
+    polarity: context
+    basis: point_in_time
+    availability: requires_data
+    requires: ["allowance line"]
+    definition: "Provisioning coverage against gross receivables."
+
+  # --- 18. REINVESTMENT ----------------------------------------------------
+  - id: axiom.reinvestment_rate
+    name: Reinvestment Rate
+    category: Reinvestment
+    tier: advanced
+    headline: false
+    formula: "(cf.capex - is.depreciation +
+              ((bs.current_assets - bs.current_liabilities) -
+               prior(bs.current_assets - bs.current_liabilities))) /
+              (is.ebit * (1 - po.tax_rate_policy)) * 100"
+    unit: percent
+    polarity: context
+    basis: point_in_time
+    definition: "Share of after-tax operating profit reinvested in net capex
+      and working capital."
+
+  - id: axiom.sustainable_growth_rate
+    name: Sustainable Growth Rate
+    category: Reinvestment
+    tier: advanced
+    headline: false
+    formula: "axiom.roe * (1 - axiom.dividend_payout / 100)"
+    unit: percent
+    polarity: context
+    basis: average
+    exception_to_no_ratio_refs: true
+    definition: "Growth financeable from retained earnings without changing
+      leverage. Compare against axiom.revenue_growth_yoy — a company growing
+      faster than this is consuming balance sheet capacity."
+
+  - id: axiom.rd_intensity
+    name: R&D Intensity
+    category: Reinvestment
+    tier: industry
+    headline: false
+    formula: "is.rd_expense / is.revenue * 100"
+    unit: percent
+    polarity: context
+    basis: point_in_time
+    availability: requires_data
+    requires: ["R&D line"]
+    definition: "R&D expense as a percentage of revenue."
+
+  # --- 19. INDUSTRY-SPECIFIC: SaaS ----------------------------------------
+  # All rows below are absence-by-design. These are OPERATING metrics, not
+  # financial statement items, and no template collects them. They are the
+  # clearest case for the client-extension mechanism below.
+  - id: axiom.arr_growth
+    name: ARR Growth
+    category: Industry — SaaS
+    tier: industry
+    headline: false
+    formula: "(sa.arr - prior(sa.arr)) / prior(sa.arr) * 100"
+    unit: percent
+    polarity: higher_better
+    basis: point_in_time
+    availability: requires_data
+    requires: ["SaaS operating metrics"]
+    definition: "Year-over-year annual recurring revenue growth."
+
+  - id: axiom.net_revenue_retention
+    name: Net Revenue Retention
+    category: Industry — SaaS
+    tier: industry
+    headline: false
+    formula: "sa.nrr"
+    unit: percent
+    polarity: higher_better
+    basis: point_in_time
+    availability: requires_data
+    requires: ["SaaS operating metrics"]
+    definition: "Revenue retained and expanded from the existing base."
+
+  - id: axiom.cac_payback_months
+    name: CAC Payback
+    category: Industry — SaaS
+    tier: industry
+    headline: false
+    formula: "sa.cac / ((sa.arr / sa.customers) * (is.gross_profit /
+              is.revenue) / 12)"
+    unit: months
+    polarity: lower_better
+    basis: point_in_time
+    availability: requires_data
+    requires: ["SaaS operating metrics"]
+    definition: "Months of gross profit per customer to recover acquisition
+      cost."
+
+  - id: axiom.rule_of_40
+    name: Rule of 40
+    category: Industry — SaaS
+    tier: industry
+    headline: false
+    formula: "axiom.arr_growth + axiom.ebitda_margin"
+    unit: percent
+    polarity: higher_better
+    basis: point_in_time
+    exception_to_no_ratio_refs: true
+    availability: requires_data
+    requires: ["SaaS operating metrics"]
+    definition: "Growth rate plus margin. Above 40 is the conventional bar."
+
+# ---------------------------------------------------------------------------
+# CLIENT EXTENSION CONTRACT
+# ---------------------------------------------------------------------------
+# FOUNDER REQUIREMENT: "we must allow the Client to add to his library
+# (including definition and formula), since every industry has their specific
+# set of ratios that they track."
+#
+# This is the mechanism. It is a first-class part of §7r, not an add-on.
+
+client_extension:
+
+  scope:
+    level: EID
+    rule: "A client ratio library belongs to the buying entity (EID) and is
+      applied across every company (CID) under it. A consulting-firm EID
+      therefore builds one industry library and reuses it per client. A
+      single-corporate EID sees no difference."
+    per_cid_override: "A ratio may be marked applicable_to: [cid list] where
+      an EID spans unlike industries."
+
+  namespace:
+    pattern: "client.<eid_slug>.<ratio_slug>"
+    rule: "The axiom.* namespace is RESERVED. A client ratio can never take a
+      canonical id, and can never be resolved by a canonical consumer."
+    collision_behaviour: "If a client names a ratio 'ROIC', it is accepted and
+      stored as client.<eid>.roic. Both render, both badged, neither
+      overwrites the other. Per founder collision philosophy: surface the
+      conflict for human resolution, do not auto-resolve."
+
+  single_owner_protection:
+    rule: "FOUNDER RULING, extended. optimization_status, §7n EVA, the
+      valuation surface, and §7i may resolve ONLY ids in the axiom.*
+      namespace. A client-defined ratio is display-and-report only. It cannot
+      become a board-pack conclusion computed by a second owner."
+
+  authoring_ui:
+    formula_entry: picker_only
+    rule: "The client never types a formula string. He composes it from:
+      (a) the token vocabulary above, filtered to tokens his data actually
+      contains; (b) the fixed operator set; (c) the function list. Tokens
+      whose data is absent are shown greyed with the reason, so he learns
+      what the template would need to collect."
+    custom_inputs: "A client may declare his own input token —
+      client.<eid>.input.<slug> — with a name, unit, and period basis, and
+      then enter values per period. This is how a SaaS EID gets ARR, or a
+      hotel EID gets RevPAR, without waiting for a template change. Declared
+      inputs are the extension point that makes §19 usable."
+    dry_run: mandatory
+    dry_run_rule: "Save is BLOCKED until the formula evaluates against the
+      current dataset and the client has seen the resulting value, the
+      numerator, and the denominator for the latest actual period. A formula
+      that returns an em dash may still be saved, but only after the
+      'requires: X' list has been displayed and acknowledged."
+
+  required_fields:
+    - name
+    - category            # existing category or client-defined
+    - definition          # free text, required, surfaces in the explainer
+    - formula             # composed, never typed
+    - unit                # percent | times | days | currency | ratio | score | months
+    - polarity            # higher_better | lower_better | band | context
+    - basis               # point_in_time | average
+  optional_fields:
+    - target              # client's own target value
+    - benchmark           # user-entered, per the v1 macro/industry layer
+    - warning_threshold
+    - interpretation      # management commentary
+    - applicable_to       # cid list
+
+  versioning:
+    rule: "Formulas are versioned, never edited in place."
+    mechanism: "Each definition carries effective_from and, on change, the
+      prior definition is retained as superseded with superseded_at. Any
+      period computed before the change continues to resolve against the
+      definition that was effective then."
+    reason: "Without this, editing a formula silently rewrites every
+      historical board pack computed from it. A Q1 pack must stay
+      reproducible."
+
+  provenance:
+    rule: "Every client ratio stamps created_by, created_at, and every
+      subsequent version stamps changed_by, changed_at. Displayed in the
+      explainer alongside the formula."
+    badge: "Client-defined ratios render with a visible marker in every
+      surface, including exports and board packs. A board reader must be able
+      to tell an AXIOM standard definition from a house definition without
+      opening the explainer."
+
+  inherited_rules:
+    - "Absence propagates. A client formula with a missing input is an em
+       dash, never zero."
+    - "§7p anchoring applies. A client ratio computed from forecast inputs is
+       labelled forecast."
+    - "§7n-A explainer applies in full. No client ratio renders without
+       definition, formula, numerator, denominator, and provenance."
+    - "No ratio-of-ratios in v1. A client formula may not reference another
+       ratio's output. The canonical exceptions above are hand-audited; an
+       arbitrary client chain is not."
+
+  limits:
+    max_ratios_per_eid: 100
+    max_custom_inputs_per_eid: 50
+    max_formula_tokens: 40
+    reason: "Bounds the evaluation cost per dataset and keeps the authoring
+      surface honest. Raise on evidence, not on request."
+
+  promotion_path:
+    status: deferred
+    note: "A client industry library is a candidate AXIOM industry pack. Who
+      owns a definition a client authored, and whether it can be shipped to
+      other EIDs, is a commercial and IP question — not a v1 build question.
+      Recorded so the data model does not foreclose it: client ratios carry a
+      promotable flag defaulting to false."
+
+# ---------------------------------------------------------------------------
+# STAGING
+# ---------------------------------------------------------------------------
+enumeration_guard:
+  status: "V1 DELIVERABLE. Ranked ABOVE the library itself — consolidation
+    reduces the places to change once; only the test stops a second copy
+    appearing. This shape has cost three trio-class defects in one week."
+  runs: every_commit
+  keys_on: arithmetic_shape
+  not_keyed_on: identifier
+  why: "deterministic['net_debt'] is a dict key, not an arithmetic shape, and
+    is a NAME COLLISION with the ratios net_debt. An identifier-keyed check
+    either false-positives on it forever or gets 'resolved' by pointing it at
+    the library — the defect wearing the fix's clothes."
+  shapes_detected:
+    - "three-operand: short_term_debt + long_term_debt - cash"
+    - "two-operand: <debt-ish operand> - cash   (valuation:135)"
+    - "wrapped: _n(lambda a, b: a - b, debt, cash)"
+  collision_site:
+    handling: positive_assertion
+    rule: "NOT a path-based skip. The skip was inert — identical counts with
+      and without it, because a shape detector never matched a dict key.
+      Inverted: the collision site must still exist and must not be wired to
+      the library. Control: repointing it at ratios.net_debt fires
+      COLLISION SITE GONE; restoring clears it."
+  expected_counts:
+    axiom.net_debt: 1
+    axiom.roic: 1
+    axiom.wacc: 1
+    axiom.eva: 1
+  note: "Counts encode the TARGET state, not today's. The guard is correctly
+    RED until consolidation. A guard whose expected values describe the
+    current codebase is a description, not a guard."
+  allowlist_coverage:
+    rule: "The allowlist is a hand-synced list, so the guard asserts its own
+      coverage in BOTH directions: fail if a file matches a shape and is
+      absent from the allowlist, AND fail if an allowlist entry no longer
+      matches. One-directional coverage is how an instrument reports clean on
+      a surface it cannot see."
+  standing_law:
+    - "Every guard clause is tested by DELETION before it ships. An exclusion
+       that changes no output is not an exclusion."
+    - "An expected count is meaningless until the counter is calibrated
+       against a known population. The detector once counted _n(lambda ...)
+       and its own lambda body as two sites."
+
+staging:
+  v1:
+    scope: "Every row with headline: true, plus both common-size statements.
+      Roughly 25 rows. Plus the client extension mechanism, because the
+      founder ruled it in scope and retrofitting a namespace later is worse
+      than building it now."
+    display: "Executive dashboard. 12-20 rows visible at a time, never the
+      whole library on one screen."
+    not_available_list: "Generated mechanically from availability:
+      requires_data. Never render em dashes for ratios known to be
+      uncomputable — list them separately with the reason."
+  v2:
+    scope: "tier: core remainder, DuPont, distress screens with the
+      independent-read panel and agreement/divergence surfacing."
+  v3:
+    scope: "tier: advanced and tier: industry, as template collection
+      catches up. Most of §19 will arrive via client-declared inputs before
+      it arrives via the template."
+
+# ---------------------------------------------------------------------------
+# UNRESOLVED — FOUNDER DECISIONS OUTSTANDING
+# ---------------------------------------------------------------------------
+unresolved:
+  - id: nineteen_categories
+    status: RESOLVED
+    ruling: "FOUNDER RULING 31 Jul — the reconstruction is ACCEPTED as the
+      canonical taxonomy. The registry's 19 categories and 79 ratios are now
+      the reference library. The earlier chat-log specification is superseded
+      and is no longer a source."
+  - id: payable_days_denominator
+    question: "COGS proxy accepted, or hold DPO until is.purchases exists?"
+    registry_default: "COGS proxy with the convention stated in the explainer."
+    note: "Moot in v1 — DPO is blocked with the rest of the working-capital
+      family until v9 anyway. Decide when it becomes reachable."
+  - id: wacc_relevering
+    question: "Does intelligence:145 relever ke as leverage sweeps, or hold it
+      fixed? If fixed, the WACC-minimising point in the Enterprise Health
+      Index is too far right. RESOLVE AFTER the consolidation diff, not
+      during it."
+    registry_default: "Report the finding; change nothing this session."
+  - id: wacc_weights
+    question: "Book weights in v1 confirmed?"
+    registry_default: "Book weights; market weights when share data exists."
+  - id: ohlson
+    question: "Build Ohlson O now with a user-entered deflator, or defer to
+      the macro/industry layer?"
+    registry_default: "Defer."
