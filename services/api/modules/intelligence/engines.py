@@ -1001,11 +1001,28 @@ def risk_analytics(data: dict, n_paths: int = 4000) -> dict:
         f = sim["fcff_fan"][-1]
         return ((f["p95"] - f["p05"]) / 3.29) ** 2       # normal-equivalent
     v_tot, v_g, v_m = var_of(base), var_of(only_g), var_of(only_m)
-    s_g = min(max(v_g / v_tot, 0.0), 1.0)
-    s_m = min(max(v_m / v_tot, 0.0), 1.0)
-    sobol = {"growth_uncertainty": round(s_g, 4),
-             "margin_uncertainty": round(s_m, 4),
-             "interaction": round(max(1.0 - s_g - s_m, 0.0), 4),
+    # ⭐ ZeroDivisionError HERE 500'd THE WHOLE BOARD REPORT, BOTH FORMATS.
+    # v_tot is the dispersion of the base simulation. When it is zero the
+    # variance decomposition is UNDEFINED — not zero, not evenly split. A
+    # degenerate fan carries no information to attribute, so attributing it
+    # anyway would put invented shares on a board deck.
+    #
+    # Guarding the denominator is necessary but was NOT the whole defect: the
+    # zero was MANUFACTURED by 2dp rounding in twin.bands() on a dataset whose
+    # FCFF is ~0.0004. Both are fixed; this guard is what keeps a genuinely
+    # deterministic model from crashing the deliverable.
+    if v_tot > 0:
+        s_g = min(max(v_g / v_tot, 0.0), 1.0)
+        s_m = min(max(v_m / v_tot, 0.0), 1.0)
+    else:
+        s_g = s_m = None
+    sobol = {"growth_uncertainty": None if s_g is None else round(s_g, 4),
+             "margin_uncertainty": None if s_m is None else round(s_m, 4),
+             "interaction": (None if s_g is None or s_m is None
+                             else round(max(1.0 - s_g - s_m, 0.0), 4)),
+             "absence_reason": (None if s_g is not None else
+                                "not attributable: the base simulation has no "
+                                "dispersion, so variance shares are undefined"),
              "method": ("variance ratio with each shock family frozen in "
                         "turn, common random numbers, normal-equivalent "
                         "dispersion from the 5-95 fan")}
@@ -1249,9 +1266,16 @@ def risk_dashboard(data: dict, n_paths: int = 4000,
     mu_ev, sd_ev = rp["tail"]["ev_mean"], rp["tail"]["ev_std"]
     dd = (mu_ev - debt) / sd_ev if sd_ev else None
     p_default = 0.5 * (1 - _math.erf(dd / _math.sqrt(2))) if dd else None
-    distress = {"total_debt": round(debt, 2),
-                "distance_to_default_sigmas": round(dd, 2),
-                "p_ev_below_debt": round(p_default, 6),
+    # ⭐ dd AND p_default ARE GUARDED ON THE TWO LINES ABOVE AND THEN ROUNDED
+    # UNGUARDED. The author knew both could be None — `if sd_ev else None`,
+    # `if dd else None` — and the very next statement called round() on them.
+    # A correct guard followed by an unguarded consumer: the absence was
+    # produced deliberately and then destroyed one line later.
+    #
+    # fin._r is the None-safe form and exists precisely for this.
+    distress = {"total_debt": fin._r(debt, 2),
+                "distance_to_default_sigmas": fin._r(dd, 2),
+                "p_ev_below_debt": fin._r(p_default, 6),
                 "p_cash_below_zero_baseline": base_sim["p_cash_below_zero_ever"],
                 "p_cash_below_zero_recession": rec_sim["p_cash_below_zero_ever"],
                 "method": ("structural (Merton-style): the simulated EV "
@@ -1329,10 +1353,16 @@ def risk_dashboard(data: dict, n_paths: int = 4000,
         {"name": "probabilities_in_unit_interval",
          "value": [plan_attain["p_revenue_target"], distress["p_ev_below_debt"]],
          "expected": "[0,1]",
+         # ⭐ AN ABSENT PROBABILITY IS NOT A VIOLATION OF "IN [0,1]" — IT IS
+         # NOT ASSESSABLE. Comparing None against 0 raised and took the whole
+         # board report with it. The codebase already states this principle for
+         # the risk heat map ("categories the data cannot support are shown as
+         # not assessable — never scored blind"); a checkpoint must not be the
+         # one place that scores absence blind, or crashes on it.
          "pass": all(0 <= p <= 1 for p in
                      [plan_attain["p_revenue_target"],
                       plan_attain["p_fcff_target"],
-                      distress["p_ev_below_debt"]])},
+                      distress["p_ev_below_debt"]] if p is not None)},
         {"name": "joint_no_more_likely_than_marginals",
          "value": plan_attain["p_all_three"],
          "expected": "<= each marginal",
@@ -1340,18 +1370,32 @@ def risk_dashboard(data: dict, n_paths: int = 4000,
              plan_attain["p_revenue_target"], plan_attain["p_margin_target"],
              plan_attain["p_fcff_target"]) + 1e-9},
         {"name": "cfar_nonnegative", "value": cfar["cfar95_year1"],
-         "expected": ">= 0", "pass": cfar["cfar95_year1"] >= 0}]
-    n = [f"Distance to default: {distress['distance_to_default_sigmas']:.1f} "
+         "expected": ">= 0",
+         "pass": (cfar["cfar95_year1"] is None
+                  or cfar["cfar95_year1"] >= 0)}]
+    # ⭐ THE NARRATIVE FORMATTED ABSENCE AND CRASHED THE BOARD REPORT. Eight
+    # format specs (`:.1f`, `:.2%`, `:,.1f`, `:.0%`) applied straight to values
+    # that are None by design. `format(None, ".1f")` raises, so ONE absent input
+    # anywhere upstream took out the entire deliverable — the CFO's board pack —
+    # rather than rendering one em dash in one sentence.
+    #
+    # ⭐ AND NOTE WHAT THIS IS NOT: it is not round(). A scan for bare round()
+    # would have walked straight past every one of these. The prose layer is
+    # where absence is least expected and least visible.
+    def _fmt(v, spec, dash="—"):
+        return dash if v is None else format(v, spec)
+
+    n = [f"Distance to default: {_fmt(distress['distance_to_default_sigmas'], '.1f')} "
          f"standard deviations of enterprise value above the debt "
-         f"(P(EV < debt) = {distress['p_ev_below_debt']:.2%}).",
+         f"(P(EV < debt) = {_fmt(distress['p_ev_below_debt'], '.2%')}).",
          f"Cash Flow at Risk (95%): year-1 FCFF can fall "
-         f"{cfar['cfar95_year1']:,.1f} below expectation "
-         f"({cfar['cfar95_vs_plan']:,.1f} below plan).",
+         f"{_fmt(cfar['cfar95_year1'], ',.1f')} below expectation "
+         f"({_fmt(cfar['cfar95_vs_plan'], ',.1f')} below plan).",
          f"Probability of achieving next year's plan: revenue "
-         f"{plan_attain['p_revenue_target']:.0%}, margin "
-         f"{plan_attain['p_margin_target']:.0%}, FCFF "
-         f"{plan_attain['p_fcff_target']:.0%} — all three together "
-         f"{plan_attain['p_all_three']:.0%}."]
+         f"{_fmt(plan_attain['p_revenue_target'], '.0%')}, margin "
+         f"{_fmt(plan_attain['p_margin_target'], '.0%')}, FCFF "
+         f"{_fmt(plan_attain['p_fcff_target'], '.0%')} — all three together "
+         f"{_fmt(plan_attain['p_all_three'], '.0%')}."]
     return {"distributions": distributions, "cfar_var": cfar,
             "distress": distress, "plan_attainment": plan_attain,
             "heat_map": heat, "risk_grade": rp["risk_grade"],

@@ -371,15 +371,25 @@ def simulate(data: dict, scenario: str = "baseline", horizon: int | None = None,
             spaghetti["revenue"].append(
                 [round(rev_paths[k][-1], 2) for k in range(horizon)])
             spaghetti["fcff"].append(
-                [round(fcff_paths[k][-1], 2) for k in range(horizon)])
+                [round(fcff_paths[k][-1], 6) for k in range(horizon)])
             spaghetti["cash"].append(
-                [round(cash_paths[k][-1], 2) for k in range(horizon)])
+                [round(cash_paths[k][-1], 6) for k in range(horizon)])
         p_cash_neg_ever += went_negative
     def bands(per_year):
         out = []
         for k, xs in enumerate(per_year):
             xs = sorted(xs)
-            def pct(p): return round(xs[min(int(p * n_paths), n_paths - 1)], 2)
+            # ⭐ 2 DECIMAL PLACES ANNIHILATED A REAL DATASET. Company 38's
+            # statements are denominated so that FCFF is ~0.0004 per period;
+            # round(x, 2) made every percentile 0.0, the fan went flat, and
+            # risk_analytics then divided by the zero dispersion this rounding
+            # had manufactured. The values were never zero — the DISPLAY
+            # precision was applied to the COMPUTED value and destroyed it.
+            #
+            # 6dp matches fin._r's convention everywhere else in the codebase;
+            # the fan was the outlier. Rounding for presentation belongs at the
+            # presentation layer, not in the payload other engines consume.
+            def pct(p): return round(xs[min(int(p * n_paths), n_paths - 1)], 6)
             out.append({"year": years[k], "p05": pct(0.05), "p25": pct(0.25),
                         "p50": pct(0.50), "p75": pct(0.75), "p95": pct(0.95)})
         return out
