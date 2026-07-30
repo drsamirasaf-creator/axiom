@@ -3,7 +3,15 @@
 **Not clean. One breach class, in the operands, exactly where this era's defects
 have been.** The arithmetic is sound.
 
-Corpus: **36 datasets, 349 historical period-rows.** No company names, no
+Corpus: **36 datasets, 349 period-rows.**
+
+⭐ **CORRECTED 30 Jul:** these 349 are **not** all historical. 20 of 36 datasets
+embed stored pro-forma years in the same `revenue` dict I derived periods from,
+and the dataset carries `periods.historical` / `periods.forecast` explicitly,
+which I did not use. Re-measured: **190 historical rows (17 breaches) and 159
+forecast rows (4 breaches)** — and the two faults separate exactly along that
+line. See `2026-07-30-equity-fault-blast-radius.md`. The verdict is unchanged;
+the denominators are. No company names, no
 figures beyond the two sides of each failed identity.
 
 ---
@@ -88,7 +96,10 @@ code rather than assumed.
 `valuation/engines.py:146` *assigns* `equity = ev − net_debt − pref − mino`. The
 identity is the assignment.
 
-## 8. DuPont factors multiply to ROE — **DERIVED · CLEAN (349 rows)**
+## 8. DuPont factors multiply to ROE — **DERIVED · CLEAN**
+
+*(Classified DERIVED here and confirmed as such on review — it was described as
+cross-statement in the dispatch, and it is not.)*
 
 ⭐ **Algebraically identical, which the classification must say.**
 `(pat/rev)·(rev/ta)·(ta/eq)` cancels to `pat/eq`. Revenue and total assets divide

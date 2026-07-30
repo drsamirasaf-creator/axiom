@@ -6459,3 +6459,23 @@ one existed, for forecast periods only.
 
 Definitions live in `docs/reference/axiom_ratio_registry.yaml`, which owns them.
 This entry records the RULING, not the list — see the topic-ownership header.
+
+## §8r-CF — THE CASH-FLOW STATEMENT IS NOT COLLECTED. v9 PILE. (30 Jul)
+
+`CF_KEYS = ["capex", "net_borrowing", "dividends"]` (`engines.py:68`). There is
+no operating, investing or financing cash-flow line in the stored schema.
+
+⭐ **CONSEQUENCE, MEASURED IN THE CORRECTNESS AUDIT.** The identity *balance-sheet
+cash movement = net cash flow* is **not computable** — half of it does not exist.
+It was one of only two identities named as having real cross-statement force
+(both sides arriving from different statements), and its denominator is 0. A
+denominator of 0 is the finding, not a pass.
+
+**Template question, not a code one.** Joins the v9 pile alongside the
+`other_current_assets` split (`bs.receivables`, `bs.inventory`), `bs.payables`
+and `bs.retained_earnings` — see the registry vocabulary, which marks each
+`collected: false` with what it requires.
+
+**What it would unlock:** the strongest available cross-statement check, plus
+`cf.operating_cash_flow` as a stored rather than derived token, plus the
+`cash_conversion_quality` headline ratio on real data rather than a derivation.
