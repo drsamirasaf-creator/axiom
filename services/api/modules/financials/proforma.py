@@ -22,6 +22,7 @@ Design principles:
     debt follows the plan's net borrowing. The accounting identity is
     enforced and verified.
 """
+from . import ratios as ratio_lib
 from .periods import (format_period as _fmt_period, frequency_of as _freq_of,
                       period_labels as _p_labels)
 SEED = 26123
@@ -144,7 +145,10 @@ def stochastic_statements(data, n_paths: int = 3000, seed: int = SEED,
             nwc_prev = (rows[fyears[i-1]]["oca"] - rows[fyears[i-1]]["cl"]) if i > 0 \
                 else (BS["other_current_assets"][y0] - BS["current_liabilities_ex_debt"][y0])
             nwc = oca - cl
-            cfo = ni + da - (nwc - nwc_prev)
+            # Sole owner: ratios.operating_cash_flow. Same arithmetic this
+            # line held; extracted so the historical ratio surface and the
+            # forecast statement cannot drift apart.
+            cfo = ratio_lib.operating_cash_flow(ni, da, nwc, nwc_prev)
             cfi = -capex
             cff = CF["net_borrowing"][ys] - div
             cash = cash_prev + cfo + cfi + cff

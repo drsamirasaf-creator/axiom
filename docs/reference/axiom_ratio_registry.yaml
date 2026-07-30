@@ -22,7 +22,7 @@
 # in place. Do not proceed to formula evaluation until the vocabulary is real.
 
 schema_version: 1
-registry_version: "7r.6"   # Segment B: debt-as-argument   # founder rulings 31 Jul; headline set = 14
+registry_version: "7r.7"   # Segment B: debt-as-argument   # founder rulings 31 Jul; headline set = 14
 # 7r.5 — CHAINING RULE RELOCATED, NOT RELAXED. Founder ruling. The
 #   no-ratio-of-ratios prohibition applied to everything and was written in
 #   evaluation.forbidden; it now lives in client_extension.no_ratio_of_ratios,
@@ -183,14 +183,11 @@ vocabulary:
       source: absent
       collected: false
       requires: "SG&A is not split out; opex is a single line"
-    is.depreciation:
-      source: absent
-      collected: false
-      requires: "⭐ D&A IS ONE COMBINED FIELD (depreciation_amortization). Two registry tokens map to one stored line, so neither can be resolved alone."
-    is.amortisation:
-      source: absent
-      collected: false
-      requires: "⭐ see is.depreciation — same single combined field."
+    is.dep_amort:
+      source: stored
+      collected: true
+      field: depreciation_amortization
+      note: "FOUNDER RULING 7r.7 — collapsed from is.depreciation + is.amortisation. The template collects ONE combined line, so two tokens over one field was a spec asking for something the system cannot produce. Same shape as a department name the canonical list cannot make. Split again if a template ever collects them separately."
     is.ebitda:
       source: derived
       collected: true
@@ -277,7 +274,7 @@ vocabulary:
     bs.payables:
       source: absent
       collected: false
-      requires: "⭐ WAS collected: true AND IS NOT COLLECTED. `payables` appears nowhere in ingest.py or engines.py. Only current_liabilities_ex_debt exists, as an aggregate."
+      requires: "payables as distinct from the current_liabilities_ex_debt aggregate. TEMPLATE QUESTION, not a registry one — joins the v9 pile alongside the other_current_assets split (bs.receivables, bs.inventory). Was marked collected: true and is not collected."
     bs.short_term_debt:
       source: stored
       collected: true
@@ -332,13 +329,14 @@ vocabulary:
     bs.retained_earnings:
       source: absent
       collected: false
-      requires: "⭐ WAS collected: true AND IS NOT COLLECTED. Appears nowhere in ingest.py or engines.py."
+      requires: "a retained earnings line. TEMPLATE QUESTION, not a registry one — joins the v9 pile alongside the other_current_assets split (bs.receivables, bs.inventory). Was marked collected: true and is not collected."
 
   cash_flow:
     cf.operating_cash_flow:
-      source: absent
-      collected: false
-      requires: "⭐ WAS collected: true AND HAS NO OWNER. Derivable as is.pat + depreciation_amortization - change_in_nwc — every term exists — but NOTHING COMPUTES IT TODAY. Blocks axiom.cash_conversion_quality, a headline ratio."
+      source: derived
+      collected: true
+      expr: "is.pat + is.dep_amort - (nwc - prior(nwc))"
+      at: "ratios.py::operating_cash_flow — extracted from proforma.py:147, which already computed this arithmetic for FORECAST years only and without absence propagation. The registry said 'no owner'; there was one, for half the periods."
     cf.capex:
       source: stored
       collected: true
@@ -733,8 +731,7 @@ ratios:
     category: Liquidity
     tier: core
     headline: false   # not in the locked 13
-    formula: "bs.cash / ((is.operating_expenses + is.cogs - is.depreciation -
-              is.amortisation) / 12)"
+    formula: "bs.cash / ((is.operating_expenses + is.cogs - is.dep_amort) / 12)"
     unit: months
     polarity: higher_better
     basis: point_in_time
@@ -1046,8 +1043,7 @@ ratios:
     category: Cash Flow
     tier: core
     headline: false   # not in the locked 13
-    formula: "is.ebit * (1 - po.tax_rate_policy) + is.depreciation +
-              is.amortisation - cf.capex -
+    formula: "is.ebit * (1 - po.tax_rate_policy) + is.dep_amort - cf.capex -
               ((bs.current_assets - bs.current_liabilities) -
                prior(bs.current_assets - bs.current_liabilities))"
     unit: currency
@@ -1087,7 +1083,7 @@ ratios:
     category: Cash Flow
     tier: advanced
     headline: false
-    formula: "cf.capex / is.depreciation"
+    formula: "cf.capex / is.dep_amort"
     unit: times
     polarity: context
     basis: point_in_time
@@ -1536,7 +1532,7 @@ ratios:
     category: Reinvestment
     tier: advanced
     headline: false
-    formula: "(cf.capex - is.depreciation +
+    formula: "(cf.capex - is.dep_amort +
               ((bs.current_assets - bs.current_liabilities) -
                prior(bs.current_assets - bs.current_liabilities))) /
               (is.ebit * (1 - po.tax_rate_policy)) * 100"
