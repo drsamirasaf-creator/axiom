@@ -65,6 +65,13 @@ jobs:
         run: |
           python scripts/check-no-ts-period-format.py
           python scripts/check-period-labels-consumed.py
+      # ⭐ SOLE OWNERSHIP OF NET DEBT / ROIC / WACC / EVA, BY ARITHMETIC SHAPE.
+      # Written before the consolidation and RED on arrival — four net-debt
+      # sites where there must be one. A guard added after the fix is
+      # calibrated against a codebase that already passes and proves only that
+      # it can print a tick.
+      - name: sole ownership (net debt, ROIC, WACC, EVA)
+        run: python scripts/check-sole-owner.py
       - run: pytest -q
       # Proves the tests guarding the assessment read path are not vacuous, by
       # reintroducing a plausible defect per test and requiring each to fail.
