@@ -852,7 +852,17 @@ def read_upload_metadata(content: bytes) -> dict | None:
     if "_AXIOM" not in wb.sheetnames:
         return None
     ws = wb["_AXIOM"]
-    if ws["A1"].value != META_SIG:
+    # ⭐ THE THIRD INSTANCE, AND IT IS LATENT RATHER THAN LIVE. This is exact
+    # equality, and it is not a version gate TODAY only because META_SIG carries
+    # no version — the version lives in B4 as metadata, which is the correct
+    # §7.37 shape. But the moment anyone stamps a version into A1 (the obvious
+    # thing to do when bumping to v8) this rejects every file, silently, by
+    # returning None — which reads as "no AXIOM metadata" rather than as a
+    # version mismatch.
+    #
+    # Prefix-matched so the trap cannot spring. Sought deliberately: a pair has
+    # been a trio twice this week.
+    if not str(ws["A1"].value or "").startswith(META_SIG):
         return None
     try:
         units = ws["B6"].value

@@ -14,7 +14,24 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.utils import get_column_letter
 from . import engines
 
-TEMPLATE_SIG = "AXIOM-FIN-TEMPLATE v1"
+# ⭐ THE FAMILY IDENTIFIES; THE VERSION IS FORENSIC METADATA. CORE §7.37 (user
+# ruling, 28 Jul): "AXIOM does not track or control template versions as a
+# precondition for upload. Any template that parses is accepted. Version is
+# never a gate — on either path."
+#
+# That lane removed ACCEPTED_TEMPLATE_VERSIONS from ingest.py. THIS SIBLING GATE
+# SURVIVED IT: the check below was `sig.startswith(TEMPLATE_SIG)` with the
+# version baked into the constant, so bumping the constant to v8 would have made
+# every workbook a customer downloaded before the bump fail to parse — with the
+# error "not an AXIOM financial template", which is false. Same
+# fix-one-site-and-stop pattern that cost three sites on the None-arithmetic
+# class this week.
+#
+# The parser keys on sheet and row labels and never needed the version to work.
+# So the gate is the FAMILY; the version is read out and returned as metadata.
+TEMPLATE_FAMILY = "AXIOM-FIN-TEMPLATE"
+TEMPLATE_VERSION = "v1"
+TEMPLATE_SIG = f"{TEMPLATE_FAMILY} {TEMPLATE_VERSION}"
 MAX_YEAR_COLS = 20          # up to 10 historical + up to 10 forecast
 FIRST_YEAR_COL = 2          # column B
 
@@ -191,7 +208,10 @@ def parse_workbook(content: bytes) -> tuple[dict | None, list]:
     except Exception as e:
         return None, [{"cell": None, "error": f"not a readable .xlsx file: {e}"}]
     sig = wb["Instructions"]["A1"].value if "Instructions" in wb.sheetnames else None
-    if not (isinstance(sig, str) and sig.startswith(TEMPLATE_SIG)):
+    # ⭐ FAMILY, NOT VERSION — see TEMPLATE_FAMILY above and CORE §7.37. A file
+    # stamped v1, v8 or anything else parses identically; what is rejected is a
+    # workbook that is not an AXIOM financial template at all.
+    if not (isinstance(sig, str) and sig.startswith(TEMPLATE_FAMILY)):
         return None, [{"cell": "Instructions!A1",
                        "error": "not an AXIOM financial template; download one "
                                 "from GET /api/v1/financials/templates"}]
