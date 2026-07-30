@@ -6876,29 +6876,205 @@ merely hard to find — **it does not exist, and effort does not produce it.** T
 lanes were spent on the valuation divergence and it closed **undecidable for that
 reason, not for lack of rigour**.
 
-### Four instances, recorded so the class is recognisable on sight
+### Five instances, recorded so the class is recognisable on sight
 
-1. **`FinancialDataset` declares `version`, `is_active`, `parent_dataset_id`**
-   under a comment naming a phase — **and the upload path binds none of them**.
-   Re-upload accumulates rows: **6 identical-payload groups in the corpus,
-   largest 5 (ids 38–41, 48)**. A declared-but-unbound clause. ⭐ **The comment
-   naming a phase is the tell** — it records an intention that was never wired.
+⭐ **INSTANCE 1 WAS FALSE AND IS CORRECTED IN PLACE BELOW (31 Jul).** The law
+stands — the other four instances are sound and two are now closed by build — but
+**its first exhibit was never measured**, and that is recorded here as the failure
+it was rather than quietly deleted.
+
+1. ⭐⭐ **CORRECTED 31 Jul — THE ORIGINAL CLAIM WAS FALSE.**
+
+   **What was recorded:** "`FinancialDataset` declares `version`, `is_active`,
+   `parent_dataset_id` under a comment naming a phase — and the upload path binds
+   none of them. Re-upload accumulates rows: 6 identical-payload groups in the
+   corpus, largest 5 (ids 38–41, 48). A declared-but-unbound clause."
+
+   **What is true, measured against the code and the live corpus:**
+
+   - **`version` and `is_active` ARE bound, and supersession works.**
+     `accounts.py:3142` computes `max(prior.version) + 1`, clears `is_active` on
+     every prior active row, and sets it on the new one.
+   - **The wiring landed 19 Jul in `98a3693` — ELEVEN DAYS BEFORE this law
+     recorded it as absent.** The claim was **wrong when written**, not fixed
+     afterwards.
+   - `is_active` **defaults `false` as migrated** (`information_schema`, not the
+     model). **7 of 36 rows are active. Versions run to 12.** A default of false
+     is what makes "nothing is active" and "the flag is unwired" look alike from
+     the model file alone.
+
+   ⭐ **AND IT WAS PROPAGATED THROUGH THREE DISPATCHES UNMEASURED.** It was read,
+   restated, scoped and dispatched as fact without one query. **Reading has found
+   agreement every time this era; measuring has found difference every time** — and
+   here the reading was of our own ledger, which is the version of that trap with
+   no external surface to disagree with.
+
+   ⭐ **THE TELL WAS INVERTED.** The original entry called the phase-naming comment
+   "the tell" for an intention never wired. The comment was accurate and the
+   reading of it was not. **A comment naming a phase is evidence about intent and
+   no evidence at all about binding** — only the write path is that, and it was
+   never opened.
+
 2. **`ValuationRun` records no code version, engine revision, or payload hash.**
    A bisect over it answers *which commit changes the number today*, **not which
-   commit produced the stored one**. Those are different claims and only the
-   first is available.
+   commit produced the stored one**. Those are different claims and only the first
+   is available. ⭐ **PARTLY CLOSED 31 Jul (§7v)** — a run now records the dataset
+   payload hash and §7u's three registry versions. **Code version remains open.**
+
 3. **`forecast_override` is never persisted** — `params` retains only
-   `extended: bool`. **Every extended run is structurally unreproducible.**
+   `extended: bool`. **Every extended run is structurally unreproducible**
+   (209 of 421 stored runs). ⭐ **CLOSED 31 Jul (§7v)** — the override itself is
+   persisted. The 209 prior runs stay unreproducible and are not backfilled.
+
 4. **The `FinancialDataset` payload is mutated in place at every boot** by the
    showcase backfills via `flag_modified`, and carries **no `updated_at` and no
    `onupdate` on any timestamp**. ⭐ **A payload rewritten at boot leaves both
-   timestamps exactly as they were.**
+   timestamps exactly as they were.** ⭐ **CLOSED 31 Jul (§7v)** — `payload_sha256`
+   and `data_written_at`.
+
 5. ⭐ **A LIVE CUSTOMER'S ASSUMPTION, WRITTEN WITH NO PROVENANCE.** Eight datasets
    carry `size_premium = 0.2` with `uploaded_at`, `uploaded_by_user_id`,
    `original_filename` and `template_version` all null. **Whether it was an error
    or a deliberate entry is undetermined and unrecoverable** — the fifth instance,
-   and the first on a paying customer's row rather than on our own data. See the
-   OPEN entry below.
+   and the first on a paying customer's row rather than on our own data. **OPEN.**
+   See the OPEN entry below.
+
+### ⭐ CORRECTED 31 Jul — the 5-identical-payload claim does not reproduce
+
+Instance 1 asserted **"6 identical-payload groups, largest 5 (ids 38–41, 48)"**.
+Measured:
+
+| id | version | active | payload |
+|---|---|---|---|
+| 38 | 5 | false | **A** |
+| 39 | 6 | false | **A** |
+| 40 | 7 | false | **B** |
+| 41 | 8 | false | **C** |
+| 48 | 11 | **true** | **A** |
+
+**Three distinct payloads across the five rows.** The largest identical-payload
+group in the corpus today is **3**, not 5. The group count is still 6.
+
+⭐ **THE BOOT BACKFILLS ARE EXCLUDED AS A CAUSE** — the group is **not on the
+showcase tenant**, and the backfills touch showcase rows only.
+
+⭐ **WHETHER THE ORIGINAL CLAIM WAS WRONG OR A PAYLOAD CHANGED SINCE IS
+UNDETERMINED AND UNRECOVERABLE.** Nothing recorded what the payload was when the
+claim was made, or when it was last written.
+
+⭐ **THIS IS THE STRONGEST ARGUMENT THE ERA HAS PRODUCED FOR THE PAYLOAD HASH AND
+WRITE TIMESTAMP** — the law's own first exhibit could not be re-checked for want
+of exactly the two columns the law demands. **Both are now built (§7v).** The next
+instance is one query.
+
+### ⭐ CORRECTED 31 Jul — `parent_dataset_id` is NOT a declared-but-unbound clause
+
+It is **deliberately unbound**, reverted in **`073c7a3` on 26 Jul** with a
+diagnosis and a verification.
+
+**The column means one thing:** an actuals-sync created a **child** version rather
+than mutating history. Chaining upload versions onto it turned ordinary re-upload
+history into a **fake sync lineage**, and two consumers walk that chain:
+
+- `twin/router.py:58-72` walks to the lineage root then down the child chain, so a
+  company's **upload history was reported as the twin's sync chain** and
+  `syncs_completed` counted uploads.
+- `financials/router.py:161` computes enterprise-profile **lineage depth** the same
+  way, so **depth grew with every re-upload**.
+
+**Versioning is carried by `version` + `is_active`**, which is all the upload path
+has ever needed. A test now asserts the absence **with the reasoning attached**.
+
+⭐ **A DISPATCH INSTRUCTING "WIRE THE THREE DECLARED FIELDS" WAS ISSUED FROM THE
+STALE LINE AND CORRECTLY REFUSED.** Two of the three were already bound; the third
+would have **restored the defect a documented revert removed five days earlier**.
+Recorded because this is the shape the correction exists to prevent: **a stale
+ledger line does not merely misinform, it issues instructions.** Surfacing the
+collision rather than executing it is the behaviour to repeat.
+
+## ⭐ §7v — BUILT 31 Jul, PROVENANCE PRECONDITIONS FOR §7s.1 (`ab8dacd`)
+
+Not a features lane and not remediation. **No stored value corrected, no
+historical row rewritten.**
+
+### The shapes
+
+**`FinancialDataset.payload_sha256` + `data_written_at`**, maintained by a
+**`before_flush` listener**.
+
+⭐ **A LISTENER BECAUSE THE MUTATION DOES NOT GO THROUGH A WRITER.** The backfills
+mutate `ds.data` in place via `flag_modified` — no endpoint, no writer function to
+instrument. Stamping at flush catches **every writer, including the ones that do
+not know they are writers.**
+
+⭐ **IT COMPARES THE HASH RATHER THAN TRUSTING DIRTINESS.** `flag_modified` marks
+an attribute dirty **whether or not its contents differ**, so a timestamp keyed on
+dirtiness would move at every boot and **the column would record BOOTS, not
+writes**. An idempotent backfill must leave the timestamp exactly where it was.
+Both directions are tested — the moving case and the not-moving case.
+
+**`ValuationRun.provenance`, schema `7v.1`** — dataset id, version and payload
+hash; the effective payload's hash; assumptions, monte_carlo, basis_label, radii,
+threshold_override; **company assumptions as VALUES** per §7s.1's fourth item; and
+**§7u's three registry versions**. ⭐ **`forecast_override` is persisted IN FULL,
+not `extended: bool`** — the boolean recorded that a plan was overridden and
+**discarded which plan**.
+
+### ⭐ NOTHING IS BACKFILLED
+
+All three columns nullable. **The 421 existing runs stay `provenance = None`** and
+existing datasets stay unhashed.
+
+**What produced them was never recorded, and inventing it would make an
+unreproducible run LOOK reproducible** — the one outcome worse than an honestly
+absent record, and undetectable afterwards.
+
+Two tests enforce it: **absence stays absent**, and **a null blob is not readable
+as "no overrides"**. A consumer must distinguish *"no override was used"* —
+`forecast_override: None` **inside a present blob** — from *"we did not record
+whether one was"*, which is a **null blob**.
+
+### ⭐ THE ACCEPTANCE SHAPE — REPRODUCTION, NOT FIELD PRESENCE
+
+**A run written after this lane must recompute to its stored value from its own
+recorded provenance alone.** Three parametrisations, including the previously
+unreproducible override case, driving the router's own callables per the harness
+law.
+
+⭐ **FIELD PRESENCE PROVES THE WRITER RAN, NOT THAT WHAT IT WROTE SUFFICES.**
+Asserting that `provenance` holds fourteen keys is a spelling check on the writer.
+**The only test that distinguishes a sufficient record from a plausible one is
+recomputing the stored value from the record and comparing.** Same class as the
+ratchet satisfied without fixing the defect.
+
+## ⭐ TWO LIVE FINDINGS FROM THE §7v LANE — NEITHER IS PROVENANCE (31 Jul)
+
+Both surfaced by **measuring the write path**, not by reading it.
+
+### 1. FORCED PROFORMA — a run's stored `mode` is not the mode that ran. FIXED.
+
+A run carrying a `forecast_override` is **forced to `proforma` at
+`router.py:91`** — the override *is* the forecast being valued — while the row's
+**`mode` column keeps the REQUESTED value**.
+
+⭐ **A reproduction driven off the stored column alone runs the WRONG ENGINE BRANCH
+and returns a different number silently.** Nothing errors; the run simply
+re-values as something it never was.
+
+**Now split into `requested_mode` and `executed_mode`**, both recorded, with a
+test asserting they diverge on exactly this case.
+
+### 2. ⭐ OPEN — the quota counter returns EMPTY for a company holding 12 datasets
+
+`deps.py:346` and `billing/router.py:60` count usage with
+`source="direct"` **and `parent_dataset_id IS NULL`**. Every one of that company's
+**twelve datasets is `source="upload"`**, so **the counter returns zero.**
+
+⭐ **A BILLING QUOTA THAT COUNTS ZERO FOR A CUSTOMER WITH TWELVE DATASETS IS NOT A
+DORMANT DEFECT.** Whether the intent is "uploads are not chargeable" or the filter
+is simply wrong is **undetermined from the code**, which is why it is recorded and
+not fixed. **Named, untouched, OPEN — it is outside the §7v scope and needs a
+ruling, not a patch.**
 
 ## ⭐ RULED — REPLACING A DATASET DELETES EVERYTHING DERIVED FROM IT (30 Jul)
 
