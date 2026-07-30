@@ -58,6 +58,30 @@ WHAT IT FLAGS
     gate: shipping 195 unactionable findings is how a checker gets muted. The
     measurement is recorded here so the number is known rather than rediscovered.
 
+  · ⭐ MEASURED COVERAGE OF THE `or 0` HALF, 30 Jul — 3 OF 5 KNOWN SITES.
+    Controls, run both directions on the real code:
+        baseline (all fixed)                    10 findings
+        4x health_index + 1x benchmarks re-added 13 findings
+        restored                                10 findings
+    CAUGHT: health_index's `roic or 0.0`, `current_ratio or 0.0`,
+            `debt_to_equity or 0.0` — parameters named after _n()-built keys.
+    MISSED: `rev_cagr or 0.0`, because no dict key is named rev_cagr, so the
+            name-matching that carries taint across the call boundary has
+            nothing to match on.
+    MISSED: benchmarks' `(kpis["roic"] or 0)`, because `kpis` is a local dict
+            literal and holder-awareness — added to kill five false positives on
+            valuation's `deterministic["net_debt"]` — correctly says that
+            literal does not build roic with _n, while the values in it in fact
+            came from the ratios dict. Precision bought at the cost of recall,
+            stated rather than hidden.
+
+  · ⭐ ADDING A MODULE ONCE REMOVED COVERAGE, SILENTLY. Ambiguous key names were
+    first subtracted GLOBALLY, so putting benchmarks/engines.py in TARGETS —
+    which builds roic/roa/invested_capital plainly — collapsed the key set from
+    nine names to three and un-flagged the EVA expression entirely. The finding
+    count did not move, so nothing announced it. Subtraction is per-file now and
+    cross-module collisions are resolved by holder.
+
 The remedy is `_n(fn, *vals)` in financials/engines.py: absence propagates, and
 never `or 0`, because a missing revenue is not zero revenue.
 """
@@ -85,6 +109,12 @@ TARGETS = [
     "services/api/modules/financials/oci.py",
     "services/api/modules/financials/router.py",
     "services/api/modules/valuation/engines.py",
+    # ⭐ ADDED 30 Jul. benchmarks was outside the target list while
+    # `(kpis["roic"] or 0) * bases["invested_capital"]` asserted a company earns
+    # zero NOPAT when ROIC is merely unknown — and that fabricated zero fed the
+    # `excess` column, turning an absent input into a quantified shortfall
+    # against the sector benchmark.
+    "services/api/modules/benchmarks/engines.py",
     "services/api/modules/intelligence/engines.py",
     "services/api/modules/twin/engines.py",
 ]
@@ -177,7 +207,11 @@ def absence_built_keys(tree):
     # positives in valuation, where net_debt is
     # `company["_debt_book"] - bs["cash"][ys]` — raw arithmetic, not _n. The
     # caller unions both sets and subtracts once, across every target.
-    return keys, plain
+    # Per-file: a key built both ways INSIDE ONE MODULE is ambiguous there
+    # (`expected` is absence-built in the EVA checkpoint and plainly built in
+    # data_coverage). Cross-module collisions are handled by holder, not by
+    # deleting the name — see _nullable / local_dicts.
+    return keys - plain, plain
 
 
 def nullable_dict_keys(tree):
@@ -244,6 +278,7 @@ class Scan(ast.NodeVisitor):
         self.absence_keys = set(absence_keys)
         self.dict_keys = dict_keys or {}      # fn -> {nullable key names}
         self.from_fn = {}                     # local name -> factory it came from
+        self.local_dicts = {}                 # local name -> keys nullable in it
         self.risky = set()      # names bound to a possibly-None expression
         self.hits = []
         self.fn = "<module>"
@@ -264,6 +299,15 @@ class Scan(ast.NodeVisitor):
             # a finding at every site rather than at the one that happened to be
             # reported.
             k0 = node.slice
+            # ⭐ A HOLDER BUILT RIGHT HERE ANSWERS FOR ITSELF. `deterministic`
+            # in valuation/engines.py is a dict literal whose net_debt is
+            # `company["_debt_book"] - bs["cash"][ys]` — plain arithmetic, not
+            # _n. It merely SHARES A KEY NAME with the ratios dict, and matching
+            # on the name alone produced five false positives there. When the
+            # holder is a local dict literal, its own construction decides.
+            if isinstance(node.value, ast.Name) and node.value.id in self.local_dicts:
+                return (isinstance(k0, ast.Constant)
+                        and k0.value in self.local_dicts[node.value.id])
             if isinstance(k0, ast.Constant) and k0.value in self.absence_keys:
                 return True
             # a dict from a per-key factory: only the nullable keys are risky
@@ -286,6 +330,16 @@ class Scan(ast.NodeVisitor):
     def visit_FunctionDef(self, node):
         prev, self.fn = self.fn, node.name
         prev_risky = set(self.risky)
+        # ⭐ A PARAMETER NAMED AFTER AN ABSENCE-BUILT KEY IS THE SAME VALUE, ONE
+        # CALL LATER. health_index(roic, wacc_value, current_ratio,
+        # debt_to_equity, rev_cagr) is handed exactly the ratios-dict values
+        # that _n() makes None, and it used `or 0.0` on four of them — but they
+        # arrive as bare parameters, so subscript-based matching saw nothing.
+        # The caller's key set is the callee's contract; matching on the name is
+        # how the taint survives the call boundary without a full interprocedural
+        # pass (tried on 30 Jul: 195 findings and still blind).
+        self.risky |= {a.arg for a in node.args.args
+                       if a.arg in self.absence_keys}
         self.generic_visit(node)
         self.fn, self.risky = prev, prev_risky
 
@@ -296,6 +350,16 @@ class Scan(ast.NodeVisitor):
             for t in node.targets:
                 if isinstance(t, ast.Name):
                     self.from_fn[t.id] = node.value.func.id
+        if isinstance(node.value, ast.Dict):
+            nk = set()
+            for k, v in zip(node.value.keys, node.value.values):
+                if isinstance(k, ast.Constant) and isinstance(k.value, str) \
+                        and any(isinstance(x, ast.Call) and isinstance(x.func, ast.Name)
+                                and x.func.id == "_n" for x in ast.walk(v)):
+                    nk.add(k.value)
+            for t in node.targets:
+                if isinstance(t, ast.Name):
+                    self.local_dicts[t.id] = nk
         if self._nullable(node.value):
             for t in node.targets:
                 if isinstance(t, ast.Name):
@@ -344,6 +408,29 @@ class Scan(ast.NodeVisitor):
         self.risky = saved
         self.visit(node.orelse)
 
+    def visit_BoolOp(self, node):
+        """⭐ `X or 0` ON A VALUE THAT IS None BY CONSTRUCTION — THE OTHER HALF.
+
+        This checker was built for arithmetic that RAISES. The sibling defect
+        does not raise: `or 0` swaps absence for a fabricated zero and the code
+        runs cleanly to a wrong answer. Both halves were live on 30 Jul in the
+        same function — `eva_cur` raised, and four lines later
+        `(cur["roic"] or 0) > w["wacc"]` reported "value-eroding" about a company
+        whose ROIC was not computable.
+
+        A raise is loud. A fabricated zero is a number a board reads. This flags
+        the quiet one, on the same derived key set — so it cannot drift from
+        what engines.py actually builds with _n().
+        """
+        if isinstance(node.op, ast.Or) and len(node.values) == 2:
+            left, right = node.values
+            zero = (isinstance(right, ast.Constant)
+                    and right.value in (0, 0.0) and right.value is not False)
+            if zero and self._nullable(left):
+                self.hits.append((node.lineno, self.fn,
+                                  ast.unparse(node)[:78], "or-0"))
+        self.generic_visit(node)
+
     def visit_BinOp(self, node):
         if isinstance(node.op, ARITH):
             l, r = self._nullable(node.left), self._nullable(node.right)
@@ -361,11 +448,20 @@ def main():
     for rel in TARGETS:
         path = os.path.join(ROOT, rel)
         if os.path.exists(path):
-            k, pl = absence_built_keys(
+            k, _pl = absence_built_keys(
                 ast.parse(open(path, encoding="utf-8").read()))
             absence_keys |= k
-            plain_keys |= pl
-    absence_keys -= plain_keys
+    # ⭐ GLOBAL SUBTRACTION WAS WORSE THAN THE PROBLEM IT SOLVED. Subtracting
+    # every plainly-built key across all targets meant that ADDING A MODULE
+    # REMOVED COVERAGE ELSEWHERE: putting benchmarks/engines.py in TARGETS —
+    # which builds roic/roa/invested_capital plainly — collapsed the key set
+    # from nine to three and silently un-flagged the EVA expression. The finding
+    # count did not move, so nothing announced the loss. A checker that gets
+    # quieter when you widen it is the coverage-floor failure in its purest form.
+    #
+    # Ambiguity is now resolved by HOLDER (see _local_dicts) rather than by
+    # deleting key names, so a collision suppresses one expression instead of a
+    # whole class.
     for rel in TARGETS:
         path = os.path.join(ROOT, rel)
         if not os.path.exists(path):

@@ -491,17 +491,50 @@ def health_index(roic, wacc_value, current_ratio, debt_to_equity, rev_cagr):
     Health = 100*(0.35 s_spread + 0.25 s_liq + 0.20 s_lev + 0.20 s_growth).
     The REO-distance formulation replaces this in Phase 7; the formula here
     is published so the number is reproducible by hand.
+
+    ⭐ IT USED `or 0.0` ON ALL FOUR INPUTS, AND A COMPOSITE IS THE WORST PLACE
+    FOR THAT. A missing ROIC became 0%, a missing current ratio became 0.0 —
+    each silently scoring its sub-score at the bottom of the band — and the four
+    were then weighted into ONE number on [0,100]. The reader cannot see which
+    input was fabricated, because averaging is exactly the operation that hides
+    it: a 41 built from three real inputs and one invented zero is
+    indistinguishable from a 41 built from four real ones.
+
+    A single metric that fabricates is wrong. A composite that fabricates is
+    wrong AND unauditable, which is why this one is absence-propagating and says
+    which input it lacked.
+
+    Sub-scores are still computed INDIVIDUALLY where their own inputs are
+    present — absence in one input must not blank three findings that are known.
+    The composite itself is None whenever any sub-score is, because the weights
+    sum to 1 and a partial sum is not on the published scale.
     """
     def clamp(x): return max(0.0, min(1.0, x))
-    s_spread = 1.0 / (1.0 + math.exp(-((roic or 0.0) - wacc_value) / 0.02))
-    s_liq = clamp((current_ratio or 0.0) / 1.5)
-    s_lev = clamp(1.0 - max(0.0, (debt_to_equity or 0.0) - 1.0) / 2.0)
-    s_growth = clamp(0.5 + ((rev_cagr or 0.0) - 0.05) / 0.10)
-    score = 100.0 * (0.35 * s_spread + 0.25 * s_liq + 0.20 * s_lev
-                     + 0.20 * s_growth)
-    return {"health_index": _r(score, 2),
-            "components": {"value_creation": _r(s_spread), "liquidity": _r(s_liq),
-                           "leverage": _r(s_lev), "growth": _r(s_growth)}}
+
+    absent = sorted(k for k, v in (("roic", roic), ("wacc", wacc_value),
+                                   ("current_ratio", current_ratio),
+                                   ("debt_to_equity", debt_to_equity),
+                                   ("rev_cagr", rev_cagr)) if v is None)
+
+    s_spread = _n(lambda r, w: 1.0 / (1.0 + math.exp(-(r - w) / 0.02)),
+                  roic, wacc_value)
+    s_liq = _n(lambda c: clamp(c / 1.5), current_ratio)
+    s_lev = _n(lambda d: clamp(1.0 - max(0.0, d - 1.0) / 2.0), debt_to_equity)
+    s_growth = _n(lambda g: clamp(0.5 + (g - 0.05) / 0.10), rev_cagr)
+
+    score = _n(lambda a, b, c, d: 100.0 * (0.35 * a + 0.25 * b + 0.20 * c
+                                           + 0.20 * d),
+               s_spread, s_liq, s_lev, s_growth)
+    out = {"health_index": _r(score, 2),
+           "components": {"value_creation": _r(s_spread), "liquidity": _r(s_liq),
+                          "leverage": _r(s_lev), "growth": _r(s_growth)}}
+    if absent:
+        # names the MISSING INPUTS, not the blank sub-scores — the reader needs
+        # to know what to go and supply, which is the same contract Part A's
+        # `absence_reason` specifies.
+        out["absence_reason"] = ("not computable: missing "
+                                 + ", ".join(absent))
+    return out
 
 
 def dashboard_metrics(data: dict, valuation_result: dict | None = None) -> dict:

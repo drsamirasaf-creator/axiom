@@ -133,7 +133,10 @@ def _implied(kpi: str, bench: float, bases: dict):
     if kpi == "roe":
         return bench * bases["equity"], "net_income", "net income"
     if kpi == "roic":
-        return bench * bases["invested_capital"], "nopat", "NOPAT"
+        # invested_capital is None by construction when the balance sheet is
+        # incomplete; raw `*` raised rather than declining to imply a figure.
+        return (fin._n(lambda b, ic: b * ic, bench, bases["invested_capital"]),
+                "nopat", "NOPAT")
     if kpi == "revenue_growth":
         return bases["revenue"] * (1 + bench), "next_revenue", "next-year revenue"
     return bench, None, None   # scale-free ratios compare directly
@@ -196,7 +199,12 @@ def compare(dataset: dict, sector: str | None = None,
         actual_abs = {"ebit_margin": bases["ebit"],
                       "net_margin": bases["net_income"],
                       "roa": bases["net_income"], "roe": bases["net_income"],
-                      "roic": (kpis["roic"] or 0) * bases["invested_capital"],
+                      # ⭐ `or 0` here asserted the company earns ZERO NOPAT
+                      # when ROIC is merely unknown, and that fabricated zero
+                      # then fed `excess` — so an absent input became a
+                      # quantified shortfall against the sector benchmark.
+                      "roic": fin._n(lambda r, ic: r * ic,
+                                     kpis["roic"], bases["invested_capital"]),
                       "revenue_growth": None}.get(kpi, actual)
         if meta["direction"] == "context":
             row.update({"status": "context", "score": None, "rag": None,
