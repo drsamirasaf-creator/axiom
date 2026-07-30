@@ -214,6 +214,59 @@ def absence_built_keys(tree):
     return keys - plain, plain
 
 
+
+def absence_params(tree, absence_keys):
+    """{function: {param names that receive an absence-bearing value}}.
+
+    ⭐ CLOSES THE LAST RECALL GAP, AND IT WAS A REAL ONE. health_index's
+    `rev_cagr or 0.0` was invisible because no dict key is named rev_cagr — the
+    name-matching that carries taint across a call boundary had nothing to match
+    on. But the CALL SITE says everything:
+
+        cagr = _n(lambda a, b: _cagr(a, b, hist_n - 1), rev_h[0], rev_h[-1])
+        hi = health_index(cur["roic"], w["wacc"], cur["current_ratio"],
+                          cur["debt_to_equity"], cagr)
+
+    The fifth argument is an _n-built local, so the fifth parameter is nullable.
+    Positional mapping only: keyword and starred calls are skipped rather than
+    guessed, because a wrong mapping would flag the wrong parameter and that is
+    worse than missing one.
+    """
+    params, out = {}, {}
+    for fn in ast.walk(tree):
+        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            params[fn.name] = [a.arg for a in fn.args.args]
+    # locals bound to _n(...) anywhere in the module
+    n_locals = set()
+    for a in ast.walk(tree):
+        if isinstance(a, ast.Assign) and any(
+                isinstance(x, ast.Call) and isinstance(x.func, ast.Name)
+                and x.func.id == "_n" for x in ast.walk(a.value)):
+            for t in a.targets:
+                if isinstance(t, ast.Name):
+                    n_locals.add(t.id)
+
+    def bearing(arg):
+        if isinstance(arg, ast.Name):
+            return arg.id in n_locals
+        if isinstance(arg, ast.Subscript):
+            k = arg.slice
+            return isinstance(k, ast.Constant) and k.value in absence_keys
+        return False
+
+    for call in ast.walk(tree):
+        if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Name):
+            continue
+        name = call.func.id
+        if name not in params or call.keywords or any(
+                isinstance(a, ast.Starred) for a in call.args):
+            continue
+        for i, arg in enumerate(call.args):
+            if i < len(params[name]) and bearing(arg):
+                out.setdefault(name, set()).add(params[name][i])
+    return out
+
+
 def nullable_dict_keys(tree):
     """{function_name: {keys whose value can be None}} for dict-returning factories.
 
@@ -273,9 +326,11 @@ def nullable_factories(tree, dict_keyed=()):
 
 
 class Scan(ast.NodeVisitor):
-    def __init__(self, factories=(), dict_keys=None, absence_keys=()):
+    def __init__(self, factories=(), dict_keys=None, absence_keys=(),
+                 absence_params=None):
         self.factories = set(factories)
         self.absence_keys = set(absence_keys)
+        self.absence_params = absence_params or {}
         self.dict_keys = dict_keys or {}      # fn -> {nullable key names}
         self.from_fn = {}                     # local name -> factory it came from
         self.local_dicts = {}                 # local name -> keys nullable in it
@@ -330,6 +385,13 @@ class Scan(ast.NodeVisitor):
     def visit_FunctionDef(self, node):
         prev, self.fn = self.fn, node.name
         prev_risky = set(self.risky)
+        # ⭐ HOLDER FACTS ARE PER-FUNCTION, AND LEAKING THEM COST REAL RECALL.
+        # `local_dicts` was instance-level, so `kpis = {...}` built plainly
+        # inside _subject_kpis stayed registered, and `kpis["roic"]` in the
+        # UNRELATED compare() — where kpis arrives from a tuple unpack, not a
+        # literal — was suppressed as "that holder does not build roic with _n".
+        # A fact about one function silently answered for another.
+        prev_dicts = dict(self.local_dicts)
         # ⭐ A PARAMETER NAMED AFTER AN ABSENCE-BUILT KEY IS THE SAME VALUE, ONE
         # CALL LATER. health_index(roic, wacc_value, current_ratio,
         # debt_to_equity, rev_cagr) is handed exactly the ratios-dict values
@@ -340,8 +402,11 @@ class Scan(ast.NodeVisitor):
         # pass (tried on 30 Jul: 195 findings and still blind).
         self.risky |= {a.arg for a in node.args.args
                        if a.arg in self.absence_keys}
+        # …and parameters the CALL SITES hand an absence-bearing value.
+        self.risky |= self.absence_params.get(node.name, set())
         self.generic_visit(node)
         self.fn, self.risky = prev, prev_risky
+        self.local_dicts = prev_dicts
 
     def visit_Assign(self, node):
         # remember which per-key factory a local came from
@@ -423,13 +488,44 @@ class Scan(ast.NodeVisitor):
         for b in node.orelse:
             self.visit(b)
 
+    def _none_tested_names(self, test):
+        """Names a test asserts are None-ish: `x is None`, `x in (None, 0)`.
+
+        ⭐ THE NEGATIVE IDIOM WAS INVERTED, AND IT FLAGGED A CORRECT GUARD.
+
+            trend = None if p in (None, 0) or c is None else _r((c - p) / abs(p))
+
+        The SAFE branch here is the `else`, not the body — the test states the
+        unsafe condition. Handling only `expr if a is not None else None` meant
+        this read as unguarded, and it started flagging the moment call-site
+        parameter mapping made c and p nullable. Two false positives on the one
+        idiom the codebase uses everywhere for exactly this.
+        """
+        out = set()
+        if isinstance(test, ast.Compare) and len(test.ops) == 1 \
+                and isinstance(test.left, ast.Name):
+            op, comp = test.ops[0], test.comparators[0]
+            if isinstance(op, ast.Is) and isinstance(comp, ast.Constant) \
+                    and comp.value is None:
+                out.add(test.left.id)
+            if isinstance(op, ast.In) and isinstance(comp, (ast.Tuple, ast.List, ast.Set)) \
+                    and any(isinstance(e, ast.Constant) and e.value is None
+                            for e in comp.elts):
+                out.add(test.left.id)
+        elif isinstance(test, ast.BoolOp) and isinstance(test.op, ast.Or):
+            for v in test.values:
+                out |= self._none_tested_names(v)
+        return out
+
     def visit_IfExp(self, node):
         # `expr if (a is not None and b is not None) else None`
         saved = set(self.risky)
         self.risky -= self._guarded_names(node.test)
         self.visit(node.body)
-        self.risky = saved
+        # `None if a is None else expr` — the ELSE branch is the guarded one
+        self.risky = saved - self._none_tested_names(node.test)
         self.visit(node.orelse)
+        self.risky = saved
 
     def visit_BoolOp(self, node):
         """⭐ `X or 0` ON A VALUE THAT IS None BY CONSTRUCTION — THE OTHER HALF.
@@ -464,6 +560,42 @@ class Scan(ast.NodeVisitor):
         self.generic_visit(node)
 
 
+# ⭐⭐ THE DETECTION FLOOR — A FLOOR ON WHAT THIS CHECKER CAN STILL SEE,
+# NOT ON HOW MANY FILES IT OPENED.
+#
+# On 30 Jul, adding ONE module to TARGETS collapsed the derived key set from
+# nine names to three and un-flagged the EVA expression completely. Nothing
+# announced it: the finding count held steady, every file still reported, and
+# the run looked identical to a healthy one. The floors that existed counted
+# MODULES SCANNED and SITES FOUND — both stayed put while detection died.
+#
+# "0 problems in 0 files" and "0 problems in 400 files" print the same tick. So
+# do "0 problems because it is all fixed" and "0 problems because the scanner
+# went blind" — and only the second is catastrophic, because it is the state in
+# which people stop looking.
+#
+# PROBE holds one instance of every mechanism this checker claims. It is scanned
+# on EVERY invocation with the LIVE key set; if detection drops below
+# DETECTION_FLOOR the run exits 2 and says the CHECKER is broken rather than
+# that the code is clean.
+PROBE = '''
+def _probe(nopat, invested_capital):
+    a = cur["nopat"] - w["wacc"] * cur["invested_capital"]   # subscript, both
+    b = other["roic"] or 0                                   # or-0 fabrication
+    c = nopat - 1.0                                          # parameter path
+    d = holder["invested_capital"] / 2.0                     # subscript, one
+    return a, b, c, d
+'''
+DETECTION_FLOOR = 5          # measured; raise it when a mechanism is added
+
+
+def self_check(absence_keys):
+    """Scan PROBE with the live key set. Returns (detected, expected)."""
+    sc = Scan(set(), {}, absence_keys)
+    sc.visit(ast.parse(PROBE))
+    return len(sc.hits), DETECTION_FLOOR
+
+
 def main():
     total = 0
     per_file = []
@@ -492,14 +624,25 @@ def main():
         src = open(path, encoding="utf-8").read()
         tree = ast.parse(src)
         dk = nullable_dict_keys(tree)
-        sc = Scan(nullable_factories(tree, dk), dk, absence_keys)
+        sc = Scan(nullable_factories(tree, dk), dk, absence_keys,
+                  absence_params(tree, absence_keys))
         sc.visit(tree)
         # a site already routed through _n() is handled
         hits = [h for h in sc.hits if "_n(" not in h[2]]
         per_file.append((rel, hits))
         total += len(hits)
 
-    print(f"  {len(per_file)} module(s) scanned · {total} unguarded arithmetic site(s)\n")
+    detected, expected = self_check(absence_keys)
+    if detected < expected:
+        print(f"\n  ✗ CHECKER BLIND — the detection floor failed.\n"
+              f"    It found {detected} of {expected} planted expressions in its\n"
+              f"    own probe, so any 'clean' below is a statement about the\n"
+              f"    SCANNER, not about the code. Live key set: {len(absence_keys)}.\n"
+              f"    This is what a silently-collapsed key set looks like.\n")
+        return 2
+    print(f"  {len(per_file)} module(s) scanned · {total} unguarded arithmetic "
+          f"site(s)\n  detection floor: {detected}/{expected} planted expressions "
+          f"found · {len(absence_keys)} absence keys live\n")
     for rel, hits in per_file:
         if not hits:
             print(f"    {rel:<52} clean")
