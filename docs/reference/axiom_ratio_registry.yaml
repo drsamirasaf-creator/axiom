@@ -1,6 +1,16 @@
 # AXIOM RATIO REGISTRY
 # Canonical source for §7r Ratio Analysis.
 #
+# ⭐ TOPIC OWNERSHIP — THIS FILE OWNS RATIO DEFINITIONS, FORMULAS AND VOCABULARY.
+# Three documents describe AXIOM and each is authoritative on some topics and
+# stale on others; the rule is by TOPIC, not by recency:
+#     ratio definitions / formulas / vocabulary  -> THIS FILE
+#     pricing and commercial terms               -> docs/brochure/AXIOM_Capabilities_Brochure_v2.html
+#     rulings, segments, open items              -> docs/ledger/AXIOM_LEDGER_CORE.md
+# LEDGER_AMENDMENT_2026-07-31.md is a DATED AMENDMENT, not a fourth owner. It
+# describes this registry at 7r.2; the registry is at 7r.7. Read it for what it
+# ruled, never for current state.
+#
 # STATUS: draft for founder review. Nothing here is locked until it is in
 # AXIOM_MASTER_LEDGER as §7r-R.
 #

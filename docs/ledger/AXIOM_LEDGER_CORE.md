@@ -1,6 +1,25 @@
 # AXIOM MASTER LEDGER — CORE
 
-**Last updated: 27 Jul 2026.**
+**Last updated: 30 Jul 2026.**
+
+## ⭐ TOPIC OWNERSHIP (read before comparing this file with any other)
+
+Three documents describe AXIOM and **each is authoritative on some topics and
+stale on others**. Nothing previously marked which, so a reader comparing two of
+them could not tell who was right. The rule is by TOPIC, not by recency:
+
+| topic | owner |
+|---|---|
+| ratio definitions, formulas, vocabulary | `docs/reference/axiom_ratio_registry.yaml` |
+| pricing and commercial terms | `docs/brochure/AXIOM_Capabilities_Brochure_v2.html` |
+| rulings, segments, open items | **this ledger** |
+
+Worked example of why this is not bookkeeping: the 31 Jul amendment is
+authoritative on **pricing** (it corrected this file) and stale on the
+**registry** (it describes 7r.2; the registry is at 7r.7). Neither document can
+be the default authority. `docs/reference/LEDGER_AMENDMENT_2026-07-31.md` is a
+dated amendment, not a fourth owner — read it for what it ruled, not for current
+state.
 
 ## CANONICALITY RULE (read first)
 
@@ -781,9 +800,25 @@ is brand dilution, not cannibalization (founder ceiling \~30 clients).
 
 **4d. PRICING TIERS & SEAT LIMITS (LOCKED)**
 
-**Tiers (monthly subscription, both):** **AXIOM Business \$4,995/mo** ·
-**AXIOM Prescience \$14,995/mo** · **Prescience Upgrade \$10,000/mo**
-(Business + Upgrade = Prescience exactly --- no arbitrage). Three Stripe
+**CORRECTED 30 Jul 2026. THE BROCHURE GOVERNS PRICING; THIS RECORDS IT.**
+The figures below are read from `docs/brochure/AXIOM_Capabilities_Brochure_v2.html`,
+not from the 31 Jul amendment's snapshot — an amendment is a point in time, the
+brochure is the live commercial artefact.
+
+**Tiers (monthly subscription, both):** **AXIOM Business \$4,995/mo**
+(\$49,950/yr) · **AXIOM Prescience \$11,995/mo** (\$119,950/yr) ·
+**Prescience Upgrade \$7,000/company/mo**
+(Business + Upgrade = Prescience exactly --- no arbitrage). Annual contracts run
+twelve months and include two months free, which is the 17% saving the brochure
+advertises. **Unlimited users, one company per workspace, no seat caps, no
+per-user charges.**
+
+⭐ **\$14,995 / \$10,000 IS VOID.** It was recorded here and superseded on
+31 Jul; this file continued to assert it in two places for a month. Both are now
+corrected — this block and the prose reference under Prescience AI. The old
+figures were internally consistent (4,995 + 10,000 = 14,995), so nothing about
+the record looked wrong from inside it; only comparing it against the brochure
+showed it. Three Stripe
 products. **Gating:** Business includes ALL core product + **Ask AXIOM
 only** from the Prescience layer (cheap taster, existing 200/day cap;
 its cited answers upsell the gated engines). Prescience-only:
@@ -1115,8 +1150,8 @@ BUT every number honesty-gated.
     AXIOM_Performance_Monitoring_Full_Vision_Spec.md. Source: 1,128-para
     enhancement spec.
 
--   **Prescience AI (full-vision spec):** the \$14,995-tier forward
-    engine, 5 tabs. Ask AXIOM (taster, SHIPPED backend --- see §1) ·
+-   **Prescience AI (full-vision spec):** the \$11,995-tier forward
+    engine (corrected 30 Jul from a void \$14,995 — see 4d), 5 tabs. Ask AXIOM (taster, SHIPPED backend --- see §1) ·
     Multiverse (Monte Carlo/scenario across thousands of futures) ·
     Resilience (stress/reverse-stress, builds on 7i) · Causal Map (the
     honesty crucible --- causal graphs/Bayesian nets/DiD/IV, EVERY edge
@@ -6375,3 +6410,52 @@ declared modules, 20 sites, CI-enforced — so the condition is measurable.
 be extended, and it could not detect this defect if it were.
 
 See `docs/reports/2026-07-30-class-a-margin-boundary.md`.
+
+## §7r-O — SOLE OWNERSHIP OF THE COMPUTED QUANTITIES (founder ruling, non-negotiable)
+
+⭐ **THIS RULING WAS ABSENT FROM THE LEDGER ENTIRELY UNTIL 30 Jul**, and was
+believed recorded. Zero occurrences of "sole owner" or "single owner" existed in
+either ledger file while five build segments were executed against it. Second
+§7r ruling found missing the same way — see §7r-D — and both were found by
+looking rather than by assuming.
+
+**RULING.** The ratio library `services/api/modules/financials/ratios.py` is the
+**single computation** of net debt, WACC, ROIC, EVA and invested capital.
+Existing surfaces become consumers. Not the reverse, not both.
+
+**STATE, measured 30 Jul rather than asserted.** `ratios.py` owns six functions:
+`net_debt`, `invested_capital`, `wacc_at`, `cost_of_equity_at`,
+`cost_of_debt_at`, `operating_cash_flow`. The sixth arrived by EXTRACTION, not
+construction — an owner already existed in the pro-forma path covering forecast
+periods only and without absence propagation.
+
+**Enforced by three gates**, because a ruling with no instrument is prose:
+
+- `scripts/check-sole-owner.py` — shape-keyed, operand-typed
+- `scripts/check-ratio-shapes.py` — 14 unambiguous shapes of 53 derivable
+- `scripts/route-table.py` — independent-route ratchet; a second implementation
+  appearing fails the build
+
+⭐ **READ COVERAGE AS 14 + 16 OF 79, NEVER AS 79.** 14 registry ratios are policed
+by shape, 16 more by the Class A margin boundary, 23 have no mechanism, and 26 are
+not yet computable. A survey of producers found **one independent implementation
+for all twelve policed quantities** — the claim confirmed from a second
+direction — but that survey sees dict-literal keys under `services/` only, so a
+report builder or the frontend is invisible to it.
+
+## §7r-H — HEADLINE SET: FOURTEEN, LOCKED (founder ruling)
+
+Also absent from the ledger until 30 Jul. The ledger's five prior uses of the
+word "headline" were positioning copy, a report finding and the k-anonymity
+ternary — none referred to the ratio set.
+
+**RULING.** The headline set is **14 ratios**, revenue growth being the
+fourteenth and the one whose absence started §7r. Registry field: `headline: true`.
+
+**STATE, measured 30 Jul.** 14 of 14 headline ratios are derivable — every token
+they need resolves. The last blocker was `cash_conversion_quality`, which needed
+`cf.operating_cash_flow`; the registry recorded that token as having no owner and
+one existed, for forecast periods only.
+
+Definitions live in `docs/reference/axiom_ratio_registry.yaml`, which owns them.
+This entry records the RULING, not the list — see the topic-ownership header.
