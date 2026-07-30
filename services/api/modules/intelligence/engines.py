@@ -1086,15 +1086,26 @@ def risk_analytics(data: dict, n_paths: int = 4000) -> dict:
                        "The 1-in-1000 figure extrapolates BEYOND the "
                        "simulation by the fitted tail law")}
     checkpoints = [
+        # Undefined shares are not out-of-bounds shares — see the guard above.
         {"name": "sobol_bounded", "value": [s_g, s_m],
-         "expected": "each in [0,1]", "pass": 0 <= s_g <= 1 and 0 <= s_m <= 1},
+         "expected": "each in [0,1]",
+         "pass": all(0 <= v <= 1 for v in (s_g, s_m) if v is not None)},
         {"name": "evt_orders_extremes",
          "value": [evt["fcff_1_in_1000"], evt["fcff_1_in_100"]],
          "expected": "1-in-1000 <= 1-in-100 <= p10 threshold",
          "pass": evt["fcff_1_in_1000"] <= evt["fcff_1_in_100"] <= u}]
-    n = [f"Variance attribution: growth uncertainty drives "
-         f"{s_g:.0%} of horizon cash-flow variance, margin uncertainty "
-         f"{s_m:.0%}, interaction {sobol['interaction']:.0%}.",
+    # ⭐ THE SIXTH SITE OF THE SAME SHAPE, in risk_analytics' OWN narrative —
+    # four lines below the guard that was just added for it. Formatting absence
+    # is not a one-off oversight in this file; it is the habit.
+    def _pc(v):
+        return "—" if v is None else format(v, ".0%")
+
+    n = [(f"Variance attribution: growth uncertainty drives "
+          f"{_pc(s_g)} of horizon cash-flow variance, margin uncertainty "
+          f"{_pc(s_m)}, interaction {_pc(sobol['interaction'])}."
+          if s_g is not None else
+          "Variance attribution is not available: the base simulation has no "
+          "dispersion, so growth and margin shares are undefined."),
          f"Extreme value analysis (xi = {xi:.2f}): the 1-in-100 year-1 FCFF "
          f"is {evt['fcff_1_in_100']:,.1f} and the extrapolated 1-in-1000 is "
          f"{evt['fcff_1_in_1000']:,.1f}."]
@@ -1745,6 +1756,32 @@ def target_state(data: dict, targets: dict) -> dict:
 # A `confidential` flag drives an absolute-figures-redacted variant (grades,
 # percentages, and multiples only) for externally shared copies.
 
+
+def _plan_narrative(proforma_stmts):
+    """Plan-horizon prose that renders absence instead of crashing on it.
+
+    A company may legitimately have no forecast plan; every figure below is then
+    absent, and a board document should say so rather than 500."""
+    def pct(v, dp=1):
+        return "—" if v is None else format(v * 100, f".{dp}f") + "%"
+
+    cagr = proforma_stmts.get("plan_cagr") or {}
+    cum = ((proforma_stmts.get("cumulative_attainment") or {}).get("revenue")
+           or {})
+    if not cagr and not cum:
+        return ["No client plan on this dataset, so plan-horizon growth and "
+                "attainment are not computable. Upload a forecast to populate "
+                "this section."]
+    return [
+        f"Over the plan horizon, revenue compounds at "
+        f"{pct(cagr.get('revenue'))} and net income at "
+        f"{pct(cagr.get('net_income'))} per year.",
+        f"Because the plan sits near the centre of the simulated "
+        f"distribution, each single-year target is roughly a coin toss; "
+        f"the probability of meeting the revenue target in EVERY forecast "
+        f"year is {pct(cum.get('p_meets_plan_every_year'), 0)}."]
+
+
 def board_report(data: dict, readiness: dict | None = None,
                  sector: str | None = None) -> dict:
     import datetime as _dt
@@ -1877,15 +1914,13 @@ def board_report(data: dict, readiness: dict | None = None,
         "comprehensive_income": comprehensive,
         "accounting_framework": comprehensive["framework"],
         "statements_disclaimer": STATEMENTS_DISCLAIMER,
-        "narrative": [
-            f"Over the plan horizon, revenue compounds at "
-            f"{proforma_stmts['plan_cagr']['revenue']*100:.1f}% and net income at "
-            f"{proforma_stmts['plan_cagr']['net_income']*100:.1f}% per year.",
-            f"Because the plan sits near the centre of the simulated "
-            f"distribution, each single-year target is roughly a coin toss; "
-            f"the probability of meeting the revenue target in EVERY forecast "
-            f"year is "
-            f"{proforma_stmts['cumulative_attainment']['revenue']['p_meets_plan_every_year']*100:.0f}%."]})
+        # ⭐ THE SAME NARRATIVE-FORMATS-ABSENCE DEFECT, A SECOND TIME. A company
+        # with historicals and NO forecast plan is a legitimate state — the
+        # plan-vs-methods surface renders honest-empty for exactly that — but
+        # here plan_cagr is None and `None * 100` took out the whole report.
+        # Found by a test fixture, not by the production dataset, because
+        # company 38 happens to carry a plan.
+        "narrative": _plan_narrative(proforma_stmts)})
 
     valuation_section = {"id": "valuation",
         "title": "Valuation — Three Independent Lenses",
