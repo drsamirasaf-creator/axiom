@@ -6436,6 +6436,13 @@ periods only and without absence propagation.
 - `scripts/route-table.py` — independent-route ratchet; a second implementation
   appearing fails the build
 
+⭐ **THE WACC LINE IS QUALIFIED, EXACTLY AS ROIC'S WAS.** The guard reads WACC
+1/1 and that is **honest about the call site and misleading about the claim.**
+`wacc_at`'s kinked cost of debt exists **twice, with different constants and a
+different base** — see the kd-kink entry below. The guard counts one owner of the
+WACC *expression*; it does not and cannot count owners of the *assumption inside
+it*.
+
 ⭐ **READ COVERAGE AS 14 + 16 OF 79, NEVER AS 79.** 14 registry ratios are policed
 by shape, 16 more by the Class A margin boundary, 23 have no mechanism, and 26 are
 not yet computable. A survey of producers found **one independent implementation
@@ -6923,7 +6930,22 @@ reproduce.**
 42**. The seed's `flag_modified(vr, "result")` rewrites `res["subject"]`, a
 company-name string, and **cannot move a number**.
 
-### ⭐ Cause undecidable, and recorded as PERMANENTLY so
+### ⭐ Cause undecidable — RESTATED 30 Jul, because half of it was tooling
+
+**This was recorded as permanently undecidable. Half of that was the instrument,
+not the evidence, and must not stand as an evidentiary claim.**
+
+The per-dataset bucketing **is now runnable** — the psycopg fault is diagnosed and
+was a stdlib shadow, not a broken client.
+
+⭐ **The finding is NOT reopened.** Remediation is identical under every surviving
+hypothesis and Meridian's stored results are ruled discarded, so nothing turns on
+the answer.
+
+**What stands independently of any driver is the repo fact:** `FinancialDataset`
+carries **no payload write timestamp and no `onupdate`**, so the direct evidence
+does not exist **regardless of tooling**. That half of the original note was
+correct and is unchanged.
 
 The reseed hypothesis is **consistent** — every divergent run predates the 25 Jul
 seed cluster including `177634c`, which names dataset 45 explicitly. **But the
@@ -6964,6 +6986,18 @@ reimplementing it**, and **refuses extended runs rather than guessing**.
 ⭐ **Refusing is the better half and is the required behaviour** — a harness that
 guesses an unrecoverable input manufactures a divergence and reports it as data.
 
+### ⭐ EXTENSION — A PROOF MUST REPRODUCE THE FAILING INVOCATION SHAPE (30 Jul)
+
+**The repair lane proved the ABSENCE of a failure using an invocation shape in
+which that failure was structurally impossible** — `python3 -c`, where
+`sys.path[0]` is the cwd and no scratchpad file can shadow anything. 45 of 45
+passed, and the number meant nothing.
+
+**Same defect as the law above, different door.** ⭐ **A proof that does not
+reproduce the failing shape proves nothing — whether the shape is a CALL PATH or
+an EXECUTION CONTEXT.** Before reporting a fault absent, state which shape was
+exercised and why it is the shape that failed.
+
 ## REQUIRED — PAYLOAD HASH AND WRITE TIMESTAMP ON `FinancialDataset` (30 Jul)
 
 So the **next instance of the class in the law above is one query rather than two
@@ -6971,12 +7005,48 @@ lanes**.
 
 **Not built here. Recorded as required.**
 
-## TOOLING — psycopg HAS FAILED MID-LANE TWICE (30 Jul)
+## TOOLING — psycopg: DIAGNOSED (corrected in place, 30 Jul)
 
-It is **blocking measurement, which is the standing verification method**.
+⭐ **THIS ENTRY PREVIOUSLY RECORDED THE MECHANISM AS UNDEMONSTRABLE. THAT WAS
+WRONG AND IS CORRECTED HERE RATHER THAN APPENDED TO** — a wrong record left
+standing beside a right one makes the reader adjudicate.
 
-⭐ **A repair lane precedes any further measurement dispatch**, or the next one
-stops the same way.
+**Real cause.** `/scratchpad/bisect.py` **shadows the stdlib `bisect`**. Its line
+2 is `ROOT = sys.argv[1]`. When a script runs from that directory `sys.path[0]`
+is the script's directory, psycopg's import chain pulls in `bisect`, Python
+resolves it to that file, executes it, and `sys.argv[1]` raises
+**`IndexError: list index out of range`** — the reported error verbatim.
+
+**Proved by deletion and restoration**, which is proof rather than correlation:
+
+    present  → couldn't import psycopg 'binary': list index out of range
+    renamed  → import succeeds
+    restored → failure returns
+
+**It explains everything the repair lane could not:**
+
+- **why it began mid-lane** — the file was created during the Meridian bisect
+- **why only some invocations failed** — only those running from that directory
+- **why the repair lane measured 45/45 successes** — it tested `python3 -c`,
+  where `sys.path[0]` is the cwd
+- **why the preflight could not catch it** — the preflight runs from the repo,
+  not from the lane's directory
+
+### ⭐ THE CLASS IS NEW: A LANE KILLED BY ITS OWN LEFTOVER ARTEFACT
+
+**A measurement lane was killed by an artefact the measurement itself left
+behind.** Two lanes died on it.
+
+⭐ **This is a FALSE RED, and it is worse than a false green in one respect.** A
+false green is eventually contradicted by reality. **A lane reporting
+"undecidable" CLOSES THE QUESTION, and nobody returns to it.**
+
+### REQUIRED — shadow detection
+
+A guard detecting **stdlib-shadowing modules on the lane's path**. Not built;
+recorded as required. ⭐ It must run **from the lane's directory**, because a
+guard that does not cannot see the lane's `sys.path[0]` — which is exactly why
+the existing preflight missed this.
 
 ## INCIDENTAL FINDINGS — RECORDED, NOT ACTIONED (30 Jul)
 
@@ -7084,3 +7154,110 @@ rather than the brochure asserting it.
 ⭐ **§7o produces clean inputs; it does not shorten the path to the sales asset.**
 Recorded because the temptation runs the other way — the sample is the most
 valuable artefact in the programme and the one most likely to be attempted early.
+
+## §7u · THE ASSUMPTIONS REGISTRY — SCOPE RULED (a), 30 Jul. NOT BUILT.
+
+⭐ **RULED: §7u is (a), CONFIG-VERSIONING.** One versioned artefact; code reads
+defaults from it; every stored result records the version. **It does not make
+anything newly client-settable.**
+
+**§7s.1's dependency is satisfied by (a) alone — the Pack needs a version to pin,
+not a settings feature.**
+
+**(b), per-company stored assumptions, is DEFERRED, not dropped.** ⭐ **(a) makes
+(b) cheaper, because the enumeration and the provenance plumbing are the expensive
+parts of both.**
+
+### Enumeration recorded
+
+    ~35  module constants across 10 compute modules
+    ~60  defaulted call-site lookups, obj.get("key", <number>)
+      ≥2  inline literals with no name, no ADR, no registry entry
+     16  client-settable COMPANY_FIELDS
+
+**Measured, not read:** all **12 numeric** client-settable fields **vary across
+the 36 datasets**, 2–6 distinct values each. Absences are structural
+(public-only vs private-only), not gaps.
+
+### ⭐ SEEDS ARE PINNED, and the reason is the point
+
+Seeds sit in the **methodological** class and **change no methodology** — but they
+**determine a rendered number**. ⭐ **A pack pinning every assumption and not the
+seed does not reproduce.**
+
+**This is the version-pinning law applying one level below where it was
+originally aimed:** the law was written about formulas and definitions; seeds are
+neither, and it binds them anyway.
+
+    DEFAULT_SEED 26060 · SIM_SEED 26120 · COVERAGE_SEED 26121 · OBS_SEED 26122
+    proforma SEED 26123 · oci SEED 26124 · MC_SEED 26202
+
+### ⭐ KFLOOR IS METHODOLOGICAL, NOT CLIENT-SETTABLE
+
+**A client-settable k-anonymity floor is a client-settable disclosure risk.**
+
+**The assessment instrument's candour rests on respondents trusting a floor they
+do not control.** A CXO who can lower it can identify their own critics, and the
+knowledge that they *could* is enough to change what is written.
+
+Same class: `CEI_GOOD_MIN` / `CEI_NEUTRAL_MIN`, `SCORE_CLAMP`, the ingest layout
+constants, `VERSION_MAJOR`.
+
+### ⭐ §7s.1 PINS FOUR THINGS, NOT ONE
+
+1. **Platform defaults** — versioned artefact
+2. **Methodological constants** — versioned artefact
+3. **Seeds** — versioned artefact
+4. **Company assumptions** — ⭐ **DATA, NOT CONFIG.** They belong in the pack's
+   **input snapshot as VALUES**, alongside the dataset.
+
+⭐ **A version string pointing at per-company mutable data would repeat the
+`FinancialDataset` defect** — a pointer to a row whose contents can change
+underneath it, which is the shape that produced Meridian's 42 non-reproducing
+runs.
+
+### OPEN — the dual defaults (awaiting ruling)
+
+    K0               4.0  and 10.0
+    sigma            0.2  and 0.5
+    revenue_growth   0.0  and 0.03
+    T                5.0  and 12
+    mu               0.08 and 2.0
+    a                0.9  and 3.0
+
+⭐ **Each key is EITHER one assumption whose call sites disagree — in which case
+one call site is currently WRONG and the registry surfaces a live defect — OR two
+assumptions sharing a name, needing distinct keys.**
+
+**Not rulable without knowing what each governs.** ⭐ **A call-site listing is
+required before the user rules.**
+
+## §7r — THE kd KINK IS A SOLE-OWNERSHIP FINDING, NOT A CONFIG ONE (30 Jul)
+
+⭐ **Routed OUT of §7u deliberately.** Versioning a constant that exists twice
+would version both copies and call it done.
+
+| | `ratios.py:97` | `intelligence/engines.py:2343` |
+|---|---|---|
+| base | **leverage (D/E)** | **debt / revenue** |
+| kink | 1.0 | 0.25 |
+| coefficient | 0.01 | 0.35 |
+| named? | **no — inline, undocumented** | yes, with comments |
+
+**Same functional form** — a quadratic distress spread past a kink — **expressed
+twice, on different denominators, with unrelated constants.**
+
+CORE records `wacc_at` with the kinked kd as canonical and the guard reads
+**WACC 1/1**. That line is now qualified in §7r-O: **the guard is honest about the
+call site and misleading about the claim.**
+
+**This belongs to the sole-ownership programme, not to config versioning.**
+
+## OPEN — `size_premium` = 0.2 AGAINST A CORPUS RANGE OF 0.018–0.03 (30 Jul)
+
+Reported, **not corrected**. Reads as **20% entered where 2% was intended** — an
+order of magnitude out.
+
+⭐ **This is per-company data on a real dataset and may be a customer's number.**
+It wants **its own check**, not passage inside §7u. Recorded so it is not carried
+along by a lane that was never scoped to validate it.
