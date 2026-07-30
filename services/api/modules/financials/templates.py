@@ -48,7 +48,13 @@ LABELS = {
             "cash": "Cash & Equivalents",
             "other_current_assets": "Other Current Assets (Receivables, Inventory, etc.)",
             "noncurrent_assets": "Total Non-Current Assets",
+            "property_plant_equipment_net": "Property, Plant & Equipment, net",
+            "goodwill": "Goodwill",
+            "intangible_assets_net": "Intangible Assets, net (excl. Goodwill)",
+            "long_term_investments": "Long-Term Investments",
+            "other_noncurrent_assets": "Other Non-Current Assets",
             "current_liabilities_ex_debt": "Current Liabilities (excl. Debt)",
+            "other_noncurrent_liabilities": "Other Non-Current Liabilities",
             "short_term_debt": "Short-Term Debt",
             "long_term_debt": "Long-Term Debt",
             "preferred_equity": "Preferred Equity",
@@ -69,7 +75,13 @@ LABELS = {
             "cash": "Cash & Cash Equivalents",
             "other_current_assets": "Other Current Assets (Trade Receivables, Inventories, etc.)",
             "noncurrent_assets": "Total Non-Current Assets",
+            "property_plant_equipment_net": "Property, Plant and Equipment (net)",
+            "goodwill": "Goodwill",
+            "intangible_assets_net": "Intangible Assets (excl. Goodwill)",
+            "long_term_investments": "Non-Current Financial Assets",
+            "other_noncurrent_assets": "Other Non-Current Assets",
             "current_liabilities_ex_debt": "Current Liabilities (excl. Borrowings)",
+            "other_noncurrent_liabilities": "Other Non-Current Liabilities",
             "short_term_debt": "Current Borrowings",
             "long_term_debt": "Non-Current Borrowings",
             "preferred_equity": "Preference Shares",
@@ -85,6 +97,13 @@ COMPANY_ROWS = [  # (field, label, applies)
     ("ownership", "Ownership (public / private)", "all"),
     ("currency", "Reporting Currency", "all"),
     ("tax_rate", "Effective Tax Rate (decimal, e.g. 0.25)", "all"),
+    # ⭐ RULE 1 NEEDS TWO CELLS, NOT ONE. The precedence is
+    # admin override > template POLICY rate > IMPLIED EFFECTIVE rate. With a
+    # single cell the middle and bottom sources are the same number, the
+    # precedence cannot be expressed, and the explainer's provenance field would
+    # have nothing truthful to stamp. Neither is required: absent policy rate
+    # falls through to the effective rate, and the explainer says which was used.
+    ("tax_rate_policy", "Policy / Statutory Tax Rate (decimal)", "all"),
     ("risk_free_rate", "Risk-Free Rate (decimal)", "all"),
     ("market_risk_premium", "Market Risk Premium (decimal)", "all"),
     ("cost_of_debt", "Pre-Tax Cost of Debt (decimal)", "all"),
@@ -281,6 +300,19 @@ def parse_workbook(content: bytes) -> tuple[dict | None, list]:
             for col, y, kind in cols:
                 v = ws[f"{col}{r}"].value
                 if v in (None, ""):
+                    # ⭐ THE v8 ROWS MAY BE BLANK, AND THE PARSER HAS ITS OWN
+                    # GATE. validate_dataset was taught that these are optional;
+                    # this check is a SECOND required-ness rule in a different
+                    # file, and leaving it strict rejected the whole upload at
+                    # 422 while the validator would have accepted it. Two owners
+                    # for one policy — the migration only works if both agree.
+                    #
+                    # A customer on the previous template uploads with these
+                    # rows empty. That is absence, not an error: the
+                    # operating-side capital build renders an em dash and says
+                    # which rows it lacked.
+                    if key in engines.BS_OPTIONAL_KEYS:
+                        continue
                     errors.append({"cell": f"{name}!{col}{r}",
                                    "error": "value required"})
                     continue

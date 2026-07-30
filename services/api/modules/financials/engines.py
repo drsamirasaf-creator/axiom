@@ -32,10 +32,33 @@ from .periods import format_period as _fmt_period, frequency_of as _freq_of, per
 
 IS_KEYS = ["revenue", "cogs", "opex", "depreciation_amortization",
            "interest_expense"]
-BS_KEYS = ["cash", "other_current_assets", "noncurrent_assets",
-           "current_liabilities_ex_debt", "short_term_debt",
-           "long_term_debt", "preferred_equity", "minority_interest",
-           "total_equity"]
+# ⭐ v8 SPLITS THE NON-CURRENT AGGREGATE, AND KEEPS THE AGGREGATE. Operating-side
+# invested capital needs net PP&E separated from goodwill, intangibles and
+# non-operating investments — building it from a single "Total Non-Current
+# Assets" would capitalise goodwill into an operating base and make the
+# financing-vs-operating delta measure the aggregation rather than unclassified
+# items.
+#
+# `noncurrent_assets` STAYS in the data model as a DERIVED total. It has eight
+# consumers (forecast_studio's roll-forward, planning.total_assets,
+# prescience_decision's synthetic cell, seed + reference companies) and every
+# stored dataset carries it. Deleting it breaks all of them; asking the customer
+# for both the parts and the total invites a total that disagrees with its parts.
+# So it leaves the TEMPLATE (see templates.TEMPLATE_BS_ROWS) and is computed at
+# parse time from the five components, with absence propagating.
+BS_NONCURRENT_COMPONENTS = ["property_plant_equipment_net", "goodwill",
+                            "intangible_assets_net", "long_term_investments",
+                            "other_noncurrent_assets"]
+# The v8 additions are OPTIONAL: absent on every pre-v8 dataset, and absence is
+# a legitimate state rather than a validation failure. `noncurrent_assets` is NOT
+# in this set — it remains required, because it is derived from the components
+# when they are present and carried verbatim when they are not.
+BS_OPTIONAL_KEYS = set(BS_NONCURRENT_COMPONENTS) | {"other_noncurrent_liabilities"}
+BS_KEYS = (["cash", "other_current_assets", "noncurrent_assets"]
+           + BS_NONCURRENT_COMPONENTS
+           + ["current_liabilities_ex_debt", "other_noncurrent_liabilities",
+              "short_term_debt", "long_term_debt", "preferred_equity",
+              "minority_interest", "total_equity"])
 CF_KEYS = ["capex", "net_borrowing", "dividends"]
 
 COMPANY_FIELDS = {
@@ -156,11 +179,26 @@ def validate_dataset(data: dict) -> dict:
         for key in keys:
             vals = block.get(key)
             if vals is None:
-                errors.append(f"{block_name}.{key} is missing")
+                # ⭐ THE v8 ROWS ARE OPTIONAL, AND THAT IS THE MIGRATION. Every
+                # dataset uploaded before v8 lacks the five non-current
+                # components and other_noncurrent_liabilities. Requiring them
+                # would invalidate the entire existing cohort at once and demand
+                # a re-upload from every customer — for rows that only the
+                # operating-side invested-capital build needs.
+                #
+                # Per rule 5 and the 30 Jul law this is ABSENCE, not an error:
+                # operating-side IC renders an em dash with absence_reason
+                # naming these rows, financing-side computes as it always has,
+                # and the delta is suppressed rather than shown against a
+                # fabricated operating figure.
+                if key not in BS_OPTIONAL_KEYS:
+                    errors.append(f"{block_name}.{key} is missing")
                 continue
             for y in years:
                 v = vals.get(str(y))
                 if v is None:
+                    if key in BS_OPTIONAL_KEYS:
+                        continue
                     errors.append(f"{block_name}.{key}[{y}] is missing")
                 else:
                     try:
@@ -419,7 +457,10 @@ def auto_forecast(data: dict, assumptions: dict | None = None) -> dict:
            "periods": {"historical": hist,
                        "forecast": _fc_periods(hist[-1], horizon, _freq_of(data))},
            "income_statement": {k: dict(IS[k]) for k in IS_KEYS},
-           "balance_sheet": {k: dict(BS[k]) for k in BS_KEYS},
+           # ⭐ `.get(k) or {}` — the v8 rows are OPTIONAL, so a pre-v8 dataset has
+           # no entry at all. Direct subscript raised KeyError on every one of them
+           # the moment the keys were declared.
+           "balance_sheet": {k: dict(BS.get(k) or {}) for k in BS_KEYS},
            "cash_flow": {k: dict(CF[k]) for k in CF_KEYS}}
     y_prev = str(hist[-1])
     rev = rev_h[-1]
@@ -903,7 +944,11 @@ def data_coverage(data: dict) -> dict:
                 "pct": round(present / expected, 4) if expected else 0.0}
 
     is_c = completeness(IS, IS_KEYS)
-    bs_c = completeness(BS, BS_KEYS)
+    # ⭐ OPTIONAL ROWS ARE NOT MISSING DATA. Counting the v8 additions in the
+    # denominator dropped the showcase — a complete dataset — from 100% to 73.9%,
+    # which would read on the surface as "this company has gaps" when it has
+    # none. Coverage measures what the dataset was asked for.
+    bs_c = completeness(BS, [k for k in BS_KEYS if k not in BS_OPTIONAL_KEYS])
     cf_c = completeness(CF, CF_KEYS)
     tot_present = is_c["present"] + bs_c["present"] + cf_c["present"]
     tot_expected = is_c["expected"] + bs_c["expected"] + cf_c["expected"]

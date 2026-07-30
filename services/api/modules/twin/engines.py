@@ -77,6 +77,12 @@ def build_child(parent: dict, year: int, actuals: dict) -> dict:
         supplied = actuals.get(block, {}) or {}
         for key in keys:
             if key not in supplied or supplied[key] is None:
+                # ⭐ The v8 balance-sheet rows are OPTIONAL — a twin sync from a
+                # pre-v8 dataset supplies none of them, and demanding them would
+                # make every existing twin unusable for rows only the
+                # operating-side capital build reads.
+                if key in getattr(fin, "BS_OPTIONAL_KEYS", ()):
+                    continue
                 raise ValueError(f"actuals.{block}.{key} is required")
             child[block][key][ys] = float(supplied[key])
     v = fin.validate_dataset(child)
@@ -116,8 +122,10 @@ def sync(parent: dict, year: int, actuals: dict,
                         ("balance_sheet", fin.BS_KEYS),
                         ("cash_flow", fin.CF_KEYS)):
         for key in keys:
-            f = parent[block][key][ys]
-            a = child[block][key][ys]
+            f = (parent[block].get(key) or {}).get(ys)
+            a = (child[block].get(key) or {}).get(ys)
+            if f is None or a is None:
+                continue          # an optional v8 row absent on either side
             lines.append({"block": block, "line": key,
                           "forecast": _r(f), "actual": _r(a),
                           "error": _r(a - f),

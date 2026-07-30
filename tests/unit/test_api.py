@@ -284,8 +284,17 @@ def test_template_fill_and_upload_roundtrip(auth_client):
             ws.cell(row=3, column=c, value=k)
             ws.cell(row=4, column=c, value=y)
         for r_i, key in enumerate(keys, start=5):
+            # ⭐ A PRE-v8 DATASET FILLING A v8 TEMPLATE LEAVES THE NEW ROWS
+            # BLANK, AND THAT IS THE MIGRATION, NOT A TEST WORKAROUND. Meridian
+            # predates the five non-current components and
+            # other_noncurrent_liabilities; the round-trip must still succeed
+            # with those rows empty, which is precisely what every existing
+            # customer's next upload will look like.
+            series = m[block].get(key)
+            if series is None:
+                continue
             for c, y in enumerate(years, start=tpl.FIRST_YEAR_COL):
-                ws.cell(row=r_i, column=c, value=m[block][key][str(y)])
+                ws.cell(row=r_i, column=c, value=series[str(y)])
     buf = io.BytesIO(); wb.save(buf)
     r = auth_client.post("/api/v1/financials/datasets/upload",
                     files={"file": ("meridian.xlsx", buf.getvalue(),

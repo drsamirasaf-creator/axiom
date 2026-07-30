@@ -253,8 +253,22 @@ def build_sample_data(ownership: str, standard: str, frequency: str) -> dict:
         "income_statement": {"revenue": ser(revenue), "cogs": ser(cogs),
                              "opex": ser(opex), "depreciation_amortization": ser(da),
                              "interest_expense": ser(interest)},
+        # ⭐ v8 SPLITS THE AGGREGATE, AND THE SAMPLE MUST FOOT. The five
+        # components sum to exactly the nca the sample already used, so a
+        # customer who opens the template sees a balance sheet that balances —
+        # a sample whose parts disagreed with its own total would teach the
+        # wrong thing on first contact. PP&E carries the operating bulk;
+        # goodwill and intangibles are deliberately non-zero so the
+        # operating-vs-financing delta is visible rather than degenerate.
         "balance_sheet": {"cash": ser(cash), "other_current_assets": ser(oca),
-                          "noncurrent_assets": ser(nca), "current_liabilities_ex_debt": ser(cle),
+                          "noncurrent_assets": ser(nca),
+                          "property_plant_equipment_net": ser([round(v * 0.70, 4) for v in nca]),
+                          "goodwill": ser([round(v * 0.12, 4) for v in nca]),
+                          "intangible_assets_net": ser([round(v * 0.08, 4) for v in nca]),
+                          "long_term_investments": ser([round(v * 0.06, 4) for v in nca]),
+                          "other_noncurrent_assets": ser([round(v * 0.04, 4) for v in nca]),
+                          "other_noncurrent_liabilities": ser([0.0 for _ in nca]),
+                          "current_liabilities_ex_debt": ser(cle),
                           "short_term_debt": ser(std), "long_term_debt": ser(ltd),
                           "preferred_equity": ser(pfd), "minority_interest": ser(mi),
                           "total_equity": ser(te)},
