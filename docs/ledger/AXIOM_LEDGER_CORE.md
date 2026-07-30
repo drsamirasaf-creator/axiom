@@ -6479,3 +6479,67 @@ and `bs.retained_earnings` — see the registry vocabulary, which marks each
 **What it would unlock:** the strongest available cross-statement check, plus
 `cf.operating_cash_flow` as a stored rather than derived token, plus the
 `cash_conversion_quality` headline ratio on real data rather than a derivation.
+
+## §7s · CADENCE — THE OBLIGATION LAYER (design, ruled 30 Jul. NOT BUILT.)
+
+**Queue position: to be ruled by the user.** Recorded here so it is falsifiable
+rather than remembered — two §7r rulings were already found absent from this file
+after being believed recorded.
+
+⭐ **NONE OF THE SIX IS A NEW CALCULATION.** Every one publishes, distributes,
+records or watches figures that already exist. Nothing here computes a number
+AXIOM does not already compute, and any design that starts by adding one has
+misread the layer.
+
+### The six
+
+1. **The Pack** — a dated, immutable publication with a **frozen input set**. Not
+   a re-render: the inputs are pinned so the same pack renders identically
+   forever. See the scope report for what freezing requires.
+2. **The Brief** — a seven-line push summary emitted on publication.
+3. **The Distribution** — external recipients (board, lender, sponsor) reached by
+   **scoped links**, with **open-logging**.
+4. **The Decision Record** — a **projection over existing attributed events**,
+   NOT a new store. The events are already written; this reads them.
+5. **The Value Bridge** — the equity-value series decomposed by driver, with the
+   **residual shown** rather than absorbed.
+6. **The Watch** — named-recipient alerts off the **nightly kernel**, one alert
+   per crossing, with **hysteresis**.
+
+### Preconditions
+
+- **§7s.1 extends the existing changeset snapshot mechanism. Do not write a
+  second one.** `changeset.register_source(prefix, apply, snapshot, undo)` is
+  already a producer registry and `ChangesetSnapshot` already carries a `kind`
+  discriminator and a free-form JSON payload. What it does not yet do is
+  described in `docs/reports/2026-07-30-7s1-snapshot-scope.md`.
+- **The snapshot coverage list is subject to III.4 — assert coverage, not
+  activity.** A pack that freezes four of nine input classes and a test that
+  confirms "a snapshot was taken" report the same green. The coverage list must
+  be enumerated and asserted against what the pack actually renders.
+- **§7s.5 (Value Bridge) depends on sole ownership completing through ROIC/E.**
+  A bridge decomposing equity value by driver reads ROIC and the cost of equity;
+  until those have one owner each, the bridge would pin a second.
+
+### Standing laws that govern this layer
+
+- ⭐ **ABSENCE PUBLISHES.** A pack with missing actuals still publishes, and
+  **declares the gap**. It does not wait, does not silently omit, and does not
+  substitute a prior period. A pack that refuses to publish because one input is
+  absent converts an absence into a non-event, which is the silent-empty failure
+  wearing a publication's clothes.
+- ⭐ **CORRECTIONS NEVER EDIT.** A corrected pack is a **superseding version with
+  a stated reason**, never a mutation of the published one. Same law as the
+  override trail: what a board saw on the day it decided must remain readable
+  exactly as it was.
+- ⭐ **TRACEABLE-OR-SILENT APPLIES LINE BY LINE IN THE BRIEF.** Each of the seven
+  lines is individually traceable to its source or it is not published as a
+  figure. **An absent line renders as an em dash — it is never omitted**, because
+  a seven-line brief that silently becomes six lets the reader infer completeness
+  from length.
+
+### What is NOT ruled yet
+
+Queue position; whether the Pack is a first-class object or a changeset subtype
+(see the scope report); the Brief's seven lines; retention and revocation for
+scoped links; hysteresis bands for the Watch.
