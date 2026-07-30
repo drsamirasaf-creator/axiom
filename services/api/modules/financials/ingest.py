@@ -78,7 +78,23 @@ ORG_SHEET = "Organization"
 # live on in accounts.CANONICAL_DEPT_RENAMES as ALIASES, so a company already
 # holding a short-named department resolves to it and is renamed in place rather
 # than duplicated.
+# ⭐ "Sales & Marketing" IS A PRODUCT GAP, NOT A DEMO ACCOMMODATION.
+# The list offered "Sales" and "Marketing" separately and nothing in between, so
+# any company with a SINGLE COMBINED COMMERCIAL FUNCTION — the common structure
+# at mid-market scale, one commercial head over both — got no standard match and
+# fell through to a custom department, losing every standard-list benefit.
+#
+# Precedent is already here: "Manufacturing or Production" is one standard name
+# covering two related functions.
+#
+# ⭐ AND THIS IS THE MENU GROWING, NOT THE INFERENCE ENGINE WEAKENING.
+# CANONICAL_DEPT_RENAMES (accounts.py) is UNCHANGED and still refuses 1->N
+# splits: "Sales & Marketing" -> Sales + Marketing stays a human decision,
+# because which KPIs and objectives land on which side is genuinely ambiguous
+# and ambiguity is exactly when a machine should stop. Adding a shape a company
+# may legitimately have is a different act from teaching a resolver to guess.
 STD_DEPARTMENTS = ("Finance and Accounting", "Operations", "Sales", "Marketing",
+                   "Sales & Marketing",
                    "Supply Chain and Logistics", "Human Resources",
                    "Information Technology", "Legal", "Research and Development",
                    "Strategy and Corporate Planning", "Executive Management",
