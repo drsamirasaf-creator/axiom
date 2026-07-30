@@ -12987,6 +12987,13 @@ def _ensure_ax_columns(engine):
     _add("financial_datasets", "n_objectives", "n_objectives INTEGER")
     _add("financial_datasets", "n_key_results", "n_key_results INTEGER")
     _add("financial_datasets", "n_kpis", "n_kpis INTEGER")
+    # §7v provenance preconditions (migration 0015). The payload hash and its
+    # write timestamp are maintained by the before_flush listener in
+    # financials/models.py; the columns must exist before the first flush.
+    _add("financial_datasets", "payload_sha256", "payload_sha256 VARCHAR(64)")
+    _add("financial_datasets", "data_written_at",
+         "data_written_at TIMESTAMP WITH TIME ZONE")
+    _add("valuation_runs", "provenance", "provenance JSON")
     # custody-14 §4s: department_id on objectives / kpis / initiatives (ax_departments
     # is a NEW table and rides create_all; only these existing tables need columns)
     _add("ax_objectives", "department_id", "department_id INTEGER")

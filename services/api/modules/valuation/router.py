@@ -77,6 +77,66 @@ def list_modes():
          "spec_ref": "Product §7.12/§8.9 (Historical Trends), ADR-005"}]
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# §7v — a stored run records what produced it
+# ─────────────────────────────────────────────────────────────────────────────
+PROVENANCE_SCHEMA = "7v.1"
+
+# The company fields that reach a valuation figure. ⭐ CAPTURED AS VALUES, NOT
+# AS A POINTER, per §7s.1's fourth item: company assumptions are DATA, and a
+# version string pointing at per-company mutable data would repeat the defect
+# this lane exists to close.
+_VALUE_DETERMINING = (
+    "beta", "unlevered_industry_beta", "target_debt_to_equity", "cost_of_debt",
+    "risk_free_rate", "market_risk_premium", "tax_rate", "size_premium",
+    "specific_risk_premium", "dlom", "shares_outstanding", "share_price",
+    "ownership", "standard", "currency",
+)
+
+
+def _provenance(ds, body, requested_mode, executed_mode, eff_data):
+    """Everything needed to recompute this run's stored value.
+
+    ⭐ `executed_mode` IS RECORDED SEPARATELY FROM `requested_mode`, and they are
+    not always equal: a run carrying a `forecast_override` is FORCED to proforma
+    at router.py:91 while the row's `mode` column keeps the requested value. A
+    reproduction driven off the stored column alone would run the wrong engine
+    branch and quietly return a different number.
+
+    ⭐ `forecast_override` IS THE OVERRIDE ITSELF, not `extended: bool`. The
+    boolean records that a plan was overridden and discards which plan — which is
+    the difference between a reproducible run and a note that one happened.
+    """
+    from ..financials.models import payload_hash
+    from ..financials.assumptions import versions as _registry_versions
+    company = (ds.data or {}).get("company") or {}
+    return {
+        "schema": PROVENANCE_SCHEMA,
+        # identity of the input, not a pointer to it
+        "dataset_id": ds.id,
+        "dataset_version": ds.version,
+        "dataset_payload_sha256": payload_hash(ds.data),
+        # ⭐ the payload actually valued, which differs from the dataset's own
+        # whenever an override or a mode projection was applied
+        "effective_payload_sha256": payload_hash(eff_data),
+        # method selection
+        "requested_mode": requested_mode,
+        "executed_mode": executed_mode,
+        # the caller's inputs, in full
+        "assumptions": body.assumptions,
+        "monte_carlo": body.monte_carlo,
+        "basis_label": getattr(body, "basis_label", None),
+        "forecast_override": getattr(body, "forecast_override", None),
+        "radii": getattr(body, "radii", None),
+        "threshold_override": getattr(body, "threshold_override", None),
+        # the dataset's own assumptions, as VALUES
+        "company_assumptions": {k: company.get(k) for k in _VALUE_DETERMINING
+                                if k in company},
+        # §7u — the three versions §7s.1 pins
+        "registry_versions": _registry_versions(),
+    }
+
+
 @router.post("/run", response_model=schemas.ValuationRunOut, status_code=201)
 def run_valuation(body: schemas.ValuationRequest, db: Session = Depends(get_db),
                   tenant: str = Depends(_tenant),
@@ -108,7 +168,9 @@ def run_valuation(body: schemas.ValuationRequest, db: Session = Depends(get_db),
     if not authed:
         return _transient(body.dataset_id, body.mode, params, result)
     row = models.ValuationRun(tenant=tenant, dataset_id=body.dataset_id,
-                              mode=body.mode, params=params, result=result)
+                              mode=body.mode, params=params, result=result,
+                              provenance=_provenance(ds, body, body.mode,
+                                                     eff_mode, eff_data))
     db.add(row); db.commit(); db.refresh(row)
     return row
 
@@ -127,8 +189,14 @@ def run_stress(body: StressRequest, db: Session = Depends(get_db),
     ds = db.get(fin_models.FinancialDataset, body.dataset_id)
     if not ds or ds.tenant != tenant:
         raise HTTPException(status_code=404, detail="dataset not found")
+    # ⭐ BOUND ONCE AND REUSED, not called a second time for the provenance
+    # blob. Two calls would be two derivations of the same quantity, and a
+    # provenance record derived independently of the value it describes is the
+    # reimplementation shape that has produced a false agreement in this
+    # codebase before.
+    eff_data = _data_for_mode(ds.data, body.mode)
     try:
-        result = engines.stress(_data_for_mode(ds.data, body.mode), body.mode,
+        result = engines.stress(eff_data, body.mode,
                                 body.assumptions, body.monte_carlo, body.radii,
                                 body.threshold_override)
     except ValueError as e:
@@ -145,7 +213,9 @@ def run_stress(body: StressRequest, db: Session = Depends(get_db),
     if not authed:
         return _transient(body.dataset_id, "dro_stress", params, result)
     row = models.ValuationRun(tenant=tenant, dataset_id=body.dataset_id,
-                              mode="dro_stress", params=params, result=result)
+                              mode="dro_stress", params=params, result=result,
+                              provenance=_provenance(
+                                  ds, body, body.mode, body.mode, eff_data))
     db.add(row); db.commit(); db.refresh(row)
     return row
 

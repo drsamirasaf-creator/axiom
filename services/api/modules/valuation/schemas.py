@@ -26,3 +26,6 @@ class ValuationRunOut(BaseModel):
     result: dict
     created_at: datetime
     transient: bool = False   # anonymous sandbox computations are not stored
+    # §7v — what produced this run. None on the 421 runs that predate the column,
+    # and a consumer must read that as "unrecorded", never as "no overrides".
+    provenance: dict | None = None
