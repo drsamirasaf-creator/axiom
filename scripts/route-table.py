@@ -38,6 +38,27 @@ QUANTITIES = ["net_debt", "invested_capital", "wacc", "roic", "eva",
 
 ROUNDERS = {"_r", "round"}
 
+# ── DECLARED INDEPENDENT ROUTE COUNTS. Downward-only, like the Class A margin
+# boundary. A count that RISES means a second implementation of a policed
+# quantity appeared — which is how _debt_book happened, and is the risk this
+# gate exists for. A count that FALLS means one was consolidated away and the
+# number must be lowered here, so it can only shrink.
+#
+# ⭐ THESE ARE WHAT THE TOOL MEASURES, NOT WHAT IS SEMANTICALLY TRUE. Two are
+# known to be inflated and are declared at the measured value on purpose, so the
+# gate compares like with like:
+#   wacc 4 — both sites call ratios.wacc_at; a shared helper called from several
+#            modules counts once per call site. ONE implementation.
+#   roic 2 — the second is `roic × invested_capital` in benchmarks' `actual_abs`
+#            dict, a rescaling to currency (NOPAT), not a second ROIC.
+# Correcting them needs callee resolution. Until then the gate still does its
+# job: it fails when a count MOVES.
+DECLARED = {
+    "net_debt": 1, "invested_capital": 1, "wacc": 4, "roic": 2,
+    "eva": 0, "operating_cash_flow": 0, "ebitda_margin": 1, "net_margin": 1,
+    "current_ratio": 1, "debt_to_equity": 1, "roa": 1, "roe": 1,
+}
+
 
 def scoped_bindings(fn):
     """name -> the expression assigned to it WITHIN ONE FUNCTION.
@@ -108,10 +129,10 @@ def classify(value: ast.AST, binds=None) -> str:
     return "RELAY"
 
 
-def survey():
+def survey(extra_root=None):
     table = collections.defaultdict(list)   # quantity -> [(kind, path, line)]
     seen_sites = set()                      # one row per site, not per scope
-    for root in ROOTS:
+    for root in (ROOTS + [extra_root] if extra_root else ROOTS):
         for dp, _, fs in os.walk(root):
             if "__pycache__" in dp:
                 continue
@@ -141,7 +162,47 @@ def survey():
     return table
 
 
+def counts(table):
+    out = {}
+    for q in QUANTITIES:
+        rows = table.get(q, [])
+        rec = {p for k, p, _ in rows if k == "RECOMPUTE"}
+        own = {p for k, p, _ in rows if k == "OWNER"}
+        out[q] = len(rec) + (1 if own else 0)
+    return out
+
+
+def control():
+    """⭐ KNOWN-POSITIVE: plant a SECOND IMPLEMENTATION of a policed quantity and
+    require the count to rise.
+
+    This is the whole gate. A ratchet that has never rejected anything is
+    indistinguishable from one that cannot — and this one guards against a defect
+    (a third implementation appearing) that by definition has not happened yet,
+    so nothing in the live tree can demonstrate it.
+    """
+    import tempfile, shutil
+    d = tempfile.mkdtemp(prefix="routectl-")
+    try:
+        base = counts(survey())
+        open(os.path.join(d, "planted.py"), "w", encoding="utf-8").write(
+            "def sneaky(bs, ys):\n"
+            "    return {'net_debt': bs['short_term_debt'][ys]"
+            " + bs['long_term_debt'][ys] - bs['cash'][ys]}\n")
+        after = counts(survey(extra_root=d))
+        return after.get("net_debt", 0) > base.get("net_debt", 0)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main():
+    ok = control()
+    print("KNOWN-POSITIVE CONTROL")
+    if not ok:
+        print("  x a planted second implementation of net_debt did NOT raise the")
+        print("    count — the gate is inert and nothing below is meaningful")
+        return 2
+    print("  + a planted second implementation of net_debt raises its count\n")
     table = survey()
     print("ROUTE TABLE — producers classified by what the value expression DOES\n")
     print(f"  {'quantity':<22}{'producers':>10}{'recompute':>11}{'owner':>7}{'relay':>7}"
@@ -182,13 +243,36 @@ def main():
     print("  one implementation still cannot disagree with itself, so it belongs")
     print("  in the set only if a genuinely different implementation exists.")
     print()
+    live = counts(table)
+    fail = 0
+    print("RATCHET")
+    for q in QUANTITIES:
+        dec, now = DECLARED.get(q), live[q]
+        if dec is None:
+            print(f"  x {q}: not declared"); fail = 1
+        elif now > dec:
+            print(f"  x {q}: {now} independent routes, declared {dec} — a SECOND")
+            print(f"      IMPLEMENTATION appeared. Route it through the owner, or")
+            print(f"      raise this only with the measurement that justifies it.")
+            fail = 1
+        elif now < dec:
+            print(f"  ! {q}: {now}, declared {dec} — consolidated; lower it here")
+            fail = 1
+    if not fail:
+        print("  + every policed quantity is at its declared independent-route count")
+    print()
     print("WHAT THIS CANNOT SEE")
     print("  · Producers that are not dict-literal keys — a value assigned then")
     print("    returned, or built in a report/PDF path, is missed.")
     print("  · The frontend entirely.")
-    print("  · Whether two RECOMPUTE sites AGREE. That is the harness's job;")
-    print("    this only decides how much work the harness has.")
-    return 0
+    print("  · Whether two RECOMPUTE sites AGREE. This finds a second")
+    print("    IMPLEMENTATION, never a disagreement between two of them.")
+    print("  · DICT-LITERAL KEYS UNDER services/ ONLY. A report or PDF builder,")
+    print("    a value assigned and returned rather than emitted under a key, and")
+    print("    the entire frontend are invisible to it. `eva` and")
+    print("    `operating_cash_flow` are known cases: computed, never emitted")
+    print("    under those key names. A clean run means clean OF THAT CLASS.")
+    return fail
 
 
 if __name__ == "__main__":

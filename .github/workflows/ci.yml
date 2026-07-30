@@ -96,6 +96,14 @@ jobs:
       # while nothing ran it.
       - name: none-arithmetic detection floor
         run: python scripts/check-none-arithmetic.py
+      # Prevention, not detection. The value-agreement survey found the
+      # comparison set is ZERO — every policed quantity has one independent
+      # implementation — so there is nothing to compare and a differential
+      # harness would assert that a function agrees with itself. The real risk is
+      # a SECOND implementation appearing unnoticed, which is how _debt_book
+      # happened. Static, no corpus, ~1s.
+      - name: route table (independent-route ratchet)
+        run: python scripts/route-table.py
       - run: pytest -q
       # Proves the tests guarding the assessment read path are not vacuous, by
       # reintroducing a plausible defect per test and requiring each to fail.
