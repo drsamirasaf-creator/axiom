@@ -6893,6 +6893,12 @@ reason, not for lack of rigour**.
    showcase backfills via `flag_modified`, and carries **no `updated_at` and no
    `onupdate` on any timestamp**. ⭐ **A payload rewritten at boot leaves both
    timestamps exactly as they were.**
+5. ⭐ **A LIVE CUSTOMER'S ASSUMPTION, WRITTEN WITH NO PROVENANCE.** Eight datasets
+   carry `size_premium = 0.2` with `uploaded_at`, `uploaded_by_user_id`,
+   `original_filename` and `template_version` all null. **Whether it was an error
+   or a deliberate entry is undetermined and unrecoverable** — the fifth instance,
+   and the first on a paying customer's row rather than on our own data. See the
+   OPEN entry below.
 
 ## ⭐ RULED — REPLACING A DATASET DELETES EVERYTHING DERIVED FROM IT (30 Jul)
 
@@ -7216,6 +7222,60 @@ constants, `VERSION_MAJOR`.
 underneath it, which is the shape that produced Meridian's 42 non-reproducing
 runs.
 
+### ⭐ BUILT — the assumption bounds check (9f1c1c1)
+
+**Sibling to the balance audit at `ff870d4`, on the same discipline** — flags
+never refuses, states field and bound, stored not merely warned, and **runs on
+every stored dataset rather than at ingest only**.
+
+Closes the gap that `validate_dataset` tested **presence and float-castability
+only**, so `0.2`, `20` and `-5` validated identically to `0.02` on every
+client-settable field.
+
+**Stored shape** — `validation` now carries
+`{"warnings", "balance", "assumptions"}`; per field `state`, `value`, `min`,
+`max`, and on a breach `direction` and `bound_crossed`.
+
+**Live corpus, three states counted separately:**
+
+    in_bounds        313
+    out_of_bounds      8    size_premium, datasets 8–15, 0.2 above 0.1
+    absent           111
+    field-values     432    12 fields x 36 datasets
+    checked          321
+
+⭐ **Matches the Part B measurement exactly** — 8 of 321. Any divergence would
+have been a finding; there was none. **15 tests, 904 passing, nine gates green.**
+
+#### ⭐ Deliberate divergence from `balance_audit` — absent is NAMED, not silent
+
+`balance_audit` skips absent operands **silently**. This one **names them and
+excludes them from `checked`.**
+
+**Not an inconsistency — a scoping decision with a stated reason.** A field that
+could not be checked **must not be indistinguishable from one that passed**, and
+**a corpus of absences must not report as fully verified**. 111 of 432 field-values
+are absent here; folded into a pass they would have read as verification.
+
+#### ⭐ PATTERN WORTH REUSING — pin the signature, not the corpus
+
+The scope control is a test pinning `assumption_audit`'s signature to **exactly
+`(data)`**, so an edit requiring ingest state **fails rather than quietly
+narrowing the check to upload time**.
+
+⭐ **Pinning a signature is a stronger scope guard than asserting over a corpus.**
+A corpus assertion passes as long as today's corpus happens to exercise the path;
+a signature assertion fails the moment the contract changes. The eight affected
+datasets were written on 16 July and will never re-ingest — an upload-time-only
+check would have left them, and every other stored dataset, unguarded forever.
+
+#### ⭐ The known positive is REAL, not synthetic
+
+The test asserts on **`0.2` — the value eight live datasets actually carry** —
+with a **parametrised negative control** on the corpus-typical `0.018 / 0.02 /
+0.03`. A guard whose only proof is a fabricated case proves it **can** fire, not
+that it fires on the thing it exists for.
+
 ### OPEN — the dual defaults (awaiting ruling)
 
     K0               4.0  and 10.0
@@ -7253,11 +7313,42 @@ call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
 
-## OPEN — `size_premium` = 0.2 AGAINST A CORPUS RANGE OF 0.018–0.03 (30 Jul)
+## ⭐ OPEN — `size_premium` = 0.2 — THE ONLY REMAINING BLOCKER ON THIS FINDING
 
-Reported, **not corrected**. Reads as **20% entered where 2% was intended** — an
-order of magnitude out.
+The check is built (`9f1c1c1`); **the instance is not resolved, and resolving it
+is a ruling, not an engineering step.**
 
-⭐ **This is per-company data on a real dataset and may be a customer's number.**
-It wants **its own check**, not passage inside §7u. Recorded so it is not carried
-along by a lane that was never scoped to validate it.
+**Established:**
+
+    tenant            u-b756d543b812c8b8 — LIVE AND PAYING
+                      plan business · subscription_status active
+                      live Stripe subscription · EULA accepted
+    activity          dormant since 17 July
+    datasets          8   (ids 8–15)
+    stored runs       27
+    value             size_premium = 0.2 against a corpus range of 0.018–0.03
+    consequence       +20 points on Ke — roughly HALVES enterprise value
+                      stored EV 165.401239 matched the sp=0.20 recompute to 4dp
+
+⭐ **NOTHING WAS EXPORTED, established AFFIRMATIVELY rather than by absence.**
+`ax_report_issues` is a populated export log (report type, format, r2_key,
+filename, issued_by, issued_at) carrying rows for six company_ids across three
+tenants. **Issuance is company-scoped and this tenant holds ZERO enterprise
+rows**, so no report could have been issued against datasets 8–15. This is not
+"no record found, therefore probably nothing".
+
+⭐ **NO PROVENANCE FOR THE WRITE.** `uploaded_at`, `uploaded_by_user_id`,
+`original_filename` and `template_version` are all null — **the provenance law's
+class, on a customer row.** See that law: an unrecorded fact is unrecoverable
+rather than false, so **whether the value is erroneous or intended is
+undetermined and cannot be recovered from the data.**
+
+**Correction and notification are the user's ruling and are NOT taken.** Nothing
+in the record indicates error, and 20% is **implausible rather than impossible** —
+correcting a customer's own assumption on our judgement would be worse than
+leaving a visible wrong number.
+
+**Also established:** the size_premium outlier set and the equity-equals-assets
+fault set are **exactly identical** — `[8,9,10,11,12,13,14,15]`, verified by
+recomputation rather than accepted. Two independent faults on one customer's eight
+datasets created within ~2 hours, consistent with the ingest of a single workbook.
