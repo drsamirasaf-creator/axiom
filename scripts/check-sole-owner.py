@@ -80,6 +80,40 @@ LIBRARY = "services/api/modules/financials/ratios.py"
 # raised this count too. A ratchet set from an uncalibrated counter is a number
 # about the counter.
 #
+# ⭐⭐ 15 -> 17 ON 31 Jul: EXTRACTION VISIBILITY, THE THIRD CATEGORY.
+# The codebase changed, but the change did not ADD a site — it bound an existing
+# sub-expression to a name the counter can see.
+#
+#   TEST: was the arithmetic present, at that same site, computing the same
+#         value, before the edit?  YES -> visibility, raise permitted.
+#                                  NO  -> regression, fix the code.
+#
+# EVIDENCE, both sites, from the Segment C consolidation diff:
+#
+#   intelligence:1569
+#     - net_debt = (BS["short_term_debt"][ys] + BS["long_term_debt"][ys]
+#     -             - BS["cash"][ys])
+#     + _debt = fin._n(lambda a, b: a + b,
+#     +                BS["short_term_debt"][ys], BS["long_term_debt"][ys])
+#     + net_debt = ratios.net_debt(_debt, BS["cash"][ys])
+#
+#   valuation:542
+#     - net_debt = (bs["short_term_debt"][ys] + bs["long_term_debt"][ys]
+#     -             - bs["cash"][ys])
+#     + _debt = fin._n(lambda a, b: a + b,
+#     +                bs["short_term_debt"][ys], bs["long_term_debt"][ys])
+#     + net_debt = ratios.net_debt(_debt, bs["cash"][ys])
+#
+# At both, `std + ltd` was already there as a sub-expression of the net-debt
+# statement. The guard does not descend into a matched node, so it was never
+# counted. Naming it made it visible. Places total debt is formed: unchanged.
+#
+# ⭐ ONE HONEST QUALIFICATION: the extracted form is `fin._n(a + b)`, not raw
+# `a + b`, so on the ABSENCE path it now yields None where the raw form raised.
+# Same value wherever a value existed; a different outcome where none did. The
+# test above says "computing the same value", and that holds — but the
+# qualification belongs on the record, because "identical" would be too strong.
+#
 # ⭐ RAISING A RATCHET IS NORMALLY FORBIDDEN. It is permitted here, once, and
 # only because nothing in the codebase changed — the detector started seeing a
 # site that was always there. Lowering it to 14 to keep the guard quiet would
@@ -143,7 +177,7 @@ ALLOWLIST = {"net_debt": [LIBRARY],
              "total_debt": TOTAL_DEBT_SITES,
              "invested_capital": IC_SITES}
 EXPECTED = {"net_debt": 1, "roic": 1, "eva": 1, "wacc": 1,
-            "total_debt": 15, "invested_capital": 2}
+            "total_debt": 17, "invested_capital": 2}
 
 SCAN_DIRS = ["services/api"]
 SKIP = {"__pycache__"}
@@ -390,6 +424,47 @@ class Finder(ast.NodeVisitor):
         super().generic_visit(node)
 
 
+
+# ⭐⭐ STANDING LAW — A COUNTER THAT FALLS WHEN CODE IMPROVES IS A LOOSENED GUARD,
+# SILENTLY. Observed 31 Jul: rewriting valuation:126 from `a + b` to
+# `fin._n(lambda a, b: a + b, ...)` — a strict improvement, absence now
+# propagates — dropped total-debt 15 -> 14, because the recogniser matched a
+# bare Name `_n` and not the module-qualified `fin._n`. A DOWNWARD-ONLY RATCHET
+# ACCEPTS THAT WITHOUT COMPLAINT: the count went down, which is the direction it
+# is built to welcome. The guard would have been permanently loosened by a
+# correct refactor, and nothing would have said so.
+#
+# So every shape carries a negative control: the SAME arithmetic written in
+# every form the codebase actually uses must yield the SAME count. If a form is
+# added to the codebase that this list does not know, the control is what fails.
+EQUIVALENT_FORMS = {
+    "total_debt": [
+        'x = bs["short_term_debt"][ys] + bs["long_term_debt"][ys]',
+        'x = _n(lambda a, b: a + b, bs["short_term_debt"][ys], bs["long_term_debt"][ys])',
+        'x = fin._n(lambda a, b: a + b, bs["short_term_debt"][ys], bs["long_term_debt"][ys])',
+        'x = _n(lambda a, b: a + b, BS["short_term_debt"].get(ys), BS["long_term_debt"].get(ys))',
+    ],
+    "net_debt": [
+        'x = bs["short_term_debt"][ys] + bs["long_term_debt"][ys] - bs["cash"][ys]',
+        'x = company["_debt_book"] - bs["cash"][ys]',
+        'x = _n(lambda a, b: a - b, debt, cash)',
+        'x = fin._n(lambda a, b: a - b, debt, cash)',
+    ],
+}
+
+
+def form_control():
+    """Every equivalent spelling of a shape must be detected. Returns failures."""
+    bad = []
+    for kind, forms in EQUIVALENT_FORMS.items():
+        fns = SHAPES[kind]
+        for src in forms:
+            tree = ast.parse(src)
+            if not any(any(f(n) for f in fns) for n in ast.walk(tree)):
+                bad.append((kind, src))
+    return bad
+
+
 def main():
     found = {k: [] for k in SHAPES}
     for d in SCAN_DIRS:
@@ -412,6 +487,20 @@ def main():
                         found[k].append((rel, ln, txt))
 
     rc = 0
+
+    # ── equivalent-form control, before any count is believed ───────────────
+    bad_forms = form_control()
+    if bad_forms:
+        print("  ✗ FORM CONTROL FAILED — a spelling this codebase uses is not\n"
+              "    detected, so the count below is an undercount and the ratchet\n"
+              "    would silently loosen:")
+        for kind, src in bad_forms:
+            print(f"      {kind}: {src}")
+        print()
+        rc = 1
+    else:
+        print(f"  ✓ form control: {sum(len(v) for v in EQUIVALENT_FORMS.values())} "
+              f"equivalent spellings all detected\n")
 
     # ── the name collision, asserted rather than skipped ────────────────────
     cpath, cfrag = COLLISION_SITE
