@@ -119,3 +119,41 @@ def wacc_at(*, leverage: float, ke: float, kd_base: float, tax_rate: float,
     we = 1.0 / (1.0 + leverage)
     wd = leverage / (1.0 + leverage)
     return we * ke + wd * kd * (1.0 - tax_rate)
+
+
+def invested_capital(debt: Number, equity: Number, preferred: Number,
+                     minority: Number, cash: Number) -> Number:
+    """Capital employed in the business. Absence propagates.
+
+    ⭐ ROIC'S DENOMINATOR, AND THE REASON `roic 1/1` WAS HONEST ABOUT THE CALL
+    SITE AND MISLEADING ABOUT THE CLAIM. A ratio is one expression over another;
+    ROIC had one numerator and TWO denominators, so its single ownership was a
+    location rather than a state.
+
+    ⭐ MEASURED BEFORE FOLDING — and the two agreed on all 14 stored datasets,
+    to the last decimal. They differed only where no stored dataset goes:
+
+        operand missing     financials:320    intelligence:608
+        preferred_equity    None              TypeError
+        long_term_debt      None              TypeError
+        cash                None              TypeError
+        minority_interest   None              TypeError
+
+    Every operand, not just one. financials formed its terms with _n; the other
+    used plain subscripts.
+
+    ⭐⭐ AND A THIRD OWNER DISAGREES WITH BOTH — THE REGISTRY. It defines
+    invested capital as `total_debt + equity + minority_interest − cash`, with NO
+    preferred equity. Both implementations include it. The code is therefore
+    consistent with itself and inconsistent with its own specification, and this
+    function reproduces THE CODE so that E stays behaviour-preserving. Which of
+    the two is correct is a founder ruling, not a refactor decision: dropping
+    preferred equity would move ROIC for every company that has any.
+
+    Operands are passed in, never fetched. intelligence's caller uses `debt0` —
+    total book debt at the last historical period — which is a legitimate caller
+    choice about which debt it means, not a defect to normalise away.
+    """
+    from .engines import _n
+    return _n(lambda d, e, pe, mi, c: d + e + pe + mi - c,
+              debt, equity, preferred, minority, cash)

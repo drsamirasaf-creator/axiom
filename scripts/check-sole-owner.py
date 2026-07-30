@@ -149,10 +149,7 @@ LIBRARY = "services/api/modules/financials/ratios.py"
 # this number was trusted — `_key_of` could not see through `.get(ys)`, and the
 # equity operand is a local named `equity` at one site and BS["total_equity"] at
 # the other. Uncalibrated, it would have reported 1.
-IC_SITES = [
-    "services/api/modules/financials/engines.py",
-    "services/api/modules/intelligence/engines.py",
-]
+IC_SITES = [LIBRARY]      # consolidated in Segment E
 TOTAL_DEBT_SITES = [
     "services/api/sentinel.py",
     "services/api/modules/valuation/engines.py",
@@ -177,7 +174,7 @@ ALLOWLIST = {"net_debt": [LIBRARY],
              "total_debt": TOTAL_DEBT_SITES,
              "invested_capital": IC_SITES}
 EXPECTED = {"net_debt": 1, "roic": 1, "eva": 1, "wacc": 1,
-            "total_debt": 17, "invested_capital": 2}
+            "total_debt": 17, "invested_capital": 1}
 
 SCAN_DIRS = ["services/api"]
 SKIP = {"__pycache__"}
@@ -342,6 +339,13 @@ def _total_debt_shape(node):
 # named `equity` at the other. Calibration surfaced the second; matching only
 # the first would have counted 1 where there are 2.
 _EQUITY_KEYS = {"total_equity", "equity"}
+# ⭐ THE LIBRARY'S OWN PARAMETERS ARE preferred / minority, NOT
+# preferred_equity / minority_interest. Folding both sites onto it dropped the
+# count to ZERO — the counter could not see the sole owner it had just been
+# given. Third instance of the standing law this era: a counter that falls when
+# code improves reports a fix as a removal, and a ratchet welcomes it.
+_PREF_KEYS = {"preferred_equity", "preferred"}
+_MINO_KEYS = {"minority_interest", "minority"}
 
 
 def _is_equity(n):
@@ -377,7 +381,7 @@ def _ic_shape(node):
             return False
         keys = _chain_keys(sub.left, set())
         return (bool(keys & _EQUITY_KEYS)
-                and bool(keys & {"preferred_equity", "minority_interest"}))
+                and bool(keys & (_PREF_KEYS | _MINO_KEYS)))
 
     if _match(node):
         return True
@@ -389,7 +393,7 @@ def _ic_shape(node):
                 and isinstance(fn.body.op, ast.Sub):
             argkeys = {_key_of(a) for a in node.args[1:]}
             return (bool(argkeys & _EQUITY_KEYS)
-                    and bool(argkeys & {"preferred_equity", "minority_interest"})
+                    and bool(argkeys & (_PREF_KEYS | _MINO_KEYS))
                     and "cash" in argkeys)
     return False
 
@@ -443,6 +447,11 @@ EQUIVALENT_FORMS = {
         'x = _n(lambda a, b: a + b, bs["short_term_debt"][ys], bs["long_term_debt"][ys])',
         'x = fin._n(lambda a, b: a + b, bs["short_term_debt"][ys], bs["long_term_debt"][ys])',
         'x = _n(lambda a, b: a + b, BS["short_term_debt"].get(ys), BS["long_term_debt"].get(ys))',
+    ],
+    "invested_capital": [
+        'ic = debt0 + bs["total_equity"][ys] + bs["preferred_equity"][ys] + bs["minority_interest"][ys] - bs["cash"][ys]',
+        'ic = _n(lambda d,e,pe,mi,c: d+e+pe+mi-c, debt, equity, BS["preferred_equity"].get(ys), BS["minority_interest"].get(ys), cash)',
+        'ic = _n(lambda d,e,pe,mi,c: d+e+pe+mi-c, debt, equity, preferred, minority, cash)',
     ],
     "net_debt": [
         'x = bs["short_term_debt"][ys] + bs["long_term_debt"][ys] - bs["cash"][ys]',

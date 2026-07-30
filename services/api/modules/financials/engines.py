@@ -317,8 +317,9 @@ def derive_series(data: dict) -> dict:
         equity = BS["total_equity"].get(ys)
         cl = _n(lambda a, b: a + b,
                 BS["current_liabilities_ex_debt"].get(ys), BS["short_term_debt"].get(ys))
-        ic = _n(lambda d, e, pe, mi, c: d + e + pe + mi - c, debt, equity,
-                BS["preferred_equity"].get(ys), BS["minority_interest"].get(ys), cash)
+        ic = ratio_lib.invested_capital(
+            debt, equity, BS["preferred_equity"].get(ys),
+            BS["minority_interest"].get(ys), cash)
         nopat = _n(lambda e: e * (1 - T), ebit[i])
         ratios.append({
             "year": y, "year_label": _fmt_period(y, _freq),

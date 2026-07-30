@@ -605,8 +605,17 @@ def dp_optimize(data: dict, horizon: int = 5, terminal_growth: float = 0.025,
     rev0 = data["income_statement"]["revenue"][ys]
     debt0 = bs["short_term_debt"][ys] + bs["long_term_debt"][ys]
     d0 = debt0 / rev0
-    ic = (debt0 + bs["total_equity"][ys] + bs["preferred_equity"][ys]
-          + bs["minority_interest"][ys] - bs["cash"][ys])
+    # ⭐ BEHAVIOUR CHANGE ON THE ABSENCE PATH, same class as valuation:126 in
+    # C.1. This was raw arithmetic on plain subscripts and raised on ANY missing
+    # operand — measured, all four — while financials propagated None from the
+    # identical formula. Identical on every stored dataset; divergent wherever
+    # one goes.
+    #
+    # debt0 stays the caller's choice: total book debt at the last historical
+    # period, unshocked. The library owns the arithmetic, not the operand source.
+    ic = ratios.invested_capital(
+        debt0, bs["total_equity"][ys], bs["preferred_equity"][ys],
+        bs["minority_interest"][ys], bs["cash"][ys])
     kappa = ic / rev0                       # capital intensity
     kd0 = float(company["cost_of_debt"])
     # cost of equity: the certified builder (public CAPM / private build-up)
