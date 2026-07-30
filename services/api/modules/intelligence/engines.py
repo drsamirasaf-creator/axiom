@@ -133,17 +133,30 @@ def assemble_assumptions(analysis: dict) -> dict:
 # ---- 2. Enterprise Health Index v1 (REO distance) ---------------------------
 
 def _kd(kd_base: float, x: float) -> float:
-    return kd_base + 0.01 * max(0.0, x - 1.0) ** 2
+    """Retained as a thin alias — the kink itself now lives in the library."""
+    return ratios.cost_of_debt_at(kd_base, x, ratios.KD_KINKED)
 
 
 def _wacc_curve_point(company: dict, beta_u: float, x: float) -> float:
+    """WACC at an arbitrary leverage, for the capital-structure sweep.
+
+    ⭐ SAME BLEND AS fin.wacc — one implementation now, in ratios.wacc_at. The
+    two differed on ke-source and on kd treatment, and the kd difference meant a
+    levered private company got a different WACC on the Health Index than on the
+    valuation. This caller keeps KINKED, which is what it does today; D-1 changes
+    no number."""
     T = float(company["tax_rate"])
-    ke = (float(company["risk_free_rate"])
-          + beta_u * (1 + (1 - T) * x) * float(company["market_risk_premium"]))
+    premia = 0.0
     if company["ownership"] == "private":
-        ke += float(company["size_premium"]) + float(company["specific_risk_premium"])
-    kd = _kd(float(company["cost_of_debt"]), x)
-    return ke / (1 + x) + kd * (1 - T) * x / (1 + x)
+        premia = (float(company["size_premium"])
+                  + float(company["specific_risk_premium"]))
+    ke = ratios.cost_of_equity_at(
+        ke_source=ratios.KE_RELEVERED, rf=float(company["risk_free_rate"]),
+        mrp=float(company["market_risk_premium"]), leverage=x, tax_rate=T,
+        beta_unlevered=beta_u, premia=premia)
+    return ratios.wacc_at(leverage=x, ke=ke,
+                          kd_base=float(company["cost_of_debt"]),
+                          tax_rate=T, kd_treatment=ratios.KD_KINKED)
 
 
 def health_reo(data: dict) -> dict:

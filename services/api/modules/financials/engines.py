@@ -369,23 +369,47 @@ def wacc(company: dict) -> dict:
     own = company["ownership"]
     if own == "public":
         beta = float(company["beta"])
-        ke = rf + beta * mrp
+        ke = ratio_lib.cost_of_equity_at(
+            ke_source=ratio_lib.KE_OBSERVED, rf=rf, mrp=mrp, beta=beta)
         e = float(company["shares_outstanding"]) * float(company["share_price"])
-        d = float(company.get("_debt_book", 0.0))
+        # ⭐ THE 0.0 DEFAULT IS GONE. `company.get("_debt_book", 0.0)` turned a
+        # MISSING injection into a company with no debt, so a public WACC became
+        # a pure cost of equity and every discounted value moved — silently, and
+        # only for the caller that forgot to inject. That is the fabricated-zero
+        # class: absence must propagate, not be filled in.
+        #
+        # It reads as a regression: a number becomes a dash. The number was
+        # wrong; the dash is the absence being reported.
+        if "_debt_book" not in company or company["_debt_book"] is None:
+            raise KeyError(
+                "company._debt_book is required to weight a public WACC — the "
+                "caller must supply the debt basis (see ratios.net_debt). It "
+                "was previously defaulted to 0.0, which priced the company as "
+                "debt-free.")
+        d = float(company["_debt_book"])
         detail = {"mode": "public", "beta_levered": _r(beta),
                   "equity_value_market": _r(e), "debt_value": _r(d)}
+        leverage = d / e if e else 0.0
     else:
         bu = float(company["unlevered_industry_beta"])
         de = float(company["target_debt_to_equity"])
         beta = bu * (1 + (1 - T) * de)
-        ke = (rf + beta * mrp + float(company["size_premium"])
-              + float(company["specific_risk_premium"]))
+        ke = ratio_lib.cost_of_equity_at(
+            ke_source=ratio_lib.KE_RELEVERED, rf=rf, mrp=mrp, leverage=de,
+            tax_rate=T, beta_unlevered=bu,
+            premia=float(company["size_premium"])
+            + float(company["specific_risk_premium"]))
         e, d = 1.0, de  # weights only
         detail = {"mode": "private", "beta_unlevered": _r(bu),
                   "beta_levered": _r(beta), "target_debt_to_equity": _r(de)}
+        leverage = de
     v = e + d
     we, wd = e / v, d / v
-    w = we * ke + wd * kd * (1 - T)
+    # ⭐ FLAT kd, preserving today's behaviour exactly. The curve uses kinked;
+    # switching this one is D-2, gated on the placeholder constants reaching the
+    # §7u registry.
+    w = ratio_lib.wacc_at(leverage=leverage, ke=ke, kd_base=kd, tax_rate=T,
+                          kd_treatment=ratio_lib.KD_FLAT)
     detail.update({"cost_of_equity": _r(ke), "cost_of_debt_pretax": _r(kd),
                    "cost_of_debt_after_tax": _r(kd * (1 - T)),
                    "weight_equity": _r(we), "weight_debt": _r(wd),

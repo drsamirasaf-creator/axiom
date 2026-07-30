@@ -53,3 +53,69 @@ def net_debt(debt: Number, cash: Number) -> Number:
     # two places, which is the shape this whole library exists to remove.
     from .engines import _n
     return _n(lambda d, c: d - c, debt, cash)
+
+
+# ── cost of capital ─────────────────────────────────────────────────────────
+# ⭐ TWO IMPLEMENTATIONS OF THE SAME BLEND, DIVERGING ON THREE AXES — MEASURED,
+# NOT READ. financials.wacc() and intelligence._wacc_curve_point() were "the same
+# weights written twice" by inspection. Measured (1d4b503):
+#
+#   PUBLIC   D/E 0.25   0.093800 vs 0.103700    +99.0 bp
+#            D/E 1.00   0.075500 vs 0.100250   +247.5 bp
+#   PRIVATE  D/E 0.5    identical                 0.0 bp
+#            D/E 2.0    0.099167 vs 0.104167    +50.0 bp
+#
+# So a levered private company already gets two different WACCs today depending
+# on which surface renders it. The private divergence was not predicted by
+# reading; only the public one was.
+#
+# ⭐ AND THE THIRD AXIS COLLAPSED WHEN BUILT. The brief specified ke-source,
+# weight-basis and kd-treatment. Weight-basis is NOT independent: public weights
+# are e/(e+d) with e = market cap, private are 1/(1+D/E) — and
+# e/(e+d) == 1/(1+d/e). Identical formula; what differs is only what leverage the
+# caller derives. A `weight_basis` parameter would have selected between two
+# spellings of one expression and done nothing — declared-but-unbound, in the
+# function built to end duplication. It is therefore absent, and the leverage
+# argument carries that difference where it actually lives.
+KD_FLAT = "flat"
+KD_KINKED = "kinked"
+KE_OBSERVED = "observed_beta"
+KE_RELEVERED = "relevered_beta_u"
+
+
+def cost_of_debt_at(kd_base: float, leverage: float, kd_treatment: str) -> float:
+    """Cost of debt at a leverage point.
+
+    ⭐ THE KINK'S TWO CONSTANTS ARE UNDOCUMENTED PLACEHOLDERS (10a43cc): neither
+    0.01 nor the D/E 1.0 inflection has an ADR, a Math §, a comment or a registry
+    entry. They arrived in cfb2563, a multi-feature commit not reasoning about
+    cost of debt. Reproduced here EXACTLY so D-1 preserves behaviour; making
+    fin.wacc adopt them is D-2 and is gated on both entering the §7u assumptions
+    registry with visible provenance first.
+    """
+    if kd_treatment == KD_KINKED:
+        return kd_base + 0.01 * max(0.0, leverage - 1.0) ** 2
+    return kd_base
+
+
+def cost_of_equity_at(*, ke_source: str, rf: float, mrp: float,
+                      leverage: float = 0.0, tax_rate: float = 0.0,
+                      beta: float = None, beta_unlevered: float = None,
+                      premia: float = 0.0) -> float:
+    """Ke. `observed_beta` takes the market's beta as given; `relevered_beta_u`
+    relevers an unlevered industry beta at `leverage` (Hamada)."""
+    if ke_source == KE_OBSERVED:
+        return rf + float(beta) * mrp + premia
+    if ke_source == KE_RELEVERED:
+        b = float(beta_unlevered) * (1.0 + (1.0 - tax_rate) * leverage)
+        return rf + b * mrp + premia
+    raise ValueError(f"unknown ke_source {ke_source!r}")
+
+
+def wacc_at(*, leverage: float, ke: float, kd_base: float, tax_rate: float,
+            kd_treatment: str) -> float:
+    """The blend, and the only one. we*ke + wd*kd*(1-T), weights 1/(1+D/E)."""
+    kd = cost_of_debt_at(kd_base, leverage, kd_treatment)
+    we = 1.0 / (1.0 + leverage)
+    wd = leverage / (1.0 + leverage)
+    return we * ke + wd * kd * (1.0 - tax_rate)

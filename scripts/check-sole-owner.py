@@ -170,7 +170,7 @@ ENGINES = "services/api/modules/financials/engines.py"
 ALLOWLIST = {"net_debt": [LIBRARY],
              "roic": [ENGINES],        # -> LIBRARY in Segment E (after IC)
              "eva": [ENGINES],         # -> LIBRARY in Segment E
-             "wacc": [ENGINES],        # -> LIBRARY in Segment D
+             "wacc": [LIBRARY],        # consolidated in D-1
              # total_debt is COUNTED, not consolidated — see
              # _total_debt_shape. Its allowlist is the set of
              # callers legitimately forming the base term.
