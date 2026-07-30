@@ -22,7 +22,15 @@
 # in place. Do not proceed to formula evaluation until the vocabulary is real.
 
 schema_version: 1
-registry_version: "7r.4"   # Segment B: debt-as-argument   # founder rulings 31 Jul; headline set = 14
+registry_version: "7r.5"   # Segment B: debt-as-argument   # founder rulings 31 Jul; headline set = 14
+# 7r.5 — CHAINING RULE RELOCATED, NOT RELAXED. Founder ruling. The
+#   no-ratio-of-ratios prohibition applied to everything and was written in
+#   evaluation.forbidden; it now lives in client_extension.no_ratio_of_ratios,
+#   where it was always meant to apply. Canonical chaining is PERMITTED and
+#   documented in evaluation.canonical_chaining. Ten formulas that carried an
+#   `exception_to_no_ratio_refs` marker no longer need one — the markers are
+#   removed as unnecessary, and NO FORMULA WAS REWRITTEN.
+#
 # 7r.4 — SPECIFICATION CORRECTION, NOT A BEHAVIOUR CHANGE. Founder ruling.
 #   axiom.invested_capital now includes bs.preferred. Segment E measured BOTH
 #   implementations and found preferred equity already present in each: the code
@@ -55,8 +63,35 @@ evaluation:
     - free-text formula entry
     - literal numbers other than 1, 2, 100, 365, 366, 12, 4
     - any token not present in `vocabulary`
-    - any reference to another ratio's OUTPUT (no ratio-of-ratios in v1;
-      chained definitions make provenance unresolvable)
+    # NOTE: "no ratio-of-ratios" lived here and applied to everything. It now
+    # lives under client_extension.no_ratio_of_ratios, because it was never a
+    # statement about arithmetic — see canonical_chaining below.
+
+  canonical_chaining:
+    rule: "PERMITTED for axiom.* ratios. A canonical formula MAY reference
+      another canonical ratio's output."
+    ruling: "FOUNDER RULING, 7r.5. The earlier blanket prohibition collapsed two
+      different risks into one sentence. An arbitrary CLIENT chain is unbounded
+      and unauditable — anyone may compose anything, to any depth, and provenance
+      genuinely becomes unresolvable. A CANONICAL chain is a fixed, hand-audited
+      graph of 79 formulas in one reviewed file. Same syntax, different risk."
+    ⭐_why_not_inlined: "Inlining the ten chained formulas would recreate exactly
+      the duplication five segments were spent removing. `axiom.roic` referencing
+      `axiom.invested_capital` IS what single ownership means: one definition of
+      the capital base, called from everywhere it is needed. Expanding it back
+      into roic's formula would put a second copy of that arithmetic in the file
+      that exists to prevent second copies."
+    ⭐_scan_contract: "The shape scan keys ON the chain, not THROUGH it.
+      `invested_capital` inside `roic` is a CALL, not an expansion. A second ROIC
+      that computes its own denominator inline is precisely the duplicate the
+      scan must catch — and inlining first would make it invisible, because the
+      inlined canonical form and the duplicate would then have the same shape."
+    depth: "Unbounded within axiom.*, because the graph is fixed and reviewable.
+      axiom.eva -> axiom.roic -> axiom.invested_capital is three levels and is
+      correct."
+    provenance: "The §7n-A explainer walks the chain and reports each step's
+      numerator and denominator, so a chained ratio is MORE traceable than an
+      inlined one, not less."
 
   absence:
     rule: "Absence propagates. Never coerced to zero."
@@ -359,7 +394,6 @@ ratios:
       optimization_status must consume this and must not compute its own.
       Previously it read cur['roic'] and, when incomputable, published
       'value-eroding (ROIC < WACC)' from a coerced zero."
-    exception_to_no_ratio_refs: true
     definition: "After-tax operating profit over average invested capital."
 
   - id: axiom.wacc
@@ -403,7 +437,6 @@ ratios:
     unit: percent
     polarity: higher_better
     basis: average
-    exception_to_no_ratio_refs: true
     definition: "The value-creation spread. Positive creates economic value;
       negative erodes it."
     display_rule: "Never state 'value-eroding' unless BOTH terms computed.
@@ -420,7 +453,6 @@ ratios:
     basis: average
     single_owner: true
     exposed_not_headline: true
-    exception_to_no_ratio_refs: true
     owner_note: "FOUNDER RULING. §7n consumes this. engines.py:524 becomes a
       consumer, not a second computation. EVA is EXPOSED but NOT headline —
       it is a currency figure, not a ratio. Exposed so the ROIC-WACC spread
@@ -556,7 +588,6 @@ ratios:
     unit: times
     polarity: lower_better
     basis: point_in_time
-    exception_to_no_ratio_refs: true
     kernel_input: true
     definition: "Net debt as a multiple of EBITDA."
 
@@ -717,7 +748,6 @@ ratios:
     unit: days
     polarity: lower_better
     basis: average
-    exception_to_no_ratio_refs: true
     availability: requires_data
     requires: ["template v9 — other_current_assets split into receivables and inventory"]
     blocked_inputs: "bs.receivables, bs.inventory (via DSO/DIO)"
@@ -918,7 +948,6 @@ ratios:
     unit: times
     polarity: higher_better
     basis: point_in_time
-    exception_to_no_ratio_refs: true
     definition: "Percentage change in EBIT per percentage change in revenue."
 
   # --- 11. COMMON-SIZE (separate surface, not a ratio table) ---------------
@@ -959,7 +988,6 @@ ratios:
     unit: percent
     polarity: higher_better
     basis: average
-    exception_to_no_ratio_refs: true
     definition: "ROE decomposed into margin, turnover, and leverage."
     display_rule: "Must reconcile to axiom.roe. If it does not, show the
       residual rather than hiding it."
@@ -1155,7 +1183,6 @@ ratios:
     basis: point_in_time
     availability: requires_data
     requires: ["market capitalisation"]
-    exception_to_no_ratio_refs: true
     definition: "Enterprise value over EBITDA."
     owner_note: "The valuation surface's editable market multiple consumes
       the same net_debt as this row. One net debt."
@@ -1303,7 +1330,6 @@ ratios:
     unit: percent
     polarity: context
     basis: average
-    exception_to_no_ratio_refs: true
     definition: "Growth financeable from retained earnings without changing
       leverage. Compare against axiom.revenue_growth_yoy — a company growing
       faster than this is consuming balance sheet capacity."
@@ -1375,7 +1401,6 @@ ratios:
     unit: percent
     polarity: higher_better
     basis: point_in_time
-    exception_to_no_ratio_refs: true
     availability: requires_data
     requires: ["SaaS operating metrics"]
     definition: "Growth rate plus margin. Above 40 is the conventional bar."
@@ -1408,6 +1433,23 @@ client_extension:
       stored as client.<eid>.roic. Both render, both badged, neither
       overwrites the other. Per founder collision philosophy: surface the
       conflict for human resolution, do not auto-resolve."
+
+  no_ratio_of_ratios:
+    rule: "A client-defined ratio MAY NOT reference another ratio's output —
+      neither a canonical one nor another client one. Client formulas resolve
+      against `vocabulary` tokens only."
+    ruling: "FOUNDER RULING, 7r.5. This is where the prohibition belongs, and it
+      was previously written under evaluation.forbidden where it applied to
+      everything. ⭐ THE TWO CASES ARE NOT THE SAME RISK. An arbitrary client
+      chain is unbounded and unauditable: any EID may compose any ratio on any
+      other, to any depth, and nobody has read the resulting graph. A canonical
+      chain is a fixed graph of 79 formulas in one hand-audited file. The syntax
+      is identical; the auditability is not, and the rule follows the
+      auditability."
+    consequence: "A client wanting ROIC − WACC states it in tokens, or asks for
+      it canonically. It cannot build a private dependency on axiom.roic that a
+      canonical change would silently alter underneath it."
+    see: "evaluation.canonical_chaining — the permitted case."
 
   single_owner_protection:
     rule: "FOUNDER RULING, extended. optimization_status, §7n EVA, the
