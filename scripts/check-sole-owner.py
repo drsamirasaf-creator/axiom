@@ -70,9 +70,35 @@ COLLISION_EXCLUSIONS = set()   # kept empty: shape matching needs no path skips
 # LIBRARY is where the sole owner will live. It does not exist yet, so the
 # stale-entry check fires too — correctly. Both directions stay honest.
 LIBRARY = "services/api/modules/financials/ratios.py"
+# ⭐ THE BRIEF EXPECTED 3. THERE ARE 14, ACROSS 5 FILES — 10 IN ONE.
+#     intelligence/engines.py   10
+#     financials/engines.py      2   (one is the _n form at :609)
+#     sentinel.py                1   (:145, inside the _debt_book function)
+#     prescience_decision.py     1   (:240, the base term under the debt_scale shock)
+#     valuation/engines.py       1   (:126)
+# Recorded as a RATCHET at the measured truth, not at the expected 3: a guard
+# pinned to a number the codebase never had is permanently red for a reason
+# nobody can action, and gets muted. The number may only go DOWN.
+#
+# The finding this produces is not "16 is wrong" — total debt is a legitimate
+# term to form. It is that intelligence/engines.py re-derives it TEN times by
+# hand, and every one of those is a place net debt can be re-derived tomorrow
+# without touching the library. That is a consolidation lane of its own.
+TOTAL_DEBT_SITES = [
+    "services/api/sentinel.py",
+    "services/api/modules/valuation/engines.py",
+    "services/api/prescience_decision.py",
+    "services/api/modules/financials/engines.py",
+    "services/api/modules/intelligence/engines.py",
+]
 ALLOWLIST = {"net_debt": [LIBRARY], "roic": [LIBRARY],
-             "eva": [LIBRARY], "wacc": [LIBRARY]}
-EXPECTED = {"net_debt": 1, "roic": 1, "eva": 1, "wacc": 1}
+             "eva": [LIBRARY], "wacc": [LIBRARY],
+             # total_debt is COUNTED, not consolidated — see
+             # _total_debt_shape. Its allowlist is the set of
+             # callers legitimately forming the base term.
+             "total_debt": TOTAL_DEBT_SITES}
+EXPECTED = {"net_debt": 1, "roic": 1, "eva": 1, "wacc": 1,
+            "total_debt": 14}
 
 SCAN_DIRS = ["services/api"]
 SKIP = {"__pycache__"}
@@ -186,7 +212,28 @@ def _wacc_shape(node):
             ("1 - " in txt or "1.0 - " in txt))
 
 
+
+def _total_debt_shape(node):
+    """<short_term_debt> + <long_term_debt> — the base term, direct or via _n.
+
+    ⭐ A COUNT, NOT A CONSOLIDATION. Total debt is a legitimate quantity for
+    several callers to form; what must not happen is a FOURTH appearing without
+    anyone noticing, because each one is a place net debt can be re-derived by
+    hand tomorrow."""
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return _is_debt_component(node.left) and _is_debt_component(node.right)
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id == "_n" and len(node.args) == 3):
+        fn = node.args[0]
+        if (isinstance(fn, ast.Lambda) and isinstance(fn.body, ast.BinOp)
+                and isinstance(fn.body.op, ast.Add)):
+            return (_is_debt_component(node.args[1])
+                    and _is_debt_component(node.args[2]))
+    return False
+
+
 SHAPES = {"net_debt": (_net_debt_shape, _n_call_shape),
+          "total_debt": (_total_debt_shape,),
           "roic": (_roic_shape, _roic_n_shape),
           "eva": (_eva_shape,),
           "wacc": (_wacc_shape,)}
@@ -261,7 +308,7 @@ def main():
             print(f"  ✓ name collision intact and unwired: "
                   f"{cpath} keeps its own net_debt\n")
 
-    for kind in ("net_debt", "roic", "eva", "wacc"):
+    for kind in ("net_debt", "total_debt", "roic", "eva", "wacc"):
         hits = found[kind]
         files = sorted({r for r, _l, _t in hits})
         allowed = ALLOWLIST[kind]
