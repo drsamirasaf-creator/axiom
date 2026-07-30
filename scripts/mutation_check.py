@@ -76,8 +76,8 @@ MUTATIONS = [
     ("_dept_cei_map loses its `cycles` binding (the live NameError)", ACC,
      "    cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)\n"
      "                .order_by(AssessmentCycle.opened_at).all())\n"
-     "    latest = resolve_active_cycle(db, company_id)\n    if latest is None:\n        return empty",
-     "    latest = resolve_active_cycle(db, company_id)\n    if latest is None:\n        return empty",
+     "    latest = current_cycle_with_responses(db, company_id)\n    if latest is None:\n        return empty",
+     "    latest = current_cycle_with_responses(db, company_id)\n    if latest is None:\n        return empty",
      f"{READ}::test_dept_cei_map_runs_and_classifies_every_shape"),
 
     ("coverage reverts to keying on the department NAME", ACC,

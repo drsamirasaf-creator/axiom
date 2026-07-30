@@ -5531,7 +5531,9 @@ def _dept_coverage(db, company_id):
     # ⭐ THE CYCLE COMES FROM THE RESOLVER, NOT FROM `newest by id`. This took the
     # newest cycle whatever it contained, so an empty later cycle reported every
     # department at zero while the populated one sat beside it.
-    newest = resolve_active_cycle(db, company_id)
+    # Computes from responses (buckets them by department); reads no
+    # snapshot. Response-gated, not publication-gated.
+    newest = current_cycle_with_responses(db, company_id)
     resp, inv = {}, {}
     unattributed = {"respondents": 0, "invited": 0}
     if newest:
@@ -5641,7 +5643,10 @@ def _dept_cei_map(db, company_id):
     # unconditionally rather than as a by-product of the selection.
     cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
                 .order_by(AssessmentCycle.opened_at).all())
-    latest = resolve_active_cycle(db, company_id)
+    # Computes via _cycle_cei, which never opens cycle.snapshot. Gating this
+    # on a published snapshot is what returned an empty departmental map on
+    # a rebuild while assessment_summary rendered a CEI from the same rows.
+    latest = current_cycle_with_responses(db, company_id)
     if latest is None:
         return empty
     depts_raw = (apply_kfloor(_cycle_cei(db, latest)) or {}).get("departments") or {}
@@ -7165,8 +7170,8 @@ def _briefing_payload(db, ini):
     linked = None
     if ini.linked_item_code:
         from .assessment_engine import score_rag
-        cyc = closed_cycles_with_results(db, ini.company_id)
-        snap = (cyc[-1].snapshot or {}) if cyc else {}
+        cyc = cycle_with_published_results(db, ini.company_id)
+        snap = (cyc.snapshot or {}) if cyc else {}
         d = (snap.get("item_dispersion") or {}).get(ini.linked_item_code)
         sent = (snap.get("item_sentiment") or {}).get(ini.linked_item_code)
         if d or sent:
@@ -9907,9 +9912,8 @@ def assessment_summary(company_id: int, department: int | None = None,
     if fw is None:
         return {"revision": None, "cei": None, "n_participants": 0, "l1_subscores": [],
                 "radar": [], "item_dispersion": {}, "trend": [], "cadence": cadence_block}
-    # Selection lives in resolve_active_cycle — see the note there. The
-    # fall-back to the newest cycle when nothing is closed-with-results keeps
-    # first-run behaviour unchanged.
+    # Selection lives in current_cycle_with_responses — see the note there.
+    # The last-resort below keeps first-run behaviour unchanged.
     # `cycles` is needed unconditionally further down — the trend series numbers
     # every cycle by its position in opened order, including the ones the resolver
     # skipped. Scoping it inside the fallback branch left it unbound on the normal
@@ -9917,8 +9921,17 @@ def assessment_summary(company_id: int, department: int | None = None,
     # the missing import was restored.
     cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
                 .order_by(AssessmentCycle.opened_at).all())
-    latest = resolve_active_cycle(db, company_id)
+    # DECLARED: this surface computes live via _cycle_cei, so it resolves by
+    # RESPONSES. Its payload already carries `current_cycle_closed`, so an
+    # unclosed current cycle is a supported, labelled state rather than a
+    # leak — the fallback below is not a workaround for a missing close.
+    latest = current_cycle_with_responses(db, company_id)
     if latest is None:
+        # ⭐ A DIFFERENT NEED, NAMED SEPARATELY RATHER THAN FOLDED INTO THE
+        # RESOLVER. With no cycle carrying responses there is nothing to
+        # compute, but 'a cycle exists and nobody answered' must still be
+        # distinguishable from 'no cycles at all' — this names the cycle for
+        # the id/label fields only; every derived value below stays absent.
         latest = cycles[-1] if cycles else None
     from .assessment_engine import apply_kfloor, KFLOOR, suppression_block
     current = _cycle_cei(db, latest) if latest else {}
@@ -10126,12 +10139,55 @@ def closed_cycles_with_results(db, company_id: int) -> list:
     return [c for c in cycles if c.closed_at and _cycle_has_results(c)]
 
 
-def resolve_active_cycle(db, company_id: int):
-    """⭐ THE cycle every results surface should read. Latest closed WITH results.
+def cycle_with_published_results(db, company_id: int):
+    """Latest closed cycle carrying a PUBLISHED snapshot. For surfaces that READ
+    `cycle.snapshot` — sentiment, item drill, axis comments, SWOT, the briefing.
 
-    An open or empty cycle can never mask a closed populated one."""
+    ⭐ WAS `resolve_active_cycle`, AND THE OLD NAME ASSERTED TOO MUCH. "The cycle
+    every results surface should read" was taken literally by two surfaces that
+    read no snapshot at all, and it gated their live computation on a stored
+    artefact. See `current_cycle_with_responses` — the questions differ, and they
+    only give the same answer where snapshots happen to exist.
+
+    An open or empty cycle can never mask a closed published one."""
     closed = closed_cycles_with_results(db, company_id)
     return closed[-1] if closed else None
+
+
+def current_cycle_with_responses(db, company_id: int):
+    """The cycle to COMPUTE from. Latest closed cycle with responses; failing
+    that, the newest cycle with responses.
+
+    ⭐ FOR SURFACES THAT DERIVE FROM RESPONSES, NOT FROM A SNAPSHOT. `_cycle_cei`
+    recomputes from the framework, its weights and the responses — it never opens
+    `cycle.snapshot`. Gating that on snapshot presence asks "has this been
+    published?" when the question is "is there anything to compute?".
+
+    The two agree wherever snapshots are written at close, which is everywhere in
+    production, and diverge on any database where responses were restored without
+    them. That is not hypothetical: a rebuilt showcase has 14,430 responses, a
+    computable CEI, and no snapshots — so the summary rendered a CEI while the
+    departmental map returned empty from identical data.
+
+    PRECEDENCE IS PRESERVED, deliberately: closed cycles are considered first, so
+    an open cycle still cannot mask a closed populated one. Only the *test* for
+    "populated" changes — from a stored CEI to the responses themselves.
+
+    Returns None when NO cycle has responses. That is not the same as "no
+    cycles", and a caller that must still name a cycle in that state should say
+    so at its own call site rather than have it folded in here."""
+    cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)
+                .order_by(AssessmentCycle.opened_at).all())
+    if not cycles:
+        return None
+    have = {r[0] for r in db.query(AssessmentResponse.cycle_id)
+            .filter(AssessmentResponse.cycle_id.in_([c.id for c in cycles]))
+            .distinct().all()}
+    closed = [c for c in cycles if c.closed_at and c.id in have]
+    if closed:
+        return closed[-1]
+    any_resp = [c for c in cycles if c.id in have]
+    return any_resp[-1] if any_resp else None
 
 
 def newest_cycle_regardless_of_results(db, company_id: int):
@@ -10231,8 +10287,7 @@ def _department_sentiment_map(db, company_id):
     from .assessment_engine import KFLOOR
     out = {}
     deps = db.query(Department).filter_by(company_id=company_id).all()
-    closed = closed_cycles_with_results(db, company_id)
-    latest = closed[-1] if closed else None
+    latest = cycle_with_published_results(db, company_id)
     if latest is None or not (latest.snapshot or {}).get("sentiment_available"):
         return {d.id: {"score": None, "rag": None, "n": 0, "below_floor": True,
                        "divergence": False} for d in deps}
@@ -11841,8 +11896,7 @@ def assessment_axis_comments(company_id: int, l1_code: str,
         raise HTTPException(422, "The verbatim list narrows on ONE dimension: pass "
                                  "department or seniority, not both. Crossing them "
                                  "identifies the author in a small cell.")
-    closed = closed_cycles_with_results(db, company_id)
-    latest = closed[-1] if closed else None
+    latest = cycle_with_published_results(db, company_id)
     base = {"company_id": company_id, "l1_code": l1_code, "title": None,
             "cycle_id": None, "has_data": False, "comments": [], "items": [],
             "n_participants": 0, "n_comments": 0,

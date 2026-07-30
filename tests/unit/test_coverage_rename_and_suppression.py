@@ -23,7 +23,7 @@ from services.api.accounts import (SessionLocal, Department, AssessmentCycle,
                                    AssessmentResponse, _ensure_department,
                                    _dept_alias_add, _dept_coverage,
                                    _dept_variant_norms, _norm_dept_name,
-                                   resolve_active_cycle, _assess_ensure_framework,
+                                   current_cycle_with_responses, _assess_ensure_framework,
                                    newest_cycle_regardless_of_results)
 from services.api.modules.enterprise_state.models import Enterprise
 from datetime import datetime, timedelta
@@ -170,7 +170,7 @@ def test_coverage_uses_the_resolver_not_the_newest_cycle(_app):
         empty = _cycle(db, ent.id, now - timedelta(days=5), now - timedelta(days=4), cei=None)
 
         assert newest_cycle_regardless_of_results(db, ent.id).id == empty.id
-        assert resolve_active_cycle(db, ent.id).id == good.id, \
+        assert current_cycle_with_responses(db, ent.id).id == good.id, \
             "the resolver picked a cycle with no results"
         cov = _dept_coverage(db, ent.id)
         assert cov["cycle_id"] == good.id

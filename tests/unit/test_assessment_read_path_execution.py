@@ -138,7 +138,7 @@ def world(_app):
         db.add(later); db.commit()
 
         assert (cyc.snapshot or {}).get("cei") is not None, \
-            "the cycle carries no cei — resolve_active_cycle would skip it and " \
+            "the cycle carries no cei — current_cycle_with_responses would skip it and " \
             "every test below would pass by never reaching the body"
         return {"cid": cid, "cycle_id": cyc.id, "fw_id": fw.id,
                 "ops": ops.id, "fin": fin.id, "legal": legal.id,
@@ -153,10 +153,10 @@ def _db():
 
 # ── the read path, one function per test ────────────────────────────────────
 def test_resolver_selects_the_populated_cycle(world):
-    from services.api.accounts import resolve_active_cycle
+    from services.api.accounts import current_cycle_with_responses
     db = _db()
     try:
-        c = resolve_active_cycle(db, world["cid"])
+        c = current_cycle_with_responses(db, world["cid"])
         assert c is not None and c.id == world["cycle_id"]
     finally:
         db.close()
