@@ -1062,6 +1062,19 @@ def parse_and_validate(content: bytes, expected_company_id: int,
             for letter, y, kind in cols_k:
                 v = ws[f"{letter}{r}"].value
                 if v in (None, ""):
+                    # ⭐ THE THIRD REQUIRED-NESS RULE, AND IT WAS MISSED. v8 made
+                    # six balance-sheet rows optional and two sites were taught
+                    # it — engines.validate_dataset and templates.parse_workbook.
+                    # THIS one, on the COMPANY-TEMPLATE path, was not: the path
+                    # customers actually use (accounts.py:2477) would have
+                    # rejected every upload that left the new rows blank, which
+                    # is every existing customer. The migration was only ever
+                    # true for the generic download.
+                    #
+                    # Three copies of one policy in three files. See the
+                    # template-policy enumeration report.
+                    if key in engines.BS_OPTIONAL_KEYS:
+                        continue
                     errors.append({"sheet": name, "cell": f"{letter}{r}",
                                    "message": f"'{lab['lines'][key]}' — value required for period {y}"})
                     continue
