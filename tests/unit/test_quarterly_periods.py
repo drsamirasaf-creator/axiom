@@ -293,7 +293,12 @@ def test_shading_holds_on_the_new_columns():
 
 def test_no_version_gate_was_reintroduced():
     """B4: stamp only — no accept-list, no equivalent under another name."""
-    assert ingest.TEMPLATE_VERSION == "7M-v7.7"
+    # v8.0 (30 Jul): non-current split, opening column, policy tax rate.
+    # ⭐ The literal is pinned ON PURPOSE — a bump must be a deliberate act, not
+    # a side effect. Updating it here is the acknowledgement. What must NEVER
+    # come back is the accept-LIST below: the stamp is forensic metadata and
+    # version is never a precondition for upload (CORE §7.37).
+    assert ingest.TEMPLATE_VERSION == "7M-v8.0"
     assert not hasattr(ingest, "ACCEPTED_TEMPLATE_VERSIONS")
     assert not any("ACCEPTED" in n and "VERSION" in n for n in dir(ingest)), \
         "a version allow-list under another name is still a gate"

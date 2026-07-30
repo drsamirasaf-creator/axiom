@@ -36,7 +36,7 @@ def split_refs(v):
     return out
 
 
-TEMPLATE_VERSION = "7M-v7.7"   # v7.7: per-column row-1 instructions; derived widths
+TEMPLATE_VERSION = "7M-v8.0"   # v8.0: non-current split, opening column, policy tax rate
 # v7.7 is PRESENTATION ONLY — row 1 was already guidance, headers stay on row 2,
 # and no cell the parser reads moved. A v7.6 file parses identically.
 # ⭐ STAMP ONLY. There is no accept-list and no equivalent check under another

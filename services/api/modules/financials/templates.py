@@ -11,6 +11,7 @@ import io
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Protection
 from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.workbook.defined_name import DefinedName
 from openpyxl.utils import get_column_letter
 from . import engines
 
@@ -30,9 +31,15 @@ from . import engines
 # The parser keys on sheet and row labels and never needed the version to work.
 # So the gate is the FAMILY; the version is read out and returned as metadata.
 TEMPLATE_FAMILY = "AXIOM-FIN-TEMPLATE"
-TEMPLATE_VERSION = "v1"
+TEMPLATE_VERSION = "v8"
 TEMPLATE_SIG = f"{TEMPLATE_FAMILY} {TEMPLATE_VERSION}"
-MAX_YEAR_COLS = 20          # up to 10 historical + up to 10 forecast
+# ⭐ 20 COULD NOT EXPRESS THE PLAN THE ENGINE ACCEPTS. engines.MAX_FORECAST_PERIODS
+# is {"annual": 15, "quarterly": 40} and ingest.FORECAST_QUARTERLY is 40, while
+# this download offered ten forecast columns — so a customer who took the generic
+# template literally could not supply a quarterly plan the backend would have
+# read. 56 = 1 opening + 15 historical + 40 forecast, which covers the widest
+# case with no second limit to keep in sync.
+MAX_YEAR_COLS = 56
 FIRST_YEAR_COL = 2          # column B
 
 LABELS = {
@@ -158,7 +165,13 @@ def build_template(standard: str) -> bytes:
         "1. Fill the Company sheet, then the three statement sheets.",
         "2. Enter years across row 4 of each statement sheet and mark each",
         "   column Historical or Forecast in row 3. At least one historical",
-        "   year is required; forecast years are optional (up to 10).",
+        "   year is required; forecast years are optional (up to 40 quarters",
+        "   or 15 years).",
+        "2b. BALANCE SHEET ONLY: one column may be marked Opening — the balance",
+        "   carried into your first historical period. It lets AXIOM average",
+        "   opening and closing capital for that period instead of falling back",
+        "   to the opening balance alone. Optional; leave it out and AXIOM says",
+        "   on the surface which basis it used.",
         "3. Only the highlighted cells accept input; all labels are locked.",
         "4. Enter rates as decimals (7% = 0.07). Amounts in one currency unit",
         "   (e.g. millions) used consistently throughout.",
@@ -171,6 +184,35 @@ def build_template(standard: str) -> bytes:
     ws.protection.sheet = True
     ws.protection.password = _LOCK_PWD
 
+    # ⭐ DROPDOWNS COME FROM DEFINED NAMES, NOT INLINE STRING LISTS. Standing
+    # Excel rule. An inline `formula1='"Historical,Forecast"'` is capped near 255
+    # characters and is invisible to anyone auditing the workbook; a named range
+    # is inspectable and editable in one place.
+    #
+    # ⭐ AND THE LIST SHEET IS VISIBLE, DELIBERATELY. CORE §7.36/§7.37: the
+    # participant template stamped its version as a workbook-global defined name
+    # pointing at a HIDDEN sheet, and Excel and Google Sheets both re-scope or
+    # drop those — the stamp vanished in the customer's editor and legitimate
+    # files were rejected. Defined names are used here for the dropdown lists
+    # only, never as a stamp, and the sheet they point at is not hidden.
+    lw = wb.create_sheet("Lists")
+    _style_header(lw["A1"], "Ownership")
+    _style_header(lw["B1"], "Period Type")
+    _style_header(lw["C1"], "Period Type (Balance Sheet)")
+    for i, v in enumerate(("public", "private"), start=2):
+        lw[f"A{i}"] = v
+    for i, v in enumerate(("Historical", "Forecast"), start=2):
+        lw[f"B{i}"] = v
+    for i, v in enumerate(("Opening", "Historical", "Forecast"), start=2):
+        lw[f"C{i}"] = v
+    for col, w in (("A", 18), ("B", 18), ("C", 28)):
+        lw.column_dimensions[col].width = w
+    wb.defined_names.add(DefinedName("OWNERSHIP", attr_text="Lists!$A$2:$A$3"))
+    wb.defined_names.add(DefinedName("PERIODTYPE", attr_text="Lists!$B$2:$B$3"))
+    wb.defined_names.add(DefinedName("PERIODTYPE_BS", attr_text="Lists!$C$2:$C$4"))
+    lw.protection.sheet = True
+    lw.protection.password = _LOCK_PWD
+
     ws = wb.create_sheet("Company")
     _style_header(ws["A1"], "Company Profile")
     _style_header(ws["B1"], "Value")
@@ -178,8 +220,7 @@ def build_template(standard: str) -> bytes:
         ws[f"A{r}"] = label
         _input_cell(ws[f"B{r}"], numeric=(field not in
                                           ("name", "ownership", "currency")))
-    dv = DataValidation(type="list", formula1='"public,private"',
-                        allow_blank=False)
+    dv = DataValidation(type="list", formula1="=OWNERSHIP", allow_blank=False)
     ws.add_data_validation(dv)
     dv.add(ws["B3"])   # ownership row
     ws.column_dimensions["A"].width = 52
@@ -190,10 +231,20 @@ def build_template(standard: str) -> bytes:
     for block, keys in BLOCK_KEYS.items():
         ws = wb.create_sheet(lab["sheets"][block])
         _style_header(ws["A1"], lab["sheets"][block])
-        ws["A3"] = "Period Type (Historical / Forecast)"
+        # ⭐ THE OPENING COLUMN IS BALANCE-SHEET ONLY. Income statement and cash
+        # flow are FLOW statements — an opening column there is meaningless and
+        # would invite garbage. On the balance sheet it is what makes rule 3's
+        # average basis (opening + closing)/2 computable for the earliest
+        # period; without it year one falls back to BOP on every dataset
+        # forever, and the "computed on BOP" label becomes permanent furniture
+        # rather than a signal.
+        is_bs = block == "balance_sheet"
+        ws["A3"] = ("Period Type (Opening / Historical / Forecast)" if is_bs
+                    else "Period Type (Historical / Forecast)")
         ws["A4"] = "Year"
         ws["A3"].font = ws["A4"].font = Font(bold=True)
-        dv = DataValidation(type="list", formula1='"Historical,Forecast"',
+        dv = DataValidation(type="list",
+                            formula1="=PERIODTYPE_BS" if is_bs else "=PERIODTYPE",
                             allow_blank=True)
         ws.add_data_validation(dv)
         for c in range(FIRST_YEAR_COL, FIRST_YEAR_COL + MAX_YEAR_COLS):
@@ -255,7 +306,7 @@ def parse_workbook(content: bytes) -> tuple[dict | None, list]:
 
     # Read year headers/types from the income statement sheet, then require
     # the other sheets to match them exactly.
-    def read_columns(ws):
+    def read_columns(ws, allow_opening=False):
         cols = []
         for c in range(FIRST_YEAR_COL, FIRST_YEAR_COL + MAX_YEAR_COLS):
             col = get_column_letter(c)
@@ -269,24 +320,35 @@ def parse_workbook(content: bytes) -> tuple[dict | None, list]:
                                "error": "year must be an integer"})
                 continue
             kind = (str(k or "")).strip().lower()
-            if kind not in ("historical", "forecast"):
+            allowed = (("opening", "historical", "forecast") if allow_opening
+                       else ("historical", "forecast"))
+            if kind not in allowed:
                 errors.append({"cell": f"{ws.title}!{col}3",
-                               "error": "mark the column Historical or Forecast"})
+                               "error": ("mark the column Opening, Historical or "
+                                         "Forecast" if allow_opening else
+                                         "mark the column Historical or Forecast")})
                 continue
             cols.append((col, y, kind))
         return cols
 
-    blocks, ref_cols = {}, None
+    blocks, ref_cols, bs_cols = {}, None, None
     for block, keys in BLOCK_KEYS.items():
         name = lab["sheets"][block]
         if name not in wb.sheetnames:
             errors.append({"cell": None, "error": f"missing sheet '{name}'"})
             continue
         ws = wb[name]
-        cols = read_columns(ws)
+        cols = read_columns(ws, allow_opening=(block == "balance_sheet"))
+        # ⭐ THE OPENING COLUMN IS EXCLUDED FROM THE CROSS-SHEET MATCH. Every
+        # sheet must agree on the reporting periods; the balance sheet carries
+        # one extra column that the flow statements cannot have, and comparing
+        # it against them would reject every correctly-filled v8 workbook.
+        cmp_cols = [(y, k) for _, y, k in cols if k != "opening"]
+        if block == "balance_sheet":
+            bs_cols = cols
         if ref_cols is None:
             ref_cols = cols
-        elif [(y, k) for _, y, k in cols] != [(y, k) for _, y, k in ref_cols]:
+        elif cmp_cols != [(y, k) for _, y, k in ref_cols if k != "opening"]:
             errors.append({"cell": f"{name}!B3",
                            "error": "year columns must match the "
                                     f"'{lab['sheets']['income_statement']}' sheet"})
@@ -328,8 +390,43 @@ def parse_workbook(content: bytes) -> tuple[dict | None, list]:
         return None, errors
     hist = sorted(y for _, y, k in ref_cols if k == "historical")
     fcst = sorted(y for _, y, k in ref_cols if k == "forecast")
+
+    # ⭐ THE OPENING PERIOD IS NOT A REPORTING PERIOD. It goes in its own slot,
+    # never into periods.historical — it is the balance carried INTO the first
+    # period, not a period the company reported. Folding it into the historical
+    # list would put a year in the series that has no income statement and no
+    # cash flow, and every consumer that zips the three blocks would silently
+    # misalign by one.
+    opening_year = None
+    for _c, y, k in (bs_cols or []):
+        if k == "opening":
+            opening_year = y
+    periods = {"historical": hist, "forecast": fcst}
+    if opening_year is not None:
+        periods["opening"] = opening_year
+
+    # ⭐ noncurrent_assets IS DERIVED FROM ITS COMPONENTS, AND ABSENCE
+    # PROPAGATES. v8 splits the aggregate; the total stays in the data model
+    # because eight consumers read it. If any component is absent the total is
+    # absent — a partial sum presented as a total is a fabricated balance sheet,
+    # and it would foot against nothing.
+    #
+    # A pre-v8 workbook supplies no components and its own entered total is left
+    # exactly as it is.
+    bs = blocks.get("balance_sheet") or {}
+    comps = [bs.get(k) or {} for k in engines.BS_NONCURRENT_COMPONENTS]
+    if any(comps):
+        derived_nca = {}
+        for y in {yy for c in comps for yy in c}:
+            vals = [c.get(y) for c in comps]
+            derived_nca[y] = (None if any(v is None for v in vals)
+                              else round(sum(vals), 6))
+        bs["noncurrent_assets"] = {**(bs.get("noncurrent_assets") or {}),
+                                   **{y: v for y, v in derived_nca.items()
+                                      if v is not None}}
+
     dataset = {"company": company,
-               "periods": {"historical": hist, "forecast": fcst},
+               "periods": periods,
                **blocks}
     v = engines.validate_dataset(dataset)
     errors = [{"cell": None, "error": e} for e in v["errors"]]
