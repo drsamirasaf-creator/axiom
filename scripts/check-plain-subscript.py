@@ -63,7 +63,23 @@ ARITH = (ast.Add, ast.Sub, ast.Mult, ast.Div)
 # ⭐ FOUND BY TRACING A RAISE THE GUARD SAID COULD NOT EXIST — engines.py:502
 # still raised after the module was reported converted. A guard is only as good
 # as the last thing that contradicted it.
-EXPECTED_TOTAL = 69
+EXPECTED_TOTAL = 97
+# ⭐ RAISED 69 -> 97 ON 30 Jul, AND THE RAISE IS A COUNTER CORRECTION WITH THE
+# CODEBASE UNCHANGED — the permitted category, not a new defect. Modelling the
+# LOCAL-BINDING HOP (`pref = bs["preferred_equity"][ys]` then `ev - pref - mino`,
+# valuation:146) revealed 28 sites the counter could not see. No application code
+# was touched between the two measurements.
+#
+# ⭐ THE FIFTH TIME THIS COUNTER WAS WRONG, AND THE FIFTH TIME IT WAS WRONG IN
+# THE DIRECTION THAT HIDES WORK: ~195 -> 36 -> 29 -> 69 -> 97. Every advance made
+# without first widening the counter measured the scanner instead of the code.
+#
+# Per-module effect of the widening:
+#     intelligence/engines.py   24 -> 33      valuation/engines.py    3 -> 12
+#     financials/proforma.py    17 -> 24      sentinel.py             1 ->  3
+#     financials/engines.py     11 -> 11      prescience_decision.py  1 ->  2
+# financials/engines.py is UNCHANGED, so the mid-module segment's remaining
+# figure of 11 survives the recalibration.
 
 # Modules whose output reaches a surface a customer sees. A delta here is
 # customer-visible; elsewhere it is internal or batch.
@@ -78,6 +94,14 @@ RENDERED = {
     "services/api/report_pdf.py",
     "services/api/forecast_studio.py",
 }
+
+
+def _subscript_depth(node):
+    d = 0
+    while isinstance(node, ast.Subscript):
+        d += 1
+        node = node.value
+    return d, node
 
 
 def _block_rooted(node, blocks):
@@ -119,10 +143,13 @@ class Scan(ast.NodeVisitor):
         self.fn = "<module>"
         self._err_lists = set()   # names built by .append() in this function
         self._guarded = 0         # depth inside `if not <err_list>:`
+        self._tainted = set()     # locals holding a plain-subscript VALUE
 
     def visit_FunctionDef(self, n):
         p, self.fn = self.fn, n.name
         prev_lists, prev_g = set(self._err_lists), self._guarded
+        prev_taint = set(self._tainted)
+        self._tainted = set()
         self._guarded = 0
         # names this function appends to — the validator's error accumulator
         self._err_lists = {
@@ -132,6 +159,7 @@ class Scan(ast.NodeVisitor):
             and c.func.attr == "append" and isinstance(c.func.value, ast.Name)}
         self.generic_visit(n)
         self.fn, self._err_lists, self._guarded = p, prev_lists, prev_g
+        self._tainted = prev_taint
 
     def visit_If(self, n):
         t = n.test
@@ -173,12 +201,36 @@ class Scan(ast.NodeVisitor):
                 k = val.slice
                 if isinstance(k, ast.Constant) and k.value in BLOCKS:
                     self.blocks.add(name.id)
+
+        # ⭐ THE LOCAL-BINDING HOP, AND ITS ABSENCE MADE 69 A FLOOR.
+        #     pref = bs["preferred_equity"][ys]
+        #     mino = bs["minority_interest"][ys]
+        #     equity = ev - net_debt - pref - mino          valuation:146
+        # Every operand is a plain subscript and the arithmetic is identical to
+        # the modelled form; only the BINDING differs. Matching the inline shape
+        # and not this one counts the way a defect is SPELLED rather than what it
+        # is — the same error as counting by identifier.
+        #
+        # Depth >= 2 so a BLOCK binding (`bs = data["balance_sheet"]`) is never
+        # mistaken for a VALUE, and `.get()` still breaks the chain, so an
+        # absence-safe local is not tainted.
+        for t in n.targets:
+            tgts = (t.elts if isinstance(t, (ast.Tuple, ast.List)) else [t])
+            vs = (n.value.elts if isinstance(n.value, (ast.Tuple, ast.List))
+                  and len(n.value.elts) == len(tgts) else [n.value] * len(tgts))
+            for name, val in zip(tgts, vs):
+                if not isinstance(name, ast.Name):
+                    continue
+                depth, _root = _subscript_depth(val)
+                if depth >= 2 and _block_rooted(val, self.blocks) and not self._guarded:
+                    self._tainted.add(name.id)
         self.generic_visit(n)
 
     def visit_BinOp(self, n):
         if isinstance(n.op, ARITH) and not self._guarded:
             for side in (n.left, n.right):
-                if _block_rooted(side, self.blocks):
+                if (_block_rooted(side, self.blocks)
+                        or (isinstance(side, ast.Name) and side.id in self._tainted)):
                     self.hits.append((n.lineno, self.fn, ast.unparse(n)[:58]))
                     break
         self.generic_visit(n)
@@ -203,8 +255,27 @@ POSITIVE = [
     ("⭐ TUPLE-UNPACKED blocks — the common binding form",
      'IS, BS, CF = data["income_statement"], data["balance_sheet"], data["cash_flow"]\n'
      'x = BS["other_current_assets"][str(y)] - BS["current_liabilities_ex_debt"][str(y)]'),
+    ("⭐ LOCAL-BINDING HOP — valuation:146, the fifth correction",
+     'bs = data["balance_sheet"]\n'
+     'pref = bs["preferred_equity"][ys]\n'
+     'mino = bs["minority_interest"][ys]\n'
+     'equity = ev - pref - mino'),
 ]
 NEGATIVE = [
+    ("a local bound from .get() is absence-safe, not tainted",
+     'bs = data["balance_sheet"]\n'
+     'pref = bs["preferred_equity"].get(ys)\n'
+     'x = ev - pref'),
+    ("a BLOCK binding is not a tainted VALUE",
+     'bs = data["balance_sheet"]\nx = ev - 1'),
+    ("a tainted local inside `if not errors:` is proven present",
+     'def f(data, ys, ev):\n'
+     '    errors = []\n'
+     '    errors.append("x")\n'
+     '    if not errors:\n'
+     '        bs = data["balance_sheet"]\n'
+     '        pref = bs["preferred_equity"][ys]\n'
+     '        return ev - pref'),
     ("arithmetic inside `if not errors:` — operands proven present",
      'def f(data, years):\n'
      '    errors = []\n'
