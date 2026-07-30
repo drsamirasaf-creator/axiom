@@ -119,6 +119,12 @@ jobs:
       # refuse, and it does not repair.
       - name: assumption bounds sweep
         run: python scripts/check-assumption-bounds.py
+      # section 7u coverage guard. Scans the CODE for constants reaching a
+      # rendered figure and fails when one has no registry entry — a registry
+      # listing forty constants and a guard confirming forty entries exist print
+      # the same tick. Carries a known-positive control on every invocation.
+      - name: assumption registry coverage
+        run: python scripts/check-assumption-registry.py
       - run: pytest -q
       # Proves the tests guarding the assessment read path are not vacuous, by
       # reintroducing a plausible defect per test and requiring each to fail.
