@@ -3508,11 +3508,62 @@ def _dept_variant_norms(db, company_id: int, dep) -> set[str]:
     through it, so one addition reaches all of them."""
     norms = {_norm_dept_name(n) for n in _dept_name_variants(db, company_id, dep)}
     if dep is not None:
-        self_norm = _norm_dept_name(dep.name)
-        for short, canonical in CANONICAL_DEPT_RENAMES.items():
-            if _norm_dept_name(canonical) == self_norm:
-                norms.add(_norm_dept_name(short))
+        norms |= _rename_map_norms(dep.name)
     return norms
+
+
+def _rename_map_norms(name: str) -> set[str]:
+    """Every normalised spelling `name` is equivalent to under CANONICAL_DEPT_RENAMES.
+
+    ⭐ PRECEDENCE, STATED: the alias table and the rename map are both consulted
+    and the result is their UNION — neither overrides the other, because they
+    answer different questions. An alias row is a fact about THIS company ("this
+    department was once called X"). The map is a platform-wide equivalence ("the
+    short form 'finance' means 'Finance and Accounting' anywhere"). A name that
+    resolves through both resolves to the same department either way, so there is
+    no conflict to break; a name that resolves through only one must still
+    resolve. Union is the only combination that loses nothing.
+
+    BIDIRECTIONAL ON PURPOSE. The map is written short -> canonical, but a
+    department may be named with EITHER, so both directions are expanded: a
+    department called "Finance and Accounting" answers to "finance", and a
+    department called "Finance" answers to "Finance and Accounting". Only
+    expanding the documented direction would leave the second case broken in a
+    way that looks identical to the first from the outside.
+
+    Takes a bare string, not a Department, so the demo seeder — which has names
+    and no rows — can use the same equivalence as the read paths.
+    """
+    n = _norm_dept_name(name)
+    out = {n}
+    for short, canonical in CANONICAL_DEPT_RENAMES.items():
+        s, c = _norm_dept_name(short), _norm_dept_name(canonical)
+        if n == c:
+            out.add(s)
+        if n == s:
+            out.add(c)
+    return out
+
+
+def _pick_cross_slice(db, company_id: int, dep, cross: dict, sen_band):
+    """A department×seniority cell out of a `cross` map, alias- and map-resolved.
+
+    ⭐ THE CROSS KEY SPACE IS RAW AND CASE-SENSITIVE. `_cross_key()` builds keys
+    from the department string exactly as it sits on the response, so a
+    normalised name cannot be looked up directly — passing lowercase norms into
+    this map misses every department stored with capitals, silently and for every
+    caller. Both sides are normalised here instead, which is why this function
+    exists rather than a set swap at the two call sites.
+    """
+    from .assessment_engine import _CROSS_SEP
+    if dep is None or not cross or not sen_band:
+        return None
+    want = _dept_variant_norms(db, company_id, dep)
+    for k, v in cross.items():
+        d, _, s = k.partition(_CROSS_SEP)
+        if s == sen_band and _norm_dept_name(d) in want:
+            return v
+    return None
 
 
 def _pick_dept_slice(db, company_id: int, dep, departments: dict):
@@ -4970,7 +5021,15 @@ def seed_assessment_comments(company_id: int, body: SeedCommentsIn,
             rng = random.Random(f"{cyc.id}|{dept}|{axis}")
             rows = (db.query(AssessmentResponse)
                     .filter(AssessmentResponse.cycle_id == cyc.id,
-                            AssessmentResponse.department == dept,
+                            # ⭐ WAS A RAW `==` AGAINST A HARDCODED PRE-CANONICAL
+                            # SPELLING. It matched only because the demo cycle
+                            # happens to store short forms; correct the demo's
+                            # department names — which is a queued backlog item —
+                            # and this seeds ZERO comments and reports success.
+                            # A live assertion pointed at a spelling. Now the same
+                            # equivalence every read path uses.
+                            func.lower(func.trim(AssessmentResponse.department))
+                            .in_(sorted(_rename_map_norms(dept))),
                             AssessmentResponse.item_id.in_(items))
                     .order_by(AssessmentResponse.participant_ref,
                               AssessmentResponse.item_id).all())
@@ -10034,11 +10093,9 @@ def assessment_summary(company_id: int, department: int | None = None,
             "seniority_slice": ((safe.get("seniorities", {}) or {}).get(_sen_band)
                                 if _sen_band else None),
             # dept×seniority cell, alias-resolved on the department half.
-            "intersection_slice": (next(
-                (( safe.get("cross", {}) or {})[k] for k in
-                 (_x_cross_key(v, _sen_band)
-                  for v in _dept_name_variants(db, company_id, _dept_obj))
-                 if k in (safe.get("cross", {}) or {})), None)
+            "intersection_slice": (
+                _pick_cross_slice(db, company_id, _dept_obj,
+                                  safe.get("cross", {}) or {}, _sen_band)
                 if (_dept_name and _sen_band) else None),
             "abstention_rates": safe.get("abstention_rates", {"item": {}, "axis": {}}),
             "no_signal_items": safe.get("no_signal_items", []),
@@ -10311,7 +10368,7 @@ def assessment_sentiment(company_id: int, department: int | None = None,
     # all; slice_counts are what the n column displays.
     cohort_counts, _cohort_total = _axis_comment_counts(db, latest)
     slice_counts, total = (_axis_comment_counts(db, latest,
-                           _dept_name_variants(db, company_id, _dept_obj) if _dept else None, _sen)
+                           _dept_variant_norms(db, company_id, _dept_obj) if _dept else None, _sen)
                            if sliced else (cohort_counts, _cohort_total))
 
     if sliced and total < KFLOOR:
@@ -10640,10 +10697,7 @@ def assessment_swot(company_id: int, department: int | None = None,
             # The cross map is keyed dept×seniority using the name on the
             # response, so try every name this department has answered to.
             cross = safe.get("cross") or {}
-            slice_agg = next(
-                (cross[k] for k in
-                 (_cross_key(v, _sen_band) for v in _dept_name_variants(db, company_id, _dept_obj))
-                 if k in cross), None)
+            slice_agg = _pick_cross_slice(db, company_id, _dept_obj, cross, _sen_band)
         elif _sen_band:
             slice_agg = (safe.get("seniorities") or {}).get(_sen_band)
         else:
@@ -11809,7 +11863,7 @@ def assessment_axis_comments(company_id: int, l1_code: str,
 
     q = db.query(AssessmentResponse).filter_by(cycle_id=latest.id)
     if _dept:
-        names = [n.strip().lower() for n in _dept_name_variants(db, company_id, _dept_obj)]
+        names = sorted(_dept_variant_norms(db, company_id, _dept_obj))
         q = q.filter(func.lower(func.trim(AssessmentResponse.department)).in_(names))
     if _sen is not None:
         q = q.filter(AssessmentResponse.seniority == _sen)
