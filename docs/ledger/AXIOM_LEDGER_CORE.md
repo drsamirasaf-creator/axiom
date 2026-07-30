@@ -7276,21 +7276,80 @@ with a **parametrised negative control** on the corpus-typical `0.018 / 0.02 /
 0.03`. A guard whose only proof is a fabricated case proves it **can** fire, not
 that it fires on the thing it exists for.
 
-### OPEN — the dual defaults (awaiting ruling)
+### ⭐ RULED — the divergent defaults: SEVEN, not three (30 Jul)
 
-    K0               4.0  and 10.0
-    sigma            0.2  and 0.5
-    revenue_growth   0.0  and 0.03
-    T                5.0  and 12
-    mu               0.08 and 2.0
-    a                0.9  and 3.0
+**Six are OVERLOADED NAMES** — unrelated quantities that collided on short
+identifiers. **Six distinct registry keys.**
 
-⭐ **Each key is EITHER one assumption whose call sites disagree — in which case
-one call site is currently WRONG and the registry surfaces a live defect — OR two
-assumptions sharing a name, needing distinct keys.**
+| key | the two meanings | measured on swap |
+|---|---|---|
+| `K0` | base of a concave payoff family · initial state of a recurrence | the optimal decision **flips**, `m_star` 1 → 0 |
+| `mu` | a margin **multiple** · an annual **drift** | 25× and **~14,800×** |
+| `sigma` | sd of a multiple · annualised **volatility** | median 134.99 → 79.85 |
+| `T` | **float years** · **int steps** bounded 1..200 | the *type* is the evidence |
+| `a` | payoff coefficient · **persistence** coefficient | `a=3.0` explodes to 2,551 by step 6 — `a<1` is a stability condition |
+| `revenue_growth` | a **level** · a **shift** | see the reachability note below |
 
-**Not rulable without knowing what each governs.** ⭐ **A call-site listing is
-required before the user rules.**
+⭐ **THE REGISTRY CARRIES THE MEANING OF EACH KEY, NOT ONLY ITS VALUE** — or the
+next reader recreates the collision. A registry of numbers is how these names
+became ambiguous in the first place.
+
+### `tol` is the exception — ONE key
+
+Both sites genuinely mean **convergence tolerance**. One key.
+
+⭐ **Caveat recorded against it:** the two sites have **different convergence
+characteristics** — 85 sweeps against 84 on an **identical converged answer**. So
+a global widening justified by one fast-converging problem **could diverge in
+ANSWER rather than in effort alone** on a slower one. The caveat travels with the
+key.
+
+### ⭐ NO CALL SITE IS WRONG
+
+**The registry surfaces overloaded names, not defects. Nothing shipped
+incorrect.** Worth stating because the open item allowed the other reading, and a
+reader finding seven divergences could reasonably assume seven bugs.
+
+### ⭐ `revenue_growth` — a LIVE FUTURE RISK, not a closed one
+
+The `0.03` fallback is **unreachable today**: 0 of 36 datasets have ≤1 historical
+period, so the branch never fires.
+
+⭐ **Unreachable today is not unreachable.** **§7p's greenfield path produces
+exactly that shape** — a company with no history — at which point a fallback
+asserting **3% growth** sits beside a sibling default meaning **"leave it
+alone"**, and the system **silently fabricates a growth assumption** for a company
+that supplied none.
+
+**FLAGGED: the `0.03` site needs its own review before §7p ships.**
+
+## ⭐ STANDING INSTRUCTION — ENUMERATION DISPATCHES DERIVE INDEPENDENTLY (30 Jul)
+
+`tol` appeared in **neither the dispatch's list of three nor CORE's list of six**.
+It was found only because the scan was derived from the code rather than taken
+from either list.
+
+**Second occurrence this era** of an independent derivation finding what a
+supplied list missed — the first was the multi-period surface survey, which
+returned `initiative_history` and the valuation `/runs` listing.
+
+⭐ **An enumeration dispatch derives independently by default. A supplied list is
+a starting point and NEVER the scope.**
+
+## ⭐ INSTRUMENT ERROR, SELF-CAUGHT — FOURTH IN SIX LANES (30 Jul)
+
+Three of the seven keys **first reported as identical**. The cause was **the
+report's own output truncation**, not the code. Full structural comparison then
+showed `sigma` / `chance_constraint` differing at **`i_required` 6.332363 against
+5.459482**.
+
+⭐ **Reading a summary is not measuring — including one's own summary.** The
+formatter was the instrument, and it was wrong in the direction that reports
+agreement.
+
+**Fourth self-caught instrument error in six lanes.** The others: a wrong response
+key, a signature mismatch, and a harness passing raw `ds.data` where the router
+applies `_data_for_mode`.
 
 ## §7r — THE kd KINK IS A SOLE-OWNERSHIP FINDING, NOT A CONFIG ONE (30 Jul)
 
