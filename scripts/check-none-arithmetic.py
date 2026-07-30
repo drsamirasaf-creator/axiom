@@ -387,11 +387,34 @@ class Scan(ast.NodeVisitor):
         # `if x is None: continue/return` protects everything after it
         neg = set()
         t = node.test
-        if isinstance(t, ast.Compare) and len(t.ops) == 1 and isinstance(t.ops[0], ast.Is) \
-                and isinstance(t.comparators[0], ast.Constant) \
-                and t.comparators[0].value is None and isinstance(t.left, ast.Name) \
-                and any(isinstance(b, (ast.Continue, ast.Return, ast.Raise)) for b in node.body):
-            neg.add(t.left.id)
+        bails = any(isinstance(b, (ast.Continue, ast.Return, ast.Raise))
+                    for b in node.body)
+
+        def _is_none_names(x):
+            """Names proven non-None AFTER `if <x> is None: bail`.
+
+            ⭐ THE DISJUNCTIVE FORM WAS NOT MODELLED, AND IT FLAGGED A GUARD THIS
+            VERY LANE HAD JUST WRITTEN. `if f is None or a is None: continue` is
+            the natural way to guard a pair, and the checker saw only the
+            single-name shape — so `a - f` three lines later came back as an
+            unguarded site. A checker that flags the correct fix teaches people
+            to write the incorrect one, or to stop reading it.
+            """
+            if isinstance(x, ast.Compare) and len(x.ops) == 1 \
+                    and isinstance(x.ops[0], ast.Is) \
+                    and isinstance(x.comparators[0], ast.Constant) \
+                    and x.comparators[0].value is None \
+                    and isinstance(x.left, ast.Name):
+                return {x.left.id}
+            if isinstance(x, ast.BoolOp) and isinstance(x.op, ast.Or):
+                out = set()
+                for v in x.values:
+                    out |= _is_none_names(v)
+                return out
+            return set()
+
+        if bails:
+            neg |= _is_none_names(t)
         saved = set(self.risky)
         self.risky -= self._guarded_names(node.test)      # inside the true branch
         for b in node.body:
