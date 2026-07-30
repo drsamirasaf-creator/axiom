@@ -130,6 +130,73 @@ def _backfill_showcase_names(db):
         logging.getLogger("axiom.seed").exception("name backfill failed")
 
 
+# (direct-dataset name prefix, clean name, short mark, bg, fg) — shared by the
+# company seeder and the logo backfill so the two can never disagree on which
+# companies exist or what they are called.
+SHOWCASE_SPECS = [
+    ("Meridian Industries", "Meridian Industries, Inc.", "MERIDIAN", "#12233A", "#EAF2FB"),
+    ("Halcyon Components", "Halcyon Components GmbH", "HALCYON", "#16302A", "#E7F3EA"),
+    ("Helios", "Helios, Inc.", "HELIOS", "#2A1E12", "#FBEFE2"),
+]
+
+
+def _ensure_showcase_enterprises(db):
+    """Create the showcase COMPANIES and link their datasets. No object storage.
+
+    ⭐ EXTRACTED FROM _backfill_showcase_logos, WHERE IT WAS UNREACHABLE WITHOUT
+    R2. That function returns early when `_r2_client()` yields no client — correct
+    for its stated purpose, since there is no point rendering a wordmark with
+    nowhere to put it — but company creation sat BEHIND that return. So on every
+    rebuild without R2 credentials (every local rebuild, every CI run, any
+    deployment where storage is configured after first boot) there was no
+    Enterprise at all, and all ~2,061 company-scoped rows had nothing to attach
+    to. Measured: 6 datasets, every one with enterprise_id = None, 0 enterprises.
+    The function name said "logos". Nothing said "and the company".
+
+    A GUARD PROTECTS WHAT ITS CONDITION NAMES, NOT WHAT HAPPENS TO SIT BEHIND IT.
+    When one function does two things, its early return decides both.
+
+    Fixed by SEPARATION rather than by reordering inside the old function: moving
+    the company creation above the R2 guard would leave the two concerns coupled
+    and the next early return would repeat this exactly.
+
+    Idempotent: matches an existing Enterprise by tenant+name before creating,
+    and only writes enterprise_id when it differs.
+    """
+    from ..modules.enterprise_state.models import Enterprise
+    from ..modules.financials import models as fin_models
+    made = 0
+    for prefix, name, _mark, _bg, _fg in SHOWCASE_SPECS:
+        ds = (db.query(fin_models.FinancialDataset).filter(
+                fin_models.FinancialDataset.tenant == SHOWCASE_TENANT,
+                fin_models.FinancialDataset.source == "direct",
+                fin_models.FinancialDataset.name.like(f"{prefix}%")).first())
+        if not ds:
+            continue
+        ent = db.get(Enterprise, ds.enterprise_id) if ds.enterprise_id else None
+        if ent is None:
+            ent = db.query(Enterprise).filter_by(
+                tenant=SHOWCASE_TENANT, name=name).first()
+        if ent is None:
+            comp = ds.data.get("company") if isinstance(ds.data, dict) else {}
+            ent = Enterprise(tenant=SHOWCASE_TENANT, name=name,
+                             sector=(comp or {}).get("sector", ""),
+                             ownership=ds.ownership or "public",
+                             reporting_currency=(comp or {}).get("currency", "USD"))
+            db.add(ent); db.flush()
+            made += 1
+        # Re-link EVERY showcase dataset sharing this company's prefix, not only
+        # the `direct` one — the derived and stressed variants are the same
+        # company and the report path reads enterprise_id off whichever is active.
+        for d in db.query(fin_models.FinancialDataset).filter(
+                fin_models.FinancialDataset.tenant == SHOWCASE_TENANT,
+                fin_models.FinancialDataset.name.like(f"{prefix}%")).all():
+            if d.enterprise_id != ent.id:
+                d.enterprise_id = ent.id
+        ds.is_active = True                 # so /companies/{ent.id}/reports works
+    return made
+
+
 def _backfill_showcase_logos(db):
     """SYNTHETIC showcase demo data (7f rider): give the three showcase companies
     real Enterprise rows + tasteful wordmark logos so the report/deck logo
@@ -147,33 +214,23 @@ def _backfill_showcase_logos(db):
     client, bucket = _r2_client()
     if client is None:
         return
-    # (direct-dataset name prefix, clean name, short mark, bg, fg)
-    SPECS = [
-        ("Meridian Industries", "Meridian Industries, Inc.", "MERIDIAN", "#12233A", "#EAF2FB"),
-        ("Halcyon Components", "Halcyon Components GmbH", "HALCYON", "#16302A", "#E7F3EA"),
-        ("Helios", "Helios, Inc.", "HELIOS", "#2A1E12", "#FBEFE2"),
-    ]
     try:
-        for prefix, name, mark, bg, fg in SPECS:
+        for prefix, name, mark, bg, fg in SHOWCASE_SPECS:
             ds = (db.query(fin_models.FinancialDataset).filter(
                     fin_models.FinancialDataset.tenant == SHOWCASE_TENANT,
                     fin_models.FinancialDataset.source == "direct",
                     fin_models.FinancialDataset.name.like(f"{prefix}%")).first())
             if not ds:
                 continue
+            # ⭐ THE COMPANY IS NOT CREATED HERE ANY MORE. _ensure_showcase_enterprises
+            # owns that and runs unconditionally; this function does logos only,
+            # and its R2 guard above is left exactly as it was because it is
+            # correct for the concern this function actually names.
             ent = db.get(Enterprise, ds.enterprise_id) if ds.enterprise_id else None
             if ent is None:
                 ent = db.query(Enterprise).filter_by(tenant=SHOWCASE_TENANT, name=name).first()
             if ent is None:
-                comp = ds.data.get("company") if isinstance(ds.data, dict) else {}
-                ent = Enterprise(tenant=SHOWCASE_TENANT, name=name,
-                                 sector=(comp or {}).get("sector", ""),
-                                 ownership=ds.ownership or "public",
-                                 reporting_currency=(comp or {}).get("currency", "USD"))
-                db.add(ent); db.flush()
-            if ds.enterprise_id != ent.id:
-                ds.enterprise_id = ent.id
-            ds.is_active = True                     # so /companies/{ent.id}/reports works
+                continue                            # no company yet: not this function's job
             if ent.logo_r2_key:
                 continue                            # logo already seeded
             png = wordmark_png(mark, bg_hex=bg, fg_hex=fg)
@@ -290,7 +347,11 @@ def seed_showcase():
             # independently so one failure can't abort the rest (a dangling
             # _backfill_showcase_shares call previously NameError'd here and
             # silently blocked every showcase backfill).
-            for _fn in (_backfill_showcase_oci, _backfill_showcase_helios,
+            # ⭐ _ensure_showcase_enterprises runs FIRST and UNCONDITIONALLY.
+            # Later backfills read enterprise_id, and the logo one now skips a
+            # company it cannot find rather than creating it.
+            for _fn in (_ensure_showcase_enterprises,
+                        _backfill_showcase_oci, _backfill_showcase_helios,
                         _backfill_showcase_names, _backfill_showcase_logos,
                         _backfill_showcase_management_plan):
                 try:
@@ -365,6 +426,18 @@ def seed_showcase():
             size_bytes=len(MEMO), note="showcase example document",
             data=MEMO, ai_analysis=None))
         db.commit()
+        # ⭐ A FRESH SEED SKIPS THE MAINTENANCE BRANCH ENTIRELY, so the company
+        # must be created here too — otherwise the very first boot of a new
+        # database produces datasets with no Enterprise, which is exactly the
+        # state this whole change exists to end.
+        try:
+            _ensure_showcase_enterprises(db)
+            db.commit()
+        except Exception:
+            db.rollback()
+            import logging
+            logging.getLogger("axiom.seed").exception(
+                "showcase enterprise creation failed")
     except Exception:
         db.rollback()
         import logging

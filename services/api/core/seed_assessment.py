@@ -195,8 +195,10 @@ def seed_showcase_assessment():
                     department=dept, seniority=sen,
                     jti=secrets.token_urlsafe(16), invited_by=None,
                     participant_ref=ref, is_demo=True,
-                    created_at=now, invited_at=now,
-                    redeemed_at=now, submitted_at=now))
+                    # AssessmentInvite has no `invited_at`; created_at IS the
+                    # invitation time. Writing a column that does not exist
+                    # raised and rolled back all 14,430 responses with it.
+                    created_at=now, redeemed_at=now, submitted_at=now))
                 out["invites"] += 1
         db.commit()
     except Exception as e:                       # never block boot
