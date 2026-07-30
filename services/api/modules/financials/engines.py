@@ -128,6 +128,68 @@ MAX_FORECAST_PERIODS = {"annual": 15, "quarterly": 40}
 MAX_HISTORICAL_PERIODS = {"annual": 10, "quarterly": 40}
 
 
+# ── balance-sheet integrity ────────────────────────────────────────────────
+BALANCE_ASSETS = ("cash", "other_current_assets", "noncurrent_assets")
+BALANCE_CLAIMS = ("current_liabilities_ex_debt", "other_noncurrent_liabilities",
+                  "short_term_debt", "long_term_debt", "preferred_equity",
+                  "minority_interest", "total_equity")
+
+
+def balance_audit(data: dict) -> dict:
+    """Assets = liabilities + equity, PER STORED PERIOD. Never blocks.
+
+    ⭐ WHY THIS EXISTS. A correctness audit over the live corpus found the only
+    breached independent identity was this one — 17 rows across one company where
+    `total_equity` carried the balance-sheet TOTAL, so implied equity was 0.0 and
+    eleven equity-dependent ratios published wrong numbers, three of them
+    headline. The arithmetic was correct on both sides; the OPERAND was wrong,
+    and nothing in the system looked at it.
+
+    ⭐ EVERY STORED PERIOD, HISTORICAL AND CLIENT-PLAN FORECAST. A second company
+    uploaded a Client Plan (the v7 optional forecast columns) whose projected
+    balance sheet does not close, diverging to 14% of assets by the final year.
+    A historical-only validator passes that dataset IN SILENCE — the two faults
+    arrive by the same door and only the door can catch both.
+
+    ⭐ TOLERANCE IS proforma.py's OWN, NOT A NEW ONE. `max(1e-4, 1e-7 * assets)`
+    is what `balance_ok` already uses for exactly this check. One number, one
+    meaning. Measured basis: across 190 historical rows in the corpus the largest
+    CLEAN gap was 9.4e-08 and every clean row sat at or below 1e-4, so the
+    distribution is bimodal with nothing in between — there is no rounding
+    population this threshold could unfairly catch.
+
+    Absent operands are SKIPPED, not treated as zero: a period that does not
+    carry every line cannot be said to balance or not, and coercing the gap would
+    manufacture a breach out of an absence.
+    """
+    per = data.get("periods", {}) or {}
+    years = [str(y) for y in (list(per.get("historical") or [])
+                              + list(per.get("forecast") or []))]
+    bs = data.get("balance_sheet", {}) or {}
+    fcst = {str(y) for y in (per.get("forecast") or [])}
+    out, breaching = {}, []
+    for y in years:
+        a = [(bs.get(k) or {}).get(y) for k in BALANCE_ASSETS]
+        c = [(bs.get(k) or {}).get(y) for k in BALANCE_CLAIMS]
+        # optional lines are absent by design across the whole corpus; treat a
+        # missing OPTIONAL claim as not-supplied rather than as a gap
+        c = [x for k, x in zip(BALANCE_CLAIMS, c)
+             if not (x is None and k in BS_OPTIONAL_KEYS)]
+        if any(not isinstance(x, (int, float)) for x in a + c):
+            continue
+        assets, claims = sum(a), sum(c)
+        tol = max(1e-4, 1e-7 * abs(assets))
+        gap = assets - claims
+        ok = abs(gap) <= tol
+        out[y] = {"assets": round(assets, 6), "claims": round(claims, 6),
+                  "gap": round(gap, 6), "tolerance": round(tol, 10),
+                  "balances": ok, "period_kind": "forecast" if y in fcst else "historical"}
+        if not ok:
+            breaching.append(y)
+    return {"periods": out, "breaching": breaching,
+            "checked": len(out), "balances": not breaching}
+
+
 def validate_dataset(data: dict) -> dict:
     """Structural + accounting validation (Product §7.14). Returns
     {'errors': [...], 'warnings': [...]}; errors block persistence."""
@@ -236,7 +298,20 @@ def validate_dataset(data: dict) -> dict:
         tr = company.get("tax_rate", 0.0)
         if not (0.0 <= tr < 0.6):
             warnings.append("tax_rate outside [0, 0.6) — please verify")
-    return {"errors": errors, "warnings": warnings}
+    # ⭐ FLAG AND STORE, NEVER REFUSE. A non-balancing sheet is a warning, not an
+    # error: refusing costs the customer their whole upload for one bad column,
+    # and a column-mapping fault is undiagnosable from a rejection. The
+    # structured result rides alongside so surfaces can badge the affected
+    # periods rather than re-deriving it.
+    bal = balance_audit(data)
+    for y in bal["breaching"]:
+        r = bal["periods"][y]
+        warnings.append(
+            f"balance sheet does not balance in {y} "
+            f"({r['period_kind']}): assets {r['assets']:g} vs "
+            f"liabilities + equity {r['claims']:g}, gap {r['gap']:g}. "
+            f"Ratios using equity are affected for this period.")
+    return {"errors": errors, "warnings": warnings, "balance": bal}
 
 
 
