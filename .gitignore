@@ -4,3 +4,9 @@ __pycache__/
 *.db
 .pytest_cache/
 .env
+
+# Customer financial corpus — pulled at runtime, never committed.
+# scripts/pull-corpus.py writes to ~/.axiom-cache/ds.json by default; this is a
+# second fence because convergence_study.py defaults DS_CACHE to the repo root.
+ds.json
+.axiom-cache/
