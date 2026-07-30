@@ -61,3 +61,8 @@ def init_db():
     ensure_schema()
     from .seed import seed_showcase
     seed_showcase()
+    # ⭐ The assessment surface is a SEPARATE seed because seed_showcase() never
+    # covered it — 4 of 13 evidence surfaces rebuilt without this, and Meridian
+    # is the entire sales surface. Runs after, because it needs the company.
+    from .seed_assessment import seed_showcase_assessment
+    seed_showcase_assessment()
