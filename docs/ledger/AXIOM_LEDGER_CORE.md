@@ -6852,3 +6852,139 @@ before any conclusion about severity.
 
 **Related:** the §7s version-pinning law exists to stop packs from having this
 problem prospectively. It does nothing for series already rendered.
+
+## ⭐⭐ LAW — A STORED RESULT RECORDS WHAT PRODUCED IT (ruled 30 Jul)
+
+**A stored computed result records the version and identity of every input that
+produced it. A mutable payload records when it was written and what it hashed
+to.** Otherwise the result cannot be re-explained, and **no later measurement can
+recover the answer**.
+
+### ⭐ Why this law differs from the others IN KIND
+
+Every other defect class this era was eventually **measurable** — silent-empty,
+coercion, schema drift, false greens. Given enough rigour, each yielded.
+
+**This one does not.** When the provenance was never recorded, the answer is not
+merely hard to find — **it does not exist, and effort does not produce it.** Two
+lanes were spent on the valuation divergence and it closed **undecidable for that
+reason, not for lack of rigour**.
+
+### Four instances, recorded so the class is recognisable on sight
+
+1. **`FinancialDataset` declares `version`, `is_active`, `parent_dataset_id`**
+   under a comment naming a phase — **and the upload path binds none of them**.
+   Re-upload accumulates rows: **6 identical-payload groups in the corpus,
+   largest 5 (ids 38–41, 48)**. A declared-but-unbound clause. ⭐ **The comment
+   naming a phase is the tell** — it records an intention that was never wired.
+2. **`ValuationRun` records no code version, engine revision, or payload hash.**
+   A bisect over it answers *which commit changes the number today*, **not which
+   commit produced the stored one**. Those are different claims and only the
+   first is available.
+3. **`forecast_override` is never persisted** — `params` retains only
+   `extended: bool`. **Every extended run is structurally unreproducible.**
+4. **The `FinancialDataset` payload is mutated in place at every boot** by the
+   showcase backfills via `flag_modified`, and carries **no `updated_at` and no
+   `onupdate` on any timestamp**. ⭐ **A payload rewritten at boot leaves both
+   timestamps exactly as they were.**
+
+## ⭐ RULED — REPLACING A DATASET DELETES EVERYTHING DERIVED FROM IT (30 Jul)
+
+A §7o rule **and a general one**.
+
+**Replacing a dataset payload deletes every computed artefact derived from it** —
+valuation runs, forecasts, plan-vs-actual, EVA, viability bands, and **any other
+stored result keyed to that dataset. Not valuation runs alone.**
+
+⭐ **The reason, stated so it is not softened later:** replacing a payload while
+computed rows continue to point at the same id **manufactures precisely the
+condition that is the leading hypothesis for the current divergence** — stale
+artefacts against a payload replaced underneath them. **A reseed that does not
+delete dependents recreates this defect inside the artefact intended for
+buyers.**
+
+## CLOSED — MERIDIAN'S 42 DIVERGENT VALUATION RUNS (30 Jul)
+
+Corrected harness: **345 reproduce, 42 diverge, all Meridian, on datasets 3 and
+45.** Magnitudes **bimodal — 39 at ≥50%, 3 at 10–50%, none small.**
+
+⭐ **No customer-visible figure is affected. Milliner and every real company
+reproduce.**
+
+**Candidates refuted:**
+
+- **quarterly discounting** — all 62 quarterly runs reproduce; divergent are
+  annual 39, None 3
+- **units normalisation** — `statement_units` is consumed at ingest, **never in
+  valuation**
+- **dataset resolution** — by stored `dataset_id`, a column not a selection;
+  **0 of 42** sit on a duplicated-payload group
+
+**Parameters** partially supported — explains all 33 unevaluable, **none of the
+42**. The seed's `flag_modified(vr, "result")` rewrites `res["subject"]`, a
+company-name string, and **cannot move a number**.
+
+### ⭐ Cause undecidable, and recorded as PERMANENTLY so
+
+The reseed hypothesis is **consistent** — every divergent run predates the 25 Jul
+seed cluster including `177634c`, which names dataset 45 explicitly. **But the
+clause that would settle it cannot be checked:** 286 of the 345 reproducing runs
+also predate that cluster, and whether they predate a reseed **of their own
+dataset** is the unanswered half.
+
+**A second unverified date split is not promoted on the same evidence that
+produced one symptom-not-cause already** (the quarterly split, refuted by
+frequency).
+
+⭐ **And the direct evidence does not exist as a repo fact, independent of
+tooling** — no `updated_at`, no `onupdate`, no payload hash.
+
+**RULED: Meridian's stored results are discarded and recomputed against a new
+dataset.** No stored-versus-recomputed ruling is required, **because no real
+company's figures are involved**, and **remediation is identical under every
+surviving hypothesis**.
+
+## ⭐ LAW — A RECOMPUTATION HARNESS INVOKES THE PRODUCTION PATH (ruled 30 Jul)
+
+**A harness that REPRODUCES a call path rather than INVOKING it is measuring its
+own reimplementation.**
+
+**Three consecutive lanes, three instrument errors**, each self-caught before the
+number left the lane:
+
+- a wrong response key (`item_code` where the engine expects `code`)
+- a signature mismatch (`Scan()` built with three arguments where the caller
+  passes four)
+- a harness passing **raw `ds.data`** while the router applies `_data_for_mode`
+  and `_apply_forecast_override`
+
+⭐ **18 of the original 60 divergences were the instrument.**
+
+The corrected harness **imports `_data_for_mode` from the router rather than
+reimplementing it**, and **refuses extended runs rather than guessing**.
+⭐ **Refusing is the better half and is the required behaviour** — a harness that
+guesses an unrecoverable input manufactures a divergence and reports it as data.
+
+## REQUIRED — PAYLOAD HASH AND WRITE TIMESTAMP ON `FinancialDataset` (30 Jul)
+
+So the **next instance of the class in the law above is one query rather than two
+lanes**.
+
+**Not built here. Recorded as required.**
+
+## TOOLING — psycopg HAS FAILED MID-LANE TWICE (30 Jul)
+
+It is **blocking measurement, which is the standing verification method**.
+
+⭐ **A repair lane precedes any further measurement dispatch**, or the next one
+stops the same way.
+
+## INCIDENTAL FINDINGS — RECORDED, NOT ACTIONED (30 Jul)
+
+1. **Four datasets carry `frequency='quarterly'` while their periods infer
+   annual.** ⭐ A discounting path has already chosen wrongly between annual and
+   quarterly rates once, **at 4.66×**.
+2. ⭐ **No runtime code reads `axiom_ratio_registry.yaml`** — only two static CI
+   guards. **79 ratios exist as a specification the engines do not execute**, so
+   **the registry and `engines.py` are two sources of truth**, and the guards
+   enforce agreement on **five quantities, not on the library**.
