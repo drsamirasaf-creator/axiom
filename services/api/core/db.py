@@ -58,6 +58,11 @@ def init_db():
     from ..modules.financials import models as _financials # noqa: F401
     from ..modules.valuation import models as _valuation   # noqa: F401
     from ..modules.identity import models as _identity      # noqa: F401
+    # §7s.1 — the Pack model must be imported before ensure_schema() or
+    # create_all() never sees ax_packs. Registering the snapshot producer here
+    # keeps ONE registration point rather than a second mechanism.
+    from .. import pack as _pack                             # noqa: F401
+    _pack.register()
     ensure_schema()
     from .seed import seed_showcase
     seed_showcase()

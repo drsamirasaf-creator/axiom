@@ -125,6 +125,13 @@ jobs:
       # the same tick. Carries a known-positive control on every invocation.
       - name: assumption registry coverage
         run: python scripts/check-assumption-registry.py
+      # §7s.1 — the freeze must capture every input a computation entry point
+      # reads. Both sides derived from code: the read set from the sections' call
+      # graphs, the captured set from pack.INPUT_CLASSES' own capture functions.
+      # A guard proving only that a snapshot was taken is "0 problems in 0 files"
+      # with a publication attached.
+      - name: pack input coverage
+        run: python scripts/check-pack-coverage.py
       - run: pytest -q
       # Proves the tests guarding the assessment read path are not vacuous, by
       # reintroducing a plausible defect per test and requiring each to fail.

@@ -107,8 +107,25 @@ class ChangesetSnapshot(Base):
     non-dataset rows the commit touched."""
     __tablename__ = "ax_changeset_snapshots"
     id = Column(Integer, primary_key=True)
-    changeset_id = Column(Integer, index=True, nullable=False)
-    kind = Column(String(24), nullable=False)            # dataset_version | rows
+    # ⭐ §7s.1 — OWNERSHIP IS POLYMORPHIC AND `changeset_id` IS NO LONGER NOT NULL.
+    # A Pack is a PUBLICATION, not a proposal to change data. Reusing this table
+    # unchanged would mean minting a synthetic changeset per pack so the foreign
+    # key had something to point at — modelling a publication as a change, and
+    # leaving approve/apply/undo meaningless on every pack row. That is how the
+    # next declared-but-unbound clause is born.
+    changeset_id = Column(Integer, index=True, nullable=True)
+    owner_kind = Column(String(16), nullable=False, default="changeset",
+                        server_default="changeset")   # changeset | pack
+    owner_id = Column(Integer, index=True, nullable=True)
+    # ⭐ RETENTION IS OWNER-AWARE, AND IT SHIPS IN THE MIGRATION rather than being
+    # discovered later by a missing 2027 pack. Changeset snapshots are TRANSIENT
+    # — they exist for undo and have no further duty once settled. Pack snapshots
+    # are PERMANENT: a pack snapshot must render the March pack in three years.
+    # Same table, opposite lifetimes. Any pruner must go through
+    # pack.prunable_snapshots(), which filters on both columns.
+    retention = Column(String(12), nullable=False, default="transient",
+                       server_default="transient")    # transient | permanent
+    kind = Column(String(24), nullable=False)            # dataset_version | rows | pack_inputs
     dataset_id = Column(Integer, nullable=True)          # PRE-commit active dataset
     payload = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -256,7 +273,13 @@ def commit(db, cs: Changeset, *, user=None) -> dict:
     impl = _applier_for(cs)
     try:
         snap_kwargs = impl["snapshot"](db, cs)
-        snap = ChangesetSnapshot(changeset_id=cs.id, **snap_kwargs)
+        # ⭐ OWNERSHIP STATED EXPLICITLY, not left to a column default. Both
+        # producers now declare their owner and their retention, so "which owner
+        # is this" is answered by the row rather than by which default happened
+        # to apply when it was written.
+        snap = ChangesetSnapshot(changeset_id=cs.id, owner_kind="changeset",
+                                 owner_id=cs.id, retention="transient",
+                                 **snap_kwargs)
         db.add(snap)
         db.flush()
         result = impl["apply"](db, cs, approved)

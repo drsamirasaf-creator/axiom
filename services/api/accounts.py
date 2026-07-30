@@ -12994,6 +12994,14 @@ def _ensure_ax_columns(engine):
     _add("financial_datasets", "data_written_at",
          "data_written_at TIMESTAMP WITH TIME ZONE")
     _add("valuation_runs", "provenance", "provenance JSON")
+    # §7s.1 Stage 1 (migration 0016): polymorphic snapshot ownership + retention.
+    # ⭐ Retention is owner-aware from the first row: pack snapshots are PERMANENT
+    # and any pruner must go through pack.prunable_snapshots().
+    _add("ax_changeset_snapshots", "owner_kind",
+         "owner_kind VARCHAR(16) NOT NULL DEFAULT 'changeset'")
+    _add("ax_changeset_snapshots", "owner_id", "owner_id INTEGER")
+    _add("ax_changeset_snapshots", "retention",
+         "retention VARCHAR(12) NOT NULL DEFAULT 'transient'")
     # custody-14 §4s: department_id on objectives / kpis / initiatives (ax_departments
     # is a NEW table and rides create_all; only these existing tables need columns)
     _add("ax_objectives", "department_id", "department_id INTEGER")
