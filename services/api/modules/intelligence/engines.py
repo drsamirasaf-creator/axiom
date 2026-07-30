@@ -32,6 +32,7 @@ valuation result without an explicit, recorded user decision.
 """
 import re
 from ..financials import engines as fin
+from ..financials import ratios
 from ..valuation import engines as val
 
 # ---- 1. Suggestion gates ---------------------------------------------------
@@ -1566,8 +1567,11 @@ def covenants(data: dict, limits: dict | None = None) -> dict:
         ys = str(y)
         ebit = derived["ebit"][i]
         ebitda = ebit + IS["depreciation_amortization"][ys]
-        net_debt = (BS["short_term_debt"][ys] + BS["long_term_debt"][ys]
-                    - BS["cash"][ys])
+        # debt is formed HERE and passed in; the library owns only the
+        # subtraction and the absence contract. See ratios.net_debt.
+        _debt = fin._n(lambda a, b: a + b,
+                       BS["short_term_debt"][ys], BS["long_term_debt"][ys])
+        net_debt = ratios.net_debt(_debt, BS["cash"][ys])
         debt = BS["short_term_debt"][ys] + BS["long_term_debt"][ys]
         interest = IS["interest_expense"][ys]
         vals = {"net_debt_to_ebitda_max": net_debt / ebitda if ebitda else None,

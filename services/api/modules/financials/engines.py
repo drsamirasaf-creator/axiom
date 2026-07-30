@@ -29,6 +29,12 @@ NI + D&A - CapEx - dNWC + net_borrowing on every run).
 import math
 from .periods import forecast_periods as _fc_periods, frequency_of as _freq_of
 from .periods import format_period as _fmt_period, frequency_of as _freq_of, period_labels as _p_labels
+# ⭐ ALIASED, because `ratios` is already a LOCAL LIST inside
+# derive_series — the per-period ratio rows. A bare `from . import
+# ratios` is shadowed there and fails with
+# "'list' object has no attribute 'net_debt'" at runtime, not at
+# import. No typechecker would have caught it; 172 tests did.
+from . import ratios as ratio_lib
 
 IS_KEYS = ["revenue", "cogs", "opex", "depreciation_amortization",
            "interest_expense"]
@@ -325,7 +331,7 @@ def derive_series(data: dict) -> dict:
             "current_ratio": _r(_n(lambda a, b, c: (a + b) / c, cash, oca, cl)
                                 if cl else None),
             "debt_to_equity": _r(_n(lambda a, b: a / b, debt, equity) if equity else None),
-            "net_debt": _r(_n(lambda a, b: a - b, debt, cash)),
+            "net_debt": _r(ratio_lib.net_debt(debt, cash)),
             "invested_capital": _r(ic), "nopat": _r(nopat),
         })
 

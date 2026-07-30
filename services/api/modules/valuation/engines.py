@@ -30,6 +30,7 @@ checkpoint-certifiable (SPEC-008 §4.9).
 """
 import random
 from ..financials import engines as fin
+from ..financials import ratios
 
 DEFAULT_SEED = 26060
 
@@ -123,7 +124,14 @@ def run(data: dict, mode: str, assumptions: dict | None = None,
     company = dict(working["company"])
     ys = str(years[n_h - 1])
     bs = working["balance_sheet"]
-    company["_debt_book"] = bs["short_term_debt"][ys] + bs["long_term_debt"][ys]
+    # ⭐ C.1: raw `+` became an _n form. financials:609 already supplied
+    # _debt_book absence-propagating while this site supplied a raw sum —
+    # identical on populated data, divergent the moment an operand is missing.
+    # Measured before the change: this path raised TypeError where financials
+    # returned None.
+    company["_debt_book"] = fin._n(lambda a, b: a + b,
+                                   bs["short_term_debt"][ys],
+                                   bs["long_term_debt"][ys])
     w = fin.wacc(company)
     wacc_value = float(a.get("wacc_override", w["wacc"]))
 
@@ -132,7 +140,7 @@ def run(data: dict, mode: str, assumptions: dict | None = None,
     g_period = to_period_rate(g_term, ppy)
     pv_e, tv, pv_t = _dcf(fcff, wacc_period, g_period)
     ev = pv_e + pv_t
-    net_debt = company["_debt_book"] - bs["cash"][ys]
+    net_debt = ratios.net_debt(company["_debt_book"], bs["cash"][ys])
     pref = bs["preferred_equity"][ys]
     mino = bs["minority_interest"][ys]
     equity = ev - net_debt - pref - mino
@@ -539,8 +547,9 @@ def multiples(data: dict, sector: str | None = None,
         ev_ebit = ev_ebit or row["ev_ebit"]
 
     bs = data["balance_sheet"]
-    net_debt = (bs["short_term_debt"][ys] + bs["long_term_debt"][ys]
-                - bs["cash"][ys])
+    _debt = fin._n(lambda a, b: a + b,
+                   bs["short_term_debt"][ys], bs["long_term_debt"][ys])
+    net_debt = ratios.net_debt(_debt, bs["cash"][ys])
     pref = bs["preferred_equity"][ys]
     mino = bs["minority_interest"][ys]
     bridge = net_debt + pref + mino

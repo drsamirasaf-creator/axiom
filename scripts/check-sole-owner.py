@@ -126,8 +126,17 @@ TOTAL_DEBT_SITES = [
     "services/api/modules/financials/engines.py",
     "services/api/modules/intelligence/engines.py",
 ]
-ALLOWLIST = {"net_debt": [LIBRARY], "roic": [LIBRARY],
-             "eva": [LIBRARY], "wacc": [LIBRARY],
+# net_debt is CONSOLIDATED — its allowlist is the library and nothing else.
+# roic / eva / wacc are single-site but still live in engines.py; moving them is
+# Segment D (wacc) and Segment E (roic, after invested capital). Their allowlist
+# names the CURRENT home with the owning segment, so the guard is red only on
+# real violations — a guard red on work that has not been scheduled yet is
+# noise, and noise is how a red stops being read.
+ENGINES = "services/api/modules/financials/engines.py"
+ALLOWLIST = {"net_debt": [LIBRARY],
+             "roic": [ENGINES],        # -> LIBRARY in Segment E (after IC)
+             "eva": [ENGINES],         # -> LIBRARY in Segment E
+             "wacc": [ENGINES],        # -> LIBRARY in Segment D
              # total_debt is COUNTED, not consolidated — see
              # _total_debt_shape. Its allowlist is the set of
              # callers legitimately forming the base term.
@@ -199,8 +208,7 @@ def _n_call_shape(node):
 
     financials:328 writes it this way, so the BinOp inside the lambda carries
     only placeholder names. The meaning lives one level out, in what is passed."""
-    if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-            and node.func.id == "_n" and len(node.args) == 3):
+    if not (_is_n_call(node) and len(node.args) == 3):
         return False
     fn = node.args[0]
     if not isinstance(fn, ast.Lambda):
@@ -260,6 +268,23 @@ def _wacc_shape(node):
 
 
 
+
+def _is_n_call(node):
+    """`_n(...)` OR `fin._n(...)`.
+
+    ⭐ CAUGHT BY THE CONSOLIDATION ITSELF. valuation:126 became
+    `fin._n(lambda a, b: a + b, ...)` and the total-debt count silently fell
+    15 -> 14, because the recogniser matched only a bare Name `_n`. The site had
+    not gone anywhere; the detector stopped seeing it the moment the call was
+    written through the module alias — a counter that drops when code is
+    IMPROVED reports a fix as a removal."""
+    if not isinstance(node, ast.Call):
+        return False
+    f = node.func
+    return ((isinstance(f, ast.Name) and f.id == "_n")
+            or (isinstance(f, ast.Attribute) and f.attr == "_n"))
+
+
 def _total_debt_shape(node):
     """<short_term_debt> + <long_term_debt> — the base term, direct or via _n.
 
@@ -269,8 +294,7 @@ def _total_debt_shape(node):
     hand tomorrow."""
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
         return _is_debt_component(node.left) and _is_debt_component(node.right)
-    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-            and node.func.id == "_n" and len(node.args) == 3):
+    if _is_n_call(node) and len(node.args) == 3:
         fn = node.args[0]
         if (isinstance(fn, ast.Lambda) and isinstance(fn.body, ast.BinOp)
                 and isinstance(fn.body.op, ast.Add)):
@@ -405,7 +429,13 @@ def main():
               f"    purpose, update COLLISION_SITE deliberately.\n")
         rc = 1
     else:
-        bad = [m for m in COLLISION_MUST_NOT_CONTAIN if m in csrc]
+        # ⭐ SCOPED TO THE ASSIGNMENT, NOT THE FILE. After consolidation
+        # valuation/engines.py legitimately contains "ratios.net_debt" — the
+        # line above the bridge calls it. Searching the whole file fired on the
+        # fix. The question is only ever whether the COLLIDING KEY was
+        # repointed, so look at that statement.
+        keyline = next((l for l in csrc.split("\n") if cfrag in l), "")
+        bad = [m for m in COLLISION_MUST_NOT_CONTAIN if m in keyline]
         if bad:
             print(f"  ✗ COLLISION SITE REPOINTED AT THE LIBRARY: {bad}\n")
             rc = 1
