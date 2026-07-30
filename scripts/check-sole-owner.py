@@ -70,9 +70,25 @@ COLLISION_EXCLUSIONS = set()   # kept empty: shape matching needs no path skips
 # LIBRARY is where the sole owner will live. It does not exist yet, so the
 # stale-entry check fires too — correctly. Both directions stay honest.
 LIBRARY = "services/api/modules/financials/ratios.py"
-# ⭐ THE BRIEF EXPECTED 3. THERE ARE 14, ACROSS 5 FILES — 10 IN ONE.
+# ⭐ THE BRIEF EXPECTED 3. THE FIRST MEASUREMENT SAID 14. THE CALIBRATED COUNT
+# IS 15 — and the difference is the INSTRUMENT, not the codebase.
+#
+# `_key_of` could not see through `.get(ys)`, so
+# `_n(lambda a, b: a + b, BS["short_term_debt"].get(ys), BS["long_term_debt"].get(ys))`
+# at financials:309 was invisible. The defect was found while calibrating the
+# INVESTED-CAPITAL counter against a known population, and fixing it there
+# raised this count too. A ratchet set from an uncalibrated counter is a number
+# about the counter.
+#
+# ⭐ RAISING A RATCHET IS NORMALLY FORBIDDEN. It is permitted here, once, and
+# only because nothing in the codebase changed — the detector started seeing a
+# site that was always there. Lowering it to 14 to keep the guard quiet would
+# have hidden a real site; leaving it at 14 would have failed forever on a
+# number that was never right. Both are worse than saying so.
+#
+# THERE ARE 15, ACROSS 5 FILES — 10 IN ONE.
 #     intelligence/engines.py   10
-#     financials/engines.py      2   (one is the _n form at :609)
+#     financials/engines.py      3   (:309 and :609 are both _n forms)
 #     sentinel.py                1   (:145, inside the _debt_book function)
 #     prescience_decision.py     1   (:240, the base term under the debt_scale shock)
 #     valuation/engines.py       1   (:126)
@@ -84,6 +100,25 @@ LIBRARY = "services/api/modules/financials/ratios.py"
 # term to form. It is that intelligence/engines.py re-derives it TEN times by
 # hand, and every one of those is a place net debt can be re-derived tomorrow
 # without touching the library. That is a consolidation lane of its own.
+# ⭐ MEASURED AT 2, NOT PREDICTED. Invested capital is ROIC's DENOMINATOR, so
+# ROIC's "single owner" status was only ever true of its numerator: the ratio is
+# one expression over another and only one of the two was guarded.
+#
+#     financials/engines.py:314    _n(lambda d,e,pe,mi,c: d+e+pe+mi-c, ...)
+#     intelligence/engines.py:594  debt0 + total_equity + preferred + minority - cash
+#
+# ⭐ SO ROIC SOLE-OWNERSHIP IS A TARGET, NOT A STATE. Recorded as such. The
+# ratchet may only go down; consolidating IC is its own segment.
+#
+# Calibration (standing law: an expected count is meaningless until the counter
+# is calibrated against a known population) found TWO detector defects before
+# this number was trusted — `_key_of` could not see through `.get(ys)`, and the
+# equity operand is a local named `equity` at one site and BS["total_equity"] at
+# the other. Uncalibrated, it would have reported 1.
+IC_SITES = [
+    "services/api/modules/financials/engines.py",
+    "services/api/modules/intelligence/engines.py",
+]
 TOTAL_DEBT_SITES = [
     "services/api/sentinel.py",
     "services/api/modules/valuation/engines.py",
@@ -96,9 +131,10 @@ ALLOWLIST = {"net_debt": [LIBRARY], "roic": [LIBRARY],
              # total_debt is COUNTED, not consolidated — see
              # _total_debt_shape. Its allowlist is the set of
              # callers legitimately forming the base term.
-             "total_debt": TOTAL_DEBT_SITES}
+             "total_debt": TOTAL_DEBT_SITES,
+             "invested_capital": IC_SITES}
 EXPECTED = {"net_debt": 1, "roic": 1, "eva": 1, "wacc": 1,
-            "total_debt": 14}
+            "total_debt": 15, "invested_capital": 2}
 
 SCAN_DIRS = ["services/api"]
 SKIP = {"__pycache__"}
@@ -106,7 +142,18 @@ SKIP = {"__pycache__"}
 
 # ── operand recognisers: what does this expression MEAN, not what is it called ─
 def _key_of(node):
-    """The last constant string subscript, or the bare name: bs["cash"][ys] -> cash."""
+    """The last constant string subscript, or the bare name: bs["cash"][ys] -> cash.
+
+    ⭐ IT MUST SEE THROUGH `.get(...)` TOO. Calibration against a known
+    population caught this: the inline invested-capital site was detected and
+    the `_n` one was not, because financials writes
+    `BS["preferred_equity"].get(ys)` — a Call, not a Subscript — and the
+    recogniser returned None for every such operand. The counter would have
+    reported 1 where there are 2, and an expected count taken from an
+    uncalibrated counter is a number about the counter, not the codebase."""
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+            and node.func.attr == "get":
+        node = node.func.value
     while isinstance(node, ast.Subscript):
         k = node.slice
         if isinstance(k, ast.Constant) and isinstance(k.value, str):
@@ -232,7 +279,65 @@ def _total_debt_shape(node):
     return False
 
 
+
+# The equity operand is spelled `BS["total_equity"]` at one site and a local
+# named `equity` at the other. Calibration surfaced the second; matching only
+# the first would have counted 1 where there are 2.
+_EQUITY_KEYS = {"total_equity", "equity"}
+
+
+def _is_equity(n):
+    return _key_of(n) == "total_equity"
+
+
+def _ic_shape(node):
+    """<debt> + <equity> + <preferred> + <minority> - <cash> — invested capital.
+
+    ⭐ ROIC's DENOMINATOR. Sole ownership of ROIC is hollow while invested
+    capital has copies: the ratio is one expression over another, and only one
+    of the two was being guarded.
+
+    Matched by composition, not by the variable name `ic`: the add-chain must
+    carry total_equity and at least one of preferred_equity / minority_interest,
+    and the whole thing must subtract cash. That distinguishes it from net debt
+    (whose add-chain is two DEBT components) without relying on either site
+    spelling the local the same way.
+    """
+    def _chain_keys(n, out):
+        if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Add):
+            _chain_keys(n.left, out); _chain_keys(n.right, out)
+        else:
+            k = _key_of(n)
+            if k:
+                out.add(k)
+        return out
+
+    def _match(sub):
+        if not (isinstance(sub, ast.BinOp) and isinstance(sub.op, ast.Sub)):
+            return False
+        if not _is_cash(sub.right):
+            return False
+        keys = _chain_keys(sub.left, set())
+        return (bool(keys & _EQUITY_KEYS)
+                and bool(keys & {"preferred_equity", "minority_interest"}))
+
+    if _match(node):
+        return True
+    # the _n form: _n(lambda d, e, pe, mi, c: d + e + pe + mi - c, ...args)
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id == "_n" and len(node.args) >= 4):
+        fn = node.args[0]
+        if isinstance(fn, ast.Lambda) and isinstance(fn.body, ast.BinOp) \
+                and isinstance(fn.body.op, ast.Sub):
+            argkeys = {_key_of(a) for a in node.args[1:]}
+            return (bool(argkeys & _EQUITY_KEYS)
+                    and bool(argkeys & {"preferred_equity", "minority_interest"})
+                    and "cash" in argkeys)
+    return False
+
+
 SHAPES = {"net_debt": (_net_debt_shape, _n_call_shape),
+          "invested_capital": (_ic_shape,),
           "total_debt": (_total_debt_shape,),
           "roic": (_roic_shape, _roic_n_shape),
           "eva": (_eva_shape,),
@@ -308,7 +413,8 @@ def main():
             print(f"  ✓ name collision intact and unwired: "
                   f"{cpath} keeps its own net_debt\n")
 
-    for kind in ("net_debt", "total_debt", "roic", "eva", "wacc"):
+    for kind in ("net_debt", "total_debt", "invested_capital",
+                 "roic", "eva", "wacc"):
         hits = found[kind]
         files = sorted({r for r, _l, _t in hits})
         allowed = ALLOWLIST[kind]
@@ -327,7 +433,7 @@ def main():
         if stale:
             print(f"      ✗ STALE ALLOWLIST ENTRY (no longer matches): {stale}")
             rc = 1
-        if len(hits) != EXPECTED[kind]:
+        if EXPECTED[kind] is not None and len(hits) != EXPECTED[kind]:
             print(f"      ✗ COUNT {len(hits)} != expected {EXPECTED[kind]}")
             rc = 1
         print()
