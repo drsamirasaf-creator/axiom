@@ -14,6 +14,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.workbook.defined_name import DefinedName
 from openpyxl.utils import get_column_letter
 from . import engines
+from . import template_policy as policy
 
 # ⭐ THE FAMILY IDENTIFIES; THE VERSION IS FORENSIC METADATA. CORE §7.37 (user
 # ruling, 28 Jul): "AXIOM does not track or control template versions as a
@@ -30,8 +31,10 @@ from . import engines
 #
 # The parser keys on sheet and row labels and never needed the version to work.
 # So the gate is the FAMILY; the version is read out and returned as metadata.
-TEMPLATE_FAMILY = "AXIOM-FIN-TEMPLATE"
-TEMPLATE_VERSION = "v8"
+# Kept as names because other modules and tests read them; they are now VIEWS
+# onto template_policy, not second definitions.
+TEMPLATE_FAMILY = policy.GENERIC_FAMILY
+TEMPLATE_VERSION = policy.version("generic")
 TEMPLATE_SIG = f"{TEMPLATE_FAMILY} {TEMPLATE_VERSION}"
 # ⭐ 20 COULD NOT EXPRESS THE PLAN THE ENGINE ACCEPTS. engines.MAX_FORECAST_PERIODS
 # is {"annual": 15, "quarterly": 40} and ingest.FORECAST_QUARTERLY is 40, while
@@ -39,7 +42,7 @@ TEMPLATE_SIG = f"{TEMPLATE_FAMILY} {TEMPLATE_VERSION}"
 # template literally could not supply a quarterly plan the backend would have
 # read. 56 = 1 opening + 15 historical + 40 forecast, which covers the widest
 # case with no second limit to keep in sync.
-MAX_YEAR_COLS = 56
+MAX_YEAR_COLS = policy.max_year_cols()
 FIRST_YEAR_COL = 2          # column B
 
 LABELS = {
@@ -281,7 +284,7 @@ def parse_workbook(content: bytes) -> tuple[dict | None, list]:
     # ⭐ FAMILY, NOT VERSION — see TEMPLATE_FAMILY above and CORE §7.37. A file
     # stamped v1, v8 or anything else parses identically; what is rejected is a
     # workbook that is not an AXIOM financial template at all.
-    if not (isinstance(sig, str) and sig.startswith(TEMPLATE_FAMILY)):
+    if not policy.identifies(sig):
         return None, [{"cell": "Instructions!A1",
                        "error": "not an AXIOM financial template; download one "
                                 "from GET /api/v1/financials/templates"}]
@@ -373,7 +376,7 @@ def parse_workbook(content: bytes) -> tuple[dict | None, list]:
                     # rows empty. That is absence, not an error: the
                     # operating-side capital build renders an em dash and says
                     # which rows it lacked.
-                    if key in engines.BS_OPTIONAL_KEYS:
+                    if not policy.required(block, key):
                         continue
                     errors.append({"cell": f"{name}!{col}{r}",
                                    "error": "value required"})

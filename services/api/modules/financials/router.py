@@ -336,7 +336,7 @@ def compute_plan_vs_methods(data: dict, horizon: int | None = None,
     if not fc_years:
         return {**base_resp, "line_items": [], "summary": None, "extension": None,
                 "note": ("No client plan on this dataset. Upload your own forecast "
-                         "with the v8 template — mark the right-hand columns "
+                         f"with the {templates.policy.version('user')} template — mark the right-hand columns "
                          "'Forecast', enter a year and your figures — and AXIOM "
                          "will compare it against its five forecasting methods.")}
     if len(hist) < 2:

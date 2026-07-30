@@ -15,6 +15,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.workbook.defined_name import DefinedName
 
 from . import engines
+from . import template_policy as policy
 from .templates import LABELS, COMPANY_ROWS, BLOCK_KEYS
 
 def split_refs(v):
@@ -36,7 +37,7 @@ def split_refs(v):
     return out
 
 
-TEMPLATE_VERSION = "7M-v8.0"   # v8.0: non-current split, opening column, policy tax rate
+TEMPLATE_VERSION = policy.version("company")   # v8.0: non-current split, opening column, policy tax rate
 # v7.7 is PRESENTATION ONLY — row 1 was already guidance, headers stay on row 2,
 # and no cell the parser reads moved. A v7.6 file parses identically.
 # ⭐ STAMP ONLY. There is no accept-list and no equivalent check under another
@@ -876,7 +877,7 @@ def read_upload_metadata(content: bytes) -> dict | None:
     #
     # Prefix-matched so the trap cannot spring. Sought deliberately: a pair has
     # been a trio twice this week.
-    if not str(ws["A1"].value or "").startswith(META_SIG):
+    if not policy.identifies(ws["A1"].value, company=True):
         return None
     try:
         units = ws["B6"].value
@@ -1073,7 +1074,7 @@ def parse_and_validate(content: bytes, expected_company_id: int,
                     #
                     # Three copies of one policy in three files. See the
                     # template-policy enumeration report.
-                    if key in engines.BS_OPTIONAL_KEYS:
+                    if not policy.required(block, key):
                         continue
                     errors.append({"sheet": name, "cell": f"{letter}{r}",
                                    "message": f"'{lab['lines'][key]}' — value required for period {y}"})

@@ -191,13 +191,15 @@ def validate_dataset(data: dict) -> dict:
                 # naming these rows, financing-side computes as it always has,
                 # and the delta is suppressed rather than shown against a
                 # fabricated operating figure.
-                if key not in BS_OPTIONAL_KEYS:
+                from . import template_policy as _policy
+                if _policy.required(block_name, key):
                     errors.append(f"{block_name}.{key} is missing")
                 continue
             for y in years:
                 v = vals.get(str(y))
                 if v is None:
-                    if key in BS_OPTIONAL_KEYS:
+                    from . import template_policy as _policy
+                    if not _policy.required(block_name, key):
                         continue
                     errors.append(f"{block_name}.{key}[{y}] is missing")
                 else:
