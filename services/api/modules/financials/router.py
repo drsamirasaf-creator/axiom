@@ -56,7 +56,7 @@ from .proforma import _historicals_only  # noqa: E402
 
 
 def _store(db, tenant, name, data, source, warnings, enterprise_id=None,
-           balance=None):
+           balance=None, assumptions=None):
     """⭐ `balance` IS STORED, NOT JUST WARNED. A warning shown once at upload is
     a warning that expires; the per-period result rides on the row so every
     surface can badge the exact periods that do not balance, months later,
@@ -68,7 +68,13 @@ def _store(db, tenant, name, data, source, warnings, enterprise_id=None,
         ownership=data["company"]["ownership"], source=source, data=data,
         validation={"warnings": warnings,
                     "balance": balance if balance is not None
-                    else engines.balance_audit(data)})
+                    else engines.balance_audit(data),
+                    # ⭐ STORED, NOT MERELY WARNED — same reason as `balance`.
+                    # A warning shown once at upload expires; the per-field
+                    # result rides on the row so a surface can badge the exact
+                    # assumption months later without recomputing or guessing.
+                    "assumptions": assumptions if assumptions is not None
+                    else engines.assumption_audit(data)})
     db.add(row); db.commit(); db.refresh(row)
     return row
 
@@ -106,7 +112,8 @@ def create_dataset(body: schemas.DatasetIn, db: Session = Depends(get_db),
     if v["errors"]:
         raise HTTPException(status_code=422, detail=v["errors"])
     return _store(db, tenant, body.name, body.data, "direct", v["warnings"],
-                  body.enterprise_id, balance=v.get("balance"))
+                  body.enterprise_id, balance=v.get("balance"),
+                  assumptions=v.get("assumptions"))
 
 
 @router.post("/datasets/upload", response_model=schemas.DatasetOut,

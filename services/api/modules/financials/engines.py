@@ -190,6 +190,85 @@ def balance_audit(data: dict) -> dict:
             "checked": len(out), "balances": not breaching}
 
 
+# ── assumption bounds ───────────────────────────────────────────────────────
+# ⭐ BOUNDS ARE MEASURED, NOT CHOSEN HERE. They come from the Part B enumeration
+# and were calibrated against the live corpus: 8 of 321 field-values trip, 2.5%,
+# and every trip is the one known incident. A bound flagging a third of the
+# corpus would be the wrong bound; one flagging nothing would not be a bound.
+# Do not re-derive them without re-measuring the hit rate.
+#
+# ⭐ THE TWO PREMIA CARRY THE TIGHTEST CEILINGS DELIBERATELY. engines.py adds them
+# in ABSOLUTE terms to cost of equity, so an order-of-magnitude slip moves Ke by
+# tens of points rather than fractions — which is exactly how one live customer's
+# stored valuations came to be roughly half what a corpus-typical premium gives.
+# Published size premia top out near 6%; 10% is already generous.
+ASSUMPTION_BOUNDS = {
+    "tax_rate":                (0.0, 0.60),
+    "risk_free_rate":          (0.0, 0.20),
+    "market_risk_premium":     (0.0, 0.15),
+    "cost_of_debt":            (0.0, 0.30),
+    "dlom":                    (0.0, 0.50),
+    "size_premium":            (0.0, 0.10),
+    "specific_risk_premium":   (0.0, 0.10),
+    "beta":                    (0.0, 4.0),
+    "unlevered_industry_beta": (0.0, 4.0),
+    "target_debt_to_equity":   (0.0, 5.0),
+    "share_price":             (0.0, None),
+    "shares_outstanding":      (1.0, None),
+}
+
+
+def assumption_audit(data: dict) -> dict:
+    """Client-settable assumptions against measured bounds. NEVER blocks.
+
+    ⭐ WHY THIS EXISTS. `validate_dataset` tested presence and float-castability
+    and nothing else, so 0.2, 20 and -5 validated identically to 0.02 on every
+    field. One live paying customer holds eight datasets and twenty-seven stored
+    valuation runs carrying `size_premium = 0.2` — twenty percentage points added
+    straight to cost of equity, roughly halving their enterprise value. Nothing
+    in the system looked at it.
+
+    ⭐ THREE STATES, AND `absent` IS NOT `in_bounds`. A field that could not be
+    checked must not be indistinguishable from one that passed — an absent
+    assumption cannot be out of range, and coercing it would manufacture a breach
+    out of an absence. `balance_audit` skips absent operands silently; this names
+    them, which is a deliberate improvement rather than a divergence.
+
+    ⭐ DATASET-SCOPED, NOT INGEST-SCOPED, and that is the substance. The eight
+    affected datasets were written on 16 July and will never re-ingest. A check
+    that only fires at upload leaves every existing dataset unguarded — the same
+    reasoning that made `balance_audit` run on every stored period rather than
+    historicals only. This takes a payload and nothing else, so it can be swept
+    over stored rows.
+
+    Every finding names the FIELD, the VALUE, the BOUND it crossed and the
+    DIRECTION — never "assumptions out of range".
+    """
+    co = (data or {}).get("company") or {}
+    fields, breaching, absent = {}, [], []
+    for name, (lo, hi) in ASSUMPTION_BOUNDS.items():
+        v = co.get(name)
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            fields[name] = {"state": "absent", "value": None,
+                            "min": lo, "max": hi}
+            absent.append(name)
+            continue
+        below = v < lo
+        above = hi is not None and v > hi
+        if below or above:
+            fields[name] = {"state": "out_of_bounds", "value": v,
+                            "min": lo, "max": hi,
+                            "direction": "below" if below else "above",
+                            "bound_crossed": lo if below else hi}
+            breaching.append(name)
+        else:
+            fields[name] = {"state": "in_bounds", "value": v,
+                            "min": lo, "max": hi}
+    return {"fields": fields, "breaching": breaching, "absent": absent,
+            "checked": len(ASSUMPTION_BOUNDS) - len(absent),
+            "in_bounds": not breaching}
+
+
 def validate_dataset(data: dict) -> dict:
     """Structural + accounting validation (Product §7.14). Returns
     {'errors': [...], 'warnings': [...]}; errors block persistence."""
@@ -303,6 +382,18 @@ def validate_dataset(data: dict) -> dict:
     # and a column-mapping fault is undiagnosable from a rejection. The
     # structured result rides alongside so surfaces can badge the affected
     # periods rather than re-deriving it.
+    # ⭐ FLAG AND STORE, NEVER REFUSE — identical to the balance audit above, and
+    # for the same reason: refusing costs the customer their whole upload because
+    # one cell looked unusual, and an implausible premium is not an impossible
+    # one. 20% is implausible; it is a deliberate entry someone could defend.
+    asm = assumption_audit(data)
+    for f in asm["breaching"]:
+        r = asm["fields"][f]
+        warnings.append(
+            f"company.{f} = {r['value']:g} is {r['direction']} the expected "
+            f"range [{r['min']:g}, {'unbounded' if r['max'] is None else format(r['max'], 'g')}] "
+            f"(crossed {r['bound_crossed']:g}). This feeds cost of equity and "
+            f"every discounted figure. Left as supplied.")
     bal = balance_audit(data)
     for y in bal["breaching"]:
         r = bal["periods"][y]
@@ -311,7 +402,8 @@ def validate_dataset(data: dict) -> dict:
             f"({r['period_kind']}): assets {r['assets']:g} vs "
             f"liabilities + equity {r['claims']:g}, gap {r['gap']:g}. "
             f"Ratios using equity are affected for this period.")
-    return {"errors": errors, "warnings": warnings, "balance": bal}
+    return {"errors": errors, "warnings": warnings, "balance": bal,
+            "assumptions": asm}
 
 
 

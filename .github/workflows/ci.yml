@@ -112,6 +112,13 @@ jobs:
       # measurement.
       - name: db client preflight (import + fallback audit)
         run: python scripts/check-db-client.py
+      # Sibling to the balance audit. Sweeps every stored dataset, not only
+      # ingest — the eight affected datasets were written on 16 July and will
+      # never re-ingest. Exits non-zero only when NO corpus is reachable, never
+      # because a customer's assumption is unusual: it reports, it does not
+      # refuse, and it does not repair.
+      - name: assumption bounds sweep
+        run: python scripts/check-assumption-bounds.py
       - run: pytest -q
       # Proves the tests guarding the assessment read path are not vacuous, by
       # reintroducing a plausible defect per test and requiring each to fail.
