@@ -22,7 +22,20 @@
 # in place. Do not proceed to formula evaluation until the vocabulary is real.
 
 schema_version: 1
-registry_version: "7r.3"   # Segment B: debt-as-argument   # founder rulings 31 Jul; headline set = 14
+registry_version: "7r.4"   # Segment B: debt-as-argument   # founder rulings 31 Jul; headline set = 14
+# 7r.4 — SPECIFICATION CORRECTION, NOT A BEHAVIOUR CHANGE. Founder ruling.
+#   axiom.invested_capital now includes bs.preferred. Segment E measured BOTH
+#   implementations and found preferred equity already present in each: the code
+#   was right and the spec was wrong. Preferred is capital the business deploys,
+#   so omitting it makes ROIC OVERSTATE returns for any company holding any.
+#   No code change, no diff owed.
+#
+#   ⭐ WHY THIS WAS NOT VISIBLE: the correction was made in an advisory session
+#   against a copy outside the repository, and the bundle committed at 26cc7f8
+#   was assembled before that edit. So the file said 7r.3 and omitted preferred
+#   while the ruling and the code both had it. A specification that is not in the
+#   repository is a claim — and this is the third time in one day that a claim
+#   about a file was not supported by the file.
 canonical_units: millions   # matches post-ingest normalisation
 period_support: [annual, quarterly]
 
@@ -137,6 +150,10 @@ vocabulary:
     bs.total_liabilities:           {collected: true}
     bs.equity:                      {collected: true}
     bs.minority_interest:           {collected: true}
+    bs.preferred:                   {collected: true, note: "Preferred equity.
+      Backend field is `preferred_equity` (ingest.py, engines.py); the registry
+      name is shortened for formula readability. Added in 7r.4 — it was always
+      collected and always used by the code, and only the spec omitted it."}
     bs.total_debt:                  {collected: true}
     bs.secured_debt:                {collected: false, requires: "debt composition — secured/unsecured"}
     bs.floating_rate_debt:          {collected: false, requires: "debt composition — fixed/floating"}
@@ -314,13 +331,19 @@ ratios:
     category: Returns
     tier: core
     headline: false
-    formula: "bs.total_debt + bs.equity + bs.minority_interest - bs.cash"
+    formula: "bs.total_debt + bs.equity + bs.preferred + bs.minority_interest - bs.cash"
     unit: currency
     polarity: context
     basis: point_in_time
     single_owner: true
-    definition: "Debt plus equity plus minority interest less cash. The
-      capital base against which ROIC is measured."
+    definition: "Debt plus equity plus PREFERRED EQUITY plus minority interest
+      less cash. The capital base against which ROIC is measured.
+      7r.4 SPECIFICATION CORRECTION (founder ruling): preferred was missing from
+      this formula and from the vocabulary, while both implementations already
+      included it. Preferred is capital the business deploys — omitting it
+      understates the denominator and so OVERSTATES ROIC for any company holding
+      any. The code was right; the specification was wrong. No behaviour change,
+      no diff owed."
 
   - id: axiom.roic
     name: ROIC
