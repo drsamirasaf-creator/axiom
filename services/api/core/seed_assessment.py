@@ -200,6 +200,31 @@ def seed_showcase_assessment():
             db.add(AssessmentOverall(cycle_id=cycle_map[cid].id,
                                      participant_ref=ref, comment=comment))
             out["overall"] += 1
+        # ⭐ EXPLICIT, AND NOT DECORATIVE. The snapshot below recomputes the CEI by
+        # QUERYING the responses just added; unflushed, those queries see an empty
+        # cycle and `apply_kfloor` returns cei=None with no error — six snapshots
+        # written, all null, and the seed reporting `snapshots: 6`. Relying on
+        # autoflush here makes correctness depend on a session setting configured
+        # in another module.
+        db.flush()
+
+        # ── snapshots ────────────────────────────────────────────────────────
+        # ⭐ (b), AND IT IS REPRODUCIBILITY, NOT THE DEFECT. Production writes
+        # cycle.snapshot when a cycle CLOSES; a restore that replays responses
+        # never goes through close, so a rebuilt database had 14,430 responses
+        # and no published results. The resolver split (a) already makes every
+        # response-derived surface work without this. What this restores is the
+        # SNAPSHOT-READING half — sentiment, item drill, axis comments, SWOT and
+        # the briefing genuinely read cycle.snapshot and have nothing to show
+        # without one, which is their contract, not a gap.
+        from ..assessment_engine import apply_kfloor
+        from ..accounts import _cycle_cei
+        for _fid, _cyc in cycle_map.items():
+            if (_cyc.name or "").strip() not in out["cycles_created"]:
+                continue                      # never overwrite an existing snapshot
+            _cyc.snapshot = apply_kfloor(_cycle_cei(db, _cyc))
+            out["snapshots"] = out.get("snapshots", 0) + 1
+
         # ⭐ COMMITTED HERE, BEFORE THE ROSTER, AND THAT ORDER IS THE POINT.
         # The roster used to share this transaction, so the first thing that
         # raised inside it destroyed all 14,430 responses on its way out — twice,
