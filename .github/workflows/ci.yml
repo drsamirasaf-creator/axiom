@@ -76,6 +76,18 @@ jobs:
         run: python scripts/check-env-manifest.py
       - name: sole ownership (net debt, ROIC, WACC, EVA)
         run: python scripts/check-sole-owner.py
+      # Complementary to the above, and neither is sufficient. check-sole-owner
+      # types its operands (debt-ish minus cash) and so catches shapes this one
+      # cannot; this one keys on pure arithmetic shape across the registry.
+      # Reports coverage — 14 unambiguous of 53 derivable — before any duplicate,
+      # and its zero is only readable against that 14.
+      - name: registry ratio shapes (14 unambiguous of 53)
+        run: python scripts/check-ratio-shapes.py
+      # Class A. Margins are all `X / revenue * 100`, so no scan can tell them
+      # apart — duplication is prevented by PLACE, not detected by shape. A
+      # downward-only ratchet over the 5 modules that compute one today.
+      - name: margin boundary (Class A)
+        run: python scripts/check-margin-boundary.py
       - run: pytest -q
       # Proves the tests guarding the assessment read path are not vacuous, by
       # reintroducing a plausible defect per test and requiring each to fail.

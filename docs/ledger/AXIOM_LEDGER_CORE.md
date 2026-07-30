@@ -6342,3 +6342,36 @@ unambiguous?
 
 -   Customer quotes / Capterra / awards / book content for placeholder
     slots (whenever available).
+
+## §7r-D — DUPONT. BLOCKED ON THE MARGIN BOUNDARY, NOT ON THE SCAN. (30 Jul)
+
+⭐ **This entry did not exist in the repository until now.** It was referred to as
+"the ledger entry holds it pending this figure"; neither `AXIOM_LEDGER_CORE.md`
+nor `AXIOM_LEDGER_ARCHIVE.md` contained "§7r-D" or "DuPont". Fourth instance this
+era of a claim about a file the file did not support — recorded here so the
+blocker is falsifiable rather than remembered.
+
+**STATUS: BLOCKED. Do not build.**
+
+`axiom.dupont_three_step` = `net_margin × asset_turnover × financial_leverage`.
+
+- `net_margin` is **Class A** — one of thirteen registry ratios whose shape is
+  `@0/@1*100`. Indistinguishable by any scan from `gross_margin`,
+  `operating_margin`, `ebitda_margin` and ten others.
+- `asset_turnover` is **Class B** — `@0/avg(@1)`, too bare to search for.
+- `financial_leverage` is **Class B** — `avg(@0)/avg(@1)`.
+
+**Building the tree before the boundary exists would make it a fourth site
+computing a margin**, and the 14-shape scan could not have caught it — that is
+precisely the class shape detection cannot see. The concern the ledger held it
+for is confirmed by measurement, not deferred by caution.
+
+**UNBLOCKS WHEN:** DuPont's three factors are computed inside the margin boundary
+(`services/api/modules/financials/ratios.py`) rather than beside it. The boundary
+now exists as a downward-only ratchet — `scripts/check-margin-boundary.py`, 5
+declared modules, 20 sites, CI-enforced — so the condition is measurable.
+
+**NOT a precondition:** extending the shape scan. It was explicitly ruled not to
+be extended, and it could not detect this defect if it were.
+
+See `docs/reports/2026-07-30-class-a-margin-boundary.md`.
