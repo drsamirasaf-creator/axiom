@@ -136,14 +136,29 @@ def run(data: dict, mode: str, assumptions: dict | None = None,
     pref = bs["preferred_equity"][ys]
     mino = bs["minority_interest"][ys]
     equity = ev - net_debt - pref - mino
-    dlom = float(company.get("dlom") or 0.0) if company["ownership"] == "private" else 0.0
-    equity_post = equity * (1.0 - dlom)
+    # ⭐ AN ABSENT DLOM IS NOT A ZERO DLOM. `or 0.0` reported `dlom: 0.0` in the
+    # payload — a stated fact nobody supplied — and made equity_post equal to
+    # equity, so the discount silently vanished. DLOM sits OUTSIDE the EV→equity
+    # bridge by design, precisely so the ownership-interest adjustment is visible
+    # and arguable; coercing it to zero deletes the line the reader was meant to
+    # challenge and puts a fabricated number where it stood.
+    #
+    # A PUBLIC company genuinely has no marketability discount, so 0.0 there is a
+    # fact, not a fallback. Only a private company with the field absent is
+    # unknown — and unknown propagates.
+    _dl = company.get("dlom")
+    dlom = (None if _dl is None else float(_dl)) if company["ownership"] == "private" else 0.0
+    equity_post = fin._n(lambda e, d: e * (1.0 - d), equity, dlom)
     # Per-share equity value. Computed whenever shares are provided, for both
     # public and private companies. For private companies it is based on the
     # DLOM-adjusted equity and is INDICATIVE only — private shares are illiquid
     # and this is not a market price; the frontend labels it accordingly.
     _shares = company.get("shares_outstanding")
-    per_share = (equity_post / float(_shares)
+    # equity_post is None when a private company supplies no DLOM, so the
+    # per-share figure is unknowable too — it must not fall back to the
+    # pre-discount equity, which would reintroduce the overstatement one
+    # line below the place it was just removed.
+    per_share = (fin._n(lambda e: e / float(_shares), equity_post)
                  if _shares and float(_shares) > 0 else None)
     per_share_indicative = bool(per_share is not None
                                 and company["ownership"] != "public")
@@ -172,7 +187,7 @@ def run(data: dict, mode: str, assumptions: dict | None = None,
         # ownership-interest (DLOM) adjustment — separate from the bridge
         "ownership_adjustment": {
             "equity_value": _r(equity), "dlom": _r(dlom),
-            "dlom_amount": _r(-equity * dlom),
+            "dlom_amount": _r(fin._n(lambda e, d: -e * d, equity, dlom)),
             "nonmarketable_equity_value": _r(equity_post)}}
 
     # Sensitivity grid (Product §8.13): WACC x terminal growth
@@ -531,7 +546,18 @@ def multiples(data: dict, sector: str | None = None,
     bridge = net_debt + pref + mino
     # three-number rule everywhere: multiples carry pre- and post-DLOM equity too,
     # so the ownership-interest adjustment shows on the comparables side as well.
-    dlom = float(company.get("dlom") or 0.0) if company.get("ownership") == "private" else 0.0
+    # ⭐ AN ABSENT DLOM IS NOT A ZERO DLOM. `or 0.0` reported `dlom: 0.0` in the
+    # payload — a stated fact nobody supplied — and made equity_post equal to
+    # equity, so the discount silently vanished. DLOM sits OUTSIDE the EV→equity
+    # bridge by design, precisely so the ownership-interest adjustment is visible
+    # and arguable; coercing it to zero deletes the line the reader was meant to
+    # challenge and puts a fabricated number where it stood.
+    #
+    # A PUBLIC company genuinely has no marketability discount, so 0.0 there is a
+    # fact, not a fallback. Only a private company with the field absent is
+    # unknown — and unknown propagates.
+    _dl = company.get("dlom")
+    dlom = (None if _dl is None else float(_dl)) if company.get("ownership") == "private" else 0.0
     methods = []
     for name, mult, base in (("EV/EBITDA", ev_ebitda, ebitda),
                              ("EV/EBIT", ev_ebit, ebit)):

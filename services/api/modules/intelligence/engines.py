@@ -181,20 +181,31 @@ def health_reo(data: dict) -> dict:
     ev_opt = pe + pt
     ratio = min(ev_cur / ev_opt, 1.0) if ev_opt > 0 else 0.0
 
-    cur_ratio = derived["ratios"][n_h - 1]["current_ratio"] or 0.0
-    guard = max(0.0, min(1.0, cur_ratio / 1.0))
-    score = 100.0 * ratio * guard
-    return {"health_index": round(score, 2), "version": "reo_distance_v1",
+    # ⭐ `or 0.0` PUBLISHED A HEALTH INDEX OF ZERO FROM ONE ABSENT LIABILITY
+    # LINE. current_ratio is _n()-built, so it is None when the balance sheet
+    # does not cover current liabilities; that became guard=0 and score=0.0 —
+    # the most alarming value on the instrument, definitively wrong, and
+    # reported beside a correctly-computed detail block that made it credible.
+    cur_ratio = derived["ratios"][n_h - 1]["current_ratio"]
+    guard = None if cur_ratio is None else max(0.0, min(1.0, cur_ratio / 1.0))
+    score = None if guard is None else 100.0 * ratio * guard
+    out = {"health_index": None if score is None else round(score, 2),
+           "version": "reo_distance_v1",
             "detail": {"de_current": round(x_cur, 4), "de_optimal": round(x_opt, 4),
                        "wacc_current": round(w_cur, 6), "wacc_optimal": round(w_opt, 6),
                        "beta_unlevered": round(beta_u, 6),
                        "ev_at_current_wacc": round(ev_cur, 2),
                        "ev_at_optimal_wacc": round(ev_opt, 2),
                        "ev_ratio": round(ratio, 6),
-                       "solvency_guard": round(guard, 6),
+                       "solvency_guard": (None if guard is None
+                                          else round(guard, 6)),
                        "terminal_growth_used": g_term},
             "wacc_curve": [{"de": round(x, 2), "wacc": round(w, 6)}
                            for x, w in curve[::4]]}      # every 0.2 for charts
+    if score is None:
+        # "No value" without a reason is a silent failure — name the input.
+        out["absence_reason"] = "not computable: missing current_ratio"
+    return out
 
 
 # ---- 3. Transformation path recommender -------------------------------------
@@ -2239,8 +2250,24 @@ def _apply_levers(data: dict, levers: dict) -> dict:
             orig_total = (data["balance_sheet"]["short_term_debt"][ty]
                           + data["balance_sheet"]["long_term_debt"][ty])
             if orig_total > 1e-9:
-                de0 = float(d["company"].get("target_debt_to_equity") or 0.0)
-                d["company"]["target_debt_to_equity"] = max(0.0, de0 * term_debt / orig_total)
+                # ⭐ `or 0.0` DID NOT DO WHAT I EXPECTED, AND MEASURING IT
+                # MATTERED. Collapsing target D/E to zero removes the cheap
+                # after-tax debt from the blend, and that dominates the lower
+                # levered beta — so WACC RISES rather than falls. Measured on
+                # an otherwise identical private company:
+                #   D/E 0.50 supplied  WACC 0.112083   EV 1,059.66
+                #   D/E absent -> 0.0  WACC 0.125000   EV   924.86
+                #                      +129.2 bp       -12.72%
+                # A fabricated 12.7% understatement, not the overstatement I
+                # predicted from reading it. Absence cannot be rescaled: if
+                # the target structure is unknown the levered target is
+                # unknown, so the key is left ABSENT rather than invented.
+                _de0 = d["company"].get("target_debt_to_equity")
+                if _de0 is None:
+                    d["company"].pop("target_debt_to_equity", None)
+                else:
+                    d["company"]["target_debt_to_equity"] = max(
+                        0.0, float(_de0) * term_debt / orig_total)
         # the cash from (or used by) the debt change lands at y0
         BS["cash"][y0] += BS["long_term_debt"][y0] - data["balance_sheet"]["long_term_debt"][y0]
     return d
