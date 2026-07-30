@@ -1223,6 +1223,11 @@ def optimize_analytics(data: dict, horizon: int = 5) -> dict:
 
 def risk_dashboard(data: dict, n_paths: int = 4000,
                    terminal_growth: float = 0.025) -> dict:
+    # Imported HERE, not assumed at module scope: a bare name that resolves
+    # nowhere is a 500 that only fires on the branch using it, and this codebase
+    # has already shipped one of those (the `func` import fix in 92e7340).
+    # Caught by RUNNING the branch, not by the checker going green.
+    from ..financials.engines import _n
     import math as _math
     import random as _random
     from ..twin import engines as twin_eng
@@ -1368,7 +1373,9 @@ def risk_dashboard(data: dict, n_paths: int = 4000,
          "basis": f"EVT tail index xi = {ra['extreme_value_tail']['tail_index_xi']:.2f} "
                   f"(positive = heavier than exponential)"},
         {"category": "Strategic / configuration",
-         "score": round(100 - hv["health_index"], 1),
+         # ⭐ An absent health index is not a score of 100. _n() keeps it absent
+         # so the category renders as an em dash rather than as a perfect score.
+         "score": _n(lambda h: round(100 - h, 1), hv["health_index"]),
          "rag": _band(hv["health_index"], 85, 70),
          "basis": f"distance from the value-maximizing configuration "
                   f"(Health {hv['health_index']:.0f}/100)"},

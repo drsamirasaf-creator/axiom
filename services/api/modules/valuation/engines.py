@@ -360,15 +360,26 @@ def stress(data: dict, mode: str, assumptions: dict | None = None,
     curve = [{"delta": _r(d), "worst_case_mean": _r(_tv_worst_case(evs, probs, d), 2)}
              for d in radii]
     det = base["deterministic"]
+    # ⭐ THE CLAIMS ARE ABSENCE-BEARING AND THIS SUMMED THEM PLAINLY. net_debt is
+    # built with _n(), so any of the three can be None on a dataset that does not
+    # carry the line — and `None + x` raised here, before the panel could say why.
     threshold = (float(threshold_override) if threshold_override is not None
-                 else det["net_debt"] + det["preferred_equity"]
-                 + det["minority_interest"])
+                 else fin._n(lambda a, b, c: a + b + c,
+                         det["net_debt"], det["preferred_equity"],
+                         det["minority_interest"]))
 
     def gap(d):
         return _tv_worst_case(evs, probs, d) - threshold
     d_max = 0.5
     breakeven, resilient_beyond = None, None
-    if gap(0.0) <= 0:
+    # ⭐ AN ABSENT THRESHOLD IS NOT A THRESHOLD OF ZERO. Without it there is no
+    # line for the adversary to push the value below, so breakeven and
+    # resilient_beyond are ABSENT rather than computed against a fabricated 0 —
+    # and `threshold_unavailable` says so, instead of the caller inferring it
+    # from two nulls.
+    if threshold is None:
+        pass
+    elif gap(0.0) <= 0:
         breakeven = 0.0
     elif gap(d_max) > 0:
         resilient_beyond = d_max
@@ -391,7 +402,8 @@ def stress(data: dict, mode: str, assumptions: dict | None = None,
          "pass": radii[0] != 0.0 or abs(curve[0]["worst_case_mean"] - mean) < 0.02},
         {"name": "worst_case_monotone_nonincreasing", "value": monotone,
          "expected": True, "pass": monotone}]
-    return {"mode": mode, "threshold": _r(threshold, 2),
+    return {"mode": mode, "threshold": _r(threshold, 2) if threshold is not None else None,
+            "threshold_unavailable": threshold is None,
             "threshold_source": ("override" if threshold_override is not None
                                  else "net_debt + preferred + minority"),
             "base": {"enterprise_value": det["enterprise_value"],

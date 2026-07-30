@@ -407,7 +407,13 @@ def cash_runway_route(dataset_id: int, scenario: str = "recession",
 
 class TargetStateIn(BaseModel):
     dataset_id: int
-    targets: dict
+    # ⭐ WAS AN UNTYPED dict, AND THAT IS A REACHABLE 500 RATHER THAN AN ABSENCE.
+    # target_state does `targets["ebit_margin"] - ebit_margin_now` guarded only on
+    # the COMPUTED side, so a body of {"ebit_margin": null} reached the operator
+    # and raised. A null in a request body is INVALID INPUT, not a missing
+    # measurement — absence propagates for data the company never supplied, but a
+    # client sending null for its own target is a 422, not an em dash.
+    targets: dict[str, float]
 
 
 @router.post("/target-state")
