@@ -70,6 +70,10 @@ jobs:
       # sites where there must be one. A guard added after the fix is
       # calibrated against a codebase that already passes and proves only that
       # it can print a tick.
+      # A manifest nobody checks is a claim. Both directions: read-but-
+      # undocumented, and documented-but-never-read.
+      - name: env manifest matches the code
+        run: python scripts/check-env-manifest.py
       - name: sole ownership (net debt, ROIC, WACC, EVA)
         run: python scripts/check-sole-owner.py
       - run: pytest -q

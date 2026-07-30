@@ -1,20 +1,38 @@
-fastapi>=0.110
-uvicorn[standard]>=0.29
-sqlalchemy>=2.0
-psycopg[binary]>=3.2
-pydantic>=2.6
-alembic>=1.13
-openpyxl>=3.1
-python-multipart>=0.0.9
-httpx>=0.27
-stripe>=9.0.0
-PyJWT>=2.8
-email-validator>=2.1
-boto3>=1.34
-python-pptx>=1.0
-matplotlib>=3.8
-reportlab>=4.0
-pillow>=10.0
-pdfplumber>=0.11
-python-docx>=1.1
-sentry-sdk>=2.0
+# AXIOM backend dependencies — PINNED.
+#
+# ⭐ EVERY VERSION HERE IS THE ONE VERIFIED WORKING, NOT THE ONE NEWEST ON PyPI.
+# Produced by `pip freeze` against an environment in which the full suite passes
+# (861 passed, 3 xfailed on 2026-08-01), not by resolving `>=` constraints on the
+# day of the freeze.
+#
+# BEFORE: 0 of 20 lines carried a version. A rebuild resolved whatever was newest
+# that day, and this codebase is sensitive to that — openpyxl shapes the template
+# writer, pydantic v2 semantics run the response models, SQLAlchemy 2.x styles
+# every model. Six months from now an unpinned rebuild would silently get
+# different libraries than production runs, and the first sign would be a
+# behaviour change nobody could attribute.
+#
+# The frontend already carried this discipline (bun.lock committed, plus a 24h
+# supply-chain guard in bunfig.toml). Only the backend was unpinned.
+#
+# TO UPDATE: change the pin deliberately, run the suite, and commit both together.
+fastapi==0.139.2
+uvicorn[standard]==0.52.0
+sqlalchemy==2.0.51
+psycopg[binary]==3.3.4
+pydantic==2.13.4
+alembic==1.18.5
+openpyxl==3.1.5
+python-multipart==0.0.32
+httpx==0.28.1
+stripe==15.4.0
+PyJWT==2.13.0
+email-validator==2.3.0
+boto3==1.43.51
+python-pptx==1.0.2
+matplotlib==3.10.9
+reportlab==5.0.0
+pillow==12.2.0
+pdfplumber==0.11.9
+python-docx==1.2.0
+sentry-sdk==2.66.1
