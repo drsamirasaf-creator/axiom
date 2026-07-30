@@ -80,6 +80,58 @@ def _showcase_company(db):
                     Enterprise.name == SHOWCASE_NAME).first())
 
 
+def _ensure_departments(db, co, data):
+    """Create the departments the FIXTURE'S OWN responses reference. Idempotent.
+
+    ⭐ SOURCED FROM THE RESPONSES, NOT FROM ingest.STD_DEPARTMENTS. The standard
+    list is what a fresh upload would create; it is not what this data points at.
+    Meridian's `Sales & Marketing` is not in STD_DEPARTMENTS at all — it is a
+    custom department, and `CANONICAL_DEPT_RENAMES` deliberately does not split it
+    because a 1→N split is a human decision. Seeding from the standard list would
+    produce a company whose departments and whose responses disagree, which is the
+    defect this closes rather than a rebuild of it.
+
+    ⭐ ELEVEN STRINGS, SEVEN DEPARTMENTS. The fixture carries both spellings of the
+    four renamed departments ('Finance' AND 'Finance and Accounting', 'HR' AND
+    'Human Resources', ...). They are collapsed by the SAME equivalence the read
+    paths use — `_rename_map_norms` — so one department answers to both, exactly
+    as production's alias rows do. The responses are never rewritten, so both
+    spelling paths stay exercised: the current cycle keeps the short forms and the
+    history keeps the canonical ones.
+
+    Where a group holds a canonical name, that name wins; the short form is a
+    lookup key, not a display name, and a department rendered as "HR" would be
+    naming itself by the alias.
+
+    HEADCOUNTS ARE NOT SEEDED. Production carries `employees` per department; the
+    fixture does not, and inventing them would put a fabricated number where the
+    absence is honest. They stay None.
+    """
+    from ..accounts import Department, _ensure_department, _rename_map_norms, _norm_dept_name, CANONICAL_DEPT_RENAMES
+
+    names = sorted({r[6] for r in data["responses"] if r[6] and str(r[6]).strip()})
+    groups = {}
+    for n in names:
+        groups.setdefault(frozenset(_rename_map_norms(n)), []).append(n)
+
+    canonical_values = {_norm_dept_name(v) for v in CANONICAL_DEPT_RENAMES.values()}
+    made = 0
+    for members in groups.values():
+        preferred = sorted(m for m in members
+                           if _norm_dept_name(m) in canonical_values)
+        chosen = preferred[0] if preferred else sorted(members, key=len)[-1]
+        existing = {_norm_dept_name(d.name) for d in
+                    db.query(Department).filter_by(company_id=co.id).all()}
+        if _norm_dept_name(chosen) in existing:
+            continue
+        # is_standard mirrors production, where all seven carry the flag —
+        # including Sales & Marketing, which is absent from STD_DEPARTMENTS.
+        _ensure_department(db, co.id, chosen, is_standard=True)
+        made += 1
+    db.flush()
+    return made
+
+
 def _synthetic_identity(ref, idx):
     """A roster identity that could not be mistaken for a real person."""
     return (f"Respondent {idx:02d} (demo)",
@@ -107,6 +159,8 @@ def seed_showcase_assessment():
         co = _showcase_company(db)
         if not co:
             return {"skipped": "showcase company not present yet"}
+
+        out["departments"] = _ensure_departments(db, co, data)
 
         # ── framework + items ────────────────────────────────────────────────
         fw = (db.query(AssessmentFramework)
