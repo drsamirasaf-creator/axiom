@@ -6509,6 +6509,182 @@ has misread the layer.
 6. **The Watch** — named-recipient alerts off the **nightly kernel**, one alert
    per crossing, with **hysteresis**.
 
+### ⭐ THE SEVEN-QUESTION SPINE — canonical Pack section order (RULED)
+
+**The Pack is ONE DOCUMENT, not six.** The seven questions are its **section
+architecture**, not merely the Brief's structure. **Brief and Pack answer the same
+seven questions at different depths, in the same order.**
+
+| # | question | fed by |
+|---|---|---|
+| 1 | What changed | long-run variance |
+| 2 | Why | ratio library §7r |
+| 3 | What is likely | ensemble / primary forecast |
+| 4 | What is at risk | viability kernel and Sentinel |
+| 5 | Which initiatives are underperforming | §7m Cockpit |
+| 6 | What to do next | enterprise optimisation |
+| 7 | How those actions affect cash flow and equity value | §7s.5 Value Bridge |
+
+⭐ **THE VALUE BRIDGE CLOSES THE DOCUMENT.** Every other section exists in some
+form elsewhere in the product. A bridge stating that **a named initiative slipped
+and that this is a specific quantity of equity value** does not. The last thing
+the reader sees is the only claim unavailable anywhere else.
+
+### ⭐ THE WATCH — event-timed, with a Pack section (RULED)
+
+**The Watch is NOT folded into the Pack as a delivery.** Covenant headroom
+breaking on the 12th and reported on the 5th of the following month is a
+**post-mortem, not a warning**. Delivery stays **event-timed**.
+
+The Watch **does** appear in the Pack as a section within **"what is at risk"**:
+what fired during the period, what was decided in response, and **what it turned
+out to be worth**. This closes the loop and is **the renewal evidence** — a
+running statement of what AXIOM caught before it became expensive.
+
+### ⭐ DECISION RECORD — monthly face plus permanent store (RULED)
+
+In the Pack: **decisions taken this period**, and **realised effects of decisions
+taken in earlier periods**.
+
+The second half is **the compounding asset**, and is **invisible in month one by
+construction**. A design judged on its first pack will undervalue it.
+
+### ⭐ TWO DOCUMENTS, ONE COMPONENT LIBRARY — corrects a prior advisor error
+
+**The advisor proposed the seven-section spine govern both the Pack and the
+on-demand export. The user ruled that wrong and the ruling stands.** Recorded
+with its reason so it is not re-derived:
+
+- **The Pack is SELECTIVE. Its value is what it excludes. It fails by being
+  noisy.**
+- **The export is EXHAUSTIVE** — everything the webapp presents: all data,
+  tables, charts, SWOT, risk, sentiment, feedback, dashboard, EVA distribution,
+  advanced analytics, AI summary. Its purpose is that **a reader without app
+  access sees what a user sees. It fails by being incomplete.**
+
+Forcing the export through the spine would make it **a worse export**.
+
+**SHARED COMPONENT LIBRARY, NOT A SHARED SPINE.** Ratio table, bridge, sentiment
+chart, EVA distribution each render **once** as a component. The Pack composes
+seven into an argument; the export enumerates all. **A section gaining a field is
+picked up by both.**
+
+#### ⭐ The export's real defect is ENUMERATION
+
+"Everything the app presents" is a **hand-synced list subject to III.4**. The
+current export is **already missing most of what shipped this year** and went
+stale **silently rather than failing**.
+
+The export must **enumerate from what the app renders**, with a guard that goes
+**red when the app gains a surface the export does not carry** — the same
+correction made to the Pack's coverage assertion, **arriving from the opposite
+direction**.
+
+#### PPT and PDF are not the same content
+
+Everything Meridian holds is plausibly **60–100 PDF pages**; a hundred-slide deck
+is not a deck.
+
+- **PPT** carries the **visual surfaces** — charts, dashboards, org structure,
+  distributions.
+- **PDF** carries **full tables and detail**.
+
+#### Provenance and absence — restated for every new section
+
+- **An overridden number reaching any export bare is a FAIL (§4x).** Export is one
+  of the two surfaces most likely to drop attribution.
+- **A section whose input is missing must APPEAR, stating what is missing.** In a
+  dense document a reader infers from a section's absence that it had nothing to
+  report — **fabrication by silence, in a file that leaves the building.**
+
+#### No showcase fast path into either document
+
+The `_serve_showcase_latest` defect meant **every real company's download failed
+behind a green Meridian**. A regained shortcut means **Meridian's sample proves
+nothing about a customer's**.
+
+### ⭐ PUBLICATION AND DISTRIBUTION ARE TWO EVENTS — corrects the original §7s.3
+
+**The original design collapsed them** and had the pack distributed automatically
+on publication. **That was wrong on the merits, not merely commercially:** a pack
+reaching a director **before the CEO has seen it** makes the CEO accountable for
+reporting they did not author. Fault and correction both recorded.
+
+- **PUBLICATION is automatic, dated, and NON-SUPPRESSIBLE.** On the publication
+  date the pack exists — frozen, versioned, immutable. **Nobody approves it.**
+  This is what makes it **a record rather than a document**, and what prevents **a
+  bad month being quietly skipped**.
+- **DISTRIBUTION is a deliberate act.** The CEO is notified the pack is ready,
+  reviews, and **releases**. **Nothing external moves until they do. Default is
+  manual.**
+- **Standing auto-release is opt-in and revocable** at any time, for any recipient
+  list.
+- **Release is recorded** — who released which version, to whom, when. This
+  **protects the CEO** as much as it serves the audit trail, and **belongs in the
+  Decision Record**.
+- ⭐ **A pack cannot be edited before release, and publication cannot be
+  prevented.** A CEO may decline to distribute any given pack. **If suppression or
+  pre-release editing were permitted, the series becomes a curated highlight reel
+  and every claim resting on immutability collapses.** A wrong number is corrected
+  by **a superseding version with a stated reason** — same law as the override
+  trail.
+
+#### ⭐ Where the lock-in actually lives — correcting the original claim
+
+**The advisor claimed distribution was the mechanism. It is not.** The mechanism
+is **the recipient's expectation**: a director who has read the pack for six
+months **expects it, and its absence is a question the CEO answers**.
+
+**Approval does not weaken this. A habit the CEO chose each month is more durable
+than one imposed.**
+
+*"The pack is ready, review and release"* is a **stronger monthly hook** than
+*"the pack was sent"* — it requires the CEO to **open AXIOM on a date, for a
+reason**, which is the recurring-use property the layer was built to create.
+
+### ⭐ THE MERIDIAN SAMPLE PACK — the primary sales asset
+
+The sample monthly pack is **the strongest available selling instrument: the
+product's output rather than a description of it.**
+
+⭐ **It MUST be generated by the real pipeline. A composed or hand-built pack is
+PROHIBITED.** It would breach absence-propagates **more consequentially than any
+internal defect, because it is the artefact placed in front of buyers**, and it
+would **destroy the coverage property** — a sample bypassing compute proves
+nothing about whether the Pack works. **§7s.1 ships first; Meridian's pack is its
+first real output.**
+
+**Therefore what makes the sample impressive is the §7o SEED, not the Pack's
+design** — and **§7o must be designed against the seven-section spine.**
+
+The seed requires:
+
+1. **A specific, uncomfortable finding** — not "margin declined 180bp" but a
+   decline **concentrated in named lines with a common owner and initiatives
+   already flagged**.
+2. ⭐ **A causal chain that CLOSES** — organisational signal (sentiment) →
+   initiative slippage → KR miss → forecast revision → **a stated movement in
+   equity value**, traceable at every hop. **This single chain carries more weight
+   than every other section combined.**
+3. **Two consecutive packs, with the bridge between them.** One pack is a
+   document; **two are a system of record.**
+4. **One deliberate declared absence.** A system that states what it does not know
+   is a stronger trust signal to a CFO than one that always looks complete — and
+   it **proves absence-publishes rather than asserting it**.
+
+⭐ **The reaction to optimise for is NOT "I want this every month" but "MY BOARD
+WOULD EXPECT THIS."** The second is item 3 firing, and is the difference between a
+CEO who likes the pack and one who **cannot cancel it**.
+
+### ⭐ BOARD-FACING RENDER IS A SCOPE VALUE (RULED)
+
+A chairman reads for **governance posture, management accountability, what changed
+since the last meeting, and what to press on** — **the same content, differently
+framed**.
+
+**This is a VALUE OF THE RECIPIENT SCOPE FIELD, not a third document.** Recorded
+now so it is **not built as one**.
+
 ### Queue and dependencies
 
 Queue position within V1.0 is **unconstrained**, with **one hard dependency**:
@@ -6610,6 +6786,14 @@ strongest in the set.
 ⭐ **This is NOT current behaviour.** Recorded explicitly so the seat code's
 existing treatment is **not adopted by default** by whoever builds item 3.
 
+### ⭐ OPEN — export permission model (NOT RULED)
+
+An export containing **every departmental sentiment slice and every CXO override**,
+**user-initiated and distributable at will**, has **k-anonymity and attribution
+implications the scheduled Pack does not**.
+
+**The two need different permission models.** Not ruled.
+
 ### OPEN — positioning (design, not ruled)
 
 The locked line — *"a strategy-execution platform that supports dynamic corporate
@@ -6619,12 +6803,34 @@ The PE / transaction workflow is the **commercial lead**.
 **Proposed resolution:** retain the line where the platform is described; lead
 every commercial surface with the one workflow. Recorded as design-not-ruled.
 
+**Appended 30 Jul — further design, NOT a ruling. This touches the locked line
+and is not upgraded.**
+
+The pack functions as a **referral instrument through item 3 at no additional
+build cost**. A chairman receiving it **sits on other boards**; a sponsor's
+operating partner reading one portfolio company's bridge **has others**.
+
+**Chairmen are an easy sell and have no funnel** — they do not attend demos,
+respond to outbound, or search.
+
+**Sponsor-first is the stronger motion:** the sponsor is the buyer, **mandates the
+reporting**, and **buys multiple CIDs in one conversation**. Regent Financial's
+board-level network is the one channel where direct-to-chairman works, and is **a
+warm motion rather than a marketing programme**.
+
+⭐ **Counter-consideration, recorded:** a chairman holds **neither budget nor
+implementation burden**, so a tool imposed downward risks **minimum-viable
+compliance, a thin pack, and a disproved champion.**
+
+### OPEN — §7o reseed design (offered, NOT COMMISSIONED)
+
+Offered as a design entry. **Not yet commissioned.** See the sample-pack seed
+requirements above for what it would have to produce.
+
 ### Still open
 
-The Brief's seven lines; retention and revocation policy for scoped links;
-hysteresis bands for the Watch.
-
----
+The Brief's seven lines as literal copy; retention and revocation policy for
+scoped links; hysteresis bands for the Watch.
 
 ## ⭐ CROSS-VERSION HISTORICAL COMPARISON — UNMEASURED QUESTION (30 Jul)
 
