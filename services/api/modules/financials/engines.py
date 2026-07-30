@@ -418,6 +418,27 @@ def wacc(company: dict) -> dict:
     return detail
 
 
+
+def _at(block: dict, key: str, period) -> float | None:
+    """A statement-block value, or None where that line item does not cover the
+    period.
+
+    ⭐ THE FIX BELONGS AT THE ACCESSOR, NOT THE ARITHMETIC. Every site of this
+    class is `BLOCK["key"][period]` — a plain subscript into a dict whose values
+    are None BY DESIGN on any dataset that does not cover every line item in
+    every period. Rewriting the expressions to guard each operand would be one
+    edit per operand and would leave the next expression to be written exactly
+    as wrongly; `_n()` already handles absence once the operands arrive as None
+    rather than as an exception.
+
+    A missing KEY and a missing PERIOD both yield None here, deliberately: to
+    the caller they are the same fact — this figure is not available for this
+    period — and distinguishing them would push a judgement into an accessor
+    that has no way to make it.
+    """
+    return (block.get(key) or {}).get(str(period))
+
+
 def _cagr(first: float, last: float, n_periods: int) -> float:
     if first <= 0 or last <= 0 or n_periods <= 0:
         return 0.0
@@ -520,8 +541,13 @@ def auto_forecast(data: dict, assumptions: dict | None = None) -> dict:
         b = out["balance_sheet"]
         b["other_current_assets"][ys] = _r(oca)
         b["current_liabilities_ex_debt"][ys] = _r(cl)
-        b["noncurrent_assets"][ys] = _r(b["noncurrent_assets"][y_prev]
-                                        + capex - da)
+        # ⭐ THESE FIVE LINES ARE THE RAISES THAT BLOCK valuation.run BEFORE IT
+        # REACHES net_debt. The first forecast period reads y_prev = the last
+        # HISTORICAL period, whose values come from the uploaded dataset and are
+        # legitimately absent. Every one now arrives as None and propagates.
+        b["noncurrent_assets"][ys] = _r(
+            _n(lambda nca, cx, d: nca + cx - d,
+               _at(b, "noncurrent_assets", y_prev), capex, da))
         b["short_term_debt"][ys] = b["short_term_debt"][y_prev]
         b["long_term_debt"][ys] = b["long_term_debt"][y_prev]
         b["preferred_equity"][ys] = b["preferred_equity"][y_prev]
@@ -530,15 +556,18 @@ def auto_forecast(data: dict, assumptions: dict | None = None) -> dict:
         c["capex"][ys] = _r(capex); c["net_borrowing"][ys] = 0.0
         c["dividends"][ys] = 0.0
         # cash accretes FCFE (no payout assumed); equity is the plug
-        d_nwc = (oca - cl) - (b["other_current_assets"][y_prev]
-                              - b["current_liabilities_ex_debt"][y_prev])
-        fcfe = ni + da - capex - d_nwc
-        b["cash"][ys] = _r(b["cash"][y_prev] + fcfe)
-        assets = b["cash"][ys] + oca + b["noncurrent_assets"][ys]
-        b["total_equity"][ys] = _r(assets - cl - b["short_term_debt"][ys]
-                                   - b["long_term_debt"][ys]
-                                   - b["preferred_equity"][ys]
-                                   - b["minority_interest"][ys])
+        d_nwc = _n(lambda a, l, pa, pl: (a - l) - (pa - pl), oca, cl,
+                   _at(b, "other_current_assets", y_prev),
+                   _at(b, "current_liabilities_ex_debt", y_prev))
+        fcfe = _n(lambda n_, d, cx, w: n_ + d - cx - w, ni, da, capex, d_nwc)
+        b["cash"][ys] = _r(_n(lambda c, f: c + f, _at(b, "cash", y_prev), fcfe))
+        assets = _n(lambda c, o, nca: c + o + nca,
+                    _at(b, "cash", ys), oca, _at(b, "noncurrent_assets", ys))
+        b["total_equity"][ys] = _r(_n(
+            lambda a, l, sd, ld, pe, mi: a - l - sd - ld - pe - mi,
+            assets, cl, _at(b, "short_term_debt", ys),
+            _at(b, "long_term_debt", ys), _at(b, "preferred_equity", ys),
+            _at(b, "minority_interest", ys)))
         y_prev = ys
     out["_forecast_provenance"] = {
         "method": "trend", "revenue_growth": _r(g), "ebit_margin": _r(m_ebit),

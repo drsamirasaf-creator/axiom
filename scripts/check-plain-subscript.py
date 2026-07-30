@@ -41,7 +41,29 @@ ARITH = (ast.Add, ast.Sub, ast.Mult, ast.Div)
 
 # Measured 2026-08-01. Downward-only: this number may fall as modules are
 # converted, and may not rise without the evidence a rise demands.
-EXPECTED_TOTAL = 29
+# ⭐⭐ 69, AND THE FOURTH CORRECTION TO THIS NUMBER — THIS ONE UPWARD.
+#
+#   ~195  uncalibrated: counted .get() forms (absence-SAFE) and every operand
+#     36  calibrated shape
+#     29  validator idiom modelled (7 sites provably guarded by `if not errors:`)
+#     20  after converting auto_forecast's 9
+#     69  ⭐ tuple-unpacked block bindings made visible
+#
+# `IS, BS, CF = data["income_statement"], data["balance_sheet"], data["cash_flow"]`
+# appears at engines.py:266, :486 and :991 and is the COMMON binding form. Only
+# the single-target form was handled, so BS/IS/CF were never registered and every
+# site using them was invisible — including two entire modules
+# (financials/proforma.py at 17, and 19 more in intelligence/engines.py).
+#
+# RAISING A RATCHET IS NORMALLY FORBIDDEN. Permitted here under the
+# counter-corrected category: measured on the SAME tree both ways, the
+# pre-conversion codebase reads 78 and the post-conversion 69. The nine
+# conversions are real and reduced it; the rest was always there and unseen.
+#
+# ⭐ FOUND BY TRACING A RAISE THE GUARD SAID COULD NOT EXIST — engines.py:502
+# still raised after the module was reported converted. A guard is only as good
+# as the last thing that contradicted it.
+EXPECTED_TOTAL = 69
 
 # Modules whose output reaches a surface a customer sees. A delta here is
 # customer-visible; elsewhere it is internal or batch.
@@ -127,13 +149,30 @@ class Scan(ast.NodeVisitor):
             self.generic_visit(n)
 
     def visit_Assign(self, n):
-        # locals bound to a block: BS = data["balance_sheet"]
-        if isinstance(n.value, ast.Subscript):
-            k = n.value.slice
-            if isinstance(k, ast.Constant) and k.value in BLOCKS:
-                for t in n.targets:
-                    if isinstance(t, ast.Name):
-                        self.blocks.add(t.id)
+        """locals bound to a block, in BOTH binding forms.
+
+        ⭐ THE TUPLE UNPACK WAS INVISIBLE, AND IT IS THE COMMON FORM.
+
+            IS, BS, CF = (data["income_statement"], data["balance_sheet"],
+                          data["cash_flow"])
+
+        appears at engines.py:266, :486 and :991. Only the single-target form was
+        handled, so BS/IS/CF were never registered as block names and every
+        plain-subscript site using them was uncounted — including
+        engines.py:502, which still raised after this module was reported
+        converted. Found by tracing a raise the guard said could not exist."""
+        vals = (n.value.elts if isinstance(n.value, (ast.Tuple, ast.List))
+                else [n.value])
+        for t in n.targets:
+            tgts = (t.elts if isinstance(t, (ast.Tuple, ast.List)) else [t])
+            pairs = zip(tgts, vals) if len(tgts) == len(vals) else \
+                [(x, n.value) for x in tgts]
+            for name, val in pairs:
+                if not isinstance(name, ast.Name) or not isinstance(val, ast.Subscript):
+                    continue
+                k = val.slice
+                if isinstance(k, ast.Constant) and k.value in BLOCKS:
+                    self.blocks.add(name.id)
         self.generic_visit(n)
 
     def visit_BinOp(self, n):
@@ -161,6 +200,9 @@ POSITIVE = [
      'debt0 = bs["short_term_debt"][ys] + bs["long_term_debt"][ys]'),
     ("income statement, aliased block",
      'IS = data["income_statement"]\nx = IS["revenue"][ys] - IS["cogs"][ys]'),
+    ("⭐ TUPLE-UNPACKED blocks — the common binding form",
+     'IS, BS, CF = data["income_statement"], data["balance_sheet"], data["cash_flow"]\n'
+     'x = BS["other_current_assets"][str(y)] - BS["current_liabilities_ex_debt"][str(y)]'),
 ]
 NEGATIVE = [
     ("arithmetic inside `if not errors:` — operands proven present",
