@@ -88,6 +88,14 @@ jobs:
       # downward-only ratchet over the 5 modules that compute one today.
       - name: margin boundary (Class A)
         run: python scripts/check-margin-boundary.py
+      # ⭐ WIRED 30 Jul AFTER IT WAS FOUND BLIND AND UNNOTICED. It exits 0 when
+      # healthy and 2 when its own detection floor fails, so this step catches
+      # the checker going blind — which is what happened: the sole-owner
+      # consolidation moved invested_capital and wacc out of every dict literal
+      # it scanned, the key set collapsed, and it correctly refused to report
+      # while nothing ran it.
+      - name: none-arithmetic detection floor
+        run: python scripts/check-none-arithmetic.py
       - run: pytest -q
       # Proves the tests guarding the assessment read path are not vacuous, by
       # reintroducing a plausible defect per test and requiring each to fail.

@@ -104,6 +104,15 @@ TARGETS = [
     # not a solved problem — but the module that fits every forecast driver is
     # now inside it.
     "services/api/forecast_studio.py",
+    # ⭐ THE SOLE-OWNER LIBRARY, AND ITS ABSENCE HERE WAS A COVERAGE LOSS
+    # CAUSED BY THE CONSOLIDATION ITSELF. Segments A–E moved net debt, WACC,
+    # ROIC and invested capital into ratios.py. Those keys then stopped being
+    # derived from any scanned module, the live key set lost
+    # `invested_capital` and `wacc`, and the probe's fourth planted
+    # expression became undetectable — so the checker declared ITSELF blind.
+    # Consolidating a quantity must not remove it from the guard that
+    # protects it.
+    "services/api/modules/financials/ratios.py",
     "services/api/modules/financials/engines.py",
     "services/api/modules/financials/proforma.py",
     "services/api/modules/financials/oci.py",
@@ -214,6 +223,36 @@ def absence_built_keys(tree):
     return keys - plain, plain
 
 
+
+
+def absence_returning_functions(tree):
+    """Function NAMES whose body returns `_n(...)`. These are absence-bearing too.
+
+    ⭐ ADDED BECAUSE THE CONSOLIDATION SILENTLY REMOVED COVERAGE. Segments A–E
+    moved net debt, WACC, ROIC and invested capital out of dict literals and into
+    functions in ratios.py. `absence_built_keys` reads DICT KEYS, so those four
+    quantities stopped being derivable from anywhere, the live key set lost
+    `invested_capital` and `wacc`, and this checker's own probe went undetectable
+    — it declared itself blind, correctly, and stayed red.
+
+    Consolidating a quantity must not remove it from the guard that protects it.
+    A quantity that is None by construction is None whether it is reached as
+    `d["invested_capital"]` or as `ratios.invested_capital(...)`, and the key set
+    must name it either way.
+    """
+    out = set()
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for r in ast.walk(fn):
+            if isinstance(r, ast.Return) and r.value is not None:
+                if any(isinstance(c, ast.Call) and (
+                        (isinstance(c.func, ast.Name) and c.func.id == "_n")
+                        or (isinstance(c.func, ast.Attribute) and c.func.attr == "_n"))
+                       for c in ast.walk(r.value)):
+                    out.add(fn.name)
+                    break
+    return out
 
 def absence_params(tree, absence_keys):
     """{function: {param names that receive an absence-bearing value}}.
@@ -585,14 +624,35 @@ def _probe(nopat, invested_capital):
     c = nopat - 1.0                                          # parameter path
     d = holder["invested_capital"] / 2.0                     # subscript, one
     return a, b, c, d
+
+
+def _probe_caller(cur):
+    # ⭐ THE CALL SITE IS PART OF THE PROBE, NOT DECORATION. `absence_params`
+    # derives tainted parameters FROM CALL SITES; with no call to _probe it
+    # returned {}, the parameter path was undetectable BY CONSTRUCTION, and the
+    # floor of 5 could never be met. The checker reported itself blind for a
+    # reason that had nothing to do with the code it scans — a live assertion
+    # pointed at its own wiring.
+    nopat = _n(lambda x: x, cur["nopat"])
+    return _probe(nopat, cur["invested_capital"])
 '''
 DETECTION_FLOOR = 5          # measured; raise it when a mechanism is added
 
 
 def self_check(absence_keys):
-    """Scan PROBE with the live key set. Returns (detected, expected)."""
-    sc = Scan(set(), {}, absence_keys)
-    sc.visit(ast.parse(PROBE))
+    """Scan PROBE with the live key set. Returns (detected, expected).
+
+    ⭐ CONSTRUCTED THE SAME WAY main() CONSTRUCTS IT. The previous version passed
+    three arguments where main passes four, so `absence_params` defaulted to {}
+    and the probe ran with one of the four mechanisms switched off. A control
+    that is wired differently from the thing it controls is testing a scanner
+    that does not exist.
+    """
+    tree = ast.parse(PROBE)
+    dk = nullable_dict_keys(tree)
+    sc = Scan(nullable_factories(tree, dk), dk, absence_keys,
+              absence_params(tree, absence_keys))
+    sc.visit(tree)
     return len(sc.hits), DETECTION_FLOOR
 
 
@@ -603,9 +663,10 @@ def main():
     for rel in TARGETS:
         path = os.path.join(ROOT, rel)
         if os.path.exists(path):
-            k, _pl = absence_built_keys(
-                ast.parse(open(path, encoding="utf-8").read()))
+            _tree = ast.parse(open(path, encoding="utf-8").read())
+            k, _pl = absence_built_keys(_tree)
             absence_keys |= k
+            absence_keys |= absence_returning_functions(_tree)
     # ⭐ GLOBAL SUBTRACTION WAS WORSE THAN THE PROBLEM IT SOLVED. Subtracting
     # every plainly-built key across all targets meant that ADDING A MODULE
     # REMOVED COVERAGE ELSEWHERE: putting benchmarks/engines.py in TARGETS —
