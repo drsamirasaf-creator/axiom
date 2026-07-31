@@ -3148,6 +3148,9 @@ def apply_upload(db, company_id: int, *, ent, data, objectives, key_results,
         enterprise_id=company_id, source="upload").all()
     version = max([(p.version or 1) for p in prior], default=0) + 1
     prior_active = _active_company_dataset(db, company_id)
+    # ⭐ SINGLE-ACTIVE IS ENFORCED BY set_active_dataset AFTER the row exists;
+    # this pre-clear stays so the new row is never inserted alongside an active
+    # sibling even for the duration of a flush.
     for p in db.query(FinancialDataset).filter_by(
             enterprise_id=company_id, is_active=True).all():
         p.is_active = False
@@ -8267,6 +8270,31 @@ def _ownership_block(db, ent):
     if r["ownership"] == UNDETERMINED:
         out["absent"] = r["reason"]
     return out
+
+
+def set_active_dataset(db, company_id, dataset_id):
+    """⭐⭐ THE SINGLE WRITER OF `is_active`. Clear every row, then set exactly one.
+
+    A SECOND WRITER IS A SECOND SOURCE OF TRUTH. Measured 1 Aug: enterprise 20
+    held TWO active datasets because the showcase seed set the flag directly
+    while the upload path — which DOES clear correctly — never saw the seed's
+    row. ⭐ AND THE SEED RUNS ON EVERY BOOT, so clearing the flag by hand would
+    have been undone by the next deploy.
+
+    ⭐ Returns what it cleared, so a caller can report rather than assume.
+    """
+    from .modules.financials.models import FinancialDataset
+    cleared = []
+    for r in (db.query(FinancialDataset)
+                .filter_by(enterprise_id=company_id, is_active=True).all()):
+        if r.id != dataset_id:
+            r.is_active = False
+            cleared.append(r.id)
+    target = db.get(FinancialDataset, dataset_id) if dataset_id else None
+    if target is not None:
+        target.is_active = True
+    db.flush()
+    return {"active": dataset_id, "cleared": cleared}
 
 
 def _active_company_dataset(db, company_id):

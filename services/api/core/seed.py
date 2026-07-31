@@ -193,7 +193,13 @@ def _ensure_showcase_enterprises(db):
                 fin_models.FinancialDataset.name.like(f"{prefix}%")).all():
             if d.enterprise_id != ent.id:
                 d.enterprise_id = ent.id
-        ds.is_active = True                 # so /companies/{ent.id}/reports works
+        # ⭐⭐ THROUGH THE SHARED WRITER, NOT DIRECTLY. This line set the flag
+        # without clearing siblings, and — because the showcase seed runs on
+        # EVERY BOOT — it re-armed a second active row after every deploy.
+        # Enterprise 20 carried two active datasets for a week because of it.
+        # A second writer is a second source of truth.
+        from ..accounts import set_active_dataset
+        set_active_dataset(db, ent.id, ds.id)   # so /companies/{id}/reports works
     return made
 
 

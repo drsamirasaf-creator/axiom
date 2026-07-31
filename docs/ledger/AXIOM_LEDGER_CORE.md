@@ -10163,6 +10163,107 @@ call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
 
+## ⭐⭐ `is_active` — THE SINGLE-ACTIVE INVARIANT (1 Aug)
+
+### ⭐ 1 · THE EXTENT, AND THE MECHANISM
+
+| | |
+|---|---|
+| companies with **>1** active dataset | ⭐ **1** — enterprise 20 (`showcase`, Meridian) |
+| companies with exactly one | 5 |
+| companies with **zero** | 4 *(awaiting a first upload — ordinary)* |
+| active datasets with a NULL enterprise | 0 |
+
+⭐⭐ **THE MECHANISM, READ OUT OF THE PROVENANCE — AND IT RECURS ON EVERY BOOT.**
+
+| dataset | source | provenance | active |
+|---|---|---|---|
+| **ds 3** | ⭐ **`direct`** | ⭐ **none** — no uploader, no filename, no template | **was TRUE** |
+| ds 42, 43 | `upload` v1, v2 | uploader 1, `meridian_v6.xlsx`, `7M-v6.2` | false |
+| **ds 45** | `upload` v3 | `7M-v7.0` | **TRUE** |
+
+⭐ **THE UPLOAD PATH IS CORRECT** — `accounts.py` clears *every* active row before
+inserting. So is the changeset rollback path.
+
+⭐⭐ **THE SECOND WRITER WAS `seed.py:196`: `ds.is_active = True`, WITH NO
+DEACTIVATION.** And `seed_showcase()` is called from `core/db.py` at startup, so
+**`_ensure_showcase_enterprises` runs unconditionally on every boot and RE-ARMED
+ds 3 after every deploy.** ⭐ **Clearing the flag by hand would have been undone by
+the next deploy** — which is why this needed a writer change, not a data fix.
+
+### ⭐⭐ 2 · THE READ PATHS UNDER MULTIPLICITY
+
+⭐ **THE EARLIER PREMISE — "two `is_active` read sites carry no `order_by`" — IS
+NO LONGER TRUE.** Both remaining selections are ordered.
+
+| path | behaviour under multiplicity |
+|---|---|
+| **`_active_company_dataset`** — ⭐ **51 call sites** | ⭐ **deterministic**: `order_by(version DESC).first()` → ds 45 |
+| `seed_meridian.py:246` | deterministic — ordered |
+| ⭐ **`accounts.py:3394` `active_dataset_id`** | ⭐⭐ **DIVERGENT, AND NOT A COIN FLIP.** Its row set is ordered but **scoped to `source="upload"`**, so it can never see a `direct` row. For a company whose active dataset came from a seed it reports **`None`** while the resolver returns the row. |
+
+⭐ **So the risk was never a random answer; it was a DIFFERENT answer from a
+narrower selector** — and that is harder to notice, because `None` reads as
+"no data yet" rather than as a disagreement.
+
+### ⭐ 3 · THE INVARIANT
+
+`accounts.set_active_dataset(db, company_id, dataset_id)` — ⭐ **the single
+writer**: clear every active row, set exactly one, **return what it cleared** so a
+caller reports rather than assumes. **The seed now routes through it.**
+
+⭐⭐ **A SECOND WRITER IS A SECOND SOURCE OF TRUTH**, and this one re-created the
+violation on a schedule.
+
+### ⭐ 4 · THE GUARD — 22nd gate
+
+`scripts/check-single-active-dataset.py`. ⭐ **The control and the live check run
+THE SAME `violations()` function** — a guard whose control exercises a different
+function has tested nothing. Four control cases: two-active flagged, one-active
+accepted, zero-active accepted, one-each-across-companies accepted.
+
+⭐⭐ **PLANTED IN MEMORY, AND A TEST FORBIDS THE SCRIPT FROM TOUCHING THE
+FILESYSTEM AT ALL** — `open(`, `write(`, `Path(`, `shutil`. The guard-planting
+cleanup failure has occurred **twice**; this one cannot.
+
+**Coverage printed:** *"checked 36 datasets (6 active) across 6 companies"*, and
+zero datasets examined is a failure.
+
+### ⭐⭐ 5 · RECONCILIATION — one company, no conflict to surface
+
+**`set_active_dataset(db, 20, 45)` → `{"active": 45, "cleared": [3]}`.**
+
+⭐ **ds 45 was already the resolved answer**, so there was **no genuine conflict to
+surface** — the two rows did not compete; one was simply stale and re-armed.
+**No other company holds a violation.**
+
+### ⭐⭐ 6 · NOTHING MOVED — ASSERTED, NOT ASSUMED
+
+| | before | after |
+|---|---|---|
+| resolved dataset | 45 | 45 |
+| equity value | **3,436.211694** | **3,436.211694** |
+| DLOM | 0.2 | 0.2 |
+| equity after DLOM | **2,748.969356** | **2,748.969356** |
+| WACC | 0.130458 | 0.130458 |
+| ownership | private | private |
+| ⭐ **20 published pack content hashes** | — | ⭐⭐ **ALL UNCHANGED** |
+
+### ⭐ THE SAMPLE-PACK VERDICT — unaffected, and for the stated reason
+
+**The freeze pins a dataset ID and copies the inputs BY VALUE; it does not re-run
+a selection.** ⭐ **A pack cannot move when a selection flag changes**, and the 20
+content hashes confirm it rather than the argument standing alone.
+
+### ⭐ A HARNESS FAILURE WORTH RECORDING
+
+The first reconciliation attempt raised `NoReferencedTableError` — ⭐ **my probe
+imported `FinancialDataset` without the `Enterprise` model, so the foreign key had
+no target.** Nothing was committed. ⭐⭐ **The fix was to load the model registry
+the way production does (`init_db()`) rather than to work around the flush** —
+fourth instrument failure this era, and the second caught before it reached a
+conclusion.
+
 ## ⭐⭐ OWNERSHIP — ONE VALUE, ONE OWNER. BUILT. (ruled 31 Jul, built 1 Aug)
 
 **Ruled: Meridian is a PRIVATE company with DLOM applied.** The payload already
@@ -10250,11 +10351,10 @@ not among the frozen inputs.
 
 ### ⭐ INCIDENTAL, RECORDED BECAUSE MEASURED
 
-**Enterprise 20 has TWO datasets flagged `is_active = True`** — ds 3 (payload
-`public`) and ds 45 (payload `private`). ⭐ **`_active_company_dataset` resolves by
-`version DESC`, so it is deterministic and returns ds 45** — but `is_active` is
-**not behaving as a single-active flag.** ⭐ **Not changed here; the resolution is
-deterministic and the ruling holds either way.**
+**Enterprise 20 had TWO datasets flagged `is_active = True`** — ds 3 and ds 45.
+⭐⭐ **CLOSED 1 Aug: the single-active invariant is enforced and ds 3 is cleared.**
+The cause was the showcase seed writing the flag directly and **re-arming it on
+every boot.** See *`is_active` — the single-active invariant*.
 
 ## ⭐⭐ THE TWO OWNERSHIP VALUES — MEASURED ACROSS THE CORPUS (1 Aug)
 
