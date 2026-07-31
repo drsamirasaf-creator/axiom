@@ -117,7 +117,7 @@ the codebase for callers, which no gate currently does.
 | B6 | **Grant/revoke admin UI** | The model exists; only the surface is missing. |
 | B7 | **§7.44 period display** | Deferred to the entry-format lane. |
 | B8 | **§4y dataroom** | Not buildable now; naming also unruled. |
-| B9 | **§7o reseed** | Design ruled; not seeded. |
+| B9 | **§7o reseed** | Design ruled; not seeded. ⭐ **Now also blocks a COMMERCIAL ASSET** — the brochure's value-proposition page reads its proof point from the Meridian sample pack (ruled 31 Jul). |
 
 ### ⭐ UNDETERMINED — recorded as undetermined, never inferred
 
@@ -6598,6 +6598,118 @@ and `bs.retained_earnings` — see the registry vocabulary, which marks each
 `cf.operating_cash_flow` as a stored rather than derived token, plus the
 `cash_conversion_quality` headline ratio on real data rather than a derivation.
 
+## ⭐⭐ BROCHURE — THE VALUE-PROPOSITION DIAGRAM (ruled 31 Jul)
+
+**Topic ownership:** the brochure owns pricing and commercial terms; **this file
+owns the ruling.** Recorded here as a ruling; the ASSET lives in
+`docs/brochure/`.
+
+**REQUIRED ASSET, FRONT AND CENTRE** in the AXIOM brochure, the features
+brochure, and marketing materials. Not an illustration used where space allows.
+
+### ⭐ THE FRAME — recorded because it is the part that is easy to lose
+
+**AXIOM DOES NOT COMPETE WITH THE CFO'S PACK, AND MUST NOT BE POSITIONED AS
+COMPLEMENTING OR EXTENDING IT.**
+
+⭐ **"Complements and extends" is the language of something cut in a cost
+review.** A product that extends an existing pack is a line item on top of a line
+item; the first budget pass removes it.
+
+**The management accounts answer WHAT HAPPENED. AXIOM answers WHAT IT IS WORTH and
+WHAT TO DO NEXT** — which the ledger **structurally cannot**, because **initiative
+status, stakeholder signals and a valuation model are not in it.** That is not a
+gap in the CFO's work; those things were never general-ledger objects.
+
+### The diagram's structure
+
+    ┌──────────┬──────────────┬──────────────┬───────────┐
+    │ actuals  │ initiatives  │ stakeholders │ valuation │   ← four inputs, ONE tier
+    │(the CFO's│              │              │           │
+    │ own pack)│  ── the three the ledger does not hold ──│
+    └────┬─────┴──────┬───────┴──────┬───────┴─────┬─────┘
+         └────────────┴──────┬───────┴─────────────┘
+                    ┌────────▼─────────┐
+                    │ the dated monthly│                   ← converging
+                    │       PACK       │
+                    └────────┬─────────┘
+                 ┌───────────┴───────────┐
+                 ▼                       ▼                 ← resolving to two
+        ┌─────────────────┐   ┌────────────────────┐
+        │ what it is worth│   │ what to do next    │
+        └─────────────────┘   └────────────────────┘
+    ┌──────────────────────────────────────────────────────┐
+    │  CLOSING BAR — the proof point                       │
+    └──────────────────────────────────────────────────────┘
+
+⭐ **ACTUALS SITS ON THE SAME TIER AS THE OTHER THREE, AND IS NEUTRAL.** Placing
+it above them, or styling it as the foundation, would draw the picture of a
+product built on top of the CFO's pack — the positioning the frame above rejects.
+It is one input of four.
+
+### ⭐ THE PROOF POINT IS THE LEAD CLAIM
+
+**"Initiative 7 is six weeks late, and that is $2.1M of equity value."**
+
+**A CFO forecasts. A PMO tracks initiatives. A banker values the business.
+NOBODY JOINS THEM.**
+
+⭐ **This is the only claim in the set unavailable elsewhere**, which is why it
+leads and why it closes the diagram. Every other claim AXIOM makes has a
+competitor who makes it too.
+
+### Claim ordering — for ALL commercial surfaces
+
+1. **Value-maximising actions** — leads.
+2. **Risk, volatility and underperformance** — second.
+3. **Stakeholder feedback** — third, **because it is the causal chain that makes
+   the figure TRACEABLE rather than ASSERTED.** It is not a softer fourth
+   feature; it is what stops the headline number being a claim.
+4. **Alignment** — support.
+
+⭐ **"ACTIONABLE INTELLIGENCE" IS STRUCK.** It is a phrase, not a claim. Nothing
+in it is falsifiable, and a buyer has read it on every deck this year.
+
+### ⭐ SAY WHAT IT DOES NOT DO, EARLY
+
+**AXIOM does not touch the ledger. It does not close the books. It does not
+replace the CFO's pack.**
+
+⭐ **Stating this FIRST kills the consolidation objection and buys credibility for
+the claim that follows.** A prospect who has not been told what a product declines
+to do assumes it is claiming everything, and discounts all of it.
+
+### ⭐⭐ CONSTRAINT — THE PROOF-POINT FIGURE IS A REAL MERIDIAN NUMBER
+
+**The $2.1M must come from the generated sample pack. Never an illustration,
+never a plausible round number.**
+
+⭐ **A PROSPECT HOLDING THE BROCHURE BESIDE THE SAMPLE PACK WILL CHECK THAT THEY
+AGREE.** A figure that does not reconcile destroys the one claim nobody else can
+make, at the moment it is being examined most closely.
+
+⭐ **THEREFORE THIS PAGE DEPENDS ON §7o AND §7s.5. The page and the sample pack
+SHIP TOGETHER OR NOT AT ALL.**
+
+| dependency | state (31 Jul) |
+|---|---|
+| **§7s.5** the Value Bridge — produces the figure | ✅ **BUILT** (`bc3b44f`) |
+| **§7o** the reseed — produces the Meridian pack it is read from | ❌ **NOT BUILT, NOT SEEDED** |
+
+⭐ **So the brochure page is BLOCKED ON §7o**, and §7o is now blocking a
+commercial asset rather than only a demo. That edge did not exist in the queue
+before this ruling — see the pending queue at the head of this file.
+
+### PENDING, NOT DESIGNED — the sponsor variant
+
+A **sponsor** variant of the diagram: **one pack across twelve portfolio
+companies, same date, same computation — comparable because it is ONE SYSTEM
+rather than twelve reformatted spreadsheets.**
+
+⭐ **ITS OWN ASSET, NOT AN ADDITION TO THIS ONE.** Bolting a portfolio tier onto
+the single-company diagram would make both harder to read, and the sponsor buyer
+is not the CFO buyer. **Recorded as pending. Not designed.**
+
 ## §7s · AXIOM CADENCE — THE OBLIGATION LAYER (ruled 30 Jul. ⭐ BUILT AND
 RUNNING IN PRODUCTION — corrected 31 Jul.)
 
@@ -6623,6 +6735,10 @@ the Value Bridge · the Watch.
 ⭐ Pricing and commercial terms are owned by the brochure, not by this file — see
 the topic-ownership header. This records the FRAME and the RULING; the brochure
 governs how Cadence is sold.
+
+⭐ **See also: BROCHURE — THE VALUE-PROPOSITION DIAGRAM (ruled 31 Jul)**, above.
+Its proof point is a §7s.5 Value Bridge figure taken from the §7o sample pack, so
+**that brochure page and the sample pack ship together or not at all.**
 
 **SCOPE RULED: all six ship in V1.0.**
 
