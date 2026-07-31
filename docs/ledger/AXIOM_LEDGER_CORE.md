@@ -7323,6 +7323,150 @@ FABRICATION BY SILENCE.**
 ⭐ **THE LAST CLAUSE IS THE REAL PROMISE.** The first two are what every data
 product says.
 
+## ⭐⭐ §8 — THE RELIABILITY PROGRAMME: MEASURED STATE (31 Jul, `82bb74c`)
+
+⭐⭐ **CORE HELD NOTHING ON THIS, AND THAT WAS MEASURED, NOT ASSUMED.** Word-boundary
+counts over this file before the lane: **backup 0 · staging 0 · uptime 0 · disaster
+0 · RTO 0 · RPO 0 · on-call 0.** *(A first pass gave SLA 17 and RPO 14 — substring
+hits inside "translate" and "corporate". The instrument was wrong before the
+finding was.)*
+
+⭐ **UNRECORDED MEANS UNDESIGNED, NOT MERELY UNBUILT.** Every gap found this era
+concerned the CORRECTNESS OF NUMBERS. **Nothing addressed whether the service is
+available.**
+
+### ⭐ 1 · MONITORING — nothing would detect an outage
+
+| | |
+|---|---|
+| Sentry | ⭐ **LIVE** — `SENTRY_DSN` set, `/health` returns `monitoring: true` |
+| external availability polling | ⭐⭐ **NONE.** Zero references to any uptime monitor in either repository |
+| Railway healthcheck | ⭐⭐ **`healthcheckPath: null`** — the platform does not poll `/health`, though the endpoint exists and answers |
+
+⭐⭐ **WHAT WOULD DETECT A TOTAL OUTAGE TODAY: NOTHING AUTOMATED.** Sentry reports
+errors **from** the application; **a dead application sends none.** Time to
+detection is the time until a human happens to load the site — **unbounded, and it
+could be days.**
+
+### ⭐⭐ 2 · BACKUPS — THERE ARE NONE. NOT STALE, NOT UNTESTED. NONE.
+
+Measured against the Railway API, not read from a dashboard:
+
+```
+volumeInstanceBackupScheduleList  ->  []      ⭐ no schedule exists
+volumeInstanceBackupList          ->  []      ⭐⭐ no backup has EVER been taken
+```
+
+Postgres is **volume-backed** (`postgres-volume`, `/var/lib/postgresql/data`,
+250MB of 5000MB). **No point-in-time recovery. No retention policy, because there
+is nothing to retain.**
+
+⭐⭐ **"HAS A RESTORE EVER BEEN TESTED?" HAS A STRONGER ANSWER THAN *NO*: IT CANNOT
+BE TESTED, BECAUSE THERE IS NOTHING TO RESTORE FROM.** An untested backup is a
+hypothesis; **this is not even a hypothesis.**
+
+### ⭐ 3 · ENVIRONMENTS — one, and it is production
+
+**One environment (`production`). Two services (`web`, `Postgres`). No staging, no
+preview, no review app.**
+
+| repo | path from commit to live |
+|---|---|
+| `axiom` | push to `main` → **Railway auto-deploys**. ⭐ **`main` is NOT PROTECTED** (GitHub API: *"Branch not protected"*). The repo's guards are a **LOCAL pre-push hook** — anything pushing by another route bypasses them entirely. |
+| `optimization-anchor` | `ci.yml` runs typecheck, lint, ratchet and build on push to `main` — ⭐ **but does not deploy.** Publishing is Lovable's. |
+
+⭐⭐ **WHETHER LOVABLE CAN PUBLISH DIRECTLY TO THE DEPLOYING BRANCH IS UNDETERMINED
+BY MEASUREMENT.** Branch protection on that repo returns **403 — requires GitHub
+Pro on a private repo.** ⭐ **Recorded as undetermined rather than assumed safe**,
+and the local hook constrains nothing pushed from elsewhere.
+
+### ⭐⭐ 4 · LOAD — one process, fifteen connections, unbounded threads
+
+```
+startCommand : uvicorn services.api.main:app --host 0.0.0.0 --port $PORT
+                                    ⭐ NO --workers  ->  A SINGLE PROCESS
+numReplicas  : null (1)
+engine       : create_engine(url, pool_pre_ping=True)
+                ⭐ NO SIZING -> SQLAlchemy defaults: pool_size 5 + max_overflow 10
+                                    ⭐⭐ CEILING = 15 CONNECTIONS, TOTAL
+```
+
+**No evidence of load testing anywhere in either repository.**
+
+The sweeps are **sync `def` endpoints**, so they run in FastAPI's threadpool and
+do **not** block the event loop — ⭐ **but they contend for the same 15
+connections.** And `_spawn_recompute` starts an ⭐⭐ **UNBOUNDED RAW THREAD PER
+UPLOAD**, each opening its own session, **with `except Exception: pass`** — so the
+failures are invisible as well as uncounted.
+
+⭐⭐ **WHAT HAPPENS WHEN A SWEEP OVERLAPS A USER SESSION:** the user's request waits
+for a free connection up to the default `pool_timeout` of **30 seconds** and then
+**fails**. Concurrent uploads make it worse **without bound**, because nothing caps
+the thread count.
+
+### ⭐ 5 · SINGLE POINTS OF FAILURE
+
+| component | redundancy | ⭐ what a failure looks like to a customer |
+|---|---|---|
+| **region** | ⭐ **US West only** | total outage, no failover |
+| **database** | ⭐ **1 replica, no standby, no backup** | ⭐⭐ **permanent total data loss** |
+| **web process** | ⭐ **single process, `healthcheckPath: null`, restart `ON_FAILURE`** | ⭐ **a HUNG-BUT-ALIVE process is never restarted** — the site hangs indefinitely |
+| **storage (R2)** | single bucket | ⭐ upload path writes best-effort inside `except Exception: pass`; **a storage outage silently loses the original and leaves no trace** |
+| **mail (Resend)** | single provider | no verification emails, no invitations, no pack notifications — **signup and distribution stop** |
+
+### ⭐⭐ 6 · RECOVERY — what could not be reconstructed if the Railway project were lost
+
+**The recoverability audit closed gaps 1, 2, 3, 5 and 7. Those were about
+reconstructing PROVENANCE WITHIN a living database.** ⭐⭐ **THIS IS THE DATABASE
+ITSELF, AND IT IS THE LARGER EXPOSURE.**
+
+| asset | recoverable? |
+|---|---|
+| application code | ✅ GitHub |
+| R2 objects (originals, documents) | ✅ separate provider, survives |
+| ⭐⭐ **every customer record, dataset, pack, assessment, decision, valuation run** | ❌ **NOT RECOVERABLE — lives only in that volume, which has no backup** |
+| environment variable **values** | ❌ exist only in Railway; `.env.example` records **names**, not values |
+
+### ⭐⭐ THE GAPS, CLASSED
+
+**LAUNCH GATES — must precede a relaunch carrying paying customers:**
+
+| | gap |
+|---|---|
+| **G1** | ⭐⭐ **No backups exist at all.** The single largest exposure on this list. |
+| **G2** | **No restore has been tested** — blocked on G1, and untestable until it exists. |
+| **G3** | ⭐ **Nothing detects a total outage.** No external polling; Sentry cannot report a dead process. |
+| **G4** | ⭐ **No platform healthcheck**, so a hung process is never restarted. |
+| **G5** | ⭐ **Unprotected `main` and no staging** — a bad commit reaches production with no gate but a local hook. |
+| **G6** | **Pool unsized against a single process, with unbounded thread spawn** — a sweep overlapping user traffic times requests out at 30s. |
+
+**POST-LAUNCH:**
+
+| | gap |
+|---|---|
+| **G7** | Single region. |
+| **G8** | No database standby or read replica. |
+| **G9** | Mail is a single provider with no fallback. |
+| **G10** | R2 writes swallow failures silently *(adjacent to the closed recoverability gaps)*. |
+| **G11** | No load testing, so the real concurrency ceiling is unknown. |
+| **G12** | No on-call or escalation path. |
+
+### ⭐ WHAT CANNOT BE DETERMINED WITHOUT A LIVE TEST — reported, not assumed
+
+1. **Restore time and fidelity.** Requires a backup to exist first, then a
+   restore into a non-production target. ⭐ **Not attempted: it changes state.**
+2. **The real concurrency ceiling.** Requires a load test against something that
+   is not production.
+3. ⭐ **Whether Lovable can publish directly to the deploying branch.** Requires
+   GitHub Pro to read protection, or an observed push.
+
+### ⭐⭐ NO SLA IS STATED HERE, DELIBERATELY
+
+**What AXIOM can commit to is A RULING, and it cannot be made before the
+measurement it rests on.** ⭐ **A number invented in this lane would be exactly the
+unverifiable claim the admissibility rule forbids** — and it would be quoted back
+by the first customer who reads it.
+
 ## ⭐⭐ THE LEADING QUESTION — RULED 31 Jul, AND THE TWO-LEVEL STRUCTURE
 
 ⭐⭐ **RECORDED AS A FIRST ENTRY, NOT A CORRECTION.** The dispatch instructed a
