@@ -141,7 +141,7 @@ stochastic engine is no longer blocked on a false premise.**)
 | B5 | **§7u (b)** per-company stored assumptions | Deferred, not dropped. |
 | B6 | ~~Grant/revoke admin UI~~ | ⭐ **ALREADY BUILT — verified 31 Jul.** `DepartmentAuthorityPanel.tsx`, mounted at `routes/team.tsx`, POSTs grant AND revoke. §7.9 corrected. |
 | **G1** | ⭐⭐ **BACKUPS — BLOCKED BY THE PLAN, NOT MERELY UNBUILT** | ⭐⭐ **`plan: HOBBY`, `maxBackupsCount: 0`.** The schedule mutation was attempted and refused; no credential would have worked. ⭐ **Unblocking it is a COMMERCIAL DECISION** — a paid plan, or an external dump target which needs its own ruling on location, custody and retention. **RPO today is TOTAL; RTO is undefined because recovery is impossible.** |
-| **G4** | ⭐⭐ **A HUNG PROCESS IS STILL NEVER RESTARTED — reopened on measurement** | `healthcheckPath` is set and gates DEPLOYS, but ⭐⭐ **Railway does not poll after go-live** (*"does not monitor the healthcheck endpoint after the deployment has gone live"*), and `ON_FAILURE` restarts on process EXIT, which a hung process does not perform. ⭐ **Needs a restarter, not a healthcheck.** |
+| ~~G4~~ | ⭐⭐ **CLOSED — the gunicorn arbiter restarts a hung worker** | Detection in 120–180s via the uvicorn heartbeat, which stalls exactly when the event loop blocks and NOT for slow threadpool work. Proven against a real hung-but-alive worker, and a 30s sync sweep at 3x the timeout survived. ⭐ Residual: a wedged CONTAINER is alerted in 30 min, not restarted. |
 | **G2, G5, G6** | ⭐⭐ **RELIABILITY LAUNCH GATES — precede any relaunch carrying paying customers** || ~~G3~~ | ⭐ **CLOSED — external availability monitoring** | GitHub Actions probe every 30 min from OUTSIDE Railway; alerts to a labelled GitHub issue that emails the owner. Detection ≤30 min, down from unbounded. |
 | ~~G13~~ | ⭐⭐ **BUILT — Stripe `livemode` persisted, backfilled and guarded** | Both surfaces carry the flag, taken from the signed EVENT and never derived from the key. ⭐⭐ **BASELINE: 0 live-mode paying, 4 test-mode, 7 never subscribed, 0 unresolved** — every prior count reported 4. |
 | B22 | ⭐ **Encode the σ ruling** | Move σ_RO into the §7u registry as a platform default with a stated basis, so the pack PINS it and it is inspectable; and RENAME `_calibrate_sigma` so the name does not assert a calibration that is not performed. ⭐ **A function whose name misdescribes it is a claim in the code.** |
@@ -9886,6 +9886,82 @@ CORE records `wacc_at` with the kinked kd as canonical and the guard reads
 call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
+
+## ⭐⭐ G4 · A HUNG-BUT-ALIVE PROCESS IS NOW RESTARTED — **G4 CLOSES** (31 Jul)
+
+### ⭐ 1 · THE OPTIONS, AND WHAT EACH CANNOT DO
+
+| option | detects | ⭐ cannot detect | survives the failure it watches? |
+|---|---|---|---|
+| ⭐ **supervisor in the container** (gunicorn arbiter) | **blocked event loop**, deadlocked or crashed worker | container wedged, OOM-kill, host loss | ⭐ **YES for the worker's failure** — a *separate process* |
+| **uvicorn worker recycling with a timeout** | ⭐⭐ **NOTHING — THIS OPTION DOES NOT EXIST AS STATED.** uvicorn standalone has **no arbiter**, and `--timeout-keep-alive` is a **connection idle** timeout, not a liveness one | — | — |
+| **in-process watchdog (thread)** | loop lag, **only while the GIL is released** | ⭐ **a CPU-bound block holding the GIL starves the watchdog too**, and it cannot reliably restart the process it lives in | ⭐ **NO — it shares the process it watches** |
+| **external monitor → Railway redeploy API** | everything visible from outside, **including a wedged container** | nothing, within its cadence | ⭐ **YES — fully outside** |
+
+⭐ **THE DISPATCH'S SECOND OPTION WAS MEASURED AND FOUND NOT TO BE ONE.** Recorded
+so it is not re-proposed.
+
+### ⭐⭐ 2 · CHOSEN: THE ARBITER, BECAUSE IT SURVIVES WHAT IT WATCHES
+
+**`gunicorn -k uvicorn.workers.UvicornWorker -w 1 --timeout 120 --graceful-timeout 30`**
+
+⭐⭐ **THE DETECTION MECHANISM, VERIFIED IN THE LIBRARY RATHER THAN ASSUMED:**
+uvicorn's `Server` fires `callback_notify` **from its own async tick**, and
+gunicorn wires that to the worker heartbeat. ⭐ **So the heartbeat stops EXACTLY
+when the event loop blocks — and does NOT stop for slow threadpool work.** The
+mechanism distinguishes hung from slow *structurally*, not by tuning.
+
+⭐ **`-w 1` IS LOAD-BEARING.** The 15-connection pool is **per process**; `-w 2`
+would silently double the database connection ceiling and regress G6. A test
+asserts it.
+
+⭐ **The external monitor remains the backstop** for the failure the arbiter
+cannot see — a wedged container — where it alerts a human within 30 minutes.
+⭐⭐ **AUTOMATIC REDEPLOY WAS NOT WIRED: it needs a Railway API token in GitHub
+secrets, which this lane cannot set.** Named, not pretended.
+
+### ⭐ 3 · THE THRESHOLD, AND WHY 120s
+
+**Sync work never trips it at all** — proven below at **3× the timeout**. Only a
+blocked event loop does. uvicorn notifies every `timeout/2`, so a blocked loop is
+caught in **120–180s** — ⭐ **two orders of magnitude faster than the external
+monitor's 30 minutes, and far above any legitimate loop tick.**
+
+### ⭐⭐ THE SWEEP INTERACTION — a restart cannot half-write a pack
+
+**Measured, not assumed:**
+
+1. ⭐ **The sweeps are sync `def` endpoints** → FastAPI's **threadpool** → the loop
+   keeps turning → ⭐⭐ **a long sweep NEVER trips the arbiter.**
+2. ⭐ **`publish()` NEVER COMMITS — it only flushes.** `sweep_calendar` commits
+   **once per company**. ⭐⭐ **So a SIGKILL mid-publication ROLLS THAT COMPANY
+   BACK. There is no half-written pack, structurally.**
+3. ⭐ **`publish_due` is idempotent** — a period whose pack exists is skipped — so
+   the next sweep simply resumes.
+
+⭐ **Publication stays non-suppressible.** A rolled-back publication has not
+happened; the next sweep publishes it. **Nothing is silently skipped.**
+
+### ⭐⭐ 4 · PROVEN AGAINST A HUNG PROCESS, NOT A STOPPED ONE
+
+**Per the standing law — the psycopg repair passed 45 of 45 on a shape where the
+failure was structurally impossible.**
+
+| assertion | result |
+|---|---|
+| worker **alive** after the hang (`ps` confirms) | ⭐ **yes — a stop would have proven nothing** |
+| `/health` **not answering** while alive | ⭐ **yes — TimeoutError** |
+| arbiter kills and replaces it | ⭐⭐ **new pid after 5.8s**, old pid reaped (10s timeout) |
+| ⭐⭐ **30s SYNC request under a 10s timeout** | ⭐⭐ **ran to completion, SAME worker, unkilled** |
+
+**4 tests, driven by a real gunicorn arbiter and a real blocked event loop.**
+
+### Gate
+
+| | |
+|---|---|
+| **G4 — a hung-but-alive process is never restarted** | ⭐⭐ **CLOSES** for the failure it names: recovery in ~2–3 minutes, automatic, with the sweeps provably unaffected. |
+| ⭐ **residual, stated** | **A wedged CONTAINER is not covered automatically** — the arbiter dies with it. The external monitor alerts a human within 30 min; the automatic redeploy needs a token this lane could not set. |
 
 ## ⭐⭐ G3/G4 · OUTAGE DETECTION — **G3 CLOSES. G4 DOES NOT.** (31 Jul)
 

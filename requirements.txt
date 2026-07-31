@@ -18,6 +18,13 @@
 # TO UPDATE: change the pin deliberately, run the suite, and commit both together.
 fastapi==0.139.2
 uvicorn[standard]==0.52.0
+# ⭐⭐ G4 — THE ARBITER THAT RESTARTS A HUNG-BUT-ALIVE WORKER.
+# Railway polls /health only at deploy and never again, and ON_FAILURE restarts
+# on process EXIT — which a hung process does not perform. gunicorn's master is a
+# SEPARATE PROCESS that kills a worker whose heartbeat stalls. uvicorn's Server
+# fires callback_notify from its own async tick, so the heartbeat stops EXACTLY
+# when the event loop blocks, and does NOT stop for slow sync work (threadpool).
+gunicorn==23.0.0
 sqlalchemy==2.0.51
 psycopg[binary]==3.3.4
 pydantic==2.13.4

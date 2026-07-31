@@ -11,4 +11,4 @@
 #
 # The flag is retained so this file still works on a platform that DOES honour
 # a Procfile (Heroku, Dokku, a local `honcho start`).
-web: uvicorn services.api.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"
+web: gunicorn services.api.main:app -k uvicorn.workers.UvicornWorker -w 1 -b 0.0.0.0:$PORT --timeout 120 --graceful-timeout 30 --forwarded-allow-ips="*"
