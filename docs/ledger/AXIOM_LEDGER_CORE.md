@@ -154,7 +154,7 @@ stochastic engine is no longer blocked on a false premise.**)
 | B10 | ~~Initiative-to-statement-line link~~ | ⭐ **BUILT** — declared, never inferred. `ax_initiative_line_links`. |
 | B11 | ~~The attribution rule~~ | ⭐ **BUILT** — sole / proportional / residual, with the over-crediting trap asserted. |
 | B13 | ~~Monthly periods and cadence granularity~~ | ⭐ **BUILT `d8e31a5`** — three-way equivalence proven (annual 1668.63, quarterly ×1.0271, monthly ×1.0332); frequency derived not trusted; template v9 with no version gate. |
-| B15 | ⭐ **Brochure features map** | Ruled 31 Jul. Three required corrections before it ships: the missing loop, the two outputs, the Watch's own path. ⭐ **Now also carries the CXO APPEAL as a separate section** — see *The leading question, ruled 31 Jul*, item 3. It is a SECTION, not a question, and its three items are ordered by strength deliberately. |
+| B15 | ⭐ **Brochure features map** | Ruled 31 Jul. Three required corrections before it ships: the missing loop, the two outputs, the Watch's own path. ⭐ **Also carries a "HOW YOU CAN CHECK THIS" section** — the seven verified disciplines, placed after the pack and before the CXO offer; see *The second question, ruled 31 Jul*. ⭐ **And the CXO APPEAL as a separate section** — see *The leading question, ruled 31 Jul*, item 3. It is a SECTION, not a question, and its three items are ordered by strength deliberately. |
 | B14 | **Irregular multi-source ingestion** | Designed 31 Jul, not built. Depends on B13's granularity work. |
 | B12 | **Client-declared initiative impact** | Designed, not built. Supplies B10's link by declaration rather than inference. |
 
@@ -7446,6 +7446,121 @@ reporting tool.
 ⭐⭐ **RECORDED AS THE CONVERSION MECHANISM, NOT AS TONE.** The enterprise
 question wins the pilot; the seven departmental offers are what stop it lapsing.
 **A pilot that lands only at enterprise level has one champion and no floor.**
+
+## ⭐⭐ THE SECOND QUESTION — MATH-FIRST AS WARRANT, NOT AS PITCH (ruled 31 Jul)
+
+**Recorded adjacent to the leading question because it is the answer to the
+question that follows it.**
+
+### ⭐ 1 · THE MATH-FIRST IDENTITY IS RETAINED — AS WARRANT, NEVER AS THE CLAIM
+
+AXIOM's original value proposition was a **mathematics-first, high-finance
+application.** ⭐ **IT IS RETAINED AND IT DOES NOT LEAD.**
+
+⭐ **A CEO HEARING IT EITHER DOES NOT CARE OR DISTRUSTS IT** — the recorded
+precision objection, which lands on the pitch and not on the product. And
+⭐ **"no other software gives you that" IS UNVERIFIABLE AND THEREFORE
+INADMISSIBLE.**
+
+### ⭐⭐ 2 · ITS CORRECT POSITION IS THE SECOND QUESTION
+
+| | |
+|---|---|
+| **the leading question** | *"You know what created value last year. **Can you rank it?**"* |
+| ⭐⭐ **what a CFO says next, the moment he takes it seriously** | *"**How would you know?**"* |
+
+⭐⭐ **THAT IS WHERE MATH-FIRST DOES WORK NO OTHER ASSET CAN DO.** A ranked value
+decomposition is **worth having only if the ranking is DEFENSIBLE.**
+
+⭐ **THE RIGOUR IS THE WARRANT FOR THE CLAIM, NEVER THE CLAIM ITSELF.**
+
+### ⭐⭐ 3 · RULED — THE CREDIBLE FORM IS CHECKABLE DISCIPLINE, NOT CLAIMED SOPHISTICATION
+
+**What differentiates AXIOM is NOT that the mathematics is more advanced. It is
+that A CORPORATE-FINANCE PRACTITIONER SET THE RULES.**
+
+⭐ Each discipline below is a decision **a CFO recognises as one only someone who
+has done valuation work would make** — and each is **VISIBLE IN THE ARTEFACT**,
+which is what makes it admissible.
+
+**⭐ ALL SEVEN VERIFIED AGAINST THE CODE IN THIS LANE at `87df6b6`** — recorded as
+checkable only after being checked, because a discipline listed as verifiable and
+absent is the withdrawn proof point in a new costume.
+
+| discipline | ⭐ where a prospect can see it | verified |
+|---|---|---|
+| **DLOM outside the EV→equity reconciliation** | the valuation bridge carries `equity_value`, then `dlom` and `dlom_amount`, then `equity_value_post_dlom` — applied **after** the reconciliation, never inside it | ✅ |
+| **Debt and cash as separate signed lines** | the bridge steps show *"Add cash & equivalents"* against the debt line; `net_debt`, `preferred_equity` and `minority_interest` stay separate | ✅ |
+| **FCFF and FCFE kept distinct** | rendered as **two labelled rows**, *Free cash flow to firm* and *Free cash flow to equity*, never one "free cash flow" | ✅ |
+| **Dual-method display** | the comparables range (EV/EBIT to EV/EBITDA) is shown **beside** the intrinsic DCF, with the triangulation stated — above, below, or within | ✅ |
+| **The residual shown rather than absorbed** | the Value Bridge's residual is ⭐ **"a SUBTRACTION, not a plug"** — what the named drivers did not explain, left visible | ✅ |
+| **The assumptions registry inspectable** | the pack pins `assumptions_registry` by version, and `check-assumption-registry.py` guards it | ✅ |
+| **Absence declared rather than zeroed** | `_n()` propagates absence instead of inventing a zero, and `check-none-arithmetic.py` fails a build that reintroduces `or 0` | ✅ |
+
+⭐⭐ **THE STRONGEST SINGLE EXAMPLE, AND IT IS THE REGISTRY REFUSING TO PIN
+ITSELF.** The pack records `ratio_registry: {consumed_by_production: false}` with
+its reason — **the §7r ratio library is not built, so pinning a version for a
+formula set nothing renders would be a pin that asserts more than it knows.**
+⭐ **A PRODUCT THAT DECLINES TO VERSION SOMETHING IT DOES NOT USE IS DEMONSTRATING
+THE DISCIPLINE RATHER THAN CLAIMING IT** — and a CFO reads that faster than any
+adjective.
+
+### ⭐⭐ 4 · CONSTRAINT — THE RIGOUR CLAIM ATTACHES TO THE NUMBERS AND MUST NOT MIGRATE
+
+**The scope expansion into stakeholder feedback and strategy execution does NOT
+dilute this — PROVIDED the claim stays attached to the FINANCIAL half.**
+
+⭐⭐ **"MATHEMATICALLY RIGOROUS STAKEHOLDER SENTIMENT" IS INDEFENSIBLE.**
+
+⭐ **ATTACHING RIGOUR TO THE SOFT HALF IS HOW THE HARD HALF LOSES ITS CREDIBILITY
+TOO.** A CFO who catches one overreach re-reads everything else as marketing —
+including the six disciplines that were true.
+
+⭐ **The k-anonymity floor is NOT an exception to this.** It is a
+**confidentiality** discipline, not a claim that sentiment is measured
+rigorously, and it must be presented as such.
+
+### ⭐ 5 · BROCHURE PLACEMENT — "HOW YOU CAN CHECK THIS"
+
+**After the pack. Before the CXO offer.**
+
+⭐ **IT ANSWERS *"how would you know?"* FOR THE CFO WHO ASKS, AND IS SKIPPABLE BY
+THE CEO WHO DOES NOT.** The position is the point: a reader who never asks the
+question never has to read the answer.
+
+⭐ **NOT A TECHNIQUE LIST. A LIST OF DISCIPLINES WITH WHERE EACH IS VISIBLE IN THE
+PRODUCT** — the right-hand column of the table above is the section, and the
+left-hand column alone would be the thing this ruling forbids.
+
+### ⭐⭐ 6 · STANDING RULE — CLAIMED SOPHISTICATION IS INADMISSIBLE; CHECKABLE DISCIPLINE IS ADMISSIBLE
+
+> ⭐⭐ **A claim of SOPHISTICATION cannot be verified by a prospect, and it invites
+> a comparison the brochure cannot win.**
+>
+> ⭐⭐ **A claim of DISCIPLINE can be confirmed in the demo artefact.**
+
+**This is the EXISTING ADMISSIBILITY TEST APPLIED TO RIGOUR**, not a new rule: *a
+claim is admissible only when the demo artefact answers it.*
+
+| inadmissible | admissible |
+|---|---|
+| "the most advanced analytics" | "DLOM sits outside the reconciliation — here it is" |
+| "mathematically rigorous" | "the residual is shown, not absorbed" |
+| "no other software gives you that" | "absence is declared, never zeroed — and a build fails if it is" |
+| a code-volume or technique claim | a discipline with a page reference |
+
+⭐ **IT GENERALISES BEYOND THE BROCHURE** and governs every commercial surface,
+which is why it is recorded as a STANDING RULE rather than inside the brochure
+ruling. **It also settles the form of any future rigour claim without a new
+ruling:** if a prospect cannot check it in the artefact, it does not ship.
+
+⭐ **CONSISTENT WITH — AND NARROWER THAN — the standing consequence already
+recorded: *sophistication is the thing you do not sell.*** That ruling said do not
+lead with it. ⭐ **This one says what MAY be said instead, and it is not a softened
+version of the same claim.**
+
+⭐ **The locked positioning descriptor is unaffected** and is still used verbatim
+wherever the platform is described.
 
 ## ⭐⭐ BROCHURE — THE VALUE-PROPOSITION DIAGRAM (ruled 31 Jul)
 
