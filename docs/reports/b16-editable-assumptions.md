@@ -67,11 +67,21 @@ read out of the frontend source and required to exist in the app's own OpenAPI
 schema — both sides derived. The guard carries a known positive: a wiring test
 finding no calls would pass vacuously, which is the state it detects.
 
-⭐ **REMAINDER: the page is not reachable in a browser.** `routeTree.gen.ts` is
-generated, says "do NOT make any changes", and could not be regenerated — the
-build environment has **no JS runtime** (`node`, `bun`, `npm` all absent).
-Hand-editing it was refused rather than attempted. One `vite build` in a
-toolchained environment registers it. **Queued as B23.**
+⭐ **The route IS registered and the page IS reachable.** `routeTree.gen.ts` was
+regenerated with `vite build` and returned to the loose variant by stripping the
+strict Register augmentation, per the README and the repo's `check-routetree`
+guard. Frontend pushed at `626114a`; `tsc --noEmit` clean, lint 0 errors, warnings
+held at the 1047 ceiling by fixing the two this file introduced rather than
+raising it.
 
-The test's own docstring records what it cannot see, so nine green assertions are
-not mistaken for a reachable feature.
+### ⭐ A measurement error, corrected the same day
+
+This report first said the page was unreachable because the environment had **no
+JS runtime**. That was false: `bun` was at `~/.bun/bin`, absent only from the
+measuring shell's PATH. The repo's pre-push hook exports that exact path and says
+why. **An absence with a plausible reason** — "no runtime installed" explains the
+observation completely, which is what stopped it being checked — and it would have
+queued a build item for work already possible.
+
+The test's own docstring still records what the guard cannot see: it proves the UI
+calls paths the server serves, not that the route is registered.

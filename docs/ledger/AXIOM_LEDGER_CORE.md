@@ -141,7 +141,7 @@ stochastic engine is no longer blocked on a false premise.**)
 | B5 | **§7u (b)** per-company stored assumptions | Deferred, not dropped. |
 | B6 | ~~Grant/revoke admin UI~~ | ⭐ **ALREADY BUILT — verified 31 Jul.** `DepartmentAuthorityPanel.tsx`, mounted at `routes/team.tsx`, POSTs grant AND revoke. §7.9 corrected. |
 | B22 | ⭐ **Encode the σ ruling** | Move σ_RO into the §7u registry as a platform default with a stated basis, so the pack PINS it and it is inspectable; and RENAME `_calibrate_sigma` so the name does not assert a calibration that is not performed. ⭐ **A function whose name misdescribes it is a claim in the code.** |
-| B23 | ⭐⭐ **Register the B16 route — B16 IS NOT REACHABLE** | `assumptions.tsx` exists and is asserted against the served schema, but `routeTree.gen.ts` could not be regenerated (no JS runtime in the build env). One `vite build` in a toolchained environment. ⭐ **Until then A2 has no in-app remediation path.** |
+| ~~B23~~ | ~~Register the B16 route~~ | ⭐ **RETIRED UNBUILT 31 Jul — it was never needed.** Queued on a false measurement ("no JS runtime"); `bun` was present and merely off the measuring shell's PATH. The route was registered in the same lane. |
 | B21 | ⭐ **Widen the B16 gate to ADMIN AND CFO** | Ruled 31 Jul; the code shipped at `1ba395c` is **admin-only and refuses a CFO**. Attribution already covers the act whichever way the §4x tension resolves. |
 | B20 | ⭐ **Encode the A1 ruling** | `billable` default `False` + backfill existing rows, `billing_policy()` to `ruled: True`, and the docstrings that still explain the question as open. ⭐ **The one backfill this programme should perform** — the rows predate a ruling that now covers them. |
 | B16 | ~~In-app editable assumptions~~ | ⭐ **BUILT** — 12 fields editable, bounds flag-not-refuse on write, admin-only per §4x, every write attributed. **A2 now has a remediation path.** |
@@ -6874,7 +6874,7 @@ the linked ones are all of them.
 retro-attribute a movement in a pack already issued, and the attribution reader
 **takes no session** so it cannot re-read live.
 
-## ⭐⭐ B16 · IN-APP EDITABLE ASSUMPTIONS — BUILT, AND **NOT YET WIRED** (§7u scope (b), 31 Jul)
+## ⭐⭐ B16 · IN-APP EDITABLE ASSUMPTIONS — BUILT **AND WIRED** (§7u scope (b), 31 Jul)
 
 ⭐⭐ **THE HEADLINE CORRECTED IN PLACE 31 Jul.** This entry previously read
 **BUILT**, full stop. **Measured at `2388e34`: the frontend contained ZERO
@@ -6998,20 +6998,31 @@ hand list on either side is how the two drift while both look green. The guard
 carries its own **known positive**: a wiring test that found no calls would pass
 vacuously, which is the state it was written to detect.
 
-⭐⭐ **AND THE REMAINDER, STATED PLAINLY: THE PAGE IS NOT YET REACHABLE IN A
-BROWSER.** TanStack's `routeTree.gen.ts` is **generated**, carries *"you should
-NOT make any changes in this file"*, and **could not be regenerated — the build
-environment has no JS runtime (no `node`, `bun`, or `npm`).**
+**The route IS registered and the page IS reachable.** `routeTree.gen.ts` was
+regenerated with `vite build` and returned to the **LOOSE** variant by stripping
+the strict `@tanstack/react-start` Register augmentation, per the README and the
+repo's own `check-routetree` guard. Pushed at optimization-anchor `626114a`;
+`tsc --noEmit` clean, lint 0 errors.
 
-⭐ **HAND-EDITING A GENERATED FILE WAS REFUSED RATHER THAN ATTEMPTED**, per the
-standing rule against working around a tooling failure. **The route registers on
-the first `vite dev` or `vite build` in any environment with the toolchain.**
+### ⭐⭐ AND A MEASUREMENT ERROR, CORRECTED IN PLACE THE SAME DAY
 
-⭐⭐ **SO B16 IS NOT CLOSED, AND THIS ENTRY SAYS SO IN ITS TITLE.** The test suite
-proves the UI calls paths that exist; **it cannot prove the route is registered**,
-and that limit is written into the test's own docstring so a later reader does not
-mistake nine green assertions for a reachable feature. **A2's remediation path is
-not yet in the customer's hands.**
+This entry briefly recorded *"the page is not reachable; the build environment has
+no JS runtime."* ⭐ **THAT WAS FALSE. `bun` was present at `~/.bun/bin` and absent
+only from the measuring shell's PATH** — `command -v bun` returned nothing, and
+that was read as *the machine has no runtime* rather than *this shell cannot see
+one.* **The repo's own pre-push hook exports that exact path, and says in a
+comment that it does so because git runs hooks with a stripped PATH.** The
+evidence that the conclusion was wrong was inside the file that had to be read to
+reach it.
+
+⭐ **THE SHAPE: AN ABSENCE WITH A PLAUSIBLE REASON.** "No runtime installed" is an
+ordinary state of a machine, and it explained the observation completely — which
+is what stopped it being checked. **It would have queued a build item (B23) for
+work that was already possible**, and B23 is retired unbuilt for that reason.
+
+⭐ **What the guard still cannot see, unchanged:** the nine tests prove the UI
+calls paths the server serves. **They do not prove the route is registered** — the
+route tree is not derived from them. That limit stays in the test's docstring.
 
 ### The original entry, kept as the record of what was claimed
 
