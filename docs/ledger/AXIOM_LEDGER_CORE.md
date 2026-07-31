@@ -10151,6 +10151,98 @@ call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
 
+## ⭐⭐ PLAN-VS-FORECAST CRASH — **THE SOURCE IS ALREADY FIXED. THE DEPLOY IS STALE.** (31 Jul)
+
+⭐⭐ **NO CODE CHANGE WAS MADE, AND THAT IS THE FINDING.** Shipping a "fix" for a
+defect that is not in the source would have looked like a repair and left the
+crash exactly where it was.
+
+### ⭐ 1 · THE MECHANISM — real, and already repaired
+
+`PlanVsForecastPanel` calls **`useBackendPeriodFormatter(meta.labels)`**, which
+calls `usePeriodLabel()` → **`useSyncExternalStore`** — matching the reported stack
+exactly.
+
+⭐⭐ **IT ONCE SAT BELOW THREE EARLY RETURNS** (`if (err) …`, `if (!data) …`,
+`if (!data.has_client_plan) …`). On any render that **errored, was still loading,
+or had no client plan**, React saw **one fewer hook** than on a successful render.
+
+⭐ **React matches hooks POSITIONALLY**, so the next successful render reads
+another hook's state as this one's. **React #310 is that contract being violated.**
+
+### ⭐ 2 · ORIGIN — and it PREDATES monthly periods
+
+| | |
+|---|---|
+| **introduced** | ⭐ **`7859212`** — the commit that added `useBackendPeriodFormatter`, placing it below the returns |
+| **fixed** | ⭐⭐ **`6eaa19f`, 29 Jul** — *"lint green; frontend CI; per-rule ratchets"* |
+
+⭐⭐ **IT IS NOT THE MONTHLY-PERIODS LANE (`d8e31a5`).** The dispatch offered that
+as the likely origin; **the measurement says otherwise** and it is recorded that
+way. Only **one** commit has touched the file since the fix (`0b89af5`, a types
+pass).
+
+⭐⭐ **AND THE COMMIT THAT FIXED IT IS THE COMMIT THAT ADDED THE GATE.** `6eaa19f`
+introduced the frontend CI and the hook rule, and **the rule immediately found this
+bug.** The diff moves `const periodFor = …` above the returns and records the
+mechanism in a comment.
+
+### ⭐⭐ 3 · WHY THE SOURCE IS PROVABLY CLEAN NOW
+
+| check | result |
+|---|---|
+| `react-hooks/rules-of-hooks` in the **resolved** config | ⭐ **`[2]` — ERROR, not off** |
+| that rule across **all of `src`** | ⭐⭐ **ZERO violations** |
+| ESLint's blind spot — lower-cased helpers that call hooks | ⭐ **0 hits** |
+| hooks nested in conditions or loops in the route file | **none** |
+
+### ⭐⭐ 4 · THE DEPLOYED BUNDLE PREDATES THE FIX
+
+| | |
+|---|---|
+| **live** | `financial-forecasts-DC3pBJDl.js` |
+| ⭐ **local build of HEAD** | **`financial-forecasts-ehGlOxPK.js`** |
+
+**Assets return 403 to a direct fetch**, so the deployed chunk could not be
+inspected — ⭐ **stated as a limit, not worked around.**
+
+⭐⭐ **THE STANDING "CONFIRM IN INCOGNITO" RULE EXISTS FOR EXACTLY THIS**, and it
+was not satisfiable here — there is no browser in this environment. **A stale
+bundle, cached or undeployed, is the hypothesis incognito is designed to settle.**
+
+⭐ **THE ACTION IS A REDEPLOY, NOT A COMMIT.**
+
+### ⭐⭐ 5 · WHY THE GATES MISSED IT — and one of them did not
+
+⭐ **CI did not miss it. CI is what caught it**, on the day the rule was added.
+
+**What is true is narrower and worse:** ⭐⭐ **BETWEEN `7859212` AND `6eaa19f` THERE
+WAS NO GATE FOR THIS CLASS AT ALL**, and a hook-order violation passes typecheck,
+prettier, the ratchet and the build. **It compiles cleanly and throws only in a
+browser, on a specific state.**
+
+⭐ **The frontend still has ZERO test files** (measured `f197514`). The hook rule
+covers this one class statically; **nothing covers "does the page render".**
+
+### ⭐⭐ 6 · THE CRAWLER — COVERED BY NAME, BLIND BY CONSTRUCTION
+
+`/financial-forecasts` **IS** among the crawled routes
+(`scripts/auth-regression.py`), asserted with **`needle: "FCFF"`**.
+
+⭐⭐ **BUT THE CRAWLER READS AN HTTP RESPONSE, AND THIS DEFECT LIVES IN THE
+BROWSER.** A React error boundary renders **after** hydration; the server still
+returns **200** with the same shell.
+
+⭐⭐ **SO A ROUTE THAT THROWS AND A ROUTE THAT RENDERS BOTH READ AS PASS — which is
+precisely the failure the dispatch names.** ⭐ **The crawler would NOT catch this
+class after the fix either**, because the limitation is structural: no JavaScript
+is executed.
+
+⭐ **What would catch it: a headless-browser smoke pass that asserts the error
+boundary did not render, on a route list derived from `routeTree.gen.ts`.**
+**Reported, not built** — and it is the frontend test-coverage gap, not a crawler
+widening.
+
 ## ⭐⭐ ENUMERATION 31 Jul — THREE STALE ROWS, AND THE EDIT-AND-SEE-IT ANSWER
 
 **Full report: `docs/reports/enumeration-31jul.md`.**
