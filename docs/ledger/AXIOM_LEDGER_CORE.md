@@ -8167,6 +8167,44 @@ sat in AMBER while the seed called it green. Now derived.
 
 Every hop asserted against real rows. **The fifth hop is stated as a gap.**
 
+#### ⭐⭐ HOP 1 CLOSED — sentiment is now ROWS, not a chain-spec claim (31 Jul)
+
+**The gap:** hop 1 was asserted via the department existing and its initiative
+slipping. That **DECLARED** the hop; it did not demonstrate it — and it is the hop
+that makes the chain distinctive.
+
+**Now seeded as real `AssessmentResponse` rows across two cycles**, and the
+decline is **computed by `compute_cei`** — the same function every surface uses:
+
+    Operations CEI   cycle 1  5.22   →   cycle 2  3.42     (computed, not restated)
+    company CEI      cycle 1  6.74   →   cycle 2  6.37
+
+⭐ **THE SEED WRITES SCORES AND SAYS NOTHING ABOUT WHAT THEY MEAN.** A test reads
+`seed_assessment`'s own source and fails it for containing a band name — the
+discipline the KPI actuals broke earlier in this same lane.
+
+⭐ **K-ANONYMITY IS DEMONSTRATED, NOT AVOIDED.** Respondent counts are chosen so
+the machinery actually fires:
+
+| department | n | outcome |
+|---|---|---|
+| Quality | **2** | `below_anonymity_floor` — below KFLOOR=3 |
+| Strategy | **3** | ⭐ `complement_inference` — cleared the floor, hidden to protect Quality |
+| the other seven | 4–7 | shown |
+
+**A seed that dodged the floor by over-populating would prove nothing about the
+machinery.** Six of nine departments remain readable, and a slice hidden to
+protect another is **not mislabelled as below the floor**.
+
+**Mixed direction across departments** (four up, five down) and **a red beside a
+green** — an 8.40 Finance against a 3.42 Operations, a spread of five points.
+
+**Hop 1 end to end:** the decline is computed from rows, the initiative that
+department owns is `off_track`, and **the pack renders both.**
+
+⭐ **AND CLOSING HOP 1 DID NOT EXTEND THE CHAIN.** A test asserts the fifth hop is
+still absent and still stated as a gap.
+
 **5 · Two consecutive packs**, the second carrying a bridge to the first.
 **6 · Exactly one declared absence** — `documents`, chosen because it is the one
 class whose absence says nothing about the company's health. ⭐ **An absent RISK

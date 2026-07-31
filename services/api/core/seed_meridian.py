@@ -328,3 +328,163 @@ def band_coverage(report):
             counts[row[1]] += 1
         out[surface] = counts
     return out
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐ HOP 1 — SENTIMENT, AS REAL ASSESSMENT ROWS
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# §7o's chain asserted hop 1 via the department existing and its initiative
+# slipping. That DECLARED the hop; it did not demonstrate it. This seeds real
+# responses so the decline is COMPUTED BY THE PRODUCT'S OWN AGGREGATION.
+#
+# ⭐ THE SEED NEVER RESTATES A SENTIMENT. It writes scores; `compute_cei` decides
+# what they mean. A seed asserting its own bands tests its intent rather than the
+# product's rule — the defect this lane's predecessor committed on the KPI
+# actuals and had to correct.
+
+# Respondents per department, per cycle. ⭐ THE FLOOR IS DEMONSTRATED, NOT
+# AVOIDED: `quality` sits at TWO — below KFLOOR=3 — which forces suppression,
+# and the complement-inference guard then hides a second slice because one
+# hidden slice is the unique arithmetic complement of the shown ones.
+#
+# A seed that over-populated every department would keep the machinery green and
+# prove nothing about it.
+RESPONDENTS = {
+    "finance": 6, "operations": 7, "sales": 5, "marketing": 4,
+    "technology": 5, "people": 4, "supply_chain": 4,
+    "quality": 2,                      # ⭐ BELOW THE FLOOR, deliberately
+    "strategy": 3,                     # ⭐ EXACTLY AT the floor
+}
+
+SENIORITIES = ("executive", "management", "staff", "board")
+
+# Scores by band, per cycle. ⭐ OPERATIONS DECLINES; others move mixed, so the
+# trend is a series rather than a slope.
+_SCORES = {
+    "green": (8.2, 8.4),
+    "amber": (6.4, 6.1),
+    "red": (4.1, 3.6),
+}
+# Operations is red AND is the chain carrier: its drop is the largest.
+_CHAIN_SCORES = (5.2, 3.4)
+
+
+def seed_assessment(db, cid, *, n_items=6):
+    """Two cycles of real responses across all nine departments.
+
+    Returns the cycle ids and the per-department respondent counts — the inputs
+    to the k-floor proof, not a claim about it.
+    """
+    from ..assessment_engine import (default_weights, load_taxonomy,
+                                      taxonomy_to_items)
+    from ..accounts import (AssessmentCycle, AssessmentFramework,
+                            AssessmentItem, AssessmentResponse,
+                            AssessmentWeight)
+
+    fw = (db.query(AssessmentFramework).filter_by(company_id=cid)
+            .order_by(AssessmentFramework.id.desc()).first())
+    if fw is None:
+        fw = AssessmentFramework(company_id=cid, revision=1)
+        db.add(fw); db.flush()
+
+    # ⭐ THE PRODUCT'S OWN TAXONOMY, not an invented item set. A seed inventing
+    # its own items would exercise an aggregation over data the product never
+    # produces.
+    tax = load_taxonomy()
+    all_items = taxonomy_to_items(tax)
+    l3 = [i for i in all_items if i["level"] == 3][:n_items]
+    keep = {i["code"] for i in l3}
+    for i in all_items:
+        if i["level"] in (1, 2):
+            keep.add(i["code"])
+
+    have = {i.code for i in db.query(AssessmentItem).filter_by(framework_id=fw.id).all()}
+    live = {}
+    for it in all_items:
+        if it["code"] not in keep:
+            continue
+        if it["code"] not in have:
+            row = AssessmentItem(
+                framework_id=fw.id, level=it["level"], code=it["code"],
+                title=it.get("title") or it["code"],
+                definition=it.get("definition") or "",
+                # ⭐ parent_code IS THE ROLLUP. Without it every L1 subscore is
+                # None and the CEI comes back None with no error anywhere.
+                parent_code=it.get("parent_code"),
+                custom=bool(it.get("custom")),
+                orientation=it.get("orientation"),
+                selected=bool(it.get("selected", True)))
+            db.add(row); db.flush()
+        live[it["code"]] = True
+
+    l1_codes = [i["code"] for i in all_items if i["level"] == 1]
+    have_w = {w.l1_code for w in
+              db.query(AssessmentWeight).filter_by(framework_id=fw.id).all()}
+    for code, weight in default_weights(l1_codes).items():
+        if code not in have_w:
+            db.add(AssessmentWeight(framework_id=fw.id, l1_code=code,
+                                    weight=float(weight)))
+    db.flush()
+
+    item_ids = {i.code: i.id for i in
+                db.query(AssessmentItem).filter_by(framework_id=fw.id).all()}
+    band_of = {k: b for k, _n, b in DEPARTMENTS}
+    name_of = {k: n for k, n, _b in DEPARTMENTS}
+
+    cycles = []
+    for c_idx in (0, 1):
+        cyc = AssessmentCycle(company_id=cid, framework_id=fw.id, revision=1,
+                              name=f"Meridian cycle {c_idx + 1}",
+                              opened_at=datetime(2026, 4 + c_idx * 2, 1),
+                              closed_at=datetime(2026, 5 + c_idx * 2, 15),
+                              cadence="quarterly", anonymity_mode="anonymous",
+                              depth="full")
+        db.add(cyc); db.flush()
+        cycles.append(cyc.id)
+
+        for key, n in RESPONDENTS.items():
+            band = band_of[key]
+            base = (_CHAIN_SCORES[c_idx] if key == CHAIN_DEPT
+                    else _SCORES[band][c_idx])
+            for p in range(n):
+                ref = f"{key}-{p}"
+                for j, item in enumerate(l3):
+                    # a little spread so dispersion is real, not zero
+                    score = max(0.0, min(10.0, base + ((p + j) % 3 - 1) * 0.3))
+                    db.add(AssessmentResponse(
+                        cycle_id=cyc.id, participant_ref=ref,
+                        item_id=item_ids[item["code"]], score=score,
+                        department=name_of[key],
+                        seniority=SENIORITIES[p % len(SENIORITIES)],
+                        submitted_at=datetime(2026, 5 + c_idx * 2, 1)))
+        db.flush()
+
+    return {"cycles": cycles, "respondents": dict(RESPONDENTS),
+            "items_scored": [i["code"] for i in l3],
+            "chain_department": name_of[CHAIN_DEPT]}
+
+
+def cei_for_cycle(db, cid, cycle_id):
+    """⭐ COMPUTED BY THE PRODUCT, FROM THE ROWS. The seed supplies scores; this
+    reads them back through `compute_cei`, which is the same function every
+    surface uses. Nothing here restates a band."""
+    from ..assessment_engine import (compute_cei, default_weights,
+                                      load_taxonomy, taxonomy_to_items)
+    from ..accounts import (AssessmentFramework, AssessmentItem,
+                            AssessmentResponse)
+    fw = (db.query(AssessmentFramework).filter_by(company_id=cid)
+            .order_by(AssessmentFramework.id.desc()).first())
+    items_by_id = {i.id: i for i in
+                   db.query(AssessmentItem).filter_by(framework_id=fw.id).all()}
+    items = [{"code": i.code, "level": i.level, "title": i.title,
+              "parent_code": i.parent_code, "selected": bool(i.selected)}
+             for i in items_by_id.values()]
+    rows = db.query(AssessmentResponse).filter_by(cycle_id=cycle_id).all()
+    responses = [{"participant_ref": r.participant_ref,
+                  "code": items_by_id[r.item_id].code,
+                  "score": r.score, "department": r.department,
+                  "seniority": r.seniority}
+                 for r in rows if r.item_id in items_by_id]
+    l1 = [i["code"] for i in items if i["level"] == 1]
+    return compute_cei(items, default_weights(l1), responses)
