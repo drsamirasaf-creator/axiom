@@ -140,7 +140,8 @@ stochastic engine is no longer blocked on a false premise.**)
 | B4 | **`ValuationRun` code version** | **Nothing.** §7v closed payload hash + registry versions; code revision remains absent. |
 | B5 | **§7u (b)** per-company stored assumptions | Deferred, not dropped. |
 | B6 | ~~Grant/revoke admin UI~~ | ⭐ **ALREADY BUILT — verified 31 Jul.** `DepartmentAuthorityPanel.tsx`, mounted at `routes/team.tsx`, POSTs grant AND revoke. §7.9 corrected. |
-| **G1–G6** | ⭐⭐ **RELIABILITY LAUNCH GATES — precede any relaunch carrying paying customers** | See *§8 — the reliability programme, measured state*. ⭐⭐ **G1: NO BACKUPS EXIST AT ALL** — no schedule and none ever taken. G2 restore untestable until G1. G3 nothing detects an outage. G4 no platform healthcheck, so a hung process is never restarted. G5 unprotected `main`, no staging. G6 pool unsized against a single process. |
+| **G1** | ⭐⭐ **BACKUPS — BLOCKED BY THE PLAN, NOT MERELY UNBUILT** | ⭐⭐ **`plan: HOBBY`, `maxBackupsCount: 0`.** The schedule mutation was attempted and refused; no credential would have worked. ⭐ **Unblocking it is a COMMERCIAL DECISION** — a paid plan, or an external dump target which needs its own ruling on location, custody and retention. **RPO today is TOTAL; RTO is undefined because recovery is impossible.** |
+| **G2–G6** | ⭐⭐ **RELIABILITY LAUNCH GATES — precede any relaunch carrying paying customers** | See *§8 — the reliability programme, measured state*. ⭐⭐ **G1: NO BACKUPS EXIST AT ALL** — no schedule and none ever taken. G2 restore untestable until G1. G3 nothing detects an outage. G4 no platform healthcheck, so a hung process is never restarted. G5 unprotected `main`, no staging. G6 pool unsized against a single process. |
 | B22 | ⭐ **Encode the σ ruling** | Move σ_RO into the §7u registry as a platform default with a stated basis, so the pack PINS it and it is inspectable; and RENAME `_calibrate_sigma` so the name does not assert a calibration that is not performed. ⭐ **A function whose name misdescribes it is a claim in the code.** |
 | ~~B23~~ | ~~Register the B16 route~~ | ⭐ **RETIRED UNBUILT 31 Jul — it was never needed.** Queued on a false measurement ("no JS runtime"); `bun` was present and merely off the measuring shell's PATH. The route was registered in the same lane. |
 | B21 | ⭐ **Widen the B16 gate to ADMIN AND CFO** | Ruled 31 Jul; the code shipped at `1ba395c` is **admin-only and refuses a CFO**. Attribution already covers the act whichever way the §4x tension resolves. |
@@ -7323,6 +7324,107 @@ FABRICATION BY SILENCE.**
 
 ⭐ **THE LAST CLAUSE IS THE REAL PROMISE.** The first two are what every data
 product says.
+
+## ⭐⭐ G1 — BACKUPS: **BLOCKED BY THE PLAN. G1 AND G2 DO NOT CLOSE.** (31 Jul)
+
+⭐⭐ **THE PLATFORM CANNOT PROVIDE BACKUPS ON THE CURRENT PLAN.** This is not a
+configuration that was missed. It is a configuration **the plan refuses.**
+
+### The measurement that decided it
+
+```
+me.workspaces[0].plan                                   ->  "HOBBY"
+  subscriptionPlanLimit.volumes.maxBackupsCount         ->  0     ⭐⭐ ZERO
+  subscriptionPlanLimit.volumes.maxBackupsUsagePercent  ->  0
+  subscriptionPlanLimit.volumes.maxSizeMB               ->  5000
+```
+
+**The mutation was attempted and refused:**
+
+```
+volumeInstanceBackupScheduleUpdate(kinds:[DAILY,WEEKLY,MONTHLY])
+  ->  errors: [{ message: "Not Authorized" }]
+  ->  re-read: volumeInstanceBackupScheduleList == []   (unchanged)
+```
+
+⭐ **THE REFUSAL WAS DIAGNOSED, NOT ASSUMED.** *"Not Authorized"* on a token whose
+**reads all succeed** has two candidate causes — a read-scoped token, or a plan
+limit. **`maxBackupsCount: 0` settles it: the plan permits zero backups**, so no
+credential would have worked.
+
+⭐ **What Railway offers where backups ARE available**, from the schema:
+**DAILY · WEEKLY · MONTHLY** (`VolumeInstanceBackupScheduleKind`). ⭐ **No hourly
+option exists at any tier**, so the best achievable RPO on this platform is
+**24 hours** even after a plan change. PITR exists as a mutation
+(`volumeInstancePITRRestore`) but **could not be exercised or confirmed available**
+under a plan that permits no backups.
+
+### ⭐⭐ THE LANE STOPPED HERE, DELIBERATELY
+
+**Per the dispatch and the standing rule: report rather than work around.** A
+hand-rolled `pg_dump` to an external target **was not built**, because:
+
+1. ⭐ **It is a different build and it needs a ruling** — where the dump goes, who
+   holds that credential, what its retention is, and whether an unencrypted copy
+   of every customer's financials may sit outside Railway.
+2. ⭐⭐ **AND A WORKAROUND THAT LEAVES BACKUPS UNPROVEN RECREATES THE EXACT STATE
+   THIS LANE EXISTS TO END.** An improvised dump nobody has restored is the same
+   hypothesis in a different location.
+
+### ⭐ G2 WAS NOT REACHED, AND COULD NOT BE
+
+**A restore test requires a backup.** There is none, and none can be created.
+
+⭐ **AND THE ONLY IN-PLATFORM RESTORE PATH WOULD HAVE BREACHED THE CONSTRAINT
+ANYWAY.** Introspected **before** anything was called:
+
+| mutation | shape | verdict |
+|---|---|---|
+| `volumeInstanceBackupRestore(volumeInstanceBackupId, volumeInstanceId)` | ⭐ **no target parameter — restores IN PLACE** | ⭐⭐ **would have restored OVER PRODUCTION.** Not called. |
+| `volumeInstancePITRRestore(newServiceName, targetTimestamp, …)` | takes `newServiceName` — restores to a **new service** | the safe path, **unusable without a backup** |
+
+⭐ **The signatures were read before the mutations, not after.** `…BackupRestore`
+reads like the obvious call and is the destructive one.
+
+### ⭐⭐ RTO AND RPO — OBSERVED, NOT TARGETED
+
+| | measured today |
+|---|---|
+| **RPO** | ⭐⭐ **TOTAL.** There is no recovery point. **Every write since inception is at risk** — not "up to 24 hours of data", *all of it*. |
+| **RTO** | ⭐⭐ **UNDEFINED — recovery is IMPOSSIBLE, not slow.** There is nothing to restore from, so no duration exists to measure. |
+
+⭐ **NO TARGET IS STATED, AND NO SLA FOLLOWS.** Both remain what §8 said they were:
+**a ruling that cannot precede the measurement it rests on** — and the measurement
+now says the number would be *infinite*.
+
+### ⭐ 5 · THE SECRETS SURFACE — measured, and better than feared
+
+**23 app-owned variables on `web`; `.env.example` documents 51 names.** ⭐ **Only
+`FORWARDED_ALLOW_IPS` is live-but-undocumented** — and §8 already records it as
+platform-only, set because Railway ignores the Procfile.
+
+⭐⭐ **THE LOAD-BEARING QUESTION WAS WHETHER ANY SECRET IS CRYPTOGRAPHICALLY
+REQUIRED TO READ RESTORED DATA. MEASURED: NO.**
+
+- `AXIOM_SECRET` is used **only to sign JWTs** (`jwt.encode(payload, SECRET)`).
+- Passwords are **PBKDF2 with a per-row salt**, ⭐ **not derived from
+  `AXIOM_SECRET`.**
+- ⭐ **So losing it invalidates live sessions — users re-authenticate — but leaves
+  every stored row readable.** **A restored database would be usable.**
+
+**Values exist only in Railway.** All are re-issuable from their providers;
+⭐ **the Stripe webhook secrets are the awkward ones**, since re-issuing them
+requires re-pointing the endpoints, and until that is done billing events are
+silently rejected.
+
+### ⭐⭐ WHAT ACTUALLY UNBLOCKS G1 — a commercial decision, not an engineering one
+
+**A paid Railway plan**, or **an external dump target with its own ruling.**
+⭐ **Both are decisions for the user. Neither is a build this lane could take.**
+
+⭐⭐ **AND THE EXPOSURE IS UNCHANGED WHILE THAT DECISION IS OPEN.** A total loss
+today remains **permanent and complete.** **G1 stays the highest-priority item in
+the ledger, now with the reason it is not merely unbuilt but BLOCKED.**
 
 ## ⭐⭐ §8 — THE RELIABILITY PROGRAMME: MEASURED STATE (31 Jul, `82bb74c`)
 
