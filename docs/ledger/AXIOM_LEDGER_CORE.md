@@ -141,6 +141,7 @@ stochastic engine is no longer blocked on a false premise.**)
 | B5 | **§7u (b)** per-company stored assumptions | Deferred, not dropped. |
 | B6 | ~~Grant/revoke admin UI~~ | ⭐ **ALREADY BUILT — verified 31 Jul.** `DepartmentAuthorityPanel.tsx`, mounted at `routes/team.tsx`, POSTs grant AND revoke. §7.9 corrected. |
 | B22 | ⭐ **Encode the σ ruling** | Move σ_RO into the §7u registry as a platform default with a stated basis, so the pack PINS it and it is inspectable; and RENAME `_calibrate_sigma` so the name does not assert a calibration that is not performed. ⭐ **A function whose name misdescribes it is a claim in the code.** |
+| B23 | ⭐⭐ **Register the B16 route — B16 IS NOT REACHABLE** | `assumptions.tsx` exists and is asserted against the served schema, but `routeTree.gen.ts` could not be regenerated (no JS runtime in the build env). One `vite build` in a toolchained environment. ⭐ **Until then A2 has no in-app remediation path.** |
 | B21 | ⭐ **Widen the B16 gate to ADMIN AND CFO** | Ruled 31 Jul; the code shipped at `1ba395c` is **admin-only and refuses a CFO**. Attribution already covers the act whichever way the §4x tension resolves. |
 | B20 | ⭐ **Encode the A1 ruling** | `billable` default `False` + backfill existing rows, `billing_policy()` to `ruled: True`, and the docstrings that still explain the question as open. ⭐ **The one backfill this programme should perform** — the rows predate a ruling that now covers them. |
 | B16 | ~~In-app editable assumptions~~ | ⭐ **BUILT** — 12 fields editable, bounds flag-not-refuse on write, admin-only per §4x, every write attributed. **A2 now has a remediation path.** |
@@ -6873,7 +6874,148 @@ the linked ones are all of them.
 retro-attribute a movement in a pack already issued, and the attribution reader
 **takes no session** so it cannot re-read live.
 
-## ⭐⭐ B16 · IN-APP EDITABLE ASSUMPTIONS — BUILT (§7u scope (b), 31 Jul)
+## ⭐⭐ B16 · IN-APP EDITABLE ASSUMPTIONS — BUILT, AND **NOT YET WIRED** (§7u scope (b), 31 Jul)
+
+⭐⭐ **THE HEADLINE CORRECTED IN PLACE 31 Jul.** This entry previously read
+**BUILT**, full stop. **Measured at `2388e34`: the frontend contained ZERO
+references to the assumptions endpoints.** The server routes were served, mounted
+and covered by twenty-one passing tests, and **the customer still could not reach
+them.**
+
+⭐⭐ **FIFTH INSTANCE OF BUILT-IS-NOT-WIRED, AND THE FIRST FOUND ON A REMEDIATION
+FEATURE.** A2's whole justification was that a live paying customer holding
+`size_premium = 0.2` had no in-app correction path. **B16 was recorded as the fix
+and did not deliver one.** A ledger line reading BUILT beside a feature nobody
+can reach is the stale-line failure at its most expensive: it closes an item that
+is still open.
+
+### ⭐ 1 · THE EDITABLE FIELD SET — 12, DERIVED
+
+`editable_fields()` returns the **float-typed** members of `COMPANY_FIELDS`, so a
+hand list cannot drift from the schema. **Measured: 12.**
+
+`beta` · `cost_of_debt` · `dlom` · `market_risk_premium` · `risk_free_rate` ·
+`share_price` · `shares_outstanding` · `size_premium` · `specific_risk_premium` ·
+`target_debt_to_equity` · `tax_rate` · `unlevered_industry_beta`
+
+⭐ **`terminal_growth` IS NOT AMONG THEM, AND THE DISPATCH NAMED IT AS ONE.**
+Measured: it is **not in `COMPANY_FIELDS` at all**. It is a **per-run** assumption
+carried on `ValuationIn.assumptions`, set per valuation rather than held on the
+company. **It was not added.** Adding it would convert a run parameter into
+company data and make the "12 client-settable fields" claim false in the other
+direction.
+
+⭐ **THEY REMAIN DATA, NOT CONFIG.** Nothing here creates a versioned artefact; a
+version string pointing at per-company mutable data would repeat the
+`FinancialDataset` defect §7v closed.
+
+### ⭐ 2 · BOUNDS ON THE WRITE PATH — FLAG, NEVER REFUSE
+
+`_bounds_verdict()` reuses **`ASSUMPTION_BOUNDS`, the ingest check** — not a
+second copy. It returns **field, bound crossed, direction and consequence**, and
+`apply_edit` **stores the value either way**, returning it under `warnings` rather
+than raising.
+
+⭐ **`size_premium` is bounded (0.0, 0.1), so 0.2 is `out_of_bounds`, ABOVE** —
+**implausible, not impossible.** Refusing would lock a customer out of their own
+assumption, which is a worse failure than the one being guarded.
+
+⭐ **AN UNKNOWN FIELD IS STILL REFUSED (422).** Flag-not-refuse governs a VALUE
+that looks wrong, never a field that does not exist — accepting one would write a
+key nothing reads.
+
+### ⭐⭐ 3 · WRITE AUTHORITY — THE §4x TENSION, RECORDED NOT RESOLVED
+
+| | |
+|---|---|
+| **ruled 31 Jul** | **ADMIN and CFO** |
+| ⭐ **what the code permits at `2388e34`** | ⭐ **ADMIN ONLY** — `include()` binds `require_company_admin`, which demands `Membership.role == "admin"`. **A CFO receives 403.** |
+
+⭐ **THE GAP IS DELIBERATE AND STILL QUEUED AS B21.** It was not silently applied
+in this lane, because a ruling and its encoding drifting apart is how the ledger
+comes to describe a product that does not exist.
+
+**The tension, stated rather than resolved:**
+
+> **§4x, hardened 27 Jul: *"A CXO cannot edit source data — not enterprise-wide,
+> not his own department, not any artifact, ever."* ⭐ A CFO IS A CXO.**
+
+⭐ **§4x'S GROUND IS THE OVERRIDE TRAIL:** a CXO who can edit source can **quietly
+correct their own number at the input**, and the board-visible attributed
+exception is replaced by a silent correction.
+
+⭐⭐ **THE RULING'S GROUND IS THAT A VALUATION ASSUMPTION IS NOT A DEPARTMENTAL
+PERFORMANCE FIGURE.** `size_premium` is not any CXO's scorecard; a CFO editing it
+is not correcting their own mark. **Both propositions are recorded. Neither is
+withdrawn.** The reconciliation belongs to B21's lane, and the shape it must take
+is a rule that distinguishes **enterprise valuation inputs** from **departmental
+source data** — because a blanket widening of §4x would licence exactly the
+silent correction §4x exists to prevent.
+
+### ⭐ 4 · THE ATTRIBUTION SHAPE
+
+`ax_assumption_edits` — **actor, timestamp, prior value, new value**, plus the
+bounds verdict **frozen at the time of the write** and an optional reason.
+
+⭐ **`prior_absent` IS A SEPARATE COLUMN, AND NULL MEANS "THERE WAS NO PRIOR
+VALUE".** A first-time entry and a change from zero are different events.
+
+⭐ **DECISION-RECORD SHAPED** — company-scoped, actor-attributed, timestamped,
+stable `event_type` — **the same shape as `PackRelease` and `WatchEvent`**, so
+§7s.4 projects over it rather than needing a second store.
+
+⭐⭐ **THE PROVENANCE LAW'S FIFTH INSTANCE IS THE ABSENCE THIS CLOSES.** Eight
+datasets carry `size_premium = 0.2` with `uploaded_by_user_id`,
+`original_filename` and `template_version` all null — **whether it was an error or
+a deliberate entry is undetermined and UNRECOVERABLE.** The feature that fixes A2
+does not recreate the gap that made A2 unanswerable.
+
+### ⭐ 5 · INVALIDATION — OPTIONS STATED, **NOT CHOSEN**
+
+`affected_runs()` returns the count, the run ids, and
+`options: [recompute, mark_stale, leave_with_badge]` with ⭐ **`chosen: None`.**
+
+| option | consequence, as recorded |
+|---|---|
+| **recompute** | correct immediately, but **silently rewrites a figure a reader may already have seen** |
+| **mark stale** | honest, and **leaves a wrong number visible until someone acts** |
+| **leave with a badge** | least disruptive, **most easily ignored** |
+
+⭐⭐ **WHAT IS NOT OPTIONAL: A PUBLISHED PACK MUST NOT MOVE.** Its inputs are
+frozen **by value**, so no option can reach it — and a recompute that did would
+break the freeze §7s.1 exists to hold. **Asserted, not assumed.**
+
+### ⭐⭐ 6 · WIRING — PARTLY CLOSED, AND THE REMAINDER IS REAL
+
+**Built this lane:** `optimization-anchor/src/routes/assumptions.tsx` — the
+editor, the bounds warnings rendered as *stored as entered*, the change history,
+and the invalidation options **displayed with no button that acts on them.**
+
+**Asserted this lane (9 tests), across the repo boundary:** every API path the UI
+calls is **read out of the frontend source** and required to exist in the app's
+**own OpenAPI schema** — ⭐ **both sides derived, neither a hand list**, because a
+hand list on either side is how the two drift while both look green. The guard
+carries its own **known positive**: a wiring test that found no calls would pass
+vacuously, which is the state it was written to detect.
+
+⭐⭐ **AND THE REMAINDER, STATED PLAINLY: THE PAGE IS NOT YET REACHABLE IN A
+BROWSER.** TanStack's `routeTree.gen.ts` is **generated**, carries *"you should
+NOT make any changes in this file"*, and **could not be regenerated — the build
+environment has no JS runtime (no `node`, `bun`, or `npm`).**
+
+⭐ **HAND-EDITING A GENERATED FILE WAS REFUSED RATHER THAN ATTEMPTED**, per the
+standing rule against working around a tooling failure. **The route registers on
+the first `vite dev` or `vite build` in any environment with the toolchain.**
+
+⭐⭐ **SO B16 IS NOT CLOSED, AND THIS ENTRY SAYS SO IN ITS TITLE.** The test suite
+proves the UI calls paths that exist; **it cannot prove the route is registered**,
+and that limit is written into the test's own docstring so a later reader does not
+mistake nine green assertions for a reachable feature. **A2's remediation path is
+not yet in the customer's hands.**
+
+### The original entry, kept as the record of what was claimed
+
+## ⭐ B16 · IN-APP EDITABLE ASSUMPTIONS — as first recorded (§7u scope (b), 31 Jul)
 
 **This is what makes A2 actionable.** A live paying customer holds
 `size_premium = 0.2` across eight datasets and twenty-seven runs; **no endpoint
