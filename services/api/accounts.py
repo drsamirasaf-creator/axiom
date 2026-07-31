@@ -13005,6 +13005,8 @@ def _ensure_ax_columns(engine):
     # §7s.5 (migration 0020): the Value Bridge anchor override.
     _add("ax_pack_schedules", "bridge_anchor_period_end",
          "bridge_anchor_period_end VARCHAR(10)")
+    # B1 (migration 0021): the pack notification marker. NULL = not notified.
+    _add("ax_packs", "notified_at", "notified_at TIMESTAMP")
     # custody-14 §4s: department_id on objectives / kpis / initiatives (ax_departments
     # is a NEW table and rides create_all; only these existing tables need columns)
     _add("ax_objectives", "department_id", "department_id INTEGER")

@@ -62,6 +62,12 @@ class Pack(Base):
     content_hash = Column(String(64), nullable=True)
     storage_ref = Column(String(512), nullable=True)           # Stage 2 renders here
     input_snapshot_id = Column(Integer, index=True, nullable=True)
+    # ⭐ B1 — one notification per PUBLISHED PACK, never per sweep. The marker is
+    # on the pack rather than a counter on the sweep: a sweep-scoped guard would
+    # suppress a second company's first notification on the same night.
+    # NULL means "not notified", which for the packs published before this was
+    # wired is a FACT, not a backlog decision — see NOTIFY_RETROSPECTIVE.
+    notified_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     __table_args__ = (
@@ -833,6 +839,97 @@ def publish_due(db, cid, today=None):
     return made
 
 
+# ⭐ RETROSPECTIVE NOTIFICATION IS A CONFIGURATION, NOT A DECISION TAKEN HERE.
+# Twenty packs were published in production before this was wired. Whether their
+# CEOs should now receive a burst of notifications for months already past is a
+# USER RULING — a burst may be exactly wrong, and sending it is irreversible.
+# Default OFF: the packs stay unnotified, which is what actually happened.
+# Setting AXIOM_NOTIFY_RETROSPECTIVE=1 makes the sweep pick them up, with no
+# further code change.
+def notify_retrospective_enabled():
+    import os
+    return os.environ.get("AXIOM_NOTIFY_RETROSPECTIVE", "").strip() in ("1", "true", "yes")
+
+
+def notify_published(db, pack, *, now=None):
+    """Tell the CEO a pack is ready to review and release.
+
+    ⭐ THE RECIPIENT COMES FROM THE ACCOUNTABILITY MODEL, via
+    `watch.recipient_for(cid, "company")` — the same resolution the Watch uses.
+    A second definition of "who is the CEO here" would drift from it.
+
+    ⭐ IT RETURNS A REASON RATHER THAN RAISING. The caller is a sweep whose other
+    work must not be affected by a mail failure.
+    """
+    from .pack_dist import notify_ready
+    from .watch import recipient_for
+    if pack.notified_at is not None:
+        return False, "already notified"
+    if pack.status != PUBLISHED:
+        return False, "not published"
+    email, who, basis, _uid = recipient_for(db, pack.cid, "company")
+    if not email:
+        # ⭐ NO RECIPIENT IS NOT A FAILURE AND NOT A SUCCESS. The pack stays
+        # unnotified so a later sweep can send it once someone is accountable.
+        return False, f"no accountable recipient ({basis})"
+    brief_text = None
+    try:
+        from .brief import build as build_brief, render_text
+        frozen = frozen_inputs(db, pack)
+        if frozen is not None:
+            brief_text = render_text(build_brief(frozen, pack))
+    except Exception:
+        # ⭐ THE BRIEF IS AN ENRICHMENT, NOT A PRECONDITION. A pack whose Brief
+        # cannot render must still be announced.
+        brief_text = None
+    notify_ready(db, pack, email, brief_text=brief_text)
+    pack.notified_at = now or datetime.utcnow()
+    return True, email
+
+
+def notify_due(db, cid, *, now=None):
+    """Notify every published, un-notified pack for one company.
+
+    ⭐ SEPARATE FROM `publish_due`, AND CALLED AFTER IT. Publication is automatic
+    and non-suppressible; notification is its CONSEQUENCE, not a gate on it. A
+    notification failure must never prevent or unwind a publication, and keeping
+    them in one function would make that a matter of statement order.
+    """
+    q = (db.query(Pack).filter(Pack.cid == cid, Pack.status == PUBLISHED,
+                               Pack.notified_at.is_(None))
+           .order_by(Pack.id))
+    sent = []
+    for pack in q.all():
+        # ⭐ THE RETROSPECTIVE GATE. A pack published before this lane is skipped
+        # unless the flag is set — and the SKIP IS REPORTED, not silent.
+        if pack.id in _PRE_WIRING_PACK_IDS and not notify_retrospective_enabled():
+            sent.append({"pack_id": pack.id, "sent": False,
+                         "reason": "predates the notification wiring; "
+                                   "retrospective notification is not enabled"})
+            continue
+        try:
+            ok, detail = notify_published(db, pack, now=now)
+            sent.append({"pack_id": pack.id, "sent": ok, "reason": detail})
+        except Exception as exc:
+            # ⭐ ONE PACK'S FAILURE MUST NOT STOP THE REST. The pack keeps a NULL
+            # notified_at, so a later sweep retries it rather than losing it.
+            sent.append({"pack_id": pack.id, "sent": False,
+                         "reason": f"{type(exc).__name__}: {exc}"})
+    return sent
+
+
+# Packs that existed before B1 was wired. ⭐ EMPTY BY DEFAULT AND POPULATED FROM
+# THE ENVIRONMENT, so production can name its twenty without a code change and a
+# test can exercise the gate without one either.
+def _pre_wiring_ids():
+    import os
+    raw = os.environ.get("AXIOM_PRE_WIRING_PACK_IDS", "")
+    return {int(x) for x in raw.replace(" ", "").split(",") if x.isdigit()}
+
+
+_PRE_WIRING_PACK_IDS = _pre_wiring_ids()
+
+
 def sweep_calendar(db, today=None):
     """Every company, every due period. Called from the ONE nightly loop.
 
@@ -841,7 +938,8 @@ def sweep_calendar(db, today=None):
     company's pack would be suppression by accident, which is the same outcome.
     """
     from .modules.enterprise_state.models import Enterprise
-    summary = {"companies": 0, "published": 0, "errors": 0, "packs": []}
+    summary = {"companies": 0, "published": 0, "errors": 0, "packs": [],
+               "notified": 0, "notify_errors": 0, "notifications": []}
     for (cid,) in db.query(Enterprise.id).all():
         summary["companies"] += 1
         try:
@@ -852,4 +950,16 @@ def sweep_calendar(db, today=None):
         except Exception:
             db.rollback()
             summary["errors"] += 1
+        # ⭐ NOTIFICATION IS A SEPARATE TRY, AFTER THE PUBLICATION COMMIT.
+        # Publication is already durable before a single mail is attempted, so a
+        # notification failure cannot unwind one — and a company whose
+        # notification raises does not stop the next company's publication.
+        try:
+            sent = notify_due(db, cid)
+            db.commit()
+            summary["notified"] += len([x for x in sent if x["sent"]])
+            summary["notifications"] += sent
+        except Exception:
+            db.rollback()
+            summary["notify_errors"] += 1
     return summary
