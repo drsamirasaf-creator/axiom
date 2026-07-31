@@ -10163,6 +10163,125 @@ call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
 
+## ⭐⭐ THE TWO OWNERSHIP VALUES — MEASURED ACROSS THE CORPUS (1 Aug)
+
+### ⭐ 1 · THE DISAGREEMENT
+
+| | datasets |
+|---|---|
+| agree | **25** |
+| ⭐⭐ **DISAGREE** | **3** — ds **42, 43, 45**, all on **enterprise 20**, tenant **`showcase`** |
+| orphaned (`enterprise_id` NULL) | **8** — the operator test account's, per A2 |
+| **total** | **36** |
+
+**Direction: `enterprise = public` → `payload = private`, all three.** ⭐ **One of
+them — ds 45 — is the ACTIVE dataset of the DEMO COMPANY.**
+
+⭐ **REFINEMENT: `financial_datasets.ownership` (the column) TRACKS THE PAYLOAD.**
+So it is not payload-versus-column; **it is the ENTERPRISE ROW standing alone
+against both.**
+
+⭐ **The Meridian seed disagrees the OTHER way** (`enterprise = private`, payload
+`public`), so **both directions exist in practice.**
+
+### ⭐⭐ 2 · WHAT EACH DRIVES — AND THE TWO FAILURE MODES ARE DIFFERENT
+
+| value | read by |
+|---|---|
+| **payload `company["ownership"]`** | ⭐ **the Ke branch** (`wacc_inputs`), ⭐ **DLOM** (`valuation/engines.py`), the PDF header, `effective_fields()` |
+| **`enterprises.ownership`** | the company API response (`GET /companies/{id}`), and whatever renders from it |
+
+**Measured on ds 45, both ways:**
+
+| ownership | result |
+|---|---|
+| **`private`** (what the payload says) | wacc **0.130458**, equity **3,436.21**, DLOM **0.2**, ⭐ **equity after DLOM 2,748.97** |
+| **`public`** (what the enterprise row says) | ⭐⭐ **CANNOT COMPUTE — `TypeError`.** `beta`, `share_price` and `shares_outstanding` are all **null** |
+
+⭐⭐ **SO THE TWO DIRECTIONS FAIL DIFFERENTLY, AND ONLY ONE IS SILENT:**
+
+1. **Meridian's direction** (payload says public): the private-only fields go
+   **silently inert** — the valuation succeeds and `size_premium` moves nothing.
+2. ⭐ **The live direction** (enterprise row says public): **anything switching the
+   branch on the enterprise row would CRASH**, because the payload is
+   private-shaped. **Loud, not silent** — and therefore the less dangerous of the
+   two.
+
+### ⭐⭐ 3 · PROVENANCE — ONE HAS SOME, THE OTHER HAS NONE
+
+`Enterprise` columns in full: `id · tenant · name · sector · reporting_currency ·
+fiscal_year_end · statement_units · ownership · logo_r2_key · logo_content_type ·
+created_at`.
+
+⭐⭐ **THERE IS NO `updated_at`, NO `updated_by`, AND NO AUDIT ROW.
+`enterprises.ownership` HAS ZERO PROVENANCE.** It is written once at company
+creation from a checkbox — `ownership = "public" if body.is_public else "private"`
+— and **nothing records who set it, when, or whether it was ever changed.**
+
+**The payload's ownership has DATASET-level provenance** — `uploaded_by_user_id`,
+`uploaded_at`, `original_filename`, `template_version`, `payload_sha256`,
+`data_written_at` — ⭐ **but not FIELD-level**: the upload is attributed, the
+individual value is not.
+
+⭐⭐ **A FIELD THAT DECIDES A VALUATION BRANCH AND HAS NO RECORD OF WHO SET IT IS
+THE PROVENANCE LAW'S SHAPE AGAIN** — and this one decides **which cost-of-equity
+model runs.**
+
+### ⭐⭐ 4 · THE DLOM INTERACTION — THE CONTRADICTION IS LIVE
+
+**DLOM is keyed on the PAYLOAD:**
+`dlom = … if company["ownership"] == "private" else 0.0`.
+
+⭐ **So a company priced on the PUBLIC branch CANNOT carry a DLOM** — it is forced
+to `0.0`. **Internally, the engine is consistent.**
+
+⭐⭐ **BUT THE CONTRADICTION IS BETWEEN THE ENGINE AND THE RECORD, AND IT IS LIVE:**
+
+| dataset | enterprise row | payload | dlom | active |
+|---|---|---|---|---|
+| 42 | **public** | private | **0.2** | no |
+| 43 | **public** | private | **0.2** | no |
+| ⭐ **45** | **public** | private | **0.2** | ⭐⭐ **YES** |
+
+⭐⭐ **THE DEMO COMPANY DISPLAYS AS PUBLIC AND ITS VALUATION APPLIES A 20%
+NON-MARKETABILITY DISCOUNT.** A discount for *not being marketable*, on a company
+the record calls *publicly traded*.
+
+⭐ **THIS IS THE ONE A VALUATION PROFESSIONAL CATCHES FIRST**, and it is on the
+company a prospect is shown. **21 other datasets carry a DLOM consistently** —
+`private/private` — so the discipline is right and only these three are wrong.
+
+### ⭐ 5 · WHAT A CORRECT RULE KEYS ON — shape only, not built
+
+⭐⭐ **ONE VALUE, ONE OWNER: THE PAYLOAD.** It is what the engine reads, it is
+**versioned**, it is **frozen into the pack**, and it carries **upload
+provenance**. The enterprise row has none of those properties.
+
+**Migration shape:**
+
+1. `enterprises.ownership` becomes **DERIVED** — recomputed from the active
+   dataset rather than written at creation, or dropped from the write path and
+   kept only as a cache with a stated source.
+2. **The creation checkbox stops writing a valuation input.** It may seed the
+   first payload; it must not be a second home for the value.
+3. ⭐ **A guard**: no company may have `enterprises.ownership` disagreeing with
+   its active dataset — with a **known positive**, since this class went unseen.
+4. **Field-level provenance on the change**, so the next reader can answer who
+   moved a valuation branch.
+
+⭐⭐ **WHAT WOULD BREAK, STATED:**
+
+- ⭐ **A company with NO active dataset has no ownership at all** under a derived
+  rule — and company creation currently demands one up front. **That is the real
+  cost, and it is an absence-propagates problem, not a migration problem.**
+- **`GET /companies/{id}` changes shape** for the 3 disagreeing rows: `showcase`
+  would begin reporting **private**, which is ⭐ **correct and a visible change to
+  the demo.**
+- **Nothing in the valuation path changes** — it already reads the payload. ⭐ **The
+  migration corrects the RECORD, not any figure.**
+
+**No value corrected, no rule changed, per the constraint.**
+
 ## ⭐⭐ IN-APP EDIT SURFACES — GATHERED, RECOMPUTED, RULED, AND HONEST (31 Jul)
 
 ### ⭐ 1 · THE GATHERING
