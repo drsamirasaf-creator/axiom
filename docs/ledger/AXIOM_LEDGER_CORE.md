@@ -10163,6 +10163,99 @@ call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
 
+## ⭐⭐ OWNERSHIP — ONE VALUE, ONE OWNER. BUILT. (ruled 31 Jul, built 1 Aug)
+
+**Ruled: Meridian is a PRIVATE company with DLOM applied.** The payload already
+said so; ⭐ **the enterprise row was what disagreed.**
+
+### ⭐ 1 · THE PAYLOAD IS THE SINGLE OWNER
+
+`services/api/ownership.py` — `resolve()` reads the **active dataset payload**,
+and nothing else. ⭐ **The enterprise row is DERIVED, never authoritative**, and
+the creation checkbox is marked at its write site as **no longer writing a
+valuation input** — it seeds the derived cache for a company with no dataset and
+is superseded by the first upload.
+
+### ⭐⭐ 2 · ONE ROW CORRECTED, AND NO FIGURE MOVED
+
+⭐ **The dispatch named "three rows — 42, 43, 45". Those are DATASET ids; all three
+point at ONE enterprise row.** The correction is a single write: **enterprise 20
+(`showcase`, Meridian Industries), `public` → `private`.**
+
+| | before | after |
+|---|---|---|
+| equity value | **3,436.211694** | **3,436.211694** |
+| DLOM | 0.2 | 0.2 |
+| ⭐ **equity after DLOM** | **2,748.969356** | **2,748.969356** |
+| WACC | 0.130458 | 0.130458 |
+
+⭐⭐ **BYTE-IDENTICAL. Asserted, not assumed.** No revaluation, no pack
+regeneration, no brochure change — **the record was corrected, not a number.**
+
+### ⭐ 3 · THE GUARD, WITH A KNOWN POSITIVE
+
+`scripts/check-ownership-agreement.py` — **21st gate.** Five control cases: a
+contradicting row, an agreement, a row with no dataset, an absent row, and
+nothing-stored-nothing-known. ⭐ **It plants the disagreement in memory and
+requires the checker to flag it** — and, per the recurring cleanup failure, **it
+never writes to production source.**
+
+⭐ **Coverage is printed**: *"checked 10 companies"*, and **zero companies examined
+is a failure**, not a clean corpus.
+
+### ⭐⭐ 4 · PENDING IS NOT A CONTRADICTION — the finding that saved the gate
+
+**The first live run flagged FIVE companies. Only ONE was a contradiction.**
+
+⭐⭐ **Companies 1, 4, 5 and 8 store an ownership with NO DATASET AT ALL.** They
+are ordinary: created, not yet uploaded, holding the creation checkbox's answer
+with nothing to refute it.
+
+⭐⭐ **CONFLATING THEM WOULD HAVE MADE THE GATE UNPASSABLE FROM ITS FIRST RUN** —
+and *a gate that cannot pass is a gate nobody runs*, which this file already
+records as the reason the lint ratchets are ceilings rather than zeroes. **They
+are REPORTED and never failed on.**
+
+⭐ **What such a company renders:** `GET /companies/{id}` returns an ownership
+**BLOCK** — `{value: "undetermined", source: null, stored_row: …, absent: "<the
+reason>"}` — ⭐ **never a bare string, so "undetermined" cannot be mistaken for a
+third ownership TYPE.** It is the absence of an answer.
+
+⭐⭐ **AND NO DEFAULT, ANYWHERE. A default here silently picks a cost-of-equity
+model.**
+
+### ⭐ 5 · FIELD-LEVEL PROVENANCE
+
+`reconcile()` writes an `AssumptionEdit` with **actor, timestamp, dataset id and
+the before/after** — the trail `enterprises.ownership` never had. **It had no
+`updated_at`, no `updated_by` and no audit row at all**, while deciding which
+cost-of-equity model runs.
+
+⭐ **`reconcile()` REFUSES to act on an absence** — it will not clear a stored
+value because no dataset exists, and it will not invent one. Asserted.
+
+### ⭐ 6 · THE DLOM RULE, ASSERTED
+
+`dlom_permitted()` — **private only.** ⭐ **UNDETERMINED permits nothing**, because
+a DLOM asserts we know the company is private. And a test reads the **engine**
+and requires it still forces DLOM to `0.0` off the payload — ⭐ **so the
+contradiction cannot return through the record.**
+
+### ⭐ THE SAMPLE-PACK VERDICT — UNAFFECTED, MEASURED
+
+**0 of 20 published packs carry a company ownership in their frozen snapshot**,
+and `ownership` is not an `INPUT_CLASS`. ⭐ **The payload was not touched; only the
+derived row was. No published figure can move**, and a test asserts the row is
+not among the frozen inputs.
+
+### ⭐ INCIDENTAL, RECORDED BECAUSE MEASURED
+
+**Enterprise 20 has TWO datasets flagged `is_active = True`** — ds 3 (payload
+`public`) and ds 45 (payload `private`). ⭐ **`_active_company_dataset` resolves by
+`version DESC`, so it is deterministic and returns ds 45** — but `is_active` is
+**not behaving as a single-active flag.** ⭐ **Not changed here; the resolution is
+deterministic and the ruling holds either way.**
+
 ## ⭐⭐ THE TWO OWNERSHIP VALUES — MEASURED ACROSS THE CORPUS (1 Aug)
 
 ### ⭐ 1 · THE DISAGREEMENT

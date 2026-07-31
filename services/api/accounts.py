@@ -2006,6 +2006,11 @@ def create_company(body: CreateCompanyIn, user: User = Depends(get_current_user)
     currency = body.reporting_currency.strip().upper()
     if not (2 <= len(currency) <= 8):
         raise HTTPException(422, "reporting_currency must be a valid currency code")
+    # ⭐⭐ THIS NO LONGER WRITES A VALUATION INPUT. Ownership is owned by the
+    # dataset payload — what the engine reads, versioned, frozen into the pack,
+    # and carrying upload provenance. What is written here is the DERIVED CACHE's
+    # initial value for a company that has no dataset yet, and it is superseded
+    # by the first upload. Nothing prices off it.
     ownership = "public" if body.is_public else "private"
 
     # (1) seat gate — accounts system only (ax_accounts.company_slots)
@@ -2116,7 +2121,11 @@ def _company_summary_payload(db, company_id: int, role: str | None):
         "name": ent.name,
         "cid": access.cid if access else None,
         "sector": ent.sector or None,
-        "ownership": ent.ownership,
+        # ⭐⭐ DERIVED FROM THE PAYLOAD, THE SINGLE OWNER. The stored row is a
+        # cache and must not decide anything. A company with no dataset reports
+        # "undetermined" WITH ITS REASON — never a default, because a default
+        # here silently picks a cost-of-equity model.
+        "ownership": _ownership_block(db, ent),
         "currency": ent.reporting_currency or None,
         "units": ent.statement_units or "actual",
         "is_pilot": pilot is not None,
@@ -8243,6 +8252,21 @@ def _rec_fingerprint(rec: dict) -> str:
     brief so re-derivation recognizes the recommendation."""
     lever = "+".join(sorted((rec.get("params_changed") or {}).keys()))
     return hashlib.sha256(f"{rec.get('move')}|{lever}".encode()).hexdigest()[:16]
+
+
+def _ownership_block(db, ent):
+    """⭐ The resolved answer, its source, and — when undetermined — WHY.
+
+    Returned as a block rather than a bare string so a caller cannot mistake
+    "undetermined" for a third ownership TYPE. It is the absence of an answer.
+    """
+    from .ownership import UNDETERMINED, resolve
+    r = resolve(db, ent.id)
+    out = {"value": r["ownership"], "source": r["source"],
+           "stored_row": ent.ownership}
+    if r["ownership"] == UNDETERMINED:
+        out["absent"] = r["reason"]
+    return out
 
 
 def _active_company_dataset(db, company_id):
