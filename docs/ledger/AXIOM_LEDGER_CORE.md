@@ -119,7 +119,7 @@ RULED 31 Jul and closed. **Cadence has no remaining decision blockers.**)
 | A1 | ~~External recipient billing~~ | ⭐ **RULED 31 Jul — unlimited and unbilled**, read-only, pack-scoped, no live workspace access. **Cadence has no remaining decision blockers.** Encoding change queued as B20. |
 | A2 | **`size_premium` = 0.2** | ⭐ **Verified still live 31 Jul: 8 datasets, 27 stored runs.** No correction applied, as ruled. |
 | A3 | ~~Export permission model~~ | ⭐ **RULED 31 Jul — ONE visibility rule.** The export carries what the requesting user can already see and no more. Assertion in `test_export_visibility.py`. |
-| A4 | **σ contradiction (B2)** | Real Options attempts a fit, discards it when the clamp binds, **reports the clamp as a fit**. Blocks L.2e. |
+| A4 | **σ — a DEFINITIONAL ruling, not a defect** | ⭐ **RESTATED 31 Jul.** The mislabel is ALREADY FIXED; the recorded "contradiction" is a NAME COLLISION (a per-period growth shock against an annualised EV volatility). What remains: is `_calibrate_sigma` an EV volatility (floor = prior, **no figure changes**) or a revenue volatility (floor wrong, **real options uncomputable on 16 of 24**)? See `docs/reports/sigma-contradiction-2026-07-31.md`. |
 | A5 | ~~Quota counter~~ | ⭐ **RULED 31 Jul — uploads are NOT chargeable; the `source="direct"` filter is CORRECT.** Volume is never the meter. Intent given a mechanical guardian in `test_quota_intent.py`. |
 | A6 | **KPI surface disposition** | Retire `KpiDefinition`, or repoint at `KpiPlan`. Not equivalent in risk. |
 | A7 | **Reason-category ruling** | §4x open item. |
@@ -5415,7 +5415,70 @@ that fails on first contact with a reader who tests it.
 Full tables: `docs/reports/2026-07-28-b1-convergence.md`.
 Tooling: `scripts/convergence_study.py` (re-runnable, validates its own replica).
 
-## L.2g B2 σ CONTRADICTION — EVIDENCE (28 Jul). AWAITING RULING, NOT RESOLVED.
+## ⭐⭐ L.2h — THE σ CONTRADICTION, RESTATED RULABLY (31 Jul)
+
+**Measured at `2278ba1`. This corrects L.2b and L.2g in place — both are kept
+below as the evidence they were, but their CHARACTERISATION was wrong.**
+
+### ⭐ IT IS NOT A CONTRADICTION. IT IS A NAME COLLISION.
+
+L.2b: *"the same firm's revenue volatility cannot be both."* ⭐ **One of them is
+not revenue volatility.**
+
+- `SIGMA_G = 0.02` — a **per-period shock to the growth RATE** in a statement
+  simulator. Not annualised.
+- `_calibrate_sigma → 0.15` — an **annualised volatility of ENTERPRISE VALUE**
+  fed to a binomial lattice.
+
+**Different quantities. Both can be true at once**, since EV volatility exceeds
+revenue volatility by operating and financial leverage. ⭐ **This is the §7u
+`sigma` overloading again, one layer down** — the same diagnosis, a different
+pair.
+
+### The defect that IS there, stated rulably
+
+> **Cannot both be true:** `_calibrate_sigma` returns a volatility **of the
+> enterprise**, AND computes it from **the sd of revenue log-growth**.
+
+### ⭐⭐ AND THE MEASUREMENT DECIDES WHICH OPTIONS EXIST
+
+**The lattice cannot be evaluated below σ ≈ 0.03** (6 steps, 3 years) — it raises
+*"risk-neutral probability outside (0,1)"*. **The corpus median revenue-growth sd
+is 0.0050.**
+
+⭐ **"Use the measured σ" produces NO NUMBER AT ALL on most datasets.**
+
+⭐⭐ **AND THE FLOOR CHANGES NO RENDERED FIGURE.** Flexibility value on Meridian is
+**identical (690.48) for every σ in [0.03, 0.15]** and only moves at σ ≥ 0.20.
+**L.2g's "11× the estimate" and "115× the estimate" are true of the σ and FALSE of
+the output.** The floor moves σ from *unevaluable* to *evaluable*, not from *true*
+to *false*.
+
+### The three options, with measured consequence
+
+| option | consequence |
+|---|---|
+| **1 · σ_RO is EV volatility; the floor is a leverage/sector PRIOR** | ⭐ **no rendered figure changes**; the label already says so |
+| **2 · σ_RO is revenue volatility; the floor is wrong** | ⭐ **real options uncomputable on 16 of 24 datasets** |
+| **3 · lever revenue σ up explicitly** | needs a leverage model that **does not exist** |
+
+**Recommended, not ruled: option 1.**
+
+### ⭐ THE MISLABEL IS ALREADY FIXED — ninth wrong entry
+
+`_calibrate_sigma` returns three distinct basis strings and no longer claims
+estimation when the clamp binds. Its own comment records that **no ruling makes
+"estimated" true of a clamp, so it did not wait for one.** A4 no longer blocks
+L.2e on a defect; it blocks on a **definition**.
+
+### Undetermined
+
+**Nothing measures EV volatility directly**, so the floor cannot be validated
+against anything the product holds. **The other five σ constants have no stated
+basis at all** — none contradicted, none justified.
+
+## L.2g B2 σ CONTRADICTION — EVIDENCE (28 Jul). ⚠ CHARACTERISATION SUPERSEDED BY
+L.2h ABOVE; the measurements below stand.
 
 Measured on real data. **The result inverts the L.2b characterisation** and must
 replace it: L.2b called Real Options "fitted" and the pro forma "assumed". More
