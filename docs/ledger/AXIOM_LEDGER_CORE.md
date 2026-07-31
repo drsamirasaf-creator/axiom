@@ -10163,6 +10163,136 @@ call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
 
+## ⭐⭐ MERIDIAN RENDERS EMPTY — **A REGRESSION I INTRODUCED AT `9d708c3`** (1 Aug)
+
+⭐⭐ **PRODUCTION IS DEGRADED RIGHT NOW.** The demo — the sales asset — shows no
+objectives, no KPIs and no plan-vs-actual, and its valuation no longer matches the
+figures the brochure cites.
+
+### ⭐ 1 · THERE IS EXACTLY ONE MERIDIAN — but the showcase ruling IS violated
+
+**Only one company matches "Meridian": id 20, tenant `showcase`.** ⭐ **No second
+Meridian exists**, so the "(demo)" / "(showcase)" labels in the two screenshots
+are the same company.
+
+⭐⭐ **BUT `showcase` HOLDS THREE COMPANIES: 20 (Meridian), 21 (Halcyon Components
+GmbH) AND 22 (Helios, Inc.)** — and CORE records Halcyon and Helios as **retired**.
+**The one-showcase-company ruling is violated by those two, not by a duplicate
+Meridian.** *(How they arose is not established here — the retirement was recorded
+and the rows were not removed.)*
+
+### ⭐ 2 · WHERE §7o's ROWS ARE
+
+| store | company 20 |
+|---|---|
+| `ax_objectives` | **41** — ds42=10, ds43=10, ⭐ **ds45=21** |
+| `ax_key_results` | **82** — ds42=20, ds43=20, ⭐ **ds45=42** |
+| `ax_initiatives` | 15 · `ax_departments` 7 |
+
+⭐⭐ **THE ROWS EXIST AND ARE KEYED TO A `dataset_id`.**
+
+### ⭐⭐ 3 · THE READ PATH — KEYED ON THE ACTIVE DATASET, NOT THE COMPANY
+
+```
+_objective_rows(db, cid):
+    ds = _active_company_dataset(db, cid)
+    objs = query(Objective).filter_by(company_id=cid, dataset_id=ds.id)
+```
+
+⭐ **So "No objectives yet" is literally true of the ACTIVE DATASET** — and the
+endpoint's own docstring says *"has_data:false when the active dataset carries no
+objectives."* **The surface is honest; the selection is wrong.**
+
+### ⭐⭐ 4 · `9d708c3` IS IMPLICATED, AND IT IS MY REGRESSION
+
+**Current state: ds 3 is the SOLE active dataset. ds 45 is inactive.** That is the
+**opposite** of what `9d708c3` set and verified.
+
+⭐⭐ **THE CAUSE: I ROUTED THE SEED THROUGH THE NEW SINGLE WRITER WITHOUT ASKING
+WHICH DATASET THE SEED SHOULD ACTIVATE.**
+
+```
+seed.py:  set_active_dataset(db, ent.id, ds.id)      # ds = the SEED's own row (ds 3)
+```
+
+`_ensure_showcase_enterprises` runs **unconditionally on every boot**, so each
+deploy now **clears ds 45 and activates ds 3.**
+
+| | before `9d708c3` | after |
+|---|---|---|
+| active rows | ds 3 **and** ds 45 | ⭐ **ds 3 only** |
+| resolver | `version DESC` → **ds 45** ✅ | ⭐⭐ **ds 3** ❌ |
+| verdict | **correct by accident** | ⭐⭐ **deterministically WRONG** |
+
+⭐⭐ **THE INVARIANT WAS RIGHT AND THE ARGUMENT TO IT WAS WRONG.** I converted
+"deterministic by accident" into "deterministic and incorrect", which is a
+worse state than the one I set out to fix — and every guard stayed green because
+the invariant it enforces **is** satisfied.
+
+**Measured consequences:**
+
+| | asserted at `9d708c3` | now |
+|---|---|---|
+| equity value | 3,436.211694 | ⭐ **1,695.89** |
+| DLOM | 0.2 | ⭐ **0.0** |
+| equity after DLOM | 2,748.969356 | ⭐ **1,695.89** |
+| WACC | 0.130458 | 0.09125 |
+| ownership guard | green | ⭐⭐ **RED** — row `private`, active payload `public` |
+
+⭐ **The published packs are UNAFFECTED** — both are frozen against **ds 45** and
+their content hashes are unchanged. **The freeze held exactly as designed.**
+
+### ⭐⭐ 5 · THE CRAWLER — IT WOULD HAVE CAUGHT THIS. NOTHING RUNS IT.
+
+`scripts/auth-regression.py` carries a **demo-rot check with a real populated
+predicate**, not a needle an empty state satisfies:
+
+```
+("OKRs", f"/companies/{cid}/objectives", lambda d: bool(d.get("has_data")))
+("KPIs", f"/companies/{cid}/kpi-variance", lambda d: bool(d.get("has_data")))
+       -> "EMPTY — demo surface not populated"
+```
+
+⭐⭐ **THIS IS NOT A COVERAGE GAP. IT IS AN EXECUTION GAP.** `auth-regression.py`
+is **referenced by NO workflow** — the repo has `ci.yml` and `availability.yml`
+only. It needs a live host and credentials, so **it is a manual script, and
+nothing ran it between the deploy and a human opening the page.**
+
+⭐ **A second, smaller flaw: it targets `companies[0]`, not Meridian by name** —
+so even when run, which company it protects depends on ordering.
+
+### ⭐⭐ 6 · WHICH DATASET SURVIVES — ds 45, on the ruling's own evidence
+
+| evidence | answer |
+|---|---|
+| holds §7o's seeded OKR chain | ⭐ **ds 45** (21 objectives, 42 KRs) |
+| ⭐⭐ **both published packs frozen against** | ⭐⭐ **ds 45** |
+| the brochure's figures | drawn from those packs |
+
+**ds 3 is a `source=direct` seed row with NO upload provenance**, superseded by
+three uploads.
+
+### ⭐ 7 · THE FIX SHAPE — NOT BUILT HERE
+
+⭐⭐ **NO RESEED IS REQUIRED, AND THAT MATTERS: replacing a dataset deletes every
+computed artefact derived from it.** The rows are intact; only the flag is wrong.
+
+1. ⭐ **The seed must not activate its own row when a later dataset exists.**
+   `_ensure_showcase_enterprises` should activate the **resolved newest** dataset,
+   or — better — **not touch `is_active` at all when the company already has
+   one.** A seed's job is to create what is missing, not to re-decide what is
+   current.
+2. **Re-point company 20 to ds 45** and re-run the ownership reconciliation.
+3. ⭐ **A guard the single-active check cannot give**: assert the active dataset is
+   the one the packs are frozen against, or at least that **the demo's OKR
+   surfaces are populated** — the existing predicate, moved onto an automated
+   path.
+4. **Consolidation of Halcyon and Helios is a separate ruling** — they hold packs
+   too, and *"packs are immutable"* applies to them as much as to Meridian.
+
+⭐ **Anonymous landing was NOT verified in this lane** and is recorded as
+unmeasured.
+
 ## ⭐⭐ ADMIN SUCCESSION AND ACCOUNTABLE PLATFORM ACCESS — BUILT (1 Aug)
 
 ### ⭐ 1 · THE RANKING MODEL
