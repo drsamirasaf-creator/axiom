@@ -316,6 +316,21 @@ def _cap_initiative_line_links(db, cid):
         unlinked=un)
 
 
+def _cap_initiative_impact(db, cid):
+    """B12 — the CLIENT-DECLARED expected impact per initiative, frozen.
+
+    ⭐ FROZEN LIKE EVERY OTHER INPUT. A commitment revised after publication must
+    not silently rewrite the plan a published pack was judged against.
+    """
+    from .initiative_impact import live
+    rows = live(db, cid)
+    if not rows:
+        return _absent("no initiative carries a client-declared expected impact; "
+                       "plan-versus-actual on value creation is unavailable and "
+                       "no expectation is assumed")
+    return _present(declarations=[_row(r) for r in rows])
+
+
 def _cap_forecast_sets(db, cid):
     """Section 3's stored output. ⭐ The PRIMARY set determines what the pack
     reports as "what is likely" — a set promoted to primary after publication
@@ -472,6 +487,7 @@ INPUT_CLASSES = {
     "okr_rows": _cap_okr_rows,
     "initiatives": _cap_initiatives,
     "initiative_line_links": _cap_initiative_line_links,
+    "initiative_impact": _cap_initiative_impact,
     "forecast_sets": _cap_forecast_sets,
     "sentinel_state": _cap_sentinel_state,
     "watch_events": _cap_watch,

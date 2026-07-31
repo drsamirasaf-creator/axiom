@@ -380,6 +380,49 @@ def src_line_links(db, cid):
 
 # ⭐ THE SOURCE REGISTRY. Each entry is a READER over an existing store. Nothing
 # here writes, and there is no table named `decisions`.
+def src_impact_declarations(db, cid):
+    """⭐⭐ B12 — A DECLARED EXPECTED IMPACT IS A COMMITMENT, AND A COMMITMENT IS A
+    DECISION. The III.4 guard claimed it the moment the model landed, which is
+    the guard working rather than the guard complaining.
+
+    ⭐ AND IT IS THE ONE SOURCE WITH A REAL `expected` AND A REAL REALISED SIDE.
+    Every other decision here records what someone chose; this records what they
+    PROMISED, and the pack reports delivery against it — so the realised effect
+    is not absent, it is the attributed movement at the declared share.
+    """
+    from .initiative_impact import InitiativeImpactDeclaration as D
+    out = []
+    for r in db.query(D).filter_by(company_id=cid).all():
+        row = {c.name: getattr(r, c.name) for c in r.__table__.columns}
+        amt = row.get("expected_amount")
+        # ⭐ "no amount declared" is NOT "declared zero", and the statement a
+        # reader sees must not collapse them.
+        amount_txt = ("no amount declared" if amt is None
+                      else f"{amt:,.2f}")
+        by = f" by {row['expected_by']}" if row.get("expected_by") else ""
+        out.append(_d(
+            "impact_declaration", r.id, cid=cid,
+            type_="initiative_impact_declared",
+            decided_at=row.get("occurred_at"),
+            author=row.get("actor_label"),
+            statement=(f"initiative {row['initiative_id']} declared to deliver "
+                       f"{amount_txt} on {row['statement_line']}{by}"),
+            rationale=row.get("basis"),
+            linked={"initiative_id": row["initiative_id"],
+                    "statement_line": row["statement_line"]},
+            expected=amt,
+            realised_absent=(None if amt is not None else
+                             "no amount was declared, so there is nothing to "
+                             "deliver against — this is not an expectation of "
+                             "zero"),
+            status=(WITHDRAWN if (row.get("withdrawn_at")
+                                  or row.get("superseded_at")) else TAKEN),
+            attribution=(f"{row.get('actor_label') or 'someone'} declared this "
+                         f"expected impact"),
+        ))
+    return out
+
+
 SOURCES = {
     "override": src_overrides,
     "signoff": src_signoffs,
@@ -391,6 +434,7 @@ SOURCES = {
     "watch_decision": src_watch_decisions,
     "assumption_edit": src_assumption_edits,
     "line_link": src_line_links,
+    "impact_declaration": src_impact_declarations,
 }
 
 # ⭐ ATTRIBUTED, BUT AUTHORSHIP RATHER THAN DECISION — named with the reason,

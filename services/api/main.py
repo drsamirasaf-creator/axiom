@@ -287,6 +287,11 @@ from .accounts import require_company_admin as _require_admin  # noqa: E402
 from . import assumptions_api as _assumptions  # noqa: E402
 _assumptions.include(app, _get_db, _require_admin)
 
+# B12 — client-declared initiative impact. Admin-gated like B16: a declared
+# commitment is a company-level statement, not a departmental one.
+from . import initiative_impact as _iimpact  # noqa: E402
+_iimpact.include(app, _get_db, _require_admin)
+
 # B10/B11 — the declared initiative -> statement-line link. Imported so the model
 # registers; the bridge reads it through initiative_lines.attribute().
 from . import initiative_lines as _ilines  # noqa: F401,E402

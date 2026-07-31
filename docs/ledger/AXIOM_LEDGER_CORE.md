@@ -161,7 +161,7 @@ stochastic engine is no longer blocked on a false premise.**)
 | B13 | ~~Monthly periods and cadence granularity~~ | ⭐ **BUILT `d8e31a5`** — three-way equivalence proven (annual 1668.63, quarterly ×1.0271, monthly ×1.0332); frequency derived not trusted; template v9 with no version gate. |
 | B15 | ⭐ **Brochure features map** | Ruled 31 Jul. Three required corrections before it ships: the missing loop, the two outputs, the Watch's own path. ⭐ **Also carries a "HOW YOU CAN CHECK THIS" section** — the seven verified disciplines, placed after the pack and before the CXO offer; see *The second question, ruled 31 Jul*. ⭐ **And the CXO APPEAL as a separate section** — see *The leading question, ruled 31 Jul*, item 3. It is a SECTION, not a question, and its three items are ordered by strength deliberately. |
 | B14 | **Irregular multi-source ingestion** | Designed 31 Jul, not built. Depends on B13's granularity work. |
-| B12 | **Client-declared initiative impact** | Designed, not built. Supplies B10's link by declaration rather than inference. |
+| ~~B12~~ | ⭐⭐ **BUILT AND WIRED — client-declared initiative impact** | Append-only declarations with actor, timestamp and prior value; plan-versus-actual on B10's DECLARED SHARE with five verdicts including the split between a delivery miss and a missing link. Carried by the Decision Record. ⭐ **The withdrawn proof point stays withdrawn.** |
 
 ### ⭐ UNDETERMINED — recorded as undetermined, never inferred
 
@@ -10056,6 +10056,112 @@ CORE records `wacc_at` with the kinked kd as canonical and the guard reads
 call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
+
+## ⭐⭐ B12 · CLIENT-DECLARED INITIATIVE IMPACT — BUILT AND WIRED (31 Jul)
+
+⭐⭐ **AXIOM ORIGINATES NOTHING, AND THAT IS THE ENTIRE JUSTIFICATION.** The brochure
+proof point was withdrawn because AXIOM would have had to invent a per-initiative
+value it has no basis for. **A PE-backed company's value-creation plan already
+carries expected financial impact per line item; the commitment exists, in
+writing, before AXIOM sees the company.** This stores that declaration and reports
+delivery against it.
+
+### ⭐ THE DECLARATION MODEL
+
+`ax_initiative_impact_declarations` — **append-only**, every row carrying its
+predecessor's value. ⭐ **A commitment that can be quietly revised is not one.**
+
+| field | ⭐ why it is shaped this way |
+|---|---|
+| `expected_amount` | ⭐ **NULLABLE.** Declaring that an initiative **affects** a line without committing to a figure is a **different statement** from committing to zero. |
+| `expected_by` | ⭐ *"£2m"* and *"£2m by Q4"* are different promises. |
+| `basis` | ⭐ **optional, and unvalidated.** Validating it would be the beginning of **originating** it. |
+| `prior_amount` + `prior_absent` | a first declaration and a revision from null are stored **apart**, not inferred |
+| `superseded_at` / `withdrawn_at` | supersession rather than mutation |
+
+⭐ **DECLARED, NEVER DERIVED** — the module fails its own test for
+`corr`/`regress`/`fit`/`infer`. ⭐⭐ **A module that FITTED an expectation to
+observed movement would MANUFACTURE AGREEMENT between plan and actual — the one
+thing plan-versus-actual must never do.**
+
+⭐ **The statement-line vocabulary is IMPORTED from B10, not re-listed.** Two lists
+would drift and a declaration would name a line the attribution cannot find.
+
+### ⭐⭐ PLAN VERSUS ACTUAL — five verdicts, and the split that matters
+
+**The ACTUAL side is B10's DECLARED SHARE, never the whole line movement.**
+Asserted: a line moves **1000**, the initiative declares **30%**, the actual is
+**300 — not 1000.**
+
+| verdict | meaning |
+|---|---|
+| `on_or_ahead` / `short` | delivery against a stated commitment, **direction-aware** so a cost reduction is not a miss for being negative |
+| `miss_no_movement` | ⭐ **declared, and the line did not move — a delivery miss, rendered as one** |
+| ⭐⭐ `miss_no_declared_share` | **the line MOVED but this initiative declares no B10 share** |
+| `not_comparable` | the line's movement is not computable — ⭐ **not a miss** |
+| *(null verdict)* | an amount was never declared — ⭐ **not an expectation of zero** |
+
+⭐⭐ **THE FIFTH VERDICT WAS SPLIT OUT AFTER THE FIRST MEASUREMENT COLLAPSED IT.**
+A line that moved while the initiative holds no declared share was initially
+reported as a **miss** — ⭐ **which tells a client they failed to deliver when the
+true answer is that NOBODY DECLARED THE LINK**, and sends them to the wrong place.
+**Delivery failure and data gap are different findings.**
+
+⭐ **A line that moved with NOTHING declared is stated, never zero** — silence
+there would read as *"everything was expected"*, the most flattering possible
+misreading.
+
+### ⭐ THE ATTRIBUTION RULE IS UNCHANGED
+
+⭐⭐ **A DECLARED EXPECTATION IS NOT A LICENCE TO CLAIM A WHOLE MOVEMENT.**
+Exclusivity of linkage is still not exclusivity of cause; **the residual is
+carried through, not dropped**, and a test asserts it.
+
+### ⭐ PROVENANCE AND THE DECISION RECORD
+
+Every declaration records **actor, timestamp, prior value, new value**, in the
+same shape as `PackRelease`, `WatchEvent` and `AssumptionEdit`.
+
+⭐⭐ **THE III.4 GUARD CLAIMED IT THE MOMENT THE MODEL LANDED** — the full suite
+went red with *"attributed but neither carried nor excluded:
+InitiativeImpactDeclaration"*. **That is the guard working, not complaining**, and
+it was carried rather than excluded. ⭐ **It is the only Decision Record source
+with a real `expected` AND a real realised side:** every other records what
+someone **chose**; this records what they **promised**.
+
+### ⭐ RENDERS FROM THE FROZEN SOURCE
+
+On the **existing spine**, inside *"which initiatives are underperforming"* —
+which is exactly the question a missed commitment answers. ⭐ **No new section.**
+
+⭐ **`plan_vs_actual` TAKES NO SESSION**, asserted by signature: a commitment
+revised after publication must not rewrite the plan a published pack was judged
+against.
+
+### ⭐⭐ WHAT THIS DOES AND DOES NOT LICENSE THE BROCHURE TO CLAIM
+
+| ⭐ **now supportable** | ⭐⭐ **still NOT supportable** |
+|---|---|
+| *"Your value-creation plan's committed impact, tracked against what the line actually did."* | ⭐⭐ **Any figure AXIOM originates for an initiative.** |
+| *"Declared by you, at a share you state."* | *"Initiative 7 is late and that is $2.1M"* — ⭐ **the withdrawn proof point STAYS WITHDRAWN.** |
+
+⭐⭐ **B12 SUPPLIES THE LINK BY DECLARATION, WHICH IS WHAT THE WITHDRAWAL SAID WAS
+MISSING — AND RESTORING THE CLAIM IS STILL A SEPARATE RULING THIS LANE DOES NOT
+TAKE.** A test asserts CORE still says withdrawn.
+
+### ⭐ WIRING, AND THE PLANTED LINE THIS LANE FOUND
+
+**26 tests**, including cross-repo assertions that every API path the UI calls is
+served, **and that the route is registered in the generated tree** — ⭐ **the step
+that was missing in B16**, where a served endpoint was mistaken for a reachable
+page.
+
+⭐⭐ **AND THE GUARD-PLANTING FAILURE RECURRED.** A 10-minute timeout killed the
+gate loop **mid-control**, leaving `_planted = allocation_sqrt()` in
+`benchmarks/router.py` — **the same failure CORE already records from
+`sentinel.py`.** Two gates went red on a line no lane wrote. **Removed; both
+green.** ⭐ **The control is planted in PRODUCTION SOURCE, so an interrupted guard
+leaves a live NameError behind — it has now happened twice.**
 
 ## ⭐⭐ G1/G2 ON PRO — **G1 CLOSES. G2 DOES NOT.** (31 Jul)
 

@@ -304,7 +304,45 @@ def c_initiatives(src):
                     present=True,
                     body={"total": len(rows), "underperforming": at_risk,
                           "milestones": block.get("milestones"),
-                          "blockers": block.get("blockers")})
+                          "blockers": block.get("blockers"),
+                          # ⭐ B12 — plan versus actual on value creation, on the
+                          # SPINE rather than in a new section: "which initiatives
+                          # are underperforming" is exactly the question a missed
+                          # declared commitment answers.
+                          "value_creation": _value_creation(src)})
+
+
+def _value_creation(src):
+    """B12 — declared expected impact against what the linked line did.
+
+    ⭐⭐ EVERY INPUT COMES FROM THE FROZEN SOURCE. No session, no live read: a
+    commitment revised after publication must not rewrite the plan a published
+    pack was judged against, and the same applies to the movements it is compared
+    with.
+    """
+    from .initiative_impact import plan_vs_actual
+    decls = src.klass("initiative_impact")
+    if not decls.get("present"):
+        # ⭐ ABSENT, NOT EMPTY. "No expectation was declared" and "the plan was
+        # met" must never render the same way.
+        return {"present": False, "reason": decls.get("reason")}
+
+    links = src.klass("initiative_line_links")
+    bridge = src.klass("value_bridge")
+    blk = (bridge.get("bridge") or {}) if bridge.get("present") else {}
+    driver = next((d for d in (blk.get("drivers") or [])
+                   if d.get("key") == "initiatives"), None)
+    if driver is None:
+        return {"present": False,
+                "reason": ("the value bridge has no initiatives driver in this "
+                           "pack, so no actual can be attributed")}
+    detail = driver.get("detail") or {}
+    attribution = detail.get("attribution") or {}
+    movements = detail.get("line_movements") or {}
+    out = plan_vs_actual(decls, attribution, movements)
+    out["present"] = True
+    out["links_declared"] = len(links.get("links") or []) if links.get("present") else 0
+    return out
 
 
 def c_what_to_do_next(src):
