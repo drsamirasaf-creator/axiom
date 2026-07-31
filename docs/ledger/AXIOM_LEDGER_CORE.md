@@ -126,8 +126,8 @@ the codebase for callers, which no gate currently does.
 | A9 | **DEI definition** | Named 26 Jul. |
 | A10 | ⭐ **Retrospective pack notification** | Twenty packs published in production with no CEO told. Whether they should now receive a burst for months already past is a ruling; sending it is irreversible. OFF by default, either way is a configuration (`AXIOM_NOTIFY_RETROSPECTIVE`). |
 
-### QUEUE B — AWAITING A BUILD (14 — ⭐ was 9; five added 31 Jul, and B1 and
-§7s.5 are now BUILT)
+### QUEUE B — AWAITING A BUILD (18 — ⭐ B6 found ALREADY BUILT; B16-B19 added
+31 Jul by the twelve-item audit, three of them with NO PRIOR ENTRY)
 
 | # | item | blocked by |
 |---|---|---|
@@ -137,7 +137,11 @@ the codebase for callers, which no gate currently does.
 | B3 | **§7r-D DuPont** | **Nothing — blocker cleared.** |
 | B4 | **`ValuationRun` code version** | **Nothing.** §7v closed payload hash + registry versions; code revision remains absent. |
 | B5 | **§7u (b)** per-company stored assumptions | Deferred, not dropped. |
-| B6 | **Grant/revoke admin UI** | The model exists; only the surface is missing. |
+| B6 | ~~Grant/revoke admin UI~~ | ⭐ **ALREADY BUILT — verified 31 Jul.** `DepartmentAuthorityPanel.tsx`, mounted at `routes/team.tsx`, POSTs grant AND revoke. §7.9 corrected. |
+| B16 | ⭐ **In-app editable assumptions** | **NO PRIOR ENTRY.** `CompanyPatchIn` carries name/currency/units only; no endpoint writes `tax_rate`, `size_premium`, `dlom` or any assumption. ⭐ **A customer cannot correct their own `size_premium = 0.2` in-app** (A2). |
+| B17 | ⭐ **§4l Control Tower** (product Performance Monitoring) | **NO CODE.** Operational monitoring (Sentry, `/health`) exists and is a DIFFERENT THING — the name collision is why this reads as built. |
+| B18 | **Web mobile-responsive pass** | **NO ENTRY, NO CODE.** Named only as the predecessor to the roadmap mobile app; Tailwind `sm:` appears in three files. |
+| B19 | **Mindmaps by department** | ⭐ **UNDESIGNED** — zero occurrences in either repository and no ledger entry. Undesigned and unbuilt are different states. |
 | B7 | **§7.44 period display** | Deferred to the entry-format lane. |
 | B8 | **§4y dataroom** | Not buildable now; naming also unruled. |
 | B9 | **§7o reseed** | Design ruled; not seeded. ⭐ **FLAGGED FOR AMENDMENT BEFORE BUILD** — its acceptance criterion requires a chain resolving to equity value, now known unbuildable as specified. It is one of FOUR blockers on the brochure page, not the only one (31 Jul). |
@@ -2467,17 +2471,28 @@ an incident: how a lane is framed determines which questions get asked inside it
 and a lane framed as low-risk generates low-risk questions regardless of what it
 actually touches.
 
-### 7.9 REMAINING STAGE 2 SURFACE — THE GRANT/REVOKE ADMIN UI (logged, not built)
+### 7.9 ⭐⭐ STAGE 2 SURFACE — THE GRANT/REVOKE ADMIN UI. **BUILT — CORRECTED
+31 Jul. THIS ENTRY WAS WRONG.**
 
-**Nothing in the product can issue or revoke department authority.** The
-endpoints exist, are admin-gated and are proven; there is no UI reaching them.
+**What was recorded:** *"Nothing in the product can issue or revoke department
+authority… there is no UI reaching them,"* and *"the consequence is **the whole
+feature being inert on a live company**."*
 
-**The consequence is the whole feature being inert on a live company.** No
-grant means `can_author()` refuses everyone, `/may-author` answers false for
-every caller, and **no CXO ever sees the adjust affordance or the sign-off
-action.** Every department reports `never_assigned` — which the surfaces render
-correctly as *vacant*, so the product is honest about it, but the honest state is
-"nobody can use this".
+**Measured at `e67262b`:**
+
+- `components/DepartmentAuthorityPanel.tsx` **exists**;
+- it is **imported and mounted** at `routes/team.tsx:236`;
+- it **POSTs to BOTH** `/companies/{id}/departments/{id}/authority` **and**
+  `…/authority/revoke`;
+- it renders the never-assigned copy and the platform-staff refusal.
+
+⭐ **THE FEATURE IS NOT INERT.** Eighth wrong entry found in this file this era,
+and the second of the built-but-recorded-unbuilt kind — the direction that
+invites rebuilding working software.
+
+**The original text is preserved above as the claim it was**, because the failure
+mode matters more than the correction: a surface was described as absent while it
+sat on a shipped route.
 
 **Authority can currently be granted only by calling the API directly.** That is
 acceptable for a verification tenant and unacceptable as a shipping condition:
@@ -8137,6 +8152,11 @@ the existing preflight missed this.
    guards. **79 ratios exist as a specification the engines do not execute**, so
    **the registry and `engines.py` are two sources of truth**, and the guards
    enforce agreement on **five quantities, not on the library**.
+
+   ⭐ **RE-VERIFIED 31 Jul and it still holds.** `dashboard_metrics` returns
+   **zero** ratio-named keys, and the only reader of the yaml is
+   `scripts/check-ratio-shapes.py`. **This is the whole of "ratio analysis" as a
+   feature: 79 formulas and no engine.**
 
 ## §7o · THE RESEED — DESIGN (ruled 30 Jul; ⭐ CRITERION AMENDED 31 Jul.)
 
