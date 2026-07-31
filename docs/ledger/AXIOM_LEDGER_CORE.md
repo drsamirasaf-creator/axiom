@@ -126,8 +126,8 @@ the codebase for callers, which no gate currently does.
 | A9 | **DEI definition** | Named 26 Jul. |
 | A10 | ⭐ **Retrospective pack notification** | Twenty packs published in production with no CEO told. Whether they should now receive a burst for months already past is a ruling; sending it is irreversible. OFF by default, either way is a configuration (`AXIOM_NOTIFY_RETROSPECTIVE`). |
 
-### QUEUE B — AWAITING A BUILD (12 — ⭐ was 9; three added 31 Jul by the
-proof-point correction, and B1 is now BUILT)
+### QUEUE B — AWAITING A BUILD (14 — ⭐ was 9; five added 31 Jul, and B1 and
+§7s.5 are now BUILT)
 
 | # | item | blocked by |
 |---|---|---|
@@ -143,6 +143,8 @@ proof-point correction, and B1 is now BUILT)
 | B9 | **§7o reseed** | Design ruled; not seeded. ⭐ **FLAGGED FOR AMENDMENT BEFORE BUILD** — its acceptance criterion requires a chain resolving to equity value, now known unbuildable as specified. It is one of FOUR blockers on the brochure page, not the only one (31 Jul). |
 | B10 | ⭐ **Initiative-to-statement-line link** | **Nothing.** Measured as absent; blocks the brochure proof point and the bridge's initiatives driver. |
 | B11 | ⭐ **The attribution rule** (sole / proportional / residual) | Ruled 31 Jul, not built. Blocks the proof point. |
+| B13 | ⭐ **Monthly periods and cadence granularity** | Ruled 31 Jul. **IN FLIGHT** — period lattice, derived frequency, monthly divisor and cadence selection built; five v8 version-gate tests still to update after the template bump to v9. |
+| B14 | **Irregular multi-source ingestion** | Designed 31 Jul, not built. Depends on B13's granularity work. |
 | B12 | **Client-declared initiative impact** | Designed, not built. Supplies B10's link by declaration rather than inference. |
 
 ### ⭐ UNDETERMINED — recorded as undetermined, never inferred
@@ -6624,6 +6626,128 @@ and `bs.retained_earnings` — see the registry vocabulary, which marks each
 `cf.operating_cash_flow` as a stored rather than derived token, plus the
 `cash_conversion_quality` headline ratio on real data rather than a derivation.
 
+## ⭐⭐ RULED — MONTHLY PERIODS AND CADENCE GRANULARITY (31 Jul)
+
+**The template gains MONTHLY alongside quarterly and annual.** The Cadence pack
+is **monthly where monthly data exists, quarterly where quarterly is all the
+client has.**
+
+⭐ **GRANULARITY FOLLOWS THE DATA FOR THE REPORTING PERIOD, NOT A COMPANY-LEVEL
+SETTING.** Mixed granularity is the normal case — annual history with monthly
+recent periods — so a per-company flag would be wrong for most of its own series.
+
+### ⭐⭐ THE RISK, RECORDED BEFORE THE BUILD
+
+**A quarterly dataset was once discounted at ANNUAL rates, understating enterprise
+value by 4.66×.**
+
+⭐ **MONTHLY IS THE SAME DEFECT CLASS AT A DIFFERENT DIVISOR, AND IT FAILS
+SILENTLY.** An understated EV reads as a poor business rather than as a suspicious
+number, which is why the quarterly one could have shipped unnoticed.
+
+**ACCEPTANCE IS A THREE-WAY EQUIVALENCE PROOF** — the same underlying economics
+expressed monthly, quarterly and annually must produce the same enterprise value
+within tolerance. ⭐ **Not a code read.**
+
+⭐ **AND THE TOLERANCE IS NOT ZERO.** Cash arriving monthly is genuinely worth
+slightly more than the same cash in annual lumps; the quarterly work measured that
+residual at ~3% and recorded that it "should not be tuned away". **A test
+demanding exact equality would be a test demanding the arithmetic be wrong.**
+
+### ⭐ FREQUENCY IS DERIVED, NOT TRUSTED
+
+**Four datasets carry `frequency='quarterly'` while their periods infer annual.**
+A third value makes a stated-versus-inferred mismatch worse, so **one must be made
+authoritative.**
+
+### THE PACK STATES WHAT IT USED, AND HOW OLD ITS INPUTS ARE
+
+⭐ **A monthly pack carrying quarterly financials is HONEST. A monthly pack
+silently carrying two-month-old financials is not.** This is **absence-declares
+applied to STALENESS rather than to missing data**: the input is present, and its
+AGE is the thing a reader would otherwise assume.
+
+### A GRANULARITY SWITCH MID-SERIES MUST NOT BREAK THE SERIES
+
+**A quarterly pack followed by a monthly pack are BOTH VALID.** The Value Bridge
+**renders between them, or declares that it cannot.**
+
+## ⭐⭐ DESIGN — IRREGULAR MULTI-SOURCE INGESTION (31 Jul)
+
+**Supersedes the unrun three-source ingestion dispatch.**
+
+**The client uploads what they have, when they have it, in whatever format.**
+AXIOM organises it, maintains a current view, publishes on schedule, and produces
+the on-demand export at any time. ⭐ **The client is not required to be
+consistent, synchronised or complete.**
+
+### ⭐ THREE SOURCES, THREE TEMPORAL SHAPES — the design's central problem
+
+| source | temporal shape |
+|---|---|
+| **Excel templates** | periods at **three granularities**, arriving **irregularly** |
+| **Documents** | a **date**, and **no period** |
+| **Assessment** | **cycles** for surveys; **continuous** for Innovation Hub ideas and comments |
+
+⭐ **AND k-ANONYMITY PREVENTS SLICING A CYCLE FINER TO REACH A PERIOD BOUNDARY**,
+so **cycles cannot be forced onto the financial clock.** The obvious fix — cut the
+cycle at the month end — is the one thing the disclosure floor forbids.
+
+### ⭐⭐ CONSTRAINT A — AGGREGATION IS ARITHMETIC; DISAGGREGATION IS INVENTION
+
+**Twelve months sum to a year exactly and reversibly. An annual figure split into
+months is MODELLED, and every resulting number is MANUFACTURED.**
+
+⭐ **AXIOM AGGREGATES UPWARD AND NEVER DISAGGREGATES DOWNWARD.** The pack's
+granularity is **the finest actually present.**
+
+### ⭐ CONSTRAINT B — DOCUMENTS ARE CONTEXT, NOT STATEMENT LINES
+
+**§7k's page-level citation into Prescience remains the default.**
+
+⭐ **A document-extracted figure becomes a statement line ONLY through the
+changeset approval gate, with a human accepting it.** Otherwise authoritative data
+arrives through an unvalidated path — **the class that let `size_premium` through.**
+
+### ⭐ CONSTRAINT C — COLLISIONS SURFACE, NEVER AUTO-RESOLVE
+
+**Irregular upload produces collisions routinely.**
+
+⭐ **"Intelligently organise" PULLS AGAINST THE STANDING RECONCILIATION
+PHILOSOPHY, AND THE PHILOSOPHY WINS.** AXIOM **organises what does not conflict
+and surfaces what does.**
+
+**Still a large reduction in client burden, because most uploads will not
+conflict** — the constraint costs little and buys the property the whole product
+rests on.
+
+### ⭐ CONSTRAINT D — THE CURRENT VIEW AND A FROZEN PACK LEGITIMATELY DISAGREE
+
+**The March pack and today's view will differ about March, CORRECTLY.**
+
+**The pack records which VINTAGE of each source it froze, and no surface presents
+the two as the same thing.**
+
+⭐ **THE FREEZE ALREADY SUPPORTS THIS. This feature makes the divergence ROUTINE
+RATHER THAN RARE** — which is the part that needs designing, because a rare
+divergence is explained ad hoc and a routine one must be explained by the product.
+
+### ⭐ CONSTRAINT E — ASSESSMENT CYCLES ATTACH BY A STATED RULE, NOT BY INFERENCE
+
+The rule must state: **which cycle a pack reports; what it does when NONE closed
+in its period; what it does when TWO did.**
+
+⭐ **A PACK SILENTLY OMITTING THE ASSESSMENT SECTION BECAUSE NO CYCLE ALIGNED IS
+FABRICATION BY SILENCE.**
+
+### The commercial claim, in its honest form
+
+> **Upload what you have, when you have it. AXIOM reconciles it, states what it
+> can and cannot compute, and publishes on schedule regardless.**
+
+⭐ **THE LAST CLAUSE IS THE REAL PROMISE.** The first two are what every data
+product says.
+
 ## ⭐⭐ BROCHURE — THE VALUE-PROPOSITION DIAGRAM (ruled 31 Jul)
 
 **Topic ownership:** the brochure owns pricing and commercial terms; **this file
@@ -7359,6 +7483,50 @@ operating partner reading one portfolio company's bridge **has others**.
 
 **Chairmen are an easy sell and have no funnel** — they do not attend demos,
 respond to outbound, or search.
+
+**Appended 31 Jul — further design, NOT a ruling. This does not upgrade the
+locked line and does not close this open item.**
+
+### ⭐⭐ MOST CEOs SHOULD NOT BUY AXIOM
+
+**And the pitch fails with the ones who should if that is not said.**
+
+A **comfortable, profitable, adequately-run mid-market company** has working
+systems and no external pressure. ⭐ **AXIOM would be a better way of doing
+something already done acceptably** — which is not a sale.
+
+### Three reasons a SPECIFIC CEO should, ranked by how well they survive scrutiny
+
+1. ⭐ **SOMEONE OUTSIDE WILL ASK WHAT THE COMPANY IS WORTH AND WHY IT CHANGED** —
+   sponsor, lender, board, buyer — **on their schedule, repeatedly.** The ERP
+   cannot answer, **because enterprise value is not in the ledger.**
+2. **NOTHING CONNECTS EXECUTION TO MONEY.** The CEO already has ERP, feedback and
+   initiative tracking, and ⭐ **is RIGHT that they are unlikely to be
+   integrated. That gap is the product.**
+3. **It arrives whether or not anyone has time.**
+
+### ⭐⭐ THE PRECISION OBJECTION, AND ITS ANSWER
+
+**A CEO's objection that running a company does not require carrier-landing
+precision is CORRECT** — and ⭐ **it lands on the PITCH, not on the PRODUCT.**
+
+**Direction beats magnitude in most operating decisions, and false precision is
+worse than an honest range.**
+
+⭐ **THE REAL CLAIM IS ATTRIBUTION AND TIMING** — *which thing moved the number,
+known in the first week rather than the third* — **not precision.**
+
+⭐ **MAGNITUDE BINDS ONLY AT THRESHOLDS WITH CONSEQUENCES ATTACHED:** covenant
+headroom, transaction price, whether a business is worth keeping. **That is the
+beachhead, and it is why the comfortable mid-market is not.**
+
+### ⭐⭐ STANDING CONSEQUENCE — SOPHISTICATION IS THE THING YOU DO NOT SELL
+
+**The stochastic engine, the copulas and the viability kernel are why a number
+SURVIVES A CFO'S INTERROGATION. They are not why a CEO BUYS.**
+
+⭐ **The value-proposition diagram names no technique, and that is not an
+accident.**
 
 **Sponsor-first is the stronger motion:** the sponsor is the buyer, **mandates the
 reporting**, and **buys multiple CIDs in one conversation**. Regent Financial's
