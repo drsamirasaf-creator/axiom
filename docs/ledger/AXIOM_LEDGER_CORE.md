@@ -72,6 +72,26 @@ working software**:
 freed slot **because the ledger still said don't**. A cleared blocker that nobody
 clears in the record is indistinguishable from a live one.
 
+### ⭐ GATE DEFECT — THE OWNER FAILED FOR RECEIVING WHAT IT OWNS (31 Jul)
+
+`check-margin-boundary.py` declared `OWNER: 99` with the comment *"the intended
+destination; no ceiling"* — **and the code had no no-ceiling concept.** The
+should-fall branch treated any under-cap count as a failure.
+
+⭐ **THE BRANCH HAD NEVER RUN, BECAUSE `ratios.py` HELD ZERO MARGIN SITES.** The
+first margin ever to reach its intended destination **failed the gate for
+arriving.**
+
+⭐⭐ **THE TEMPTING FIX WAS A GATE CHANGE. THE CORRECT FIX WAS OWNERSHIP.** §7s.5
+computed `debt / revenue` inside `value_bridge.py`; the gate reported a new module
+computing a margin. Declaring `value_bridge.py` would have **raised a
+downward-only boundary to make a lane pass** — the one thing that ratchet exists
+to forbid. **The ratio moved to `ratios.debt_to_revenue` instead**, and only then
+was the owner branch fixed to mean what its declaration always said.
+
+**Recorded because the two fixes look equally reasonable at the moment of
+choosing, and only one of them leaves the boundary intact.**
+
 ### ⭐⭐ CLASS — BUILT IS NOT WIRED, AND A PASSING SUITE CANNOT TELL THE DIFFERENCE
 
 **`pack_dist.notify_ready` has no caller.** Twenty packs are published in
@@ -91,7 +111,7 @@ property the entire layer exists to create. Built, tested, inert.
 Every one of these three has passing tests. The class is only visible by asking
 the codebase for callers, which no gate currently does.
 
-### QUEUE A — AWAITING A USER RULING (9)
+### QUEUE A — AWAITING A USER RULING (10 — ⭐ was 9; A10 added 31 Jul)
 
 | # | item | note |
 |---|---|---|
@@ -104,12 +124,15 @@ the codebase for callers, which no gate currently does.
 | A7 | **Reason-category ruling** | §4x open item. |
 | A8 | **Positioning** | Platform descriptor vs PE/transaction commercial lead. |
 | A9 | **DEI definition** | Named 26 Jul. |
+| A10 | ⭐ **Retrospective pack notification** | Twenty packs published in production with no CEO told. Whether they should now receive a burst for months already past is a ruling; sending it is irreversible. OFF by default, either way is a configuration (`AXIOM_NOTIFY_RETROSPECTIVE`). |
 
-### QUEUE B — AWAITING A BUILD (9)
+### QUEUE B — AWAITING A BUILD (12 — ⭐ was 9; three added 31 Jul by the
+proof-point correction, and B1 is now BUILT)
 
 | # | item | blocked by |
 |---|---|---|
-| B1 | ⭐ **Wire `notify_ready` to publication** | **Nothing.** Smallest, highest value in the file. |
+| B1 | ~~Wire `notify_ready` to publication~~ | ⭐ **BUILT `060bbd4`** — called from the calendar sweep after publish, idempotent per pack, CEO only. Retrospective notification of the twenty existing packs is OFF and is a RULING (see A10). |
+| B1b | ~~§7s.5 the Value Bridge~~ | ⭐ **BUILT `bc3b44f`** — residual shown, rate driver on KD_FLAT with the kd counterfactual in the artefact, initiative driver absent and measured. |
 | B2 | **§7r ratio library** | **Nothing.** The registry yaml is read only by a CI guard; the Pack's "Why" section declares this gap today. |
 | B3 | **§7r-D DuPont** | **Nothing — blocker cleared.** |
 | B4 | **`ValuationRun` code version** | **Nothing.** §7v closed payload hash + registry versions; code revision remains absent. |
@@ -117,7 +140,10 @@ the codebase for callers, which no gate currently does.
 | B6 | **Grant/revoke admin UI** | The model exists; only the surface is missing. |
 | B7 | **§7.44 period display** | Deferred to the entry-format lane. |
 | B8 | **§4y dataroom** | Not buildable now; naming also unruled. |
-| B9 | **§7o reseed** | Design ruled; not seeded. ⭐ **Now also blocks a COMMERCIAL ASSET** — the brochure's value-proposition page reads its proof point from the Meridian sample pack (ruled 31 Jul). |
+| B9 | **§7o reseed** | Design ruled; not seeded. ⭐ **FLAGGED FOR AMENDMENT BEFORE BUILD** — its acceptance criterion requires a chain resolving to equity value, now known unbuildable as specified. It is one of FOUR blockers on the brochure page, not the only one (31 Jul). |
+| B10 | ⭐ **Initiative-to-statement-line link** | **Nothing.** Measured as absent; blocks the brochure proof point and the bridge's initiatives driver. |
+| B11 | ⭐ **The attribution rule** (sole / proportional / residual) | Ruled 31 Jul, not built. Blocks the proof point. |
+| B12 | **Client-declared initiative impact** | Designed, not built. Supplies B10's link by declaration rather than inference. |
 
 ### ⭐ UNDETERMINED — recorded as undetermined, never inferred
 
@@ -6647,16 +6673,57 @@ it above them, or styling it as the foundation, would draw the picture of a
 product built on top of the CFO's pack — the positioning the frame above rejects.
 It is one input of four.
 
-### ⭐ THE PROOF POINT IS THE LEAD CLAIM
+### ⭐⭐ THE PROOF POINT — WITHDRAWN AS WRITTEN AND REPLACED (corrected 31 Jul)
 
-**"Initiative 7 is six weeks late, and that is $2.1M of equity value."**
+**WHAT WAS RULED, HOURS EARLIER, AND IS NOT SUPPORTABLE:**
 
-**A CFO forecasts. A PMO tracks initiatives. A banker values the business.
-NOBODY JOINS THEM.**
+> *"Initiative 7 is six weeks late, and that is $2.1M of equity value."*
 
-⭐ **This is the only claim in the set unavailable elsewhere**, which is why it
-leads and why it closes the diagram. Every other claim AXIOM makes has a
-competitor who makes it too.
+⭐⭐ **THE LEDGER RECORDED A CLAIM THE CODE HAD ALREADY REFUSED TO MAKE.**
+Measured at `bc3b44f`, in the same lane that shipped the Value Bridge:
+
+- `Initiative.linked_item_code` reaches an **assessment item**, not a statement
+  line. The KPI, KR and goal links reach no statement line either.
+- ⭐ **AXIOM HOLDS NO BUSINESS CASE PER INITIATIVE** — no cost, no benefit
+  profile, no timing, no IRR.
+
+**So there is no bottom-up path from an initiative to a value, and any figure
+produced that way is FABRICATED.** The bridge's `initiatives` driver is absent for
+exactly this reason and says so. **The brochure would have asserted precisely the
+number the product declines to compute.**
+
+### ⭐ THE DEFENSIBLE CLAIM RUNS THE OTHER WAY
+
+**Do not value the initiative. Value the FORECAST REVISION, and attribute it.**
+
+> **Initiative 7 is six weeks late; the KR it owns missed; the forecast line it
+> drives was revised down; revaluing on that revision moves equity value by
+> $2.1M.**
+
+⭐ **TRACEABLE ATTRIBUTION OF AN OBSERVED REVISION, NOT A VALUATION OF AN
+INITIATIVE.** Every hop is a fact the system already holds or can hold; the only
+new thing is the link between them. The revision is observed, the revaluation is
+the existing engine, and the initiative is named as the cause rather than priced
+as an asset.
+
+**Still unavailable elsewhere — no other system holds all four links.** A CFO
+forecasts, a PMO tracks initiatives, a banker values the business, and **nobody
+joins them.**
+
+⭐ **AND STILL NOT PRODUCIBLE** until the initiative-to-statement-line link
+exists. The claim is now *correct in form* and *not yet supportable in fact*.
+
+### ⭐⭐ ATTRIBUTION RULE — REQUIRED BEFORE THE CLAIM SHIPS
+
+1. **Sole-driver attribution ONLY where the linkage is exclusive.**
+2. **Proportional allocation where several drivers touch one line.**
+3. **The unattributable part shown as RESIDUAL**, per the bridge's existing
+   discipline.
+
+⭐ **ATTRIBUTING A WHOLE DELTA TO ONE INITIATIVE BECAUSE IT IS THE ONLY ONE
+LINKED IS FABRICATION BY A DIFFERENT ROUTE.** Exclusivity of *linkage* is not
+exclusivity of *cause*, and a partially-linked model would systematically
+over-credit whichever initiative someone happened to wire up first.
 
 ### Claim ordering — for ALL commercial surfaces
 
@@ -6688,17 +6755,62 @@ never a plausible round number.**
 AGREE.** A figure that does not reconcile destroys the one claim nobody else can
 make, at the moment it is being examined most closely.
 
-⭐ **THEREFORE THIS PAGE DEPENDS ON §7o AND §7s.5. The page and the sample pack
-SHIP TOGETHER OR NOT AT ALL.**
+⭐ **THE PAGE AND THE SAMPLE PACK SHIP TOGETHER OR NOT AT ALL.**
+
+### ⭐ THE FULL BLOCKING EDGE — corrected 31 Jul, it is more than §7o
 
 | dependency | state (31 Jul) |
 |---|---|
-| **§7s.5** the Value Bridge — produces the figure | ✅ **BUILT** (`bc3b44f`) |
-| **§7o** the reseed — produces the Meridian pack it is read from | ❌ **NOT BUILT, NOT SEEDED** |
+| **§7s.5** the Value Bridge — performs the revaluation | ✅ **BUILT** (`bc3b44f`) |
+| ⭐ **the initiative-to-statement-line link** | ❌ **DOES NOT EXIST** — measured; `linked_item_code` reaches an assessment item |
+| ⭐ **the attribution rule** (sole / proportional / residual) | ❌ **RULED ABOVE, NOT BUILT** |
+| **§7o** the reseed — must carry a chain that REACHES A STATEMENT LINE | ❌ **NOT BUILT, and its design needs amending — see below** |
 
-⭐ **So the brochure page is BLOCKED ON §7o**, and §7o is now blocking a
-commercial asset rather than only a demo. That edge did not exist in the queue
-before this ruling — see the pending queue at the head of this file.
+⭐ **The first version of this entry recorded only §7o.** That was the visible
+blocker rather than the binding one: the page cannot ship even with a perfect
+seed, because two of the four dependencies are not built at all.
+
+### ⭐⭐ §7o IS FLAGGED FOR AMENDMENT BEFORE IT IS BUILT
+
+**§7o's design requires its causal chain to RESOLVE TO EQUITY VALUE** —
+organisational signal → initiative slippage → KR miss → forecast revision → **a
+stated movement in equity value**, "traceable at every hop".
+
+⭐ **THAT REQUIREMENT IS NOW KNOWN TO BE UNBUILDABLE AS SPECIFIED.** The final hop
+needs the initiative-to-line link, which does not exist, and the hop before it
+needs the attribution rule, which is ruled but not built. **A seed built to the
+current §7o text would have to fabricate its own headline to satisfy its own
+acceptance criteria.**
+
+**§7o MUST BE AMENDED BEFORE IT IS BUILT.** Recorded here rather than left for the
+§7o lane to discover, because that lane's acceptance criterion is the thing that
+is wrong.
+
+### ⭐⭐ DESIGNED, NOT BUILT — CLIENT-DECLARED INITIATIVE IMPACT
+
+⭐ **Probably the most valuable remaining item in the PE story**, and it arrives
+by *removing* an ambition rather than adding one.
+
+**A PE-backed company's value-creation plan ALREADY CARRIES EXPECTED FINANCIAL
+IMPACT PER LINE ITEM.** The commitment exists, in writing, before AXIOM sees the
+company.
+
+**AXIOM holds the commitment the client already made, and tracks delivery against
+it.**
+
+- ⭐ **CLIENT-DECLARED INPUT** — the same mechanism as the ratio registry's custom
+  inputs. A number the client supplies and owns.
+- ⭐ **NOT A BUSINESS-CASE MODEL. AXIOM INVENTS NOTHING.** The distinction is the
+  whole point: the withdrawn proof point failed because AXIOM would have had to
+  originate a value it has no basis for. Here it originates nothing.
+- **What it yields is PLAN-VERSUS-ACTUAL ON VALUE CREATION** — which is what a
+  sponsor actually wants, and what they currently rebuild by hand every quarter.
+
+⭐ **It also supplies the missing link honestly.** A client-declared impact per
+line item IS an initiative-to-line linkage — declared by the party entitled to
+declare it, rather than inferred by us.
+
+**DESIGNED, NOT BUILT.**
 
 ### PENDING, NOT DESIGNED — the sponsor variant
 
