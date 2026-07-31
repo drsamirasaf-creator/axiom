@@ -111,19 +111,19 @@ property the entire layer exists to create. Built, tested, inert.
 Every one of these three has passing tests. The class is only visible by asking
 the codebase for callers, which no gate currently does.
 
-### QUEUE A — AWAITING A USER RULING (8 open — ⭐ A1 and A10 both RULED 31 Jul
-and closed. **Cadence has no remaining decision blockers.**)
+### QUEUE A — AWAITING A USER RULING (5 open — ⭐ A1, A3, A5, A8 and A10 all
+RULED 31 Jul and closed. **Cadence has no remaining decision blockers.**)
 
 | # | item | note |
 |---|---|---|
 | A1 | ~~External recipient billing~~ | ⭐ **RULED 31 Jul — unlimited and unbilled**, read-only, pack-scoped, no live workspace access. **Cadence has no remaining decision blockers.** Encoding change queued as B20. |
 | A2 | **`size_premium` = 0.2** | ⭐ **Verified still live 31 Jul: 8 datasets, 27 stored runs.** No correction applied, as ruled. |
-| A3 | **Export permission model** | k-anonymity and attribution implications the scheduled Pack does not have. Blocks the export's distribution. |
+| A3 | ~~Export permission model~~ | ⭐ **RULED 31 Jul — ONE visibility rule.** The export carries what the requesting user can already see and no more. Assertion in `test_export_visibility.py`. |
 | A4 | **σ contradiction (B2)** | Real Options attempts a fit, discards it when the clamp binds, **reports the clamp as a fit**. Blocks L.2e. |
-| A5 | **Quota counter** | Counts `source="direct"`; a company's twelve datasets are all uploads → returns zero. **Intent undetermined.** |
+| A5 | ~~Quota counter~~ | ⭐ **RULED 31 Jul — uploads are NOT chargeable; the `source="direct"` filter is CORRECT.** Volume is never the meter. Intent given a mechanical guardian in `test_quota_intent.py`. |
 | A6 | **KPI surface disposition** | Retire `KpiDefinition`, or repoint at `KpiPlan`. Not equivalent in risk. |
 | A7 | **Reason-category ruling** | §4x open item. |
-| A8 | **Positioning** | Platform descriptor vs PE/transaction commercial lead. |
+| A8 | ~~Positioning~~ | ⭐ **RULED 31 Jul — CLOSED, UNCHANGED.** The locked line stands as authored; the PE/transaction lead is NOT adopted. Appended notes are rationale, not pending changes. |
 | A9 | **DEI definition** | Named 26 Jul. |
 | A10 | ~~Retrospective pack notification~~ | ⭐ **RULED 31 Jul — OFF PERMANENTLY, not deferred.** The env path stays as built and stays off; it is a ruling, not an unfinished switch. See §7s.3. |
 
@@ -139,6 +139,7 @@ and closed. **Cadence has no remaining decision blockers.**)
 | B4 | **`ValuationRun` code version** | **Nothing.** §7v closed payload hash + registry versions; code revision remains absent. |
 | B5 | **§7u (b)** per-company stored assumptions | Deferred, not dropped. |
 | B6 | ~~Grant/revoke admin UI~~ | ⭐ **ALREADY BUILT — verified 31 Jul.** `DepartmentAuthorityPanel.tsx`, mounted at `routes/team.tsx`, POSTs grant AND revoke. §7.9 corrected. |
+| B21 | ⭐ **Widen the B16 gate to ADMIN AND CFO** | Ruled 31 Jul; the code shipped at `1ba395c` is **admin-only and refuses a CFO**. Attribution already covers the act whichever way the §4x tension resolves. |
 | B20 | ⭐ **Encode the A1 ruling** | `billable` default `False` + backfill existing rows, `billing_policy()` to `ruled: True`, and the docstrings that still explain the question as open. ⭐ **The one backfill this programme should perform** — the rows predate a ruling that now covers them. |
 | B16 | ~~In-app editable assumptions~~ | ⭐ **BUILT** — 12 fields editable, bounds flag-not-refuse on write, admin-only per §4x, every write attributed. **A2 now has a remediation path.** |
 | B17 | ⭐ **§4l Control Tower** (product Performance Monitoring) | **NO CODE.** Operational monitoring (Sentry, `/health`) exists and is a DIFFERENT THING — the name collision is why this reads as built. |
@@ -6658,21 +6659,39 @@ different and more awkward conversation than the contact ruling assumed.
 §7u versioned registry — a version string pointing at per-company mutable data
 would repeat the `FinancialDataset` defect §7v closed.
 
-### ⭐ WRITE AUTHORITY — CHECKED AGAINST §4x BEFORE SHIPPING
+### ⭐⭐ WRITE AUTHORITY — RULED 31 Jul: **ADMIN AND CFO**
 
-**Admin-only. A CXO is refused.** Measured rather than assumed:
-`require_company_admin` demands `Membership.role == "admin"`, and
-`DepartmentAuthority` is a **separate table** that creates no membership row — so
-a department grant confers nothing here.
+**The ruling: company assumptions, `size_premium` included, are editable by
+ADMIN and CFO.**
 
-⭐ **THIS IS THE RULE THE OVERRIDE TRAIL RESTS ON.** If a CXO could edit source
-they could quietly correct their own number at the input and the attributed
-exception would never exist.
+⭐⭐ **THE CODE AS SHIPPED AT `1ba395c` IS NARROWER THAN THIS RULING.** It binds
+`require_company_admin`, which demands `Membership.role == "admin"` and refuses
+every CXO — **a CFO included**. The widening is queued as **B21**, not silently
+applied, so the ruling and its encoding do not drift apart.
 
-⭐ **ONE CASE §4x DOES NOT RESOLVE, RECORDED NOT DECIDED:** a person holding BOTH
-an admin membership AND a CXO grant. The implementation treats them as an admin,
-because admin already carries source-write power through upload — but §4x's
-"not any artifact, ever" admits a stricter reading. **Not ruled here.**
+### ⭐ THE TENSION WITH §4x — FLAGGED, NOT RESOLVED
+
+**§4x standing rule:** *a CXO cannot edit source data — admin-only* — because a
+CXO editing source can **silently correct their own number at the input and the
+override trail never exists**. ⭐ **A CFO IS A CXO.**
+
+**The distinguishing argument (for the ruling):** a **valuation assumption is not
+a departmental performance figure**. §4x exists to prevent laundering one's own
+**performance**, and a discount-rate input is not that.
+
+**The counter-argument (against):** ⭐ **assumptions move ENTERPRISE VALUE, which
+is the headline number the board reads** — so the laundering risk is **larger,
+not smaller**, than for a departmental metric.
+
+**Both recorded. The ruling is Admin and CFO. The tension is not resolved by
+recording it, and is not treated as resolved.**
+
+### ⭐ WHICHEVER WAY THE TENSION IS LATER RESOLVED, THE ACT IS VISIBLE
+
+**Attribution on every write is the mitigation that does not depend on the
+answer** — actor, timestamp, prior value, new value, already built and asserted.
+⭐ **A silent correction is what §4x fears; an attributed one is a decision, and
+the Decision Record already projects it.**
 
 ### Bounds on the write path — FLAG, NEVER REFUSE
 
@@ -7777,22 +7796,70 @@ recur**, rather than a note saying to be careful.
 Recorded as the preferred form: **a recorded lesson is not a control.** The ledger
 is full of laws that depend on someone remembering them; this one does not.
 
-### ⭐ OPEN — export permission model (NOT RULED)
+### ⭐⭐ RULED 31 Jul — EXPORT PERMISSION: ONE VISIBILITY RULE
 
-An export containing **every departmental sentiment slice and every CXO override**,
-**user-initiated and distributable at will**, has **k-anonymity and attribution
-implications the scheduled Pack does not**.
+**Recorded as open, and as "the two need different permission models". Ruled the
+other way.**
 
-**The two need different permission models.** Not ruled.
+⭐ **THE EXPORT CARRIES WHAT THE REQUESTING USER CAN ALREADY SEE, AND NO MORE.**
+It **inherits that user's role visibility** rather than being a superset of it.
 
-### OPEN — positioning (design, not ruled)
+### The reasoning
 
-The locked line — *"a strategy-execution platform that supports dynamic corporate
-transformation, powered by advanced analytics"* — is a **platform descriptor**.
-The PE / transaction workflow is the **commercial lead**.
+⭐ **TWO VISIBILITY RULES IS THE "TWO SURFACES, ONE CONCEPT" BUG CLASS IN ITS MOST
+CONSEQUENTIAL FORM — because the second surface is the one that LEAVES THE
+BUILDING.**
 
-**Proposed resolution:** retain the line where the platform is described; lead
-every commercial surface with the one workflow. Recorded as design-not-ruled.
+**An export that can show more than the app is a second access-control system that
+nobody audits**, and it would **drift from the first silently**. This programme has
+spent the era removing second definitions of quantities; a second definition of
+*who may see what* is the same defect with a worse blast radius.
+
+### ⭐ THE BOUNDARY THIS DOES NOT SOLVE — recorded so it is not mistaken for solved
+
+⭐ **K-ANONYMITY FLOORS PROTECT RESPONDENTS FROM THE COMPANY, NOT THE COMPANY FROM
+ITSELF.**
+
+**A CEO who can see a departmental slice in-app can export it and send it
+anywhere, and this ruling does not change that.** That is **deliberate**: the
+alternative is an export that **lies to its own user about what the product told
+them**.
+
+**The protection that matters is the floor itself**, which already suppresses
+below-threshold and complement-inferable slices **at source** — demonstrated on
+real seeded data at `e67262b`, where Quality (n=2) suppressed on the floor and
+Strategy (n=3) suppressed by complement inference despite clearing it.
+
+### ⭐⭐ THE CONSEQUENCE TO ASSERT
+
+**The export path derives visibility from THE SAME RESOLVER THE APP USES, never
+from a parallel list of what to include.**
+
+⭐ **A HAND-MAINTAINED INCLUSION LIST IS EXACTLY HOW THE TWO RULES DIVERGE — and
+it is the defect ALREADY FOUND in the export's section coverage**, where the
+section list was a literal inside `board_report` that went stale silently against
+everything shipped this year. The same mistake in a permission list would leak
+rather than omit.
+
+### ⭐⭐ RULED 31 Jul — POSITIONING IS CLOSED, UNCHANGED
+
+**The locked line stands AS AUTHORED and as the platform descriptor:**
+
+> *"A strategy-execution platform that supports dynamic corporate transformation,
+> powered by advanced analytics."*
+
+⭐ **THE PROPOSAL TO LEAD COMMERCIAL SURFACES WITH THE PE AND TRANSACTION
+WORKFLOW IS NOT ADOPTED.**
+
+⭐ **EVERYTHING BELOW IS RECORDED RATIONALE, EXPLICITLY NOT A PENDING CHANGE.**
+The appended design notes — the referral-instrument argument, the
+most-CEOs-should-not-buy argument, the precision objection — remain because the
+reasoning is worth keeping. **They are not proposals awaiting action.**
+
+⭐ **RECORDED IN THAT FORM DELIBERATELY: a later reader who finds an ARGUMENT
+sitting next to a SETTLED QUESTION will re-open the question.** That is the same
+mechanism as a stale ledger line issuing instructions, and this file has now been
+wrong eight times in ways that cost lanes.
 
 **Appended 30 Jul — further design, NOT a ruling. This touches the locked line
 and is not upgraded.**
@@ -8092,17 +8159,40 @@ re-values as something it never was.
 **Now split into `requested_mode` and `executed_mode`**, both recorded, with a
 test asserting they diverge on exactly this case.
 
-### 2. ⭐ OPEN — the quota counter returns EMPTY for a company holding 12 datasets
+### 2. ⭐⭐ RULED 31 Jul — UPLOADS ARE NOT CHARGEABLE. THE FILTER IS CORRECT.
 
-`deps.py:346` and `billing/router.py:60` count usage with
-`source="direct"` **and `parent_dataset_id IS NULL`**. Every one of that company's
-**twelve datasets is `source="upload"`**, so **the counter returns zero.**
+**Recorded as an open finding of undetermined intent; now ruled.**
 
-⭐ **A BILLING QUOTA THAT COUNTS ZERO FOR A CUSTOMER WITH TWELVE DATASETS IS NOT A
-DORMANT DEFECT.** Whether the intent is "uploads are not chargeable" or the filter
-is simply wrong is **undetermined from the code**, which is why it is recorded and
-not fixed. **Named, untouched, OPEN — it is outside the §7v scope and needs a
-ruling, not a patch.**
+`deps.py:346` and `billing/router.py:60` count usage with `source="direct"` **and
+`parent_dataset_id IS NULL`**, so a company holding **twelve uploaded datasets
+counts as ZERO**.
+
+⭐ **THAT IS THE INTENDED RESULT, NOT A DEFECT.** Excel templates, documents and
+feedback data **do not count against any quota.**
+
+### ⭐⭐ THE INTENT IS RECORDED, NOT ONLY THE VERDICT
+
+**The quota exists to bound something other than client data volume.**
+
+⭐ **A FILTER WHOSE CORRECTNESS DEPENDS ON UNRECORDED COMMERCIAL INTENT WILL BE
+CORRECTED BY THE NEXT PERSON WHO FINDS IT.** `source="direct"` reads as an
+oversight to anyone who does not know why it is there — which is exactly how this
+entry came to be filed as a suspected bug.
+
+⭐ **AND A LEDGER LINE IS NOT ENOUGH.** The behaviour is asserted in a test
+carrying the reasoning, so the intent has **a mechanical guardian** rather than a
+paragraph someone must happen to read first.
+
+### The commercial consequence — a product property, not an accident
+
+**The client is not metered on how much data they give AXIOM.**
+
+Consistent with the multi-source ingestion design ruled the same day — *upload what
+you have, whenever you have it* — and with **unlimited users** and **unlimited
+external recipients** (A1).
+
+⭐ **VOLUME IS NEVER THE METER.** Three separate rulings now say so, and the
+counter is the third.
 
 ## ⭐ RULED — REPLACING A DATASET DELETES EVERYTHING DERIVED FROM IT (30 Jul)
 
