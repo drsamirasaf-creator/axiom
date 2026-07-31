@@ -143,7 +143,8 @@ the codebase for callers, which no gate currently does.
 | B9 | **§7o reseed** | Design ruled; not seeded. ⭐ **FLAGGED FOR AMENDMENT BEFORE BUILD** — its acceptance criterion requires a chain resolving to equity value, now known unbuildable as specified. It is one of FOUR blockers on the brochure page, not the only one (31 Jul). |
 | B10 | ⭐ **Initiative-to-statement-line link** | **Nothing.** Measured as absent; blocks the brochure proof point and the bridge's initiatives driver. |
 | B11 | ⭐ **The attribution rule** (sole / proportional / residual) | Ruled 31 Jul, not built. Blocks the proof point. |
-| B13 | ⭐ **Monthly periods and cadence granularity** | Ruled 31 Jul. **IN FLIGHT** — period lattice, derived frequency, monthly divisor and cadence selection built; five v8 version-gate tests still to update after the template bump to v9. |
+| B13 | ~~Monthly periods and cadence granularity~~ | ⭐ **BUILT `d8e31a5`** — three-way equivalence proven (annual 1668.63, quarterly ×1.0271, monthly ×1.0332); frequency derived not trusted; template v9 with no version gate. |
+| B15 | ⭐ **Brochure features map** | Ruled 31 Jul. Three required corrections before it ships: the missing loop, the two outputs, the Watch's own path. |
 | B14 | **Irregular multi-source ingestion** | Designed 31 Jul, not built. Depends on B13's granularity work. |
 | B12 | **Client-declared initiative impact** | Designed, not built. Supplies B10's link by declaration rather than inference. |
 
@@ -6935,6 +6936,93 @@ line item IS an initiative-to-line linkage — declared by the party entitled to
 declare it, rather than inferred by us.
 
 **DESIGNED, NOT BUILT.**
+
+## ⭐⭐ BROCHURE — THE FEATURES MAP (ruled 31 Jul)
+
+**A SECOND, DISTINCT ASSET.** Not a variant of the value-proposition diagram and
+not a section of it.
+
+The user's `AXIOM_-_INPUT-OUTPUT` diagram is **adopted in structure**:
+
+    three inputs  →  ANALYZE · STRATEGIZE · EXECUTE  →  output
+
+⭐ **THE VERB-BASED MIDDLE IS RULED BETTER THAN A FEATURE LIST**, because it shows
+**the transformation loop rather than a menu.**
+
+### ⭐⭐ ORDERING IS RULED — THE FEATURES MAP MUST NOT LEAD
+
+| asset | position | job |
+|---|---|---|
+| **value-proposition diagram** | **cover** | **why it matters** |
+| **features map** | **interior** | **what is inside** |
+
+⭐ **A CEO SCANNING A CAPABILITY LIST CONCLUDES HE ALREADY HAS SYSTEMS FOR MOST OF
+IT.** That is the comparison AXIOM loses, and **the value-proposition diagram
+exists to avoid it.** Leading with the features map hands the prospect the losing
+comparison on page one.
+
+### ⭐⭐ REQUIRED CORRECTION 1 — THE LOOP IS MISSING, AND IT IS THE LARGEST FAULT
+
+**The diagram is linear. EXECUTE produces results that become THE NEXT PERIOD'S
+INPUT, and monitoring feeds back to data.**
+
+⭐ **WITHOUT THE RETURN PATH IT READS AS A ONE-TIME ENGAGEMENT — THE PRECISE
+OPPOSITE OF THE CADENCE CLAIM. THE RECURRENCE IS THE PRODUCT.**
+
+### ⭐ REQUIRED CORRECTION 2 — THERE ARE TWO OUTPUTS, NOT ONE
+
+Per the **two-document ruling already in CORE**: the **monthly pack is SELECTIVE**
+and the **on-demand PDF/PPT export is EXHAUSTIVE**, serving readers without app
+access.
+
+**The diagram shows only the pack. As drawn, the brochure and the ledger
+disagree.**
+
+### ⭐ REQUIRED CORRECTION 3 — THE WATCH IS A THIRD OUTPUT, AND IT IS NOT MONTHLY
+
+**Event-timed by design, deliberately outside the pack**, because a covenant breach
+on the 12th reported on the 5th is a **post-mortem, not a warning**.
+
+**It requires its own path on the diagram.**
+
+### ⭐ RULED — "OPTIMIZE VALUATION" IS STRUCK
+
+⭐ **It reads as making the valuation LOOK BETTER, which is the opposite of the
+credibility posture the product depends on.**
+
+Replace with **"value-maximising actions"** or **"what to do next"** — which is
+also the claim ordering already ruled for every commercial surface.
+
+### ⭐ THE OUTPUT MUST MATCH THE SEVEN-SECTION SPINE RECORDED IN §7s
+
+⭐ **If the brochure implies a different ordering of the same document, that is
+TWO SURFACES CLAIMING TO BE ONE CONCEPT — the standing bug class, in marketing
+form.**
+
+### ⭐ RECORDED — THE BALANCE PROBLEM (no fix prescribed)
+
+**Six analysis items against two strategise and two execute tells a reader the
+product is mostly analysis.**
+
+⭐ **The distinctive claim — INITIATIVES CONNECTED TO VALUE — lives in EXECUTE,
+and it looks thin.**
+
+**Honest as a description of where the code is. Weak as a sales instrument.**
+Recorded as the tension it is; **no fix prescribed here.**
+
+### ⭐⭐ STANDING RULING — BROCHURE DIAGRAMS ARE SPECIFIED IN CORE AND DRAWN FROM IT
+
+**Never from a standalone file.**
+
+The **section order**, the **output count** and the **claim ordering** are all
+recorded here.
+
+⭐ **A DIAGRAM MAINTAINED SEPARATELY DRIFTS FROM THE LEDGER SILENTLY** — and **a
+stale brochure asserting a superseded structure is the same failure class as a
+stale ledger line, with the added property that IT IS THE VERSION PROSPECTS SEE.**
+
+This file has been found wrong seven times this era; a brochure has no
+corresponding correction lane at all.
 
 ### PENDING, NOT DESIGNED — the sponsor variant
 
