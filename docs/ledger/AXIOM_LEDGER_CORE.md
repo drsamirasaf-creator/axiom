@@ -5421,6 +5421,61 @@ that fails on first contact with a reader who tests it.
 Full tables: `docs/reports/2026-07-28-b1-convergence.md`.
 Tooling: `scripts/convergence_study.py` (re-runnable, validates its own replica).
 
+## ⭐⭐ §7o — THE CAUSAL CHAIN IS COMPLETE AT FIVE HOPS (31 Jul)
+
+**The chain now runs `sentiment → initiative → key result → KPI → statement line
+→ equity value`, every hop against real rows.** The fifth hop, recorded as a GAP
+since the reseed, is CLOSED — by the B10/B11 declared link, not by a derived
+figure.
+
+### ⭐ THE DECLARED SHARES — DELIBERATELY NOT 100%
+
+| initiative | department | statement line | declared share |
+|---|---|---|---|
+| the chain's initiative | `operations` | `revenue` | **0.35** |
+| a second initiative | `supply_chain` | `revenue` | **0.25** |
+| | | **declared total** | **0.60** |
+
+⭐ **A SEED WHOSE INITIATIVE ABSORBS THE WHOLE MOVEMENT DEMONSTRATES THE DEFECT
+THE RULE EXISTS TO PREVENT, NOT THE RULE.** Two initiatives declare the SAME
+line, so proportional allocation is exercised rather than asserted; a
+single-linked line cannot distinguish *split correctly* from *took everything*.
+
+### ⭐⭐ THE MEASURED RESIDUAL — NON-ZERO AT BOTH LEVELS
+
+| quantity | measured |
+|---|---|
+| equity value, pack 1 → pack 2 | **2,182.33 → 253.41** |
+| total movement | **−1,928.91** |
+| initiatives driver (explained) | **−80.32** |
+| ⭐ **bridge residual** | **−1,848.60** |
+| line-level residual on `revenue` | **−53.54 = 40% undeclared, by construction** |
+
+⭐ **A BRIDGE THAT RECONCILES EXACTLY HAS BEEN FUDGED.** The residual is not a
+tolerance — it is the honest statement that **most of the equity movement is not
+attributed to any declared initiative**, and 40% of even the driven line is not
+covered by a declared share.
+
+### ⭐⭐ THE DEFECT THE MEASUREMENT CAUGHT — HISTORY IS NOT THE FORECAST
+
+The first run attributed **−80.32** against a total movement of **0.00**. The
+seed revised only the LATEST ACTUAL revenue; **the DCF values the FORECAST**, so
+enterprise value was byte-identical across the two packs.
+
+⭐ **HOP 5 WOULD HAVE RESOLVED TO ZERO WHILE LOOKING COMPLETE** — an attribution
+of a movement that did not happen, with every row present and every link
+declared. The seed now revises the forecast series, which is what the chain's own
+claim ("the forecast line it drives was revised down") always said it did.
+
+⭐ This is the **absence with a plausible reason** shape again: *"the bridge
+reconciles"* reads as success.
+
+### The brochure proof point stays WITHDRAWN
+
+⭐ Completing the chain **on seeded data** does not restore a claim about
+customer outcomes. Restoring it is a **separate ruling** once the rule is proven
+on real declared links. A test asserts CORE still says so.
+
 ## ⭐⭐ L.2h — σ: RULED 31 Jul. **A4 CLOSES.**
 
 ### ⭐⭐ THE RULING — OPTION 1
@@ -8582,7 +8637,10 @@ sat in AMBER while the seed called it green. Now derived.
 
     sentiment → initiative → key_result → kpi → [STOP]
 
-Every hop asserted against real rows. **The fifth hop is stated as a gap.**
+Every hop asserted against real rows. **The fifth hop was stated as a gap.**
+⭐ **SUPERSEDED 31 Jul — the gap is CLOSED and the chain runs to `equity_value`.**
+See *§7o — the causal chain is complete at five hops*. Left standing as the
+record of what was true then, marked so it cannot be read as current.
 
 #### ⭐⭐ HOP 1 CLOSED — sentiment is now ROWS, not a chain-spec claim (31 Jul)
 
@@ -8619,7 +8677,8 @@ green** — an 8.40 Finance against a 3.42 Operations, a spread of five points.
 **Hop 1 end to end:** the decline is computed from rows, the initiative that
 department owns is `off_track`, and **the pack renders both.**
 
-⭐ **AND CLOSING HOP 1 DID NOT EXTEND THE CHAIN.** A test asserts the fifth hop is
+⭐ **SUPERSEDED 31 Jul: hop 5 has since been closed by the B10/B11 declared
+link.** As recorded at the time — ⭐ **CLOSING HOP 1 DID NOT EXTEND THE CHAIN.** A test asserted the fifth hop was
 still absent and still stated as a gap.
 
 **5 · Two consecutive packs**, the second carrying a bridge to the first.

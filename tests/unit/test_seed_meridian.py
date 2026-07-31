@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 from services.api.core import seed_meridian as SM
 from services.api.main import app
+from tests.codeonly import code_only
 
 
 @pytest.fixture(scope="module")
@@ -142,27 +143,26 @@ def test_the_failure_is_DISTRIBUTED_not_one_unit(seeded):
 # ⭐ 4 · THE CAUSAL CHAIN — AND WHERE IT STOPS
 # ═══════════════════════════════════════════════════════════════════════════
 
-def test_the_chain_has_four_hops_and_stops_at_the_kpi(seeded):
+def test_the_chain_kept_its_first_four_hops(seeded):
     """⭐ THE AMENDED §7o CRITERION. The chain resolves as far as the links
     genuinely reach and stops there, STATING the gap."""
     cid, report = seeded
     chain = report["chain"]
-    assert [h["n"] for h in chain["hops"]] == [1, 2, 3, 4]
-    assert [h["from"] for h in chain["hops"]] == [
+    # ⭐ NARROWED 31 Jul when hop 5 landed: the first four hops are unchanged,
+    # and asserting they still exist is what stops a later lane "simplifying"
+    # the chain by collapsing them into the new one.
+    assert [h["from"] for h in chain["hops"][:4]] == [
         "sentiment", "initiative", "key_result", "kpi"]
-    assert chain["stops_at"] == "kpi_movement"
 
 
-def test_the_fifth_hop_is_STATED_AS_A_GAP_not_rendered(seeded):
-    """⭐ A seed built to the ORIGINAL criterion would have had to fabricate its
-    own headline to satisfy its own acceptance."""
+def test_the_fifth_hop_is_no_longer_a_gap_but_is_still_not_FABRICATED(seeded):
+    """⭐ SUPERSEDED 31 Jul. The hop is CLOSED — but by a DECLARED share, not by
+    a derived figure. A seed built to the original criterion would have had to
+    fabricate its own headline; this one declares its share as data."""
     cid, report = seeded
-    gap = report["chain"]["gap"]
-    assert "equity value" in gap
-    assert "NOT" in gap or "not" in gap
-    assert "fabricated" in gap
-    assert "linked_item_code" in gap
-    assert not any(h["to"] == "equity_value" for h in report["chain"]["hops"])
+    assert report["chain"]["gap"] is None
+    assert any(h["to"] == "equity_value" for h in report["chain"]["hops"])
+    assert report["declared_share_total"] < 1.0
 
 
 def test_every_hop_in_the_chain_resolves_to_real_rows(seeded):
@@ -309,3 +309,143 @@ def test_no_showcase_fast_path():
     src = inspect.getsource(SM)
     for t in ("_serve_showcase_latest", "SHOWCASE_TENANT", "is_showcase"):
         assert t not in src
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐⭐ HOP 5 — THE CHAIN REACHES EQUITY VALUE (31 Jul)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_the_chain_now_has_FIVE_hops_and_stops_at_equity_value(seeded):
+    cid, report = seeded
+    chain = report["chain"]
+    assert [h["n"] for h in chain["hops"]] == [1, 2, 3, 4, 5]
+    assert chain["hops"][4]["from"] == "statement_line"
+    assert chain["hops"][4]["to"] == "equity_value"
+    assert chain["stops_at"] == "equity_value"
+    assert chain["gap"] is None, "the chain still declares a gap"
+    assert "B10" in chain["completed"]
+
+
+def test_the_declared_shares_are_NOT_one_hundred_percent(seeded):
+    """⭐⭐ A SEED WHOSE INITIATIVE ABSORBS THE WHOLE MOVEMENT DEMONSTRATES THE
+    DEFECT THE RULE EXISTS TO PREVENT, not the rule."""
+    cid, report = seeded
+    links = report["line_links"]
+    assert links, "the seed declared no line link"
+    for l in links:
+        assert 0.0 < l["declared_share"] < 1.0, \
+            f"{l['department']} declared {l['declared_share']} — a whole-movement claim"
+    assert report["declared_share_total"] < 1.0, \
+        "the declared shares leave no residual"
+
+
+def test_TWO_initiatives_declare_the_SAME_line(seeded):
+    """⭐ A SINGLE-LINKED LINE PROVES NOTHING ABOUT THE RULE — it cannot
+    distinguish "split correctly" from "took everything"."""
+    cid, report = seeded
+    lines = [l["statement_line"] for l in report["line_links"]]
+    assert len(lines) >= 2
+    assert len(set(lines)) == 1, "the two links must share a line"
+    assert len({l["initiative_id"] for l in report["line_links"]}) >= 2
+
+
+def test_the_shares_are_DECLARED_AS_DATA_never_derived():
+    """⭐ Per the module's own guard against corr/regress/fit/infer."""
+    from services.api.core import seed_meridian as _SM
+    src = code_only(_SM)
+    for banned in ("corr", "regress", "infer"):
+        assert banned not in src.lower(), f"the seed {banned}s a share"
+    assert "LINE_LINKS = [" in src, "the shares are not a declared literal"
+
+
+@pytest.fixture(scope="module")
+def series(seeded):
+    """Two packs with a real upload between them."""
+    cid, _r = seeded
+    with _db() as db:
+        a, b = SM.publish_series(db, cid, first="2026-09-30", second="2026-10-31")
+        db.commit()
+        return cid, a, b
+
+
+def test_hop_5_end_to_end_reaches_equity_value(series):
+    """⭐⭐ THE FIVE HOPS, EACH AGAINST REAL ROWS."""
+    from services.api import pack as P
+    from services.api.accounts import (Department, Initiative, KeyResult,
+                                       KpiPlan)
+    from services.api.initiative_lines import InitiativeLineLink
+    cid, a, b = series
+
+    with _db() as db:
+        # hop 1 · sentiment → the department's initiative
+        dept = db.query(Department).filter_by(company_id=cid,
+                                              dept_key=SM.CHAIN_DEPT).first()
+        assert dept is not None
+        ini = db.query(Initiative).filter_by(company_id=cid,
+                                             department_id=dept.id).first()
+        assert ini is not None and ini.status == "off_track"
+
+        # hop 2 · initiative → key result
+        kr = db.query(KeyResult).filter_by(
+            company_id=cid, kr_key=f"KR-{SM.CHAIN_DEPT.upper()[:4]}-01").first()
+        assert kr is not None
+
+        # hop 3 · key result → KPI
+        kpi = db.query(KpiPlan).filter_by(company_id=cid,
+                                          kpi_key=kr.kpi_key).first()
+        assert kpi is not None
+
+        # hop 4 · the KPI moved
+        assert kpi.ytd_actual < kpi.ytd_plan
+
+        # hop 5 · the initiative declares a statement line, with a share
+        link = db.query(InitiativeLineLink).filter_by(
+            company_id=cid, initiative_id=ini.id).first()
+        assert link is not None, "hop 5: no declared statement-line link"
+        assert link.statement_line == "revenue"
+        assert 0.0 < link.weight < 1.0
+
+        br = P.frozen_inputs(db, db.get(P.Pack, b))["classes"]["value_bridge"]["bridge"]
+
+    # …and the bridge attributes it
+    d = [x for x in br["drivers"] if x["key"] == "initiatives"][0]
+    assert d["amount"] is not None, "hop 5 did not reach an equity movement"
+    ids = {x["initiative_id"] for x in d["detail"]["attribution"]["attributed"]}
+    assert ini.id in ids, "the chain's initiative is not in the attribution"
+
+
+def test_the_residual_is_NON_ZERO(series):
+    """⭐⭐ A BRIDGE THAT RECONCILES EXACTLY HAS BEEN FUDGED."""
+    from services.api import pack as P
+    cid, a, b = series
+    with _db() as db:
+        br = P.frozen_inputs(db, db.get(P.Pack, b))["classes"]["value_bridge"]["bridge"]
+    assert br["total_movement"] is not None
+    assert abs(br["total_movement"]) > 1.0, "the packs show no movement to explain"
+    assert br["residual"] is not None
+    assert abs(br["residual"]) > 1.0, \
+        f"the bridge reconciled to {br['residual']} — a residual that small on a " \
+        f"movement of {br['total_movement']} is a fudge, not an explanation"
+    # ⭐ and the LINE-level residual is the undeclared share, exactly
+    d = [x for x in br["drivers"] if x["key"] == "initiatives"][0]
+    line_res = d["detail"]["attribution"]["residual"]["revenue"]
+    assert abs(line_res["amount"]) > 0.0
+    assert "not covered by a declared share" in line_res["reason"]
+
+
+def test_the_second_pack_carries_a_POPULATED_initiatives_driver(series):
+    from services.api import pack as P
+    cid, a, b = series
+    with _db() as db:
+        br = P.frozen_inputs(db, db.get(P.Pack, b))["classes"]["value_bridge"]["bridge"]
+    d = [x for x in br["drivers"] if x["key"] == "initiatives"][0]
+    assert d["amount"] is not None and d["traceable"] is True
+    assert "initiatives" in br["computable_drivers"]
+    assert "initiatives" not in br["absent_drivers"]
+
+
+def test_the_brochure_claim_is_STILL_withdrawn():
+    """⭐ Restoring it is a SEPARATE RULING once the rule is proven on real
+    data. Completing the chain does not restore it."""
+    core = open("docs/ledger/AXIOM_LEDGER_CORE.md", encoding="utf-8").read()
+    assert "THE PROOF POINT — WITHDRAWN AS WRITTEN AND REPLACED" in core

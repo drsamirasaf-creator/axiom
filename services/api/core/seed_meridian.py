@@ -91,15 +91,37 @@ def chain_spec():
              "claim": "KR-OPS-01 missed its target"},
             {"n": 4, "from": "kpi", "to": "kpi_movement",
              "claim": "the KPI it drives, on-time delivery, moved against plan"},
+            {"n": 5, "from": "statement_line", "to": "equity_value",
+             "claim": ("the declared share of the revenue movement is attributed "
+                       "to INI-OPE-01 and revalued through the Value Bridge")},
         ],
-        "stops_at": "kpi_movement",
-        "gap": ("the fifth hop — a stated movement in equity value — is NOT "
-                "rendered. No link reaches a financial statement line "
-                "(linked_item_code reaches an assessment item) and AXIOM holds "
-                "no business case per initiative, so any figure produced that "
-                "way would be fabricated. Restored when the "
-                "initiative-to-statement-line link exists."),
+        "stops_at": "equity_value",
+        "gap": None,
+        "completed": ("hop 5 CLOSED 31 Jul. B10 built the declared "
+                      "initiative→statement-line link, and this seed DECLARES "
+                      "one — so the chain reaches equity value through an "
+                      "attributed share rather than a fabricated figure."),
     }
+
+
+# ⭐⭐ THE DECLARED LINE LINKS — the fifth hop, as DATA.
+#
+# The chain's initiative takes a DECLARED SHARE, and deliberately NOT 100%: a
+# seed whose initiative absorbs the whole movement demonstrates the defect the
+# attribution rule exists to prevent, not the rule.
+#
+# A SECOND initiative declares the SAME line, so proportional allocation is
+# exercised and a residual survives. ⭐ A SINGLE-LINKED LINE PROVES NOTHING ABOUT
+# THE RULE — it cannot distinguish "split correctly" from "took everything".
+#
+# ⭐ THE SHARES ARE DECLARED HERE AS DATA. Nothing derives them; the module's own
+# guard fails this file for containing corr/regress/fit/infer.
+LINE_LINKS = [
+    # (department key, statement line, declared share)
+    (CHAIN_DEPT,     "revenue", 0.35),
+    ("supply_chain", "revenue", 0.25),
+]
+#   0.35 + 0.25 = 0.60 declared  →  ⭐ 40% RESIDUAL, by construction.
 
 
 # ⭐ THE ONE DECLARED ABSENCE. Exactly one section publishes with its gap stated —
@@ -295,8 +317,29 @@ def reseed(db, cid, *, now=None):
         db.add(ini); db.flush()
         inits.append((ini.id, band))
 
+    # ── 6 · the declared line links — hop 5 ────────────────────────────────
+    from ..initiative_lines import InitiativeLineLink, declare
+    db.query(InitiativeLineLink).filter_by(company_id=cid).delete(
+        synchronize_session=False)
+    by_dept = {}
+    for ini_id, _band in inits:
+        row = db.get(Initiative, ini_id)
+        by_dept[row.department_id] = ini_id
+    declared = []
+    for dept_key, line, share in LINE_LINKS:
+        ini_id = by_dept.get(dept_ids[dept_key])
+        if ini_id is None:
+            continue
+        declare(db, cid, ini_id, line, weight=share,
+                user=type("_S", (), {"id": None, "name": "§7o seed"})(),
+                note=f"§7o seed: declared share of {line}")
+        declared.append({"department": dept_key, "initiative_id": ini_id,
+                         "statement_line": line, "declared_share": share})
+
     db.flush()
     return {
+        "line_links": declared,
+        "declared_share_total": sum(d["declared_share"] for d in declared),
         "deleted": deleted,
         "dataset_ids_deleted_from": ds_ids,
         "active_dataset_id": latest.id,
@@ -488,3 +531,42 @@ def cei_for_cycle(db, cid, cycle_id):
                  for r in rows if r.item_id in items_by_id]
     l1 = [i["code"] for i in items if i["level"] == 1]
     return compute_cei(items, default_weights(l1), responses)
+
+
+
+def publish_series(db, cid, *, first="2026-05-31", second="2026-06-30"):
+    """Two packs with a REAL upload between them, so the bridge has movement.
+
+    ⭐ WITHOUT AN UPLOAD BETWEEN THEM BOTH PACKS FREEZE THE SAME ACTIVE DATASET,
+    every line movement is zero, and the initiatives driver attributes nothing —
+    a five-hop chain that resolves to 0.00 demonstrates the mechanism and proves
+    nothing about the arithmetic.
+    """
+    from ..accounts import apply_upload
+    from ..modules.enterprise_state.models import Enterprise
+    from ..pack import publish
+
+    pk1 = publish(db, cid, "monthly", first)
+    db.flush()
+
+    ent = db.get(Enterprise, cid)
+    worse = _payload(2024, worse=True)
+    ys = str(max(worse["periods"]["historical"]))
+    # ⭐ THE FORECAST MOVES, NOT ONLY THE HISTORY. Changing the latest actual
+    # alone left enterprise value IDENTICAL — the DCF values the FORECAST, so a
+    # historical-only revision moves no equity at all. The chain's own claim is
+    # that "the forecast line it drives was revised down", and the seed must do
+    # what the claim says or hop 5 resolves to 0.00 while looking complete.
+    worse["income_statement"]["revenue"][ys] *= 0.90
+    for fy in (worse["periods"].get("forecast") or []):
+        k = str(fy)
+        if worse["income_statement"]["revenue"].get(k) is not None:
+            worse["income_statement"]["revenue"][k] *= 0.90
+    apply_upload(db, cid, ent=ent, data=worse, objectives=[], key_results=[],
+                 kpis=[], departments=[], warnings=[], frequency="annual",
+                 meta={}, okr_flags={}, user=None)
+    db.flush()
+
+    pk2 = publish(db, cid, "monthly", second)
+    db.flush()
+    return pk1.id, pk2.id

@@ -298,10 +298,27 @@ def test_the_pack_renders_both_the_assessment_and_the_initiative(seeded):
 
 
 def test_the_chain_still_stops_where_the_links_stop(seeded):
-    """⭐ Closing hop 1 must not have quietly extended the chain. The fifth hop
-    remains unbuilt and stated."""
+    """⭐ NARROWED 31 Jul, NOT DELETED. Written to catch hop 1 quietly extending
+    the chain; hop 5 has since been closed DELIBERATELY, by a declared link.
+
+    ⭐ THE GUARDIAN'S REAL INTENT SURVIVES: the chain may reach `equity_value`
+    ONLY through a DECLARED link with a DECLARED share. Deleting the test because
+    it went red would have removed the only thing checking that the chain does
+    not extend itself by inference — which is the failure it was written for.
+    """
+    from services.api.initiative_lines import InitiativeLineLink
     cid, base, _a = seeded
     chain = base["chain"]
-    assert chain["stops_at"] == "kpi_movement"
-    assert not any(h["to"] == "equity_value" for h in chain["hops"])
-    assert "fabricated" in chain["gap"]
+    if not any(h["to"] == "equity_value" for h in chain["hops"]):
+        assert chain["stops_at"] == "kpi_movement"
+        assert "fabricated" in chain["gap"]
+        return
+    # it DOES reach equity value — then a real, weighted link must exist
+    with _db() as db:
+        rows = db.query(InitiativeLineLink).filter_by(company_id=cid).all()
+    assert rows, "the chain reaches equity_value with no declared link at all"
+    weighted = [r for r in rows if r.weight is not None]
+    assert weighted, "the chain reaches equity_value on an unstated share"
+    assert all(0.0 < r.weight <= 1.0 for r in weighted)
+    assert sum(r.weight for r in weighted) < 1.0, \
+        "the declared shares cover the whole movement — no residual survives"
