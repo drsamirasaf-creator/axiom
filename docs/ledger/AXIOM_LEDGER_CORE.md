@@ -8138,7 +8138,50 @@ the existing preflight missed this.
    **the registry and `engines.py` are two sources of truth**, and the guards
    enforce agreement on **five quantities, not on the library**.
 
-## §7o · THE RESEED — DESIGN (ruled 30 Jul. NOT BUILT, NOT SEEDED.)
+## §7o · THE RESEED — DESIGN (ruled 30 Jul; ⭐ CRITERION AMENDED 31 Jul.)
+
+### ⭐⭐ BUILT — `services/api/core/seed_meridian.py` (31 Jul)
+
+**Evidence, not assertion.** Every requirement below is proven from the rows the
+seed WROTE, by tests that read the database rather than the seed's own report.
+
+**1 · R/A/G on every banded surface** — and **amber asserted explicitly**:
+
+    objectives      green 4   amber 3   red 2
+    key_results     green 4   amber 3   red 2
+    kpis            green 4   amber 3   red 2
+    initiatives     green 4   amber 3   red 2
+
+⭐ **THE BANDS ARE READ FROM THE PRODUCT, NOT RESTATED.** KR values are run
+through `objective_status_band` and KPI ratios through `RAG_GREEN` / `RAG_AMBER`;
+a seed hard-coding its own thresholds demonstrates its own arithmetic. **This was
+got wrong once during the build** — the KPI actuals were literals, and `1.08`
+sat in AMBER while the seed called it green. Now derived.
+
+**2 · Mixed direction** — revenue declines between the packs while cash improves.
+**3 · Nine departments, four stakeholder groups**, red beside green.
+
+**4 · The chain, four hops, stopping where the links reach:**
+
+    sentiment → initiative → key_result → kpi → [STOP]
+
+Every hop asserted against real rows. **The fifth hop is stated as a gap.**
+
+**5 · Two consecutive packs**, the second carrying a bridge to the first.
+**6 · Exactly one declared absence** — `documents`, chosen because it is the one
+class whose absence says nothing about the company's health. ⭐ **An absent RISK
+section would read as "no risks" — a claim about Meridian rather than about the
+record.**
+
+### Binding constraints, met
+
+- **Deletion is DERIVED from the models** — every class carrying a dataset key,
+  not a hand list. ⭐ *A hand list is exactly how "valuation runs alone" happened
+  the first time.*
+- **Deletes are scoped to exact dataset ids**, never all-X-for-company-Y.
+- **No boot hook and no `flag_modified`** — `reseed()` is an explicit callable and
+  is idempotent, asserted by running it twice.
+- **No showcase fast path.**
 
 Supersedes "§7o reseed — offered, not commissioned" under §7s.
 
@@ -8185,19 +8228,45 @@ existing §7o scope.
 
 **4 · ⭐ ONE COMPLETE CAUSAL CHAIN, DEPARTMENT-AGNOSTIC.**
 
+⭐⭐ **THE ACCEPTANCE CRITERION IS AMENDED — 31 Jul. What was recorded was
+UNBUILDABLE AS SPECIFIED, and a seed built to it would have had to FABRICATE ITS
+OWN HEADLINE TO SATISFY ITS OWN ACCEPTANCE.**
+
+**What was recorded:**
+
     sentiment decline
       → the initiative that department owns slips
         → the KR that initiative feeds misses
           → the forecast line revises
-            → a stated movement in equity value
+            → ⭐ a stated movement in EQUITY VALUE          ← UNREACHABLE
 
-Traceable at every hop, with **the Value Bridge attributing a specific figure to
-the initiative slippage**.
+**Measured at `bc3b44f`:** `Initiative.linked_item_code` reaches an **assessment
+item**; the KPI, KR and goal links reach **no statement line**; and **AXIOM holds
+no business case per initiative** — no cost, no benefit profile, no timing, no
+IRR. **There is no bottom-up path from an initiative to a value.**
+
+**THE AMENDED CRITERION — the chain resolves AS FAR AS THE LINKS GENUINELY REACH,
+and stops there, STATING THE GAP:**
+
+    sentiment decline
+      → the initiative that department owns slips
+        → the KR that initiative feeds misses
+          → the KPI it drives moves
+            → ⭐ STOP. The gap is STATED, not bridged.
+
+⭐ **THE EQUITY-VALUE HOP IS RESTORED ONLY WHEN THE INITIATIVE-TO-LINE LINK
+EXISTS** (queue B10), or when client-declared initiative impact supplies it by
+declaration (B12).
+
+⭐ **STOPPING AND SAYING SO IS ITSELF A DEMONSTRATION.** A sample that walks four
+hops and names the fifth as unbuilt shows the product's traceability discipline
+more convincingly than a fifth hop nobody can audit. The withdrawn brochure proof
+point failed for exactly the reason this criterion now avoids.
 
 **Which department carries it is immaterial** and is left to whatever is most
 convenient to generate. ⭐ **What is not optional is that the links exist and
-resolve** — this is the one connection no competing tool can make, and **an
-unrendered chain leaves the pack a well-formatted report.**
+resolve as far as they go** — this is the one connection no competing tool can
+make, and **an unrendered chain leaves the pack a well-formatted report.**
 
 **5 · Two consecutive packs.** A single pack is a document; **two are a system of
 record**, and the bridge has nothing to bridge between with one. Follows from
