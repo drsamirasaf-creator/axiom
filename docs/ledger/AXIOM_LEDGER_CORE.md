@@ -7429,6 +7429,88 @@ silently rejected.
 today remains **permanent and complete.** **G1 stays the highest-priority item in
 the ledger, now with the reason it is not merely unbuilt but BLOCKED.**
 
+## ⭐⭐ CREDENTIAL EXPOSURE — 31 Jul. THREE VALUES ROTATED. (recorded 31 Jul)
+
+⭐ **PLACEMENT NOTE, BECAUSE THE DISPATCH ASSUMED A RECORD THAT IS NOT THERE.** It
+asked for this to sit *adjacent to the existing credential-exposure incident*.
+**Measured across both ledger files: there is NO credential-exposure incident on
+record.** The `AXIOM_SECRET` rotation **is** recorded — in the `c7c425d` session
+list and as a launch-gate line — which is what makes this **the second rotation of
+that value.** ⭐⭐ **THE EARLIER EXPOSURE WAS HANDLED AND NEVER WRITTEN DOWN**, so
+its mechanism is captured below as well; otherwise the comparison in §2 has only
+one half on file and the pattern is invisible.
+
+### ⭐ 1 · WHAT WAS EXPOSED, AND THE ROTATION
+
+**Exposed in a screenshot of Railway's raw variable editor, pasted into an
+advisory conversation:**
+
+| variable | rotated |
+|---|---|
+| `ANTHROPIC_API_KEY` | ✅ same day |
+| `AXIOM_ADMIN_TOKEN` | ✅ same day |
+| `AXIOM_SECRET` | ✅ same day — ⭐ **the SECOND rotation of this value** |
+
+⭐ **`AXIOM_SECRET` ROTATION INVALIDATES LIVE SESSIONS AND LOSES NO DATA.** Users
+re-authenticate; nothing stored becomes unreadable. See §5.
+
+### ⭐⭐ 2 · THE MECHANISM — AND IT IS NOT THE PRIOR ONE
+
+| | how the value escaped |
+|---|---|
+| **earlier incident** *(unrecorded until now)* | a **rich-text paste** — the value travelled as text |
+| ⭐⭐ **31 Jul** | a **SCREENSHOT of a secrets pane** — the values were **legible in the image**, ⭐ **even though the interface masks them elsewhere** |
+
+⭐⭐ **A SCREENSHOT OF A VARIABLES EDITOR IS A PLAINTEXT CREDENTIAL.** The masking
+in the surrounding UI is what makes this dangerous: **the pane looks protected**,
+so the screenshot feels safe, and the raw editor is precisely the view where it is
+not.
+
+⭐ **THE TWO INCIDENTS SHARE NO CONTROL.** A rule against pasting secrets does not
+cover an image of them, and any future rule must name **the artefact class**, not
+the transport.
+
+### ⭐ 3 · THE SAFE PROCEDURE — so the next backup attempt does not repeat this
+
+1. ⭐ **Use Railway's variable editor's `Copy ENV` control.** It places the full
+   set on the clipboard ⭐ **without rendering it on screen** — nothing to
+   photograph, nothing to read over a shoulder.
+2. ⭐ **Paste it straight into a password manager.**
+3. ⭐⭐ **NEVER a plain file. NEVER a repository. NEVER an image.**
+
+⭐ **The failure mode this replaces is REACHING FOR A SCREENSHOT BECAUSE THE VALUES
+WERE NEEDED SOMEWHERE ELSE.** The control exists precisely so the values never
+have to be displayed to be moved.
+
+### ⭐⭐ 4 · STANDING CONSEQUENCE — THE VALUES HAVE NO SECOND COPY
+
+**Environment variable VALUES exist only in Railway.**
+
+⭐ **`.env.example` documents 51 NAMES. The names are in the repository; the values
+are not** — and that split is deliberate and correct.
+
+⭐⭐ **BUT IT MEANS A CODE CLONE PLUS A DATABASE BACKUP STILL DOES NOT CONSTITUTE A
+RECOVERABLE AXIOM.** G1 now gives the database a recovery point and the repos give
+the code — ⭐ **the secrets are the outstanding half of the recovery surface, and
+they are held MANUALLY, by a person, not by any system.**
+
+⭐ **That is the honest state of §8's recovery table**, and this entry is the
+reason its last row says what it says.
+
+### ⭐⭐ 5 · WHAT A ROTATION COSTS — MEASURED, so future rotations are not deferred out of uncertainty
+
+| value | cost of rotating |
+|---|---|
+| ⭐ **`AXIOM_SECRET`** | ⭐⭐ **LIVE SESSIONS ONLY.** It signs **JWTs** (`jwt.encode(payload, SECRET)`) and nothing else. **Passwords are PBKDF2 with PER-ROW SALTS and are NOT derived from it**, so **every stored row stays readable.** Users log in again. |
+| `ANTHROPIC_API_KEY` | re-issue; AI features degrade to an honest 503 until set |
+| `AXIOM_ADMIN_TOKEN` | re-issue; the external cron caller must be updated in the same change |
+| ⭐⭐ **`STRIPE_WEBHOOK_SECRET` / `STRIPE_ACCOUNTS_WEBHOOK_SECRET`** | ⭐⭐ **THE AWKWARD CASE.** Until the endpoints are **re-pointed**, ⭐ **billing events are REJECTED** — signature verification fails, and the rejection is silent from the customer's side. |
+
+⭐⭐ **THIS TABLE EXISTS BECAUSE UNCERTAINTY DEFERS ROTATIONS.** *"I do not know
+what will break"* is the reason a compromised value stays live for a week, and
+⭐ **the measured answer for `AXIOM_SECRET` — an inconvenience, not a data
+event — removes the excuse for the value most likely to need rotating again.**
+
 ## ⭐⭐ §8 — THE RELIABILITY PROGRAMME: MEASURED STATE (31 Jul, `82bb74c`)
 
 ⭐⭐ **CORE HELD NOTHING ON THIS, AND THAT WAS MEASURED, NOT ASSUMED.** Word-boundary
@@ -7549,7 +7631,7 @@ reason to defer it**, because the window is the only one that will ever exist.
 | application code | ✅ GitHub |
 | R2 objects (originals, documents) | ✅ separate provider, survives |
 | ⭐⭐ **every account, dataset, pack, assessment, decision, valuation run — and the CORPUS every measurement this era rests on** | ❌ **NOT RECOVERABLE — lives only in that volume, which has no backup** |
-| environment variable **values** | ❌ exist only in Railway; `.env.example` records **names**, not values |
+| environment variable **values** | ❌ exist only in Railway; `.env.example` records **names**, not values. ⭐ **See *Credential exposure, 31 Jul* — this is the outstanding half of the recovery surface and it is held MANUALLY, not by any system.** |
 
 ### ⭐⭐ THE GAPS, CLASSED
 
