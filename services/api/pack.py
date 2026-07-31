@@ -305,6 +305,25 @@ def _cap_forecast_sets(db, cid):
                            "is_primary": r.is_primary} for r in rows])
 
 
+def _cap_watch(db, cid):
+    """§7s.6 — what fired during the period, what was decided, what it was worth.
+
+    ⭐ THE WATCH IS EVENT-TIMED; THIS IS ITS PACK SECTION. Delivery happens when
+    a threshold is crossed. The pack carries the RECORD — which closes the loop
+    and is the renewal evidence: a running statement of what AXIOM caught before
+    it became expensive.
+    """
+    from .watch import events_for_period
+    events = events_for_period(db, cid)
+    if not events:
+        return _absent("no Watch events recorded for this company")
+    return _present(events=events,
+                    fired=len(events),
+                    decided=len([e for e in events if e.get("decided_at")]),
+                    priced=len([e for e in events
+                                if e.get("equity_value_impact") is not None]))
+
+
 def _cap_sentinel_state(db, cid):
     """What fired during the period. ⭐ CORE's §7s ruling places the Watch inside
     "what is at risk" as a Pack section — so its events are a pack input, and a
@@ -409,6 +428,7 @@ INPUT_CLASSES = {
     "initiatives": _cap_initiatives,
     "forecast_sets": _cap_forecast_sets,
     "sentinel_state": _cap_sentinel_state,
+    "watch_events": _cap_watch,
     "dispositions": _cap_dispositions,
     "strategic_move_library": _cap_strategic_moves,
     "computed_caches": _cap_computed_caches,

@@ -804,6 +804,28 @@ def recompute_all_frontiers(only_stale=True):
     return summary
 
 
+def _watch_sweep():
+    """§7s.6 — evaluate every signal for every company.
+
+    ⭐ AFTER THE RECOMPUTE, for the same reason the pack calendar sweep is:
+    evaluating before it would watch YESTERDAY'S state, and a Watch reporting
+    yesterday's viability is a slower post-mortem, not a warning.
+
+    ⭐ AND BEFORE THE PACK SWEEP, deliberately. The Pack's "what is at risk"
+    section reads watch events for the period; publishing first would omit the
+    night's crossings from the pack that reports them.
+    """
+    from . import watch as _watch
+    db = A.SessionLocal()
+    try:
+        summary = _watch.sweep(db)
+        if summary["fired"] or summary["errors"]:
+            _log.info("watch sweep: %s", summary)
+        return summary
+    finally:
+        db.close()
+
+
 def _pack_calendar_sweep():
     """§7s.1 Stage 2 — publish every due pack.
 
@@ -836,6 +858,10 @@ def _nightly_loop():
             recompute_all_frontiers(only_stale=True)   # logs its own summary
         except Exception:
             _log.exception("nightly sweep failed")
+        try:
+            _watch_sweep()
+        except Exception:
+            _log.exception("watch sweep failed")
         try:
             _pack_calendar_sweep()
         except Exception:

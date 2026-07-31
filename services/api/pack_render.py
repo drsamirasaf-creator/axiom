@@ -247,7 +247,8 @@ def c_what_is_at_risk(src):
     """4 · What is at risk — the viability kernel, Sentinel, and the Watch."""
     caches = src.klass("computed_caches")
     sentinel = src.klass("sentinel_state")
-    if not caches.get("present") and not sentinel.get("present"):
+    watch = src.klass("watch_events")
+    if not any(b.get("present") for b in (caches, sentinel, watch)):
         return _section("what_is_at_risk", "What is at risk", present=False,
                         missing=caches.get("reason"))
     return _section("what_is_at_risk", "What is at risk", present=True,
@@ -256,9 +257,11 @@ def c_what_is_at_risk(src):
                           "frontier": (caches.get("frontier")
                                        if caches.get("present") else None),
                           # ⭐ THE WATCH APPEARS HERE AS A PACK SECTION, per §7s —
-                          # what fired during the period and what was decided.
+                          # what fired during the period, what was decided in
+                          # response, and what it turned out to be worth.
                           # Delivery stays event-timed; this is the record.
-                          "watch": sentinel,
+                          "watch": src.klass("watch_events"),
+                          "sentinel_raw": sentinel,
                           "dispositions": src.klass("dispositions")})
 
 
