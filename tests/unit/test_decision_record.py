@@ -18,6 +18,7 @@ from services.api import decision_record as DR
 from services.api import pack as P
 from services.api import pack_render as R
 from services.api.main import app
+from tests.codeonly import code_only
 from tests.fixtures.refcases import meridian
 
 
@@ -40,27 +41,6 @@ def _db():
     from services.api.core.db import SessionLocal
     return SessionLocal()
 
-
-def _code_only(mod):
-    """Source with docstrings stripped — the Stage 3 helper, reused.
-
-    ⭐ IT ACCEPTS A FUNCTION AS WELL AS A MODULE. The first version of the
-    frozen-source test in THIS file searched a component's raw source and matched
-    the docstring explaining the rule it was testing — the same mistake the
-    helper exists to prevent, made again one call site away from the fix.
-    """
-    import ast
-    import inspect
-    tree = ast.parse(inspect.getsource(mod))
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
-                             ast.ClassDef)):
-            b = node.body
-            if (b and isinstance(b[0], ast.Expr)
-                    and isinstance(b[0].value, ast.Constant)
-                    and isinstance(b[0].value.value, str)):
-                node.body = b[1:] or [ast.Pass()]
-    return ast.unparse(ast.fix_missing_locations(tree))
 
 
 def _company(auth, name, tenant, *, with_data=True):
@@ -137,7 +117,7 @@ def test_every_attributed_model_is_either_a_source_or_named_not_a_decision():
 
     carried = {"MetricOverride", "DashboardSignoff", "RecommendationDisposition",
                "Initiative", "ChangesetItem", "DepartmentAuthority",
-               "PackRelease", "WatchEvent"}
+               "PackRelease", "WatchEvent", "AssumptionEdit"}
     unclassified = attributed - carried - set(DR.NOT_A_DECISION)
     assert unclassified == set(), \
         f"attributed but neither carried nor excluded: {sorted(unclassified)}"
@@ -189,7 +169,7 @@ def test_the_gaps_are_measured_against_the_models_not_asserted():
 
 def test_no_source_invents_an_actor(cid):
     """A projected decision's author is read or empty — never substituted."""
-    src = _code_only(DR)
+    src = code_only(DR)
     for bad in ("or 'the admin'", "admin_fallback", "infer_actor"):
         assert bad not in src
 
@@ -208,14 +188,14 @@ def test_there_is_no_decisions_table():
         tables |= {m.class_.__tablename__ for m in B.registry.mappers}
     assert not [t for t in tables if re.fullmatch(r"ax_decisions?", t)], \
         "a decisions table exists — the projection became a store"
-    src = _code_only(DR)
+    src = code_only(DR)
     assert "__tablename__" not in src, "decision_record.py declares a model"
     assert "class " not in src or "Base" not in src
 
 
 def test_the_module_writes_nothing(cid):
     """⭐ READS ONLY. A projection that wrote would be a store with extra steps."""
-    src = _code_only(DR)
+    src = code_only(DR)
     for w in ("db.add(", "db.commit(", "db.delete(", "db.merge(", "db.flush("):
         assert w not in src, f"decision_record writes: {w}"
 
@@ -373,7 +353,7 @@ def test_the_sections_render_from_frozen_source_and_hold_no_session(cid):
     # ⭐ AND THE COMPONENTS NEVER RE-PROJECT — that ran at freeze time. A
     # render-time projection would read live source events.
     for fn in (R.c_decisions_taken, R.c_realised_effects):
-        code = _code_only(fn)
+        code = code_only(fn)
         assert "project(" not in code, f"{fn.__name__} re-projects at render time"
         assert "decision_record" not in code
 
@@ -485,7 +465,7 @@ def test_an_override_decision_carries_its_full_attribution(auth):
 
 
 def test_no_showcase_fast_path():
-    src = _code_only(DR)
+    src = code_only(DR)
     for token in ("_serve_showcase_latest", "SHOWCASE_TENANT", "is_showcase"):
         assert token not in src
 

@@ -13007,6 +13007,9 @@ def _ensure_ax_columns(engine):
          "bridge_anchor_period_end VARCHAR(10)")
     # B1 (migration 0021): the pack notification marker. NULL = not notified.
     _add("ax_packs", "notified_at", "notified_at TIMESTAMP")
+    # B16 (migration 0022): the assumption edit trail is a NEW TABLE, so
+    # create_all makes it; nothing to ALTER here. Noted so the absence is
+    # deliberate rather than an omission.
     # custody-14 §4s: department_id on objectives / kpis / initiatives (ax_departments
     # is a NEW table and rides create_all; only these existing tables need columns)
     _add("ax_objectives", "department_id", "department_id INTEGER")

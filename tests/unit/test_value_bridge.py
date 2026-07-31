@@ -21,6 +21,7 @@ from services.api import pack as P
 from services.api import pack_render as R
 from services.api import value_bridge as VB
 from services.api.main import app
+from tests.codeonly import code_only
 from tests.fixtures.refcases import meridian
 
 
@@ -43,20 +44,6 @@ def _db():
     from services.api.core.db import SessionLocal
     return SessionLocal()
 
-
-def _code_only(obj):
-    import ast
-    import inspect
-    tree = ast.parse(inspect.getsource(obj))
-    for n in ast.walk(tree):
-        if isinstance(n, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
-                          ast.ClassDef)):
-            b = n.body
-            if (b and isinstance(b[0], ast.Expr)
-                    and isinstance(b[0].value, ast.Constant)
-                    and isinstance(b[0].value.value, str)):
-                n.body = b[1:] or [ast.Pass()]
-    return ast.unparse(ast.fix_missing_locations(tree))
 
 
 def _company(auth, name, tenant, *, data=None):
@@ -133,7 +120,7 @@ def test_the_residual_is_a_driver_of_the_bridge_not_a_driver_in_the_list():
     """⭐ The residual is a SUBTRACTION, not a seventh driver that could be
     computed and therefore tuned."""
     assert "residual" not in {d.__name__ for d in VB.DRIVERS}
-    src = _code_only(VB.build)
+    src = code_only(VB.build)
     assert "residual = total - explained" in src
 
 
@@ -203,14 +190,14 @@ def test_a_bridge_whose_residual_is_forced_to_zero_FAILS(two_packs):
     "control proves nothing"
     # ⭐ AND THE REAL BRIDGE MUST NOT LOOK LIKE THAT BY CONSTRUCTION
     assert "plug" not in {d["key"] for d in br["drivers"]}
-    src = _code_only(VB)
+    src = code_only(VB)
     for bad in ("balancing", "plug", "force_zero", "= 0.0  # residual"):
         assert bad not in src, f"the bridge contains a {bad} mechanism"
 
 
 def test_no_driver_is_derived_from_the_residual():
     """A driver computed as (total - the others) is a plug wearing a name."""
-    src = _code_only(VB)
+    src = code_only(VB)
     assert "total_movement -" not in src.replace("residual = total - explained", "")
 
 
@@ -270,7 +257,7 @@ def test_the_bridge_records_which_ownership_is_closed_and_which_qualified(two_pa
 def test_net_debt_uses_the_sole_owner(two_packs):
     """⭐ A bridge that recomputed net debt inline would pin a second owner of the
     quantity a whole lane made single-site."""
-    src = _code_only(VB)
+    src = code_only(VB)
     assert "from .modules.financials.ratios import net_debt" in src
     cid, a, b = two_packs
     nd = [d for d in _bridge_of(b)["bridge"]["drivers"]
@@ -304,7 +291,7 @@ def test_the_second_pack_bridges_from_the_first(two_packs):
 
 def test_the_bridge_reads_both_frozen_snapshots_never_live(two_packs):
     """⭐ A bridge reading live state would restate the prior pack every month."""
-    src = _code_only(VB)
+    src = code_only(VB)
     for token in ("SessionLocal", "_active_company_dataset"):
         assert token not in src, f"value_bridge reaches live state via {token}"
     cid, a, b = two_packs
@@ -449,7 +436,7 @@ def test_the_bridge_is_reached_from_the_EXPORT_too(two_packs):
 def test_the_capture_is_registered_and_therefore_runs_on_every_freeze():
     """⭐ The wiring at the OTHER end: a bridge computed by a function nothing
     calls at freeze time would leave every snapshot without one."""
-    src = _code_only(P.freeze_inputs)
+    src = code_only(P.freeze_inputs)
     assert "DERIVED_CLASSES" in src, "freeze_inputs does not run derived classes"
     assert "value_bridge" in P.DERIVED_CLASSES, "the bridge is not registered"
     assert P.DERIVED_CLASSES["value_bridge"] is P._bridge_class
@@ -462,7 +449,7 @@ def test_the_bridge_does_not_re_freeze(two_packs):
     took 22 SECONDS and the cost grew with pack count — and nothing failed,
     because the top-level result was correct and `present: True`."""
     import inspect
-    src = _code_only(P._bridge_class)
+    src = code_only(P._bridge_class)
     assert "freeze_inputs" not in src, \
         "_bridge_class re-enters freeze_inputs — the recursion is back"
     sig = inspect.signature(P._bridge_class)
@@ -523,6 +510,6 @@ def test_absence_declares_on_every_driver(auth):
 
 
 def test_no_showcase_fast_path():
-    src = _code_only(VB)
+    src = code_only(VB)
     for t in ("_serve_showcase_latest", "SHOWCASE_TENANT", "is_showcase"):
         assert t not in src

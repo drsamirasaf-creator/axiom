@@ -138,7 +138,7 @@ the codebase for callers, which no gate currently does.
 | B4 | **`ValuationRun` code version** | **Nothing.** §7v closed payload hash + registry versions; code revision remains absent. |
 | B5 | **§7u (b)** per-company stored assumptions | Deferred, not dropped. |
 | B6 | ~~Grant/revoke admin UI~~ | ⭐ **ALREADY BUILT — verified 31 Jul.** `DepartmentAuthorityPanel.tsx`, mounted at `routes/team.tsx`, POSTs grant AND revoke. §7.9 corrected. |
-| B16 | ⭐ **In-app editable assumptions** | **NO PRIOR ENTRY.** `CompanyPatchIn` carries name/currency/units only; no endpoint writes `tax_rate`, `size_premium`, `dlom` or any assumption. ⭐ **A customer cannot correct their own `size_premium = 0.2` in-app** (A2). |
+| B16 | ~~In-app editable assumptions~~ | ⭐ **BUILT** — 12 fields editable, bounds flag-not-refuse on write, admin-only per §4x, every write attributed. **A2 now has a remediation path.** |
 | B17 | ⭐ **§4l Control Tower** (product Performance Monitoring) | **NO CODE.** Operational monitoring (Sentry, `/health`) exists and is a DIFFERENT THING — the name collision is why this reads as built. |
 | B18 | **Web mobile-responsive pass** | **NO ENTRY, NO CODE.** Named only as the predecessor to the roadmap mobile app; Tailwind `sm:` appears in three files. |
 | B19 | **Mindmaps by department** | ⭐ **UNDESIGNED** — zero occurrences in either repository and no ledger entry. Undesigned and unbuilt are different states. |
@@ -6641,6 +6641,80 @@ and `bs.retained_earnings` — see the registry vocabulary, which marks each
 **What it would unlock:** the strongest available cross-statement check, plus
 `cf.operating_cash_flow` as a stored rather than derived token, plus the
 `cash_conversion_quality` headline ratio on real data rather than a derivation.
+
+## ⭐⭐ B16 · IN-APP EDITABLE ASSUMPTIONS — BUILT (§7u scope (b), 31 Jul)
+
+**This is what makes A2 actionable.** A live paying customer holds
+`size_premium = 0.2` across eight datasets and twenty-seven runs; **no endpoint
+wrote any financial assumption**, so the only remediation was a re-upload — a
+different and more awkward conversation than the contact ruling assumed.
+
+**The editable set: the 12 client-settable numeric company fields**, DERIVED from
+`COMPANY_FIELDS` rather than listed, so it cannot drift.
+
+⭐ **THEY REMAIN DATA, NOT CONFIG.** A test asserts no editable field enters the
+§7u versioned registry — a version string pointing at per-company mutable data
+would repeat the `FinancialDataset` defect §7v closed.
+
+### ⭐ WRITE AUTHORITY — CHECKED AGAINST §4x BEFORE SHIPPING
+
+**Admin-only. A CXO is refused.** Measured rather than assumed:
+`require_company_admin` demands `Membership.role == "admin"`, and
+`DepartmentAuthority` is a **separate table** that creates no membership row — so
+a department grant confers nothing here.
+
+⭐ **THIS IS THE RULE THE OVERRIDE TRAIL RESTS ON.** If a CXO could edit source
+they could quietly correct their own number at the input and the attributed
+exception would never exist.
+
+⭐ **ONE CASE §4x DOES NOT RESOLVE, RECORDED NOT DECIDED:** a person holding BOTH
+an admin membership AND a CXO grant. The implementation treats them as an admin,
+because admin already carries source-write power through upload — but §4x's
+"not any artifact, ever" admits a stricter reading. **Not ruled here.**
+
+### Bounds on the write path — FLAG, NEVER REFUSE
+
+Same discipline as at ingest. **0.2 is implausible, not impossible**, and
+refusing would lock a customer out of their own assumption. The response states
+the field, the bound crossed, the direction and the consequence, and **stores what
+they entered**. ⭐ **An unknown FIELD is still refused** — flag-not-refuse governs
+a value that looks wrong, not a key nothing reads.
+
+### Every write is attributed
+
+`ax_assumption_edits` — actor, timestamp, **prior value, new value**, the bounds
+verdict frozen at write time, and the reason. ⭐ **The provenance law's fifth
+instance is a customer's assumption with no record of who set it; the gap that
+made A2 unanswerable must not be recreated by the feature that fixes it.**
+
+`prior_absent` distinguishes **a first entry from a change from zero** — NULL
+means there was no prior value, which is a fact.
+
+⭐ **AND THE §7v LISTENER RE-STAMPS THE PAYLOAD.** Editing writes through
+`flag_modified`, so `payload_sha256` and `data_written_at` move — **an in-app edit
+is as recoverable as an upload**, which is exactly what A2 lacked.
+
+⭐ **THE DECISION RECORD'S III.4 GUARD CAUGHT THE NEW MODEL IMMEDIATELY** —
+attributed, scoped and timestamped but neither carried nor excluded. It is now
+carried: changing the tax rate a valuation runs on is a decision, and its
+`computed_state_at_decision` is the **prior value**, captured because the edit
+destroys it everywhere else.
+
+### ⭐ INVALIDATION — OPTIONS STATED, NOT CHOSEN
+
+A stored run computed under the prior value is **stale**. Three options, and this
+lane picks none:
+
+1. **recompute** — correct immediately, but silently rewrites a figure a reader
+   may already have seen;
+2. **mark stale** — honest, leaves a wrong number visible until someone acts;
+3. **leave with a badge** — least disruptive, most easily ignored.
+
+The edit response returns the affected run ids and `chosen: null`.
+
+⭐ **WHAT IS NOT OPTIONAL: A PUBLISHED PACK MUST NOT MOVE.** Its inputs are frozen
+BY VALUE, so no policy can reach it — asserted with a live render that changes and
+a frozen render that does not.
 
 ## ⭐⭐ RULED — MONTHLY PERIODS AND CADENCE GRANULARITY (31 Jul)
 

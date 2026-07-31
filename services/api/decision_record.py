@@ -303,6 +303,45 @@ def src_watch_decisions(db, cid):
     return out
 
 
+def src_assumption_edits(db, cid):
+    """⭐ AN ASSUMPTION EDIT IS A DECISION, AND THE III.4 GUARD SAID SO.
+
+    B16's `AssumptionEdit` arrived attributed, scoped and timestamped, and
+    `test_every_attributed_model_is_either_a_source_or_named_not_a_decision`
+    failed on it immediately — neither carried nor excluded. It is carried,
+    because changing the tax rate a valuation runs on is a deliberate act with an
+    actor, a reason, and a prior value: exactly the shape this record exists for.
+
+    ⭐ AND IT IS THE ONE SOURCE WHOSE `computed_state_at_decision` IS THE THING
+    THAT WAS OVERWRITTEN. `prior_value` is what the number WAS, captured because
+    the edit destroys it everywhere else.
+    """
+    from .assumptions_api import AssumptionEdit
+    out = []
+    for e in db.query(AssumptionEdit).filter_by(company_id=cid).all():
+        row = {c.name: getattr(e, c.name) for c in e.__table__.columns}
+        prior = None if row.get("prior_absent") else row.get("prior_value")
+        was = ("previously unset" if row.get("prior_absent")
+               else f"was {prior}")
+        line = (f"{row['field']} set to {row.get('new_value')} "
+                f"({was}) by {row.get('actor_label') or 'an administrator'}")
+        if row.get("bound_state") == "out_of_bounds":
+            line += " — flagged outside its expected bound and stored as supplied"
+        out.append(_d(
+            "assumption_edit", e.id, cid=cid, type_="assumption_edited",
+            decided_at=row.get("occurred_at"), author=row.get("actor_label"),
+            statement=f"{row['field']} changed to {row.get('new_value')}",
+            rationale=row.get("reason"),
+            computed_state=prior,
+            linked={"field": row["field"], "dataset_id": row.get("dataset_id")},
+            expected=row.get("new_value"),
+            realised_absent=("an assumption edit states a value; its effect is "
+                             "the figures recomputed under it, which are not "
+                             "attributable to this edit alone"),
+            attribution=line))
+    return out
+
+
 # ⭐ THE SOURCE REGISTRY. Each entry is a READER over an existing store. Nothing
 # here writes, and there is no table named `decisions`.
 SOURCES = {
@@ -314,6 +353,7 @@ SOURCES = {
     "authority": src_authority,
     "pack_release": src_releases,
     "watch_decision": src_watch_decisions,
+    "assumption_edit": src_assumption_edits,
 }
 
 # ⭐ ATTRIBUTED, BUT AUTHORSHIP RATHER THAN DECISION — named with the reason,

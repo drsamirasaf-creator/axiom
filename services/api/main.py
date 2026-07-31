@@ -203,3 +203,11 @@ include_accounts(app)
 from .accounts import get_db as _get_db, get_current_user as _current_user  # noqa: E402
 from . import pack_dist as _pack_dist  # noqa: E402
 _pack_dist.include(app, _get_db, _current_user)
+
+# B16 — in-app editable assumptions. ⭐ ADMIN-ONLY per §4x: write is bound to
+# `require_company_admin`, which demands Membership.role == "admin". A
+# DepartmentAuthority grant is a separate table and confers nothing here, so a
+# CXO gets 403 — the rule the whole override trail rests on.
+from .accounts import require_company_admin as _require_admin  # noqa: E402
+from . import assumptions_api as _assumptions  # noqa: E402
+_assumptions.include(app, _get_db, _require_admin)

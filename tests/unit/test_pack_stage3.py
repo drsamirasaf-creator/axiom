@@ -19,6 +19,7 @@ from services.api import pack as P
 from services.api import pack_dist as D
 from services.api import pack_render as R
 from services.api.main import app
+from tests.codeonly import code_only
 from tests.fixtures.refcases import meridian
 
 
@@ -41,27 +42,6 @@ def _db():
     from services.api.core.db import SessionLocal
     return SessionLocal()
 
-
-def _code_only(mod):
-    """Source with every docstring removed.
-
-    ⭐ SEARCHING RAW SOURCE MATCHES THE COMMENT THAT EXPLAINS THE RULE. Stage 2
-    hit this exact failure — a test that fails because a docstring says the right
-    thing is a test measuring prose. Stripping docstrings via the AST measures
-    the code.
-    """
-    import ast
-    import inspect
-    tree = ast.parse(inspect.getsource(mod))
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
-                             ast.ClassDef)):
-            body = node.body
-            if (body and isinstance(body[0], ast.Expr)
-                    and isinstance(body[0].value, ast.Constant)
-                    and isinstance(body[0].value.value, str)):
-                node.body = body[1:] or [ast.Pass()]
-    return ast.unparse(ast.fix_missing_locations(tree))
 
 
 def _company(auth, name, tenant, *, with_data=True):
@@ -200,7 +180,7 @@ def test_the_brief_reads_the_frozen_snapshot_never_live(cid):
     pid = _publish(cid, "2025-12-31")
     br = _brief(pid)
     assert br["source_kind"] == "frozen"
-    assert "LiveSource" not in _code_only(B), \
+    assert "LiveSource" not in code_only(B), \
         "the Brief must not be able to read live"
     assert "FrozenSource" in inspect.getsource(B)
     # and it does not drift
