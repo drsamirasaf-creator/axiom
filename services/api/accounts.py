@@ -154,6 +154,9 @@ class Account(Base):
     assessor_cap = Column(Integer, default=50, nullable=False)
     assessor_overage = Column(Integer, default=0, nullable=False)
     current_period_end = Column(DateTime, nullable=True)
+    # ⭐⭐ G13 — see identity.User.subscription_livemode. NULL means UNKNOWN.
+    livemode = Column(Boolean, nullable=True)
+    livemode_source = Column(String(24), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -12844,6 +12847,9 @@ async def stripe_webhook(request: Request, db=Depends(get_db)):
             if overage_seats:
                 account.assessor_overage = (account.assessor_overage or 0) + overage_seats
             account.status = "active"
+            if event.get("livemode") is not None:
+                account.livemode = bool(event["livemode"])
+                account.livemode_source = "webhook"
         else:
             account = Account(owner_user_id=int(user_id),
                               stripe_customer_id=customer,
@@ -12851,6 +12857,10 @@ async def stripe_webhook(request: Request, db=Depends(get_db)):
                               company_slots=slots, status="active",
                               assessor_cap=(plan_cap or ASSESSOR_CAP_DEFAULT),
                               assessor_overage=overage_seats)
+            # ⭐⭐ G13 — the mode the EVENT carried. NULL stays NULL when absent.
+            if event.get("livemode") is not None:
+                account.livemode = bool(event["livemode"])
+                account.livemode_source = "webhook"
             db.add(account)
         db.flush()
         audit(db, None, "stripe_checkout_completed", "account", user_id,
@@ -12885,6 +12895,9 @@ async def stripe_webhook(request: Request, db=Depends(get_db)):
         if obj.get("items", {}).get("data"):
             account.price_id = obj["items"]["data"][0].get("price", {}).get("id") \
                 or account.price_id
+        if event.get("livemode") is not None:
+            account.livemode = bool(event["livemode"])
+            account.livemode_source = "webhook"
         audit(db, None, "stripe_subscription_" + stripe_status, "account", account.id)
         db.commit()
         return {"ok": True}
@@ -13055,6 +13068,12 @@ def _ensure_ax_columns(engine):
     # §4d assessor seat entitlement
     _add("ax_accounts", "assessor_cap", "assessor_cap INTEGER NOT NULL DEFAULT 50")
     _add("ax_accounts", "assessor_overage", "assessor_overage INTEGER NOT NULL DEFAULT 0")
+    # ⭐⭐ G13 — the Stripe mode. NULLABLE WITH NO DEFAULT, deliberately: NULL means
+    # UNKNOWN, and a DEFAULT false would classify every pre-existing account as a
+    # test account on no evidence — the inference-from-appearance that produced
+    # the eleventh wrong entry, run backwards.
+    _add("ax_accounts", "livemode", "livemode BOOLEAN")
+    _add("ax_accounts", "livemode_source", "livemode_source VARCHAR(24)")
     # Project Execution Suite — CSF owner + demo provenance on projects
     _add("ax_initiative_csfs", "owner_name", "owner_name VARCHAR(200)")
     _add("ax_initiatives", "is_demo", "is_demo BOOLEAN NOT NULL DEFAULT false")

@@ -142,7 +142,7 @@ stochastic engine is no longer blocked on a false premise.**)
 | B6 | ~~Grant/revoke admin UI~~ | ⭐ **ALREADY BUILT — verified 31 Jul.** `DepartmentAuthorityPanel.tsx`, mounted at `routes/team.tsx`, POSTs grant AND revoke. §7.9 corrected. |
 | **G1** | ⭐⭐ **BACKUPS — BLOCKED BY THE PLAN, NOT MERELY UNBUILT** | ⭐⭐ **`plan: HOBBY`, `maxBackupsCount: 0`.** The schedule mutation was attempted and refused; no credential would have worked. ⭐ **Unblocking it is a COMMERCIAL DECISION** — a paid plan, or an external dump target which needs its own ruling on location, custody and retention. **RPO today is TOTAL; RTO is undefined because recovery is impossible.** |
 | **G2–G6** | ⭐⭐ **RELIABILITY LAUNCH GATES — precede any relaunch carrying paying customers** | See *§8 — the reliability programme, measured state*. ⭐⭐ **G1: NO BACKUPS EXIST AT ALL** — no schedule and none ever taken. G2 restore untestable until G1. G3 nothing detects an outage. G4 no platform healthcheck, so a hung process is never restarted. G5 unprotected `main`, no staging. G6 pool unsized against a single process. |
-| **G13** | ⭐⭐ **Persist Stripe `livemode`; a test account is indistinguishable from a customer** | ⭐ **No column anywhere records it** — `is_demo`, `platform_role`, `livemode`, `is_test`, `is_internal` are all absent from `users`. AXIOM writes `subscription_status='active'` for a test subscription exactly as for a real one. ⭐ **Every customer count this era is unreliable until this lands.** |
+| ~~G13~~ | ⭐⭐ **BUILT — Stripe `livemode` persisted, backfilled and guarded** | Both surfaces carry the flag, taken from the signed EVENT and never derived from the key. ⭐⭐ **BASELINE: 0 live-mode paying, 4 test-mode, 7 never subscribed, 0 unresolved** — every prior count reported 4. |
 | B22 | ⭐ **Encode the σ ruling** | Move σ_RO into the §7u registry as a platform default with a stated basis, so the pack PINS it and it is inspectable; and RENAME `_calibrate_sigma` so the name does not assert a calibration that is not performed. ⭐ **A function whose name misdescribes it is a claim in the code.** |
 | ~~B23~~ | ~~Register the B16 route~~ | ⭐ **RETIRED UNBUILT 31 Jul — it was never needed.** Queued on a false measurement ("no JS runtime"); `bun` was present and merely off the measuring shell's PATH. The route was registered in the same lane. |
 | B21 | ⭐ **Widen the B16 gate to ADMIN AND CFO** | Ruled 31 Jul; the code shipped at `1ba395c` is **admin-only and refuses a CFO**. Attribution already covers the act whichever way the §4x tension resolves. |
@@ -9885,6 +9885,100 @@ CORE records `wacc_at` with the kinked kd as canonical and the guard reads
 call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
+
+## ⭐⭐ G13 · STRIPE `livemode` PERSISTED — AND THE FIRST COUNT THAT MEANS ANYTHING (31 Jul)
+
+**Closes the defect behind the eleventh wrong entry:** a test-mode subscription
+was recorded identically to a real one, and nothing in the database could tell.
+
+### ⭐ 1 · THE FLAG, PERSISTED FROM THE EVENT
+
+`users.subscription_livemode` + `users.livemode_source`, and
+`ax_accounts.livemode` + `ax_accounts.livemode_source`. ⭐ **BOTH SURFACES**, because
+there are two — fixing one would leave the other able to reproduce the defect.
+
+⭐⭐ **TAKEN FROM `event["livemode"]`, NEVER FROM THE OBJECT AND NEVER FROM THE KEY.**
+The event is the envelope Stripe **signs**; the object is payload a replayed body
+could disagree with. **A test asserts every call site passes `event.…`**, and
+another fails the module if it contains `sk_test`/`sk_live` at all — ⭐ **deriving
+the mode at read time would repeat the class this closes**, since a key can be
+rotated and the environment rebuilt while the subscription's mode cannot change.
+
+⭐ **NULLABLE, NO DEFAULT, ON BOTH.** `NULL` means **UNKNOWN**. A `DEFAULT false`
+would classify every pre-existing row as a test account **on no evidence** — the
+same inference-from-appearance that caused the original error, run backwards. A
+test asserts neither column carries a default.
+
+### ⭐ 2 · THE BACKFILL — evidenced, and the unknowns left unknown
+
+`scripts/backfill-livemode.py`, recording `livemode_source = "stripe_lookup"`.
+
+⭐⭐ **A TEST KEY CAN PROVE AN ACCOUNT IS LIVE.** Stripe's refusal states the
+object's mode — *"a similar object exists in live mode, but a test mode key was
+used"* — so the lookup distinguishes **three** outcomes, not two:
+
+| outcome | verdict |
+|---|---|
+| `200 OK` | the mode of this key |
+| ⭐ *"exists in live mode"* | **LIVE**, established without a live key |
+| *"No such subscription"* | ⭐ **UNKNOWN — nothing established** |
+
+⭐ **WITHOUT THAT MIDDLE CASE THE BACKFILL WOULD MARK EVERY LIVE ACCOUNT
+"UNKNOWN"** and the count would understate real customers — **the failure this
+lane exists to prevent, in the direction that flatters us.**
+
+**Result: 4 rows written, 7 left NULL.**
+
+### ⭐⭐ 3 · THE BASELINE — the first count this era that means anything
+
+| | |
+|---|---|
+| accounts total | **11** |
+| ⭐⭐ **LIVE-MODE PAYING** | ⭐⭐ **0** |
+| live-mode, not paying | 0 |
+| **test-mode** | **4** |
+| never subscribed *(known state; column stays NULL)* | **7** |
+| **UNKNOWN — unresolved** | **0** |
+| ⭐ *"business/active" — what every prior count reported* | ⭐ **4** |
+
+⭐⭐ **ALL FOUR "PAYING CUSTOMERS" ARE TEST-MODE. THE TRUE NUMBER IS ZERO.**
+
+⭐ **"NEVER SUBSCRIBED" IS REPORTED APART FROM "UNKNOWN", THOUGH BOTH ARE NULL.**
+An account with no subscription id has a **known** state; a failed lookup
+establishes nothing. **Collapsing them would overstate our ignorance and send
+someone to resolve seven free accounts that are not in doubt.**
+
+### ⭐ 4 · THE GUARD, AND WHAT IT CANNOT YET SEE
+
+`scripts/check-customer-counts.py` — any aggregate over `User`/`Account` filtering
+on `plan` or `subscription_status` must **constrain livemode** or carry
+`# COUNTS-TEST-ACCOUNTS: <reason>`.
+
+⭐ **THE MARKER IS DELIBERATELY AVAILABLE.** Some counts legitimately want every
+row. ⭐⭐ **THE RULE IS NOT "EXCLUDE THEM", IT IS "NEVER DO IT SILENTLY"** — a guard
+forbidding the honest case gets routed around, and a routed-around guard protects
+nothing.
+
+⭐⭐ **AND ITS COVERAGE IS PRINTED, BECAUSE IT IS ZERO.** *Measured: there are NO
+billing aggregates in the codebase today* — the `plan == "business"` sites are
+per-user entitlement checks, not counts. **The guard is armed for a surface that
+does not yet exist**, so it carries a **known positive** — the exact shape that
+produced the eleventh wrong entry — plus two false-positive controls, and it
+**states in its own output that no real site has ever exercised it.**
+
+⭐ **A GUARD WRITTEN BEFORE ITS SURFACE EXISTS HAS NEVER BEEN TESTED BY REALITY,
+AND SAYING SO IS THE POINT.**
+
+### ⭐ THE GATE THAT CAUGHT MY OWN MISTAKE
+
+`check-model-columns` went **red**: the two `ax_accounts` columns were put in the
+alembic migration, and ⭐ **`ax_*` tables are not alembic-managed** — this codebase
+has **two declarative bases**, and `accounts.Base` uses `create_all` plus a
+runtime `_add()` bootstrap, which is exactly what that gate reads.
+
+⭐ **The columns existed in production and the gate was still right**, because on a
+**fresh** database nothing would have created them. Corrected to the convention
+rather than the gate being widened to accept mine.
 
 ## ⭐⭐ A2 CORRECTED — THE "LIVE PAYING CUSTOMER" IS THE OPERATOR'S OWN TEST ACCOUNT (31 Jul)
 

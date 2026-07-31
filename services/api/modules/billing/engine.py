@@ -39,7 +39,9 @@ def _load_stripe():
 
 def apply_subscription_state(user, *, status: str | None, quantity: int,
                              customer_id: str | None = None,
-                             subscription_id: str | None = None) -> dict:
+                             subscription_id: str | None = None,
+                             livemode: bool | None = None,
+                             livemode_source: str | None = None) -> dict:
     """Apply a subscription's state to a user's entitlements. Pure w.r.t.
     Stripe — takes the already-extracted fields, so it is unit-testable with
     mocked events. Returns a summary of what changed.
@@ -59,6 +61,19 @@ def apply_subscription_state(user, *, status: str | None, quantity: int,
     if subscription_id:
         user.stripe_subscription_id = subscription_id
     user.subscription_status = status
+    # ⭐⭐ G13 — PERSIST THE MODE STRIPE SENT.
+    #
+    # ⭐ ONLY WHEN THE EVENT ACTUALLY CARRIED IT. `livemode` is None when the
+    # caller had no flag to give, and writing False in that case would assert
+    # "this is a test account" on no evidence — the exact inference-from-
+    # appearance that produced the eleventh wrong entry, reversed.
+    #
+    # ⭐ AND IT IS NEVER DERIVED FROM THE API KEY MODE AT READ TIME. The key can
+    # be rotated or the environment rebuilt; the flag Stripe sent WITH THE EVENT
+    # is the only authoritative record of what the subscription was.
+    if livemode is not None:
+        user.subscription_livemode = bool(livemode)
+        user.livemode_source = livemode_source or "webhook"
 
     if status in ACTIVE:
         user.plan = "business"
@@ -76,7 +91,9 @@ def apply_subscription_state(user, *, status: str | None, quantity: int,
     return {"before": before,
             "after": {"plan": user.plan,
                       "companies_allowed": user.companies_allowed},
-            "status": status}
+            "status": status,
+            "livemode": user.subscription_livemode,
+            "livemode_source": user.livemode_source}
 
 
 # ---- Webhook event handling (pure given a parsed event) ---------------------
@@ -133,7 +150,9 @@ def process_event(event: dict, db, models) -> dict:
                     "type": etype}
         summary = apply_subscription_state(
             user, status="active", quantity=quantity,
-            customer_id=customer_id, subscription_id=subscription_id)
+            customer_id=customer_id, subscription_id=subscription_id,
+            # ⭐ THE EVENT'S flag, not the object's and not the key's.
+            livemode=event.get("livemode"), livemode_source="webhook")
         db.commit()
         return {"handled": True, "type": etype, "user_id": user.id,
                 "summary": summary}
@@ -151,7 +170,8 @@ def process_event(event: dict, db, models) -> dict:
             return {"handled": False, "reason": "user not found", "type": etype}
         summary = apply_subscription_state(
             user, status=status, quantity=quantity,
-            customer_id=customer_id, subscription_id=subscription_id)
+            customer_id=customer_id, subscription_id=subscription_id,
+            livemode=event.get("livemode"), livemode_source="webhook")
         db.commit()
         return {"handled": True, "type": etype, "user_id": user.id,
                 "summary": summary}
@@ -162,7 +182,8 @@ def process_event(event: dict, db, models) -> dict:
         if not user:
             return {"handled": False, "reason": "user not found", "type": etype}
         summary = apply_subscription_state(
-            user, status="canceled", quantity=0, customer_id=customer_id)
+            user, status="canceled", quantity=0, customer_id=customer_id,
+            livemode=event.get("livemode"), livemode_source="webhook")
         db.commit()
         return {"handled": True, "type": etype, "user_id": user.id,
                 "summary": summary}

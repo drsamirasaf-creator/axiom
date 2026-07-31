@@ -27,6 +27,21 @@ class User(Base):
         String(64), nullable=True, index=True)
     subscription_status: Mapped[str | None] = mapped_column(
         String(32), nullable=True)      # active | past_due | canceled | None
+    # ⭐⭐ G13 — THE FLAG STRIPE SENDS, PERSISTED. Its absence produced the
+    # ELEVENTH WRONG ENTRY: a test-mode subscription was recorded identically to
+    # a real one, so the ledger recorded the operator's own test account as a
+    # live paying customer and no measurement against the codebase could tell.
+    #
+    # ⭐ NULLABLE, AND NULL MEANS **UNKNOWN** — NOT False. An account whose mode
+    # could not be established from Stripe must not be classed as test merely
+    # because it looks like one; that is the same inference-from-appearance that
+    # caused the original error, run in the opposite direction.
+    subscription_livemode: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True)
+    # where the flag came from: "webhook" (authoritative) | "stripe_lookup"
+    # (backfill) | None (never established)
+    livemode_source: Mapped[str | None] = mapped_column(
+        String(24), nullable=True)
     accepted_eula: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
