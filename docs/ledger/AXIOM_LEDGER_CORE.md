@@ -141,7 +141,8 @@ stochastic engine is no longer blocked on a false premise.**)
 | B5 | **§7u (b)** per-company stored assumptions | Deferred, not dropped. |
 | B6 | ~~Grant/revoke admin UI~~ | ⭐ **ALREADY BUILT — verified 31 Jul.** `DepartmentAuthorityPanel.tsx`, mounted at `routes/team.tsx`, POSTs grant AND revoke. §7.9 corrected. |
 | **G1** | ⭐⭐ **BACKUPS — BLOCKED BY THE PLAN, NOT MERELY UNBUILT** | ⭐⭐ **`plan: HOBBY`, `maxBackupsCount: 0`.** The schedule mutation was attempted and refused; no credential would have worked. ⭐ **Unblocking it is a COMMERCIAL DECISION** — a paid plan, or an external dump target which needs its own ruling on location, custody and retention. **RPO today is TOTAL; RTO is undefined because recovery is impossible.** |
-| **G2–G6** | ⭐⭐ **RELIABILITY LAUNCH GATES — precede any relaunch carrying paying customers** | See *§8 — the reliability programme, measured state*. ⭐⭐ **G1: NO BACKUPS EXIST AT ALL** — no schedule and none ever taken. G2 restore untestable until G1. G3 nothing detects an outage. G4 no platform healthcheck, so a hung process is never restarted. G5 unprotected `main`, no staging. G6 pool unsized against a single process. |
+| **G4** | ⭐⭐ **A HUNG PROCESS IS STILL NEVER RESTARTED — reopened on measurement** | `healthcheckPath` is set and gates DEPLOYS, but ⭐⭐ **Railway does not poll after go-live** (*"does not monitor the healthcheck endpoint after the deployment has gone live"*), and `ON_FAILURE` restarts on process EXIT, which a hung process does not perform. ⭐ **Needs a restarter, not a healthcheck.** |
+| **G2, G5, G6** | ⭐⭐ **RELIABILITY LAUNCH GATES — precede any relaunch carrying paying customers** || ~~G3~~ | ⭐ **CLOSED — external availability monitoring** | GitHub Actions probe every 30 min from OUTSIDE Railway; alerts to a labelled GitHub issue that emails the owner. Detection ≤30 min, down from unbounded. |
 | ~~G13~~ | ⭐⭐ **BUILT — Stripe `livemode` persisted, backfilled and guarded** | Both surfaces carry the flag, taken from the signed EVENT and never derived from the key. ⭐⭐ **BASELINE: 0 live-mode paying, 4 test-mode, 7 never subscribed, 0 unresolved** — every prior count reported 4. |
 | B22 | ⭐ **Encode the σ ruling** | Move σ_RO into the §7u registry as a platform default with a stated basis, so the pack PINS it and it is inspectable; and RENAME `_calibrate_sigma` so the name does not assert a calibration that is not performed. ⭐ **A function whose name misdescribes it is a claim in the code.** |
 | ~~B23~~ | ~~Register the B16 route~~ | ⭐ **RETIRED UNBUILT 31 Jul — it was never needed.** Queued on a false measurement ("no JS runtime"); `bun` was present and merely off the measuring shell's PATH. The route was registered in the same lane. |
@@ -9885,6 +9886,123 @@ CORE records `wacc_at` with the kinked kd as canonical and the guard reads
 call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
+
+## ⭐⭐ G3/G4 · OUTAGE DETECTION — **G3 CLOSES. G4 DOES NOT.** (31 Jul)
+
+### ⭐⭐ 1 · THE HEALTHCHECK IS SET — AND RAILWAY DOES NOT DO WHAT G4 ASSUMED
+
+`healthcheckPath` is now `/health`, **verified by re-reading the service instance**
+rather than trusting the mutation's `true`.
+
+⭐⭐ **BUT RAILWAY'S HEALTHCHECK IS DEPLOYMENT-ONLY.** From its documentation:
+
+> *"Railway does not monitor the healthcheck endpoint after the deployment has
+> gone live."* · *"currently **not used for continuous monitoring** as it is only
+> called at the start of the deployment."*
+
+| what it does | what it does NOT do |
+|---|---|
+| ⭐ **Gates a deploy** — a build whose `/health` never returns 200 within 5 minutes is **marked failed and does not go live** | ⭐⭐ **Nothing after that.** It never polls again, never marks a running service unhealthy, and **never restarts a hung-but-alive process** |
+
+⭐⭐ **SO G4 DOES NOT CLOSE, AND ASSERTING IT WOULD HAVE BEEN A FALSE GREEN** — the
+sixth built-but-not-wired instance, self-inflicted in the lane written to prevent
+them. `restartPolicyType: ON_FAILURE` restarts on **process exit**, which a hung
+process does not perform. **A hung process is still never restarted.**
+
+⭐ **The gain is real and smaller than the gate:** a deploy that cannot reach its
+database can no longer replace a working one.
+
+### ⭐⭐ 2 · `/health` NOW FAILS WHEN THE APP IS UNUSABLE
+
+**What it checked before: NOTHING.** It returned a **static dict** — it could not
+fail, so it would have answered **200 with the database unreachable**. ⭐ **That is
+worse than no healthcheck: it converts an outage into a SILENT one**, and it is
+what the platform probe would have believed.
+
+**What it checks now:**
+
+| check | cost |
+|---|---|
+| **database round-trip** (`select 1`) | ⭐ **on a dedicated `NullPool` engine, 3s connect timeout** |
+| **pool saturation** (`checkedout` vs `size+overflow`) | ⭐ **in-memory — no query, no connection** |
+
+⭐⭐ **THE PROBE NEVER BORROWS FROM THE APPLICATION POOL.** It runs on a schedule
+against **15 connections shared with the nightly sweeps**, and **a healthcheck that
+exhausts the pool is the outage.** A test asserts `checkedout()` is unchanged
+across a call.
+
+⭐ **AND THE POOL IS REPORTED BECAUSE THE DATABASE ALONE IS NOT ENOUGH.** A probe on
+its own connection can succeed while the app pool is exhausted — the database
+fine, every user request timing out. **Saturation reports unhealthy.**
+
+⭐ **Unhealthy returns 503, not 200-with-a-sad-body.** A 200 carrying
+`{"status": "unhealthy"}` **is read as UP by every monitor ever written.**
+
+**Measured: 0.5 ms healthy, 2.2 ms when failing.**
+
+### ⭐ 3 · THE EXTERNAL MONITOR — the only continuous detection AXIOM has
+
+`.github/workflows/availability.yml` + `scripts/probe-availability.py`.
+
+⭐⭐ **IT RUNS ON GITHUB, NOT ON RAILWAY. A MONITOR INSIDE THE THING IT MONITORS
+DIES WITH IT.**
+
+⭐ **It asserts the BODY, not only the status code** — and distinguishes
+**unreachable** (the process is gone) from **unhealthy** (alive, cannot serve),
+because those need different first actions.
+
+⭐⭐ **CADENCE IS A STATED BUDGET DECISION, NOT A NUMBER.** GitHub bills private-repo
+Actions per job **rounded up to the minute** against 2000 min/month shared across
+the account: `*/5` → 8640 min (far over), `*/15` → 2880 min (over), **`*/30` →
+1440 min (fits, ~72% of the budget)**.
+
+**Detection is now ≤ 30 minutes, down from UNBOUNDED.**
+
+⭐ **A 5-minute external monitor (UptimeRobot's free tier) is strictly better and
+needs a signup this lane could not perform** — the named next step. ⭐ **Also
+recorded: GitHub may delay or drop scheduled runs under load and disables
+schedules after 60 days of repository inactivity. This is a FLOOR, not a
+guarantee.**
+
+### ⭐ 4 · THE ALERT DESTINATION, NAMED
+
+**A GitHub issue labelled `availability` on `drsamirasaf-creator/axiom`, which
+GitHub emails to the repository owner.** The run also fails red in the Actions UI.
+
+⭐ **ONE ISSUE PER OUTAGE, NOT ONE PER PROBE** — it comments on the open issue and
+closes it on recovery. **48 issues a day is a muted notification, and a muted
+alert is the no-recipient failure with extra steps.**
+
+⭐⭐ **A DETECTOR WITH NO RECIPIENT IS THE WATCH'S OWN FINDING APPLIED TO
+INFRASTRUCTURE** — the nightly kernel computed for weeks and told nobody.
+
+### ⭐⭐ 5 · PROVEN AGAINST THE FAILING SHAPE, NOT A HEALTHY ONE
+
+**Per the standing law — the psycopg repair passed 45 of 45 on a shape where the
+failure was structurally impossible.**
+
+| state exercised | result |
+|---|---|
+| live service, healthy | `ok`, exit 0 |
+| ⭐ **live process, DATABASE UNREACHABLE** | ⭐⭐ **`/health` → 503**, probe `unhealthy`, exit 1 |
+| ⭐⭐ **HTTP 200 carrying an unhealthy body** | ⭐⭐ **caught** — the trap status-code-only monitoring walks into |
+| 200 whose `checks.database` failed | caught |
+| **host unreachable** | `unreachable`, exit 2 — **a distinct incident** |
+
+**14 tests, every one driven from an unhealthy state.**
+
+### ⭐ THE GATE THAT CAUGHT MY OWN OMISSION
+
+`check-env-manifest` went red: the probe reads `AXIOM_HEALTH_URL` and nothing
+documented it. ⭐ **A rebuilder could not have known it existed.** Documented; 63
+of 63 read variables now documented.
+
+### Gates
+
+| | |
+|---|---|
+| **G3 — nothing detects an outage** | ⭐ **CLOSES.** Detection ≤ 30 min with a named recipient, proven against real unhealthy states. |
+| **G4 — no platform healthcheck / hung process never restarted** | ⭐⭐ **DOES NOT CLOSE.** The path is set and gates deploys, but **Railway does not poll after go-live**, so nothing restarts a hung process. **Closing it needs a restarter, not a healthcheck** — and the monitor now at least tells a human. |
 
 ## ⭐⭐ G13 · STRIPE `livemode` PERSISTED — AND THE FIRST COUNT THAT MEANS ANYTHING (31 Jul)
 

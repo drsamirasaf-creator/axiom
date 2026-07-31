@@ -118,6 +118,35 @@ async def _cors_safe_500(request, exc):
         resp.headers["Vary"] = "Origin"
     return resp
 
+import time as _time
+
+from sqlalchemy import text as _sa_text
+
+_PROBE_ENGINE = None
+
+
+def _probe_engine():
+    """⭐ A DEDICATED NullPool ENGINE FOR THE HEALTH PROBE.
+
+    Built once, lazily. NullPool opens and closes one connection per probe, so
+    the check CANNOT borrow from — or exhaust — the application's pool. The
+    connect timeout is short because a probe that hangs is a probe that reports
+    nothing while the platform waits.
+    """
+    global _PROBE_ENGINE
+    if _PROBE_ENGINE is None:
+        from sqlalchemy import create_engine as _ce
+        from sqlalchemy.pool import NullPool as _NullPool
+
+        from .core.config import database_url as _dburl
+        url = _dburl()
+        kw = {"poolclass": _NullPool}
+        if url.startswith("postgresql"):
+            kw["connect_args"] = {"connect_timeout": 3}
+        _PROBE_ENGINE = _ce(url, **kw)
+    return _PROBE_ENGINE
+
+
 @app.get("/health", tags=["platform"])
 def health():
     # ⭐ MONITORING STATE IS OBSERVABLE, NOT ASSERTED. Sentry was recorded as
@@ -139,10 +168,56 @@ def health():
     # rather than "unknown" or "": a caller must be able to tell "this build has
     # no identity" from "this build is at commit ''", and asserters MUST refuse
     # on null rather than treat it as a match.
-    return {"status": "ok", "service": "axiom-api", "phase": 18,
+    #
+    # ⭐⭐ G4 — IT NOW VERIFIES THE APP IS USABLE, NOT MERELY ALIVE. Until 31 Jul
+    # this returned a STATIC DICT: it could not fail, so it returned 200 with the
+    # database unreachable. ⭐ THAT IS WORSE THAN NO HEALTHCHECK — it converts an
+    # outage into a SILENT one, and it is what a platform probe would have
+    # believed.
+    body = {"service": "axiom-api", "phase": 18,
             "monitoring": bool(_SENTRY_ON),
             "environment": os.environ.get("AXIOM_ENV", "production"),
             "release": os.environ.get("RAILWAY_GIT_COMMIT_SHA") or None}
+    checks, t0 = {}, _time.monotonic()
+
+    # ── the database round-trip ───────────────────────────────────────────
+    # ⭐⭐ ON ITS OWN CONNECTION, NEVER THE APP POOL. The probe runs on a
+    # schedule against a 15-connection pool shared with the nightly sweeps, and
+    # A HEALTHCHECK THAT EXHAUSTS THE POOL IS THE OUTAGE. NullPool means this
+    # can never hold a connection the application needed.
+    try:
+        with _probe_engine().connect() as c:
+            c.execute(_sa_text("select 1"))
+        checks["database"] = "ok"
+    except Exception as e:
+        checks["database"] = f"unreachable: {type(e).__name__}"
+
+    # ── the pool itself, read from memory — no query, no connection ───────
+    # ⭐ A PROBE ON ITS OWN CONNECTION CAN SUCCEED WHILE THE APP POOL IS
+    # EXHAUSTED — the database is fine and every user request is timing out.
+    # Reporting the pool is what stops that reading as healthy.
+    try:
+        from .core.db import engine as _app_engine
+        pool = _app_engine.pool
+        used, cap = pool.checkedout(), pool.size() + pool.overflow()
+        checks["pool"] = {"in_use": used, "capacity": cap}
+        if cap and used >= cap:
+            checks["pool"]["state"] = "saturated"
+    except Exception as e:
+        checks["pool"] = f"unreadable: {type(e).__name__}"
+
+    body["checks"] = checks
+    body["duration_ms"] = round((_time.monotonic() - t0) * 1000, 1)
+
+    unhealthy = (checks.get("database") != "ok"
+                 or (isinstance(checks.get("pool"), dict)
+                     and checks["pool"].get("state") == "saturated"))
+    body["status"] = "unhealthy" if unhealthy else "ok"
+    if unhealthy:
+        # ⭐ 503, SO A PROBE AND A HUMAN AGREE. A 200 carrying
+        # {"status":"unhealthy"} is read as UP by every monitor ever written.
+        return _JSONResponse(status_code=503, content=body)
+    return body
 
 
 # ---- Brand assets (Phase 18.4, ADR-021) -------------------------------------

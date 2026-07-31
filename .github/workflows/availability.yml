@@ -1,0 +1,121 @@
+# G3 — external availability monitoring.
+#
+# ⭐⭐ IT RUNS ON GITHUB, NOT ON RAILWAY. A monitor inside the thing it monitors
+# dies with it. This is the only continuous detection AXIOM has: Railway's
+# healthcheck is DEPLOYMENT-ONLY ("Railway does not monitor the healthcheck
+# endpoint after the deployment has gone live"), and Sentry cannot report from a
+# process that is gone.
+#
+# ⭐ THE ALERT DESTINATION IS A GITHUB ISSUE, which GitHub emails to the repository
+# owner. A detector with no recipient is the Watch's own finding applied to
+# infrastructure — the nightly kernel computed for weeks and told nobody.
+#
+# ⭐⭐ CADENCE IS A BUDGET DECISION, STATED RATHER THAN HIDDEN. GitHub bills private
+# repo Actions per job ROUNDED UP TO THE MINUTE against a 2000 min/month free
+# tier, shared across the account:
+#     */5  -> 8640 runs = 8640 min   ⭐ far over the free tier
+#     */15 -> 2880 runs = 2880 min   ⭐ over the free tier
+#     */30 -> 1440 runs = 1440 min   fits, ~72% of the budget
+# ⭐ SO DETECTION IS <= 30 MINUTES, DOWN FROM UNBOUNDED. A 5-minute external
+# monitor (e.g. UptimeRobot's free tier) is strictly better and needs a signup
+# this lane cannot perform — recorded in CORE as the named next step.
+#
+# ⭐ Also recorded: GitHub may DELAY OR DROP scheduled runs under load, and
+# disables schedules after 60 days of repository inactivity. This monitor is a
+# floor, not a guarantee.
+name: availability
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+  contents: read
+
+concurrency:
+  group: availability
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Probe /health from outside Railway
+        id: probe
+        run: |
+          set +e
+          out=$(python3 scripts/probe-availability.py 2>&1)
+          rc=$?
+          echo "$out"
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          {
+            echo 'report<<PROBE_EOF'
+            echo "$out"
+            echo 'PROBE_EOF'
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Open or update an alert issue
+        if: steps.probe.outputs.rc != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `Automated availability probe failed.
+
+            \`\`\`
+            ${{ steps.probe.outputs.report }}
+            \`\`\`
+
+            Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}
+
+            Railway's healthcheck is deployment-only, so nothing restarts a hung
+            process automatically. This needs a human.`;
+            const title = "AXIOM availability probe FAILED";
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: "open", labels: "availability",
+            });
+            if (existing.data.length) {
+              // ⭐ ONE ISSUE PER OUTAGE, NOT ONE PER PROBE. A monitor that opens
+              // 48 issues a day is a monitor whose notifications get muted, and a
+              // muted alert is the no-recipient failure with extra steps.
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing.data[0].number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ["availability"],
+              });
+            }
+
+      - name: Close the alert when healthy again
+        if: steps.probe.outputs.rc == '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const open = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: "open", labels: "availability",
+            });
+            for (const i of open.data) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: i.number,
+                body: "Probe recovered — closing.",
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: i.number, state: "closed",
+              });
+            }
+
+      - name: Fail the run so the Actions UI shows red
+        if: steps.probe.outputs.rc != '0'
+        run: exit 1
