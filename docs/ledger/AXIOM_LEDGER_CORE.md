@@ -10163,6 +10163,100 @@ call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
 
+## ⭐⭐ FRONTEND DEPLOY PATH — **THE FIX IS LIVE. THE CRASH WAS A STALE CLIENT.** (31 Jul)
+
+⭐⭐ **THIS OVERTURNS THE `a45d185` DIAGNOSIS, WHICH SAID THE DEPLOY WAS STALE.**
+It is not. **Production serves the fixed code**, and the earlier conclusion rested
+on a comparison that could not support it.
+
+### ⭐ 1 · THE SERVING HOST — measured
+
+| | |
+|---|---|
+| DNS | **`185.158.133.1`**, nameservers at **name.com**, no CNAME |
+| edge | ⭐ **Cloudflare** — `server: cloudflare`, `cf-ray` present |
+| origin | ⭐ **Lovable** — the HTML carries a **`/__l5e/assets-v1/…`** marker |
+
+⭐ **MEASURED, not inferred**, except the origin attribution, which rests on the
+`__l5e` path marker and is **strong but indirect**.
+
+### ⭐⭐ 2 · THE DEPLOYED BUNDLE — AND THREE DIFFERENT HASHES
+
+| hash | what it is |
+|---|---|
+| `financial-forecasts-DC3pBJDl.js` | ⭐⭐ **the crash stack's bundle — now returns 404. IT NO LONGER EXISTS.** |
+| **`financial-forecasts-1uOc6G-8.js`** | ⭐ **what production references and serves TODAY** (200, 54,411 bytes) |
+| `financial-forecasts-ehGlOxPK.js` | my local build of HEAD |
+
+⭐⭐ **AND THE LIVE CHUNK CONTAINS THE FIX.** Read out of the deployed minified
+source:
+
+```js
+let le=N(u), I=le.frequency??ae(), L=ue(le.labels);   // ⭐ THE HOOK
+if(f) return …ErrorCard…
+if(!u) return …Skeleton…
+if(!u.has_client_plan) return …PlanEmpty…
+```
+
+⭐⭐ **`ue(le.labels)` — THE VERY FUNCTION NAMED IN THE CRASH STACK — IS CALLED
+BEFORE ALL THREE EARLY RETURNS.** The hook-order violation is not in production.
+
+⭐ **The local-build hash differing from production is NOT evidence of a stale
+deploy.** Build hashes move with toolchain, config and dependency state; **only the
+CONTENT settles it**, and the content is fixed.
+
+### ⭐⭐ 3 · WHAT ACTUALLY HAPPENED — a stale CLIENT, not a stale deploy
+
+**The bundle in the crash stack is 404 on the origin.** A browser could only have
+requested it from **HTML it already held** — a tab open across the deploy, a
+service worker, or a back-forward cache entry.
+
+⭐⭐ **AND THIS IS EXACTLY WHAT THE STANDING "CONFIRM IN INCOGNITO" RULE EXISTS TO
+CATCH.** It was not satisfiable in the diagnosis lane — there is no browser in that
+environment — and **the lane concluded anyway.** ⭐ **The rule was there, it was
+recorded as unsatisfied, and the conclusion was still drawn past it.**
+
+### ⭐ 4 · CACHING — CORRECT ON BOTH SURFACES
+
+| surface | `cache-control` | matches the recorded rule? |
+|---|---|---|
+| HTML (`/financial-forecasts`) | `no-cache, must-revalidate, max-age=0` | ✅ |
+| hashed chunk | `public, max-age=31536000, immutable` | ✅ |
+
+⭐ **No `cf-cache-status` or `age` header is returned**, so Cloudflare edge-cache
+state could **not** be observed — recorded as **not measured**, not as absent.
+
+⭐ **Immutable hashed assets are the correct policy AND the mechanism by which a
+stale client persists**: the browser will never revalidate a chunk it already has.
+**The HTML is the only revalidation point, and it is correctly `no-cache`.**
+
+### ⭐ 5 · LOVABLE SYNC — INFERRED, NOT MEASURED
+
+**Lovable's repo state could not be queried from here.** ⭐ **The greyed Publish
+button is now CONSISTENT and CORRECT:** Lovable has nothing to publish because
+**what it published is already live and already contains the fix.**
+
+⭐ **The earlier reading — "greyed Publish means Lovable never received
+`6eaa19f`" — is not supported.** The opposite is true.
+
+### ⭐⭐ AND A CORRECTION TO MY OWN MEASUREMENT
+
+`a45d185` recorded *"assets return 403 to a direct fetch, so the deployed chunk
+could not be inspected."*
+
+⭐⭐ **THAT WAS WRONG, AND IT WAS THE LOAD-BEARING STEP.** The 403s came from
+requesting **a filename that no longer exists** on **guessed paths**. Fetching the
+asset name **the served HTML actually references** returns **200**, and the chunk
+reads cleanly.
+
+⭐⭐ **THE INSTRUMENT FAILED, THE FAILURE WAS READ AS A PROPERTY OF THE SYSTEM, AND
+A DIAGNOSIS WAS BUILT ON IT.** ⭐ **Third time this era** — after the substring
+grep counts and the queue-row `~~` parse. **In each case the tool was wrong before
+the finding was, and in this one it produced a published conclusion.**
+
+⭐ **What should have been done: extract the asset names FROM THE SERVED HTML
+before fetching anything.** The HTML was already downloaded in that lane.
+
 ## ⭐⭐ THE LAUNCH CONDITION — EVERYTHING BUILT AND TESTED, OR NOT PUBLIC (ruled 31 Jul)
 
 ### ⭐⭐ 1 · THE GOVERNING CONDITION
@@ -10463,7 +10557,13 @@ or whether the locked card is a deliberate upsell or a stand-in for unbuilt work
 The page comment calls it a placeholder; the badge says *Upgrade*. ⭐ **Those are
 two different claims and both ship.**
 
-## ⭐⭐ PLAN-VS-FORECAST CRASH — **THE SOURCE IS ALREADY FIXED. THE DEPLOY IS STALE.** (31 Jul)
+## ⭐⭐ ~~PLAN-VS-FORECAST CRASH — THE DEPLOY IS STALE~~ — **THE DEPLOY WAS NOT STALE** (31 Jul, corrected)
+
+⭐⭐ **CORRECTED THE SAME DAY. Production serves the FIXED code**; the crash came
+from a **stale CLIENT** holding HTML that referenced a bundle now 404. The
+"stale deploy" conclusion rested on a 403 that was **my own bad request**, not a
+property of the host. **See *Frontend deploy path* above.** The mechanism, origin
+and gate analysis below are unaffected and stand.
 
 ⭐⭐ **NO CODE CHANGE WAS MADE, AND THAT IS THE FINDING.** Shipping a "fix" for a
 defect that is not in the source would have looked like a repair and left the
