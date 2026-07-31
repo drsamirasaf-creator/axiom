@@ -140,7 +140,8 @@ stochastic engine is no longer blocked on a false premise.**)
 | B4 | **`ValuationRun` code version** | **Nothing.** §7v closed payload hash + registry versions; code revision remains absent. |
 | B5 | **§7u (b)** per-company stored assumptions | Deferred, not dropped. |
 | B6 | ~~Grant/revoke admin UI~~ | ⭐ **ALREADY BUILT — verified 31 Jul.** `DepartmentAuthorityPanel.tsx`, mounted at `routes/team.tsx`, POSTs grant AND revoke. §7.9 corrected. |
-| **G1** | ⭐⭐ **BACKUPS — BLOCKED BY THE PLAN, NOT MERELY UNBUILT** | ⭐⭐ **`plan: HOBBY`, `maxBackupsCount: 0`.** The schedule mutation was attempted and refused; no credential would have worked. ⭐ **Unblocking it is a COMMERCIAL DECISION** — a paid plan, or an external dump target which needs its own ruling on location, custody and retention. **RPO today is TOTAL; RTO is undefined because recovery is impossible.** |
+| ~~G1~~ | ⭐⭐ **CLOSED — backups exist and are scheduled** | Workspace moved to **PRO** (`maxBackupsCount` 0 → 10). DAILY/WEEKLY/MONTHLY configured with 6/27/89-day retention; first backup taken, 249 MB. ⭐ **RPO total → 24h**, the platform's finest offering. |
+| **G2** | ⭐⭐ **RESTORE STILL UNTESTED — pending a clock, no longer blocked** | ⭐ `volumeInstancePITRRestore` fails on an uninitialised pgBackRest catalog, 6 identical attempts; the in-place mutation was NOT called. **Retest after the first scheduled backup (11:11 UTC).** Fidelity baseline captured: 97 tables, 34,753 rows, 20 packs with hashes. ⭐⭐ **RTO remains UNMEASURED — not estimated.** |
 | ~~G4~~ | ⭐⭐ **CLOSED — the gunicorn arbiter restarts a hung worker** | Detection in 120–180s via the uvicorn heartbeat, which stalls exactly when the event loop blocks and NOT for slow threadpool work. Proven against a real hung-but-alive worker, and a 30s sync sweep at 3x the timeout survived. ⭐ Residual: a wedged CONTAINER is alerted in 30 min, not restarted. |
 | **G2, G5, G6** | ⭐⭐ **RELIABILITY LAUNCH GATES — precede any relaunch carrying paying customers** || ~~G3~~ | ⭐ **CLOSED — external availability monitoring** | GitHub Actions probe every 30 min from OUTSIDE Railway; alerts to a labelled GitHub issue that emails the owner. Detection ≤30 min, down from unbounded. |
 | ~~G13~~ | ⭐⭐ **BUILT — Stripe `livemode` persisted, backfilled and guarded** | Both surfaces carry the flag, taken from the signed EVENT and never derived from the key. ⭐⭐ **BASELINE: 0 live-mode paying, 4 test-mode, 7 never subscribed, 0 unresolved** — every prior count reported 4. |
@@ -9886,6 +9887,111 @@ CORE records `wacc_at` with the kinked kd as canonical and the guard reads
 call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
+
+## ⭐⭐ G1/G2 ON PRO — **G1 CLOSES. G2 DOES NOT.** (31 Jul)
+
+### ⭐ THE PLAN, RE-VERIFIED THROUGH THE API — checked, not believed
+
+| | HOBBY (at `889c2bc`) | ⭐ **PRO (now)** |
+|---|---|---|
+| `plan` | `HOBBY` | ⭐ **`PRO`** |
+| `maxBackupsCount` | **0** | ⭐⭐ **10** |
+| `maxSizeMB` | 5,000 | 1,000,000 |
+| `maxBackupsUsagePercent` | 0 | 0.5 |
+
+⭐ **AND THE AUTH FAILURE THAT LOOKED LIKE THE OLD ONE WAS NOT.** The first
+mutation of this lane returned *"Not Authorized"* — **identical to the HOBBY
+refusal** — and it was an **EXPIRED TOKEN** (`tokenExpiresAt` 14:57 UTC, called at
+15:08). ⭐⭐ **THE READS FAILED TOO, WHICH IS WHAT DISTINGUISHED IT:** under the
+plan limit reads succeeded and only the mutation failed. **Same message, different
+cause — diagnosed rather than assumed to be the recorded one.**
+
+### ⭐ 1 · THE SCHEDULE, CONFIGURED AND RE-READ
+
+| kind | cron | retention |
+|---|---|---|
+| **DAILY** | `11 11 * * *` | **6 days** |
+| **WEEKLY** | `29 20 * * 6` | **27 days** |
+| **MONTHLY** | `21 11 1 * *` | **89 days** |
+
+⭐⭐ **BEST ACHIEVABLE RPO IS 24 HOURS, AS A MEASURED FACT.** The enum offers
+**DAILY, WEEKLY, MONTHLY and nothing finer at any tier** — so *"up to 24 hours of
+writes"* is a platform ceiling, not a target anyone chose.
+
+### ⭐ THE FIRST BACKUP IN AXIOM'S HISTORY EXISTS
+
+`g2-restore-proof`, **2026-07-31T15:17:50Z, 249 MB referenced**, `scheduleId: null`
+(manual), `expiresAt: null` — ⭐ **a manual backup is not auto-pruned**, unlike the
+scheduled ones.
+
+### ⭐⭐ 2 · G2 DOES NOT CLOSE — THE RESTORE COULD NOT BE PERFORMED SAFELY
+
+**Signatures re-confirmed before anything was called, and unchanged:**
+
+| mutation | verdict |
+|---|---|
+| `volumeInstanceBackupRestore(backupId, volumeInstanceId)` | ⭐⭐ **NOT CALLED.** No separate target; with one volume instance it restores **over production**. Railway's own docs: *"Backups can only be restored into the same project + environment."* |
+| `volumeInstancePITRRestore(newServiceName, targetTimestamp, …)` | the safe path — ⭐ **FAILED, 6 attempts over ~4 minutes** |
+
+**The PITR failure, verbatim and consistent:**
+
+> *"Couldn't reach the source service's pgBackRest catalog. This is usually
+> transient (network or storage hiccup) — try again in a moment."*
+
+⭐ **IT IS NOT TRANSIENT — IT FAILED IDENTICALLY SIX TIMES.** ⭐ **Stated as an
+INFERENCE, not a measurement:** the pgBackRest stanza is most likely uninitialised
+because **no SCHEDULED backup has yet run** — the DAILY cron fires at 11:11 UTC and
+the schedule was created at 15:17. **A manual volume backup evidently does not
+materialise the catalog PITR reads.**
+
+⭐⭐ **NO WORKAROUND WAS ATTEMPTED, AND THAT IS THE POINT.** A `pg_dump` into a
+scratch database would have proved **`pg_dump` works**, not that **Railway's backup
+restores** — verifying a different artefact than the one the schedule produces.
+**A mechanism that appears to restore and does not is the state this programme
+exists to end.**
+
+### ⭐ 3 · FIDELITY — the baseline is captured and ready for the retest
+
+**Production fingerprint, taken twice, before and after everything:**
+
+    97 tables · 34,753 rows · 20 packs
+    every pack carrying BOTH content_hash AND a payload md5
+
+⭐ **The pack spot-check is the part that matters:** `content_hash` is computed
+**from** the frozen payload, so ⭐⭐ **a pack that restores with a MUTATED snapshot
+is caught here and nowhere else** — and it is worse than a failed restore, because
+it is silently wrong.
+
+### ⭐⭐ 4 · RTO AND RPO — OBSERVED
+
+| | at `889c2bc` | ⭐ **now** |
+|---|---|---|
+| **RPO** | ⭐ **TOTAL** — no recovery point existed | ⭐⭐ **24 HOURS** once the first scheduled backup runs; **249 MB already recoverable from the manual backup** |
+| **RTO** | **UNDEFINED — recovery impossible** | ⭐⭐ **STILL UNMEASURED.** Not "fast" and not "slow" — **no restore has completed, so no duration exists.** |
+
+⭐ **RTO IS NOT ESTIMATED.** The whole point of G2 is that an untested backup is a
+hypothesis, and a guessed RTO would be a hypothesis about a hypothesis.
+
+### ⭐ 5 · CLEANUP AND NON-INTERFERENCE — verified, not assumed
+
+| check | result |
+|---|---|
+| stray services from the 6 failed PITR calls | ⭐ **none** — only `web` and `Postgres` |
+| production `/health` | **200**, `status: ok`, `database: ok` |
+| row count before → after | **34,753 → 34,753 — unchanged** |
+| packs before → after | **20 → 20**, ⭐ **every content hash and payload md5 identical** |
+
+**No restore target was created, so there was nothing to remove.**
+
+### Gates
+
+| | |
+|---|---|
+| **G1 — no backups exist** | ⭐⭐ **CLOSES.** Three schedules configured and re-read; one backup taken; **RPO total → 24h.** |
+| **G2 — no restore has been tested** | ⭐⭐ **DOES NOT CLOSE.** The only non-destructive path fails on an uninitialised pgBackRest catalog. ⭐ **Retest after the first scheduled backup runs (11:11 UTC).** The fidelity baseline is captured and the comparison is a re-run, not a rebuild. |
+
+⭐ **G2 is no longer BLOCKED — it is PENDING A CLOCK.** That is a materially
+different state from `889c2bc`, where no backup could exist at all.
 
 ## ⭐⭐ G4 · A HUNG-BUT-ALIVE PROCESS IS NOW RESTARTED — **G4 CLOSES** (31 Jul)
 
