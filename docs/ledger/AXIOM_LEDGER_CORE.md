@@ -36,6 +36,107 @@ Nothing was rewritten, paraphrased, or summarised in this split. Both files carr
 the original text verbatim. If a decision appears to be missing from CORE, it is
 in ARCHIVE — check there before re-deciding it.
 
+---
+
+## ⭐⭐ THE PENDING QUEUE — MEASURED, NOT RECALLED (31 Jul)
+
+Derived by scanning this file for open markers — **72 hits across 7,758 lines** —
+then verifying each **against the codebase**, and against production read-only
+where the question was about live data. Source:
+`docs/reports/pending-queue-2026-07-31.md`.
+
+⭐ **THIS REPLACES RECOLLECTION.** Everything sequenced in conversation lately was
+sequenced from memory of this file, and this file has now been found wrong **six
+times** — twice on claims that were false when written, and four more where the
+record simply trailed the code.
+
+### ⭐⭐ LAW — A STALE LEDGER LINE DOES NOT MERELY MISINFORM. IT ISSUES
+INSTRUCTIONS.
+
+**First demonstrated at one instance:** `parent_dataset_id`, where a dispatch to
+"wire the three declared fields" was issued from a stale line and **correctly
+refused**.
+
+⭐ **Now demonstrated at four, and in the more expensive direction** — the record
+trailing the code, which does not merely misdirect a lane, it invites **rebuilding
+working software**:
+
+| the line said | the code said |
+|---|---|
+| §7s Cadence **NOT BUILT** | six modules shipped, **running nightly in production** |
+| §7u registry **NOT BUILT** | shipped `c24c05e` |
+| §4x grant model + sign-off invalidation **DESIGN ONLY, NOT BUILT** | both tables exist, **with their writers** |
+| §7r-D DuPont **BLOCKED — do not build** | the blocker's gate **exits 0** |
+
+⭐ **AND THE FOURTH ONE COST SOMETHING MEASURABLE:** nothing was built on §7r-D's
+freed slot **because the ledger still said don't**. A cleared blocker that nobody
+clears in the record is indistinguishable from a live one.
+
+### ⭐⭐ CLASS — BUILT IS NOT WIRED, AND A PASSING SUITE CANNOT TELL THE DIFFERENCE
+
+**`pack_dist.notify_ready` has no caller.** Twenty packs are published in
+production and **no CEO has been told** — and this file itself calls *"the pack is
+ready, review and release"* **the stronger monthly hook** and the recurring-use
+property the entire layer exists to create. Built, tested, inert.
+
+⭐ **THIRD INSTANCE THIS ERA:**
+
+1. the **assumption bounds check** — runs on every stored dataset, stores its
+   result, and **nothing reads it**;
+2. **`balance_audit`** — stored per period, **surfaced nowhere that reaches a
+   person**;
+3. **`notify_ready`** — the mechanism the layer was built for.
+
+⭐ **A unit test proves a function WORKS. It cannot prove anything CALLS it.**
+Every one of these three has passing tests. The class is only visible by asking
+the codebase for callers, which no gate currently does.
+
+### QUEUE A — AWAITING A USER RULING (9)
+
+| # | item | note |
+|---|---|---|
+| A1 | **External recipient billing** | Unbilled and unlimited today **by default, not by ruling**. `billable` is NULL. **Blocks external distribution rollout.** |
+| A2 | **`size_premium` = 0.2** | ⭐ **Verified still live 31 Jul: 8 datasets, 27 stored runs.** No correction applied, as ruled. |
+| A3 | **Export permission model** | k-anonymity and attribution implications the scheduled Pack does not have. Blocks the export's distribution. |
+| A4 | **σ contradiction (B2)** | Real Options attempts a fit, discards it when the clamp binds, **reports the clamp as a fit**. Blocks L.2e. |
+| A5 | **Quota counter** | Counts `source="direct"`; a company's twelve datasets are all uploads → returns zero. **Intent undetermined.** |
+| A6 | **KPI surface disposition** | Retire `KpiDefinition`, or repoint at `KpiPlan`. Not equivalent in risk. |
+| A7 | **Reason-category ruling** | §4x open item. |
+| A8 | **Positioning** | Platform descriptor vs PE/transaction commercial lead. |
+| A9 | **DEI definition** | Named 26 Jul. |
+
+### QUEUE B — AWAITING A BUILD (9)
+
+| # | item | blocked by |
+|---|---|---|
+| B1 | ⭐ **Wire `notify_ready` to publication** | **Nothing.** Smallest, highest value in the file. |
+| B2 | **§7r ratio library** | **Nothing.** The registry yaml is read only by a CI guard; the Pack's "Why" section declares this gap today. |
+| B3 | **§7r-D DuPont** | **Nothing — blocker cleared.** |
+| B4 | **`ValuationRun` code version** | **Nothing.** §7v closed payload hash + registry versions; code revision remains absent. |
+| B5 | **§7u (b)** per-company stored assumptions | Deferred, not dropped. |
+| B6 | **Grant/revoke admin UI** | The model exists; only the surface is missing. |
+| B7 | **§7.44 period display** | Deferred to the entry-format lane. |
+| B8 | **§4y dataroom** | Not buildable now; naming also unruled. |
+| B9 | **§7o reseed** | Design ruled; not seeded. |
+
+### ⭐ UNDETERMINED — recorded as undetermined, never inferred
+
+- **§4x Stage 1b's four unmatched items.** Two of the six are demonstrably
+  present; the other four **cannot be matched to code without a ruling on what
+  they were**.
+- **Whether the 20 production packs are correct.** They published automatically,
+  which *is* the design. **Correctness is a human read, not a query.**
+- **The quota counter's intent** — "uploads are not chargeable" or a wrong filter.
+  Not recoverable from the code.
+- **Design and marketing items** — positioning, DEI, the punchline wording, the
+  submission catchment. Not code-determinable in either direction.
+- **Two §4-series incidents** — cross-company contamination (diagnosis) and the
+  awaited network trace. **No code signal either way**; flagged so they are not
+  assumed closed by age.
+
+⭐ **UNDETERMINED IS A RESULT.** Inferring any of these would be the failure the
+queue lane existed to avoid.
+
 **Reason for the split (27 Jul):** the single ledger reached 135,000 characters
 and was being uploaded whole into every window, costing roughly 3x on response
 speed and producing failed sends. Section sizing at the time of the split:
@@ -2105,7 +2206,10 @@ reading, and THE LEDGER SUPERSEDES THE SPEC.**
 
 ---
 
-## 7. STAGE 2 GRANT MODEL — ⭐ LOCKED 27 Jul (user rulings). DESIGN ONLY, NOT BUILT.
+## 7. STAGE 2 GRANT MODEL — ⭐ LOCKED 27 Jul (user rulings).
+⭐ **BUILT — corrected 31 Jul.** `DepartmentAuthority` exists with
+`grant_department` and `revoke_department` writers. The text below is the design
+it was built to; it is no longer a description of something absent.
 
 The authority layer Stage 1 fails closed against. Stage 1's
 `department_authority()` returns False for everyone because no grant table
@@ -2212,7 +2316,9 @@ admin's own name.
 
 ---
 
-## 8. SIGN-OFF INVALIDATION — ⭐ LOCKED 27 Jul (user ruling). DESIGN ONLY, NOT BUILT.
+## 8. SIGN-OFF INVALIDATION — ⭐ LOCKED 27 Jul (user ruling).
+⭐ **BUILT — corrected 31 Jul.** `DashboardSignoff.superseded_at` and
+`superseded_by_id` exist. The text below is the design it was built to.
 
 How a sign-off stops being valid. Spec B.7 said new data un-signs an affected
 KPI; these five rulings settle what "affected" means, which is the whole
@@ -6386,7 +6492,12 @@ nor `AXIOM_LEDGER_ARCHIVE.md` contained "§7r-D" or "DuPont". Fourth instance th
 era of a claim about a file the file did not support — recorded here so the
 blocker is falsifiable rather than remembered.
 
-**STATUS: BLOCKED. Do not build.**
+**STATUS: ⭐ UNBLOCKED — corrected 31 Jul. BUILDABLE, NOT BUILT.**
+
+⭐ **THE BLOCKER IS GONE AND THE LEDGER STILL SAID "DO NOT BUILD".**
+`scripts/check-margin-boundary.py` exits 0. Nothing was built on the freed slot,
+**because the ledger said not to** — which is the mechanism recorded at the top of
+this file: a stale line does not merely misinform, it issues instructions.
 
 `axiom.dupont_three_step` = `net_margin × asset_turnover × financial_leverage`.
 
@@ -6487,7 +6598,23 @@ and `bs.retained_earnings` — see the registry vocabulary, which marks each
 `cf.operating_cash_flow` as a stored rather than derived token, plus the
 `cash_conversion_quality` headline ratio on real data rather than a derivation.
 
-## §7s · AXIOM CADENCE — THE OBLIGATION LAYER (ruled 30 Jul. NOT BUILT.)
+## §7s · AXIOM CADENCE — THE OBLIGATION LAYER (ruled 30 Jul. ⭐ BUILT AND
+RUNNING IN PRODUCTION — corrected 31 Jul.)
+
+⭐⭐ **THIS HEADING READ "NOT BUILT" WHILE SIX MODULES WERE SHIPPED AND THE
+NIGHTLY SWEEPS WERE RUNNING AGAINST TEN COMPANIES.** Corrected in place.
+
+    pack.py · pack_render.py · pack_dist.py · brief.py · watch.py ·
+    decision_record.py
+
+**Production state, read-only, 31 Jul:** `ax_packs` **20 published packs across
+10 companies** (monthly and quarterly, period ending 2026-06-30);
+`ax_watch_state` **70 rows** — the calendar and watch sweeps have run.
+
+⭐ **`ax_pack_releases`, `ax_pack_recipients` and `ax_pack_opens` are EMPTY, AND
+THAT IS CORRECT** — release is a deliberate act and nobody has performed one.
+Publication is automatic and non-suppressible; distribution is not. The empty
+tables are the design working, not a gap.
 
 **BROCHURE FRAME — commercial name: AXIOM Cadence.** Six deliverables, named for
 the brochure as: the Pack · the Brief · the Distribution · the Decision Record ·
@@ -6717,6 +6844,22 @@ Recorded with its reason so the recommendation is not re-derived.
 **§7s.5 depends on sole ownership completing through ROIC/E** — a bridge
 decomposing equity value by driver reads both, and would otherwise pin a second
 owner.
+
+⭐ **THE DEPENDENCY IS SATISFIED — measured 31 Jul.** The guard reports
+`ROIC 1 · EVA 1 · INVESTED_CAPITAL 1 · WACC 1 · NET_DEBT 1`, all single-site.
+
+⭐ **SATISFIED WITH A QUALIFICATION, NOT CLEANLY.** The guard owns the WACC
+**EXPRESSION** (`we*ke + wd*kd*(1-T)` at `ratios.py:121`), **not the `kd`
+ASSUMPTION inside it** — and the kd kink still exists **twice**:
+
+| site | coefficient | kink | denominator |
+|---|---|---|---|
+| `ratios.py:97` | **0.01** | 1.0 | **D/E** |
+| `intelligence/engines.py:2343` | **0.35** | 0.25 | **debt/revenue** |
+
+**A 35× coefficient difference on a different denominator.** Consequence for the
+bridge: a WACC delta may reflect **which kd path ran** rather than a real change
+in the cost of debt. Routed to sole ownership; **unresolved**.
 
 ### Snapshot ownership — RULED
 
@@ -7506,7 +7649,8 @@ rather than the brochure asserting it.
 Recorded because the temptation runs the other way — the sample is the most
 valuable artefact in the programme and the one most likely to be attempted early.
 
-## §7u · THE ASSUMPTIONS REGISTRY — SCOPE RULED (a), 30 Jul. NOT BUILT.
+## §7u · THE ASSUMPTIONS REGISTRY — SCOPE RULED (a), 30 Jul.
+⭐ **(a) BUILT `c24c05e` — corrected 31 Jul.** (b) remains deferred.
 
 ⭐ **RULED: §7u is (a), CONFIG-VERSIONING.** One versioned artefact; code reads
 defaults from it; every stored result records the version. **It does not make
