@@ -111,11 +111,12 @@ property the entire layer exists to create. Built, tested, inert.
 Every one of these three has passing tests. The class is only visible by asking
 the codebase for callers, which no gate currently does.
 
-### QUEUE A — AWAITING A USER RULING (10 — ⭐ was 9; A10 added 31 Jul)
+### QUEUE A — AWAITING A USER RULING (8 open — ⭐ A1 and A10 both RULED 31 Jul
+and closed. **Cadence has no remaining decision blockers.**)
 
 | # | item | note |
 |---|---|---|
-| A1 | **External recipient billing** | Unbilled and unlimited today **by default, not by ruling**. `billable` is NULL. **Blocks external distribution rollout.** |
+| A1 | ~~External recipient billing~~ | ⭐ **RULED 31 Jul — unlimited and unbilled**, read-only, pack-scoped, no live workspace access. **Cadence has no remaining decision blockers.** Encoding change queued as B20. |
 | A2 | **`size_premium` = 0.2** | ⭐ **Verified still live 31 Jul: 8 datasets, 27 stored runs.** No correction applied, as ruled. |
 | A3 | **Export permission model** | k-anonymity and attribution implications the scheduled Pack does not have. Blocks the export's distribution. |
 | A4 | **σ contradiction (B2)** | Real Options attempts a fit, discards it when the clamp binds, **reports the clamp as a fit**. Blocks L.2e. |
@@ -124,7 +125,7 @@ the codebase for callers, which no gate currently does.
 | A7 | **Reason-category ruling** | §4x open item. |
 | A8 | **Positioning** | Platform descriptor vs PE/transaction commercial lead. |
 | A9 | **DEI definition** | Named 26 Jul. |
-| A10 | ⭐ **Retrospective pack notification** | Twenty packs published in production with no CEO told. Whether they should now receive a burst for months already past is a ruling; sending it is irreversible. OFF by default, either way is a configuration (`AXIOM_NOTIFY_RETROSPECTIVE`). |
+| A10 | ~~Retrospective pack notification~~ | ⭐ **RULED 31 Jul — OFF PERMANENTLY, not deferred.** The env path stays as built and stays off; it is a ruling, not an unfinished switch. See §7s.3. |
 
 ### QUEUE B — AWAITING A BUILD (18 — ⭐ B6 found ALREADY BUILT; B16-B19 added
 31 Jul by the twelve-item audit, three of them with NO PRIOR ENTRY)
@@ -138,6 +139,7 @@ the codebase for callers, which no gate currently does.
 | B4 | **`ValuationRun` code version** | **Nothing.** §7v closed payload hash + registry versions; code revision remains absent. |
 | B5 | **§7u (b)** per-company stored assumptions | Deferred, not dropped. |
 | B6 | ~~Grant/revoke admin UI~~ | ⭐ **ALREADY BUILT — verified 31 Jul.** `DepartmentAuthorityPanel.tsx`, mounted at `routes/team.tsx`, POSTs grant AND revoke. §7.9 corrected. |
+| B20 | ⭐ **Encode the A1 ruling** | `billable` default `False` + backfill existing rows, `billing_policy()` to `ruled: True`, and the docstrings that still explain the question as open. ⭐ **The one backfill this programme should perform** — the rows predate a ruling that now covers them. |
 | B16 | ~~In-app editable assumptions~~ | ⭐ **BUILT** — 12 fields editable, bounds flag-not-refuse on write, admin-only per §4x, every write attributed. **A2 now has a remediation path.** |
 | B17 | ⭐ **§4l Control Tower** (product Performance Monitoring) | **NO CODE.** Operational monitoring (Sentry, `/health`) exists and is a DIFFERENT THING — the name collision is why this reads as built. |
 | B18 | **Web mobile-responsive pass** | **NO ENTRY, NO CODE.** Named only as the predecessor to the roadmap mobile app; Tailwind `sm:` appears in three files. |
@@ -7544,15 +7546,58 @@ add an input class to the renderer and assert the guard goes red.**
   renders as an em dash and is never omitted** — a seven-line brief that silently
   becomes six lets the reader infer completeness from length.
 
-### ⭐ OPEN — external recipient billing (NOT RULED). **The only decision now
-blocking Cadence.** (measured 31 Jul)
+### ⭐⭐ RULED 31 Jul — RETROSPECTIVE PACK NOTIFICATION IS OFF, PERMANENTLY
 
-**Recommended:** unlimited, unbilled, read-only, pack-scoped, **no live workspace
-access**. Grounds: metering the board kills the mechanism that makes item 3 the
-strongest in the set.
+**A10 CLOSES.** Not deferred — **ruled**.
 
-⭐ **MEASURED, NOT DECIDED (Stage 3).** The earlier note said this is "NOT current
-behaviour". That was itself unmeasured. What is true:
+The twenty packs published in production before `notify_ready` was wired
+(`060bbd4`) **will never be notified.** `AXIOM_NOTIFY_RETROSPECTIVE` stays as
+built and stays **off**.
+
+⭐ **RECORDED AS A RULING SO THE FLAG IS NOT READ LATER AS AN UNFINISHED SWITCH.**
+An environment variable that exists and is off looks identical to one somebody
+forgot to turn on; the next reader must find the decision, not the toggle.
+
+### The reasoning
+
+⭐ **TWENTY NOTIFICATIONS ABOUT MONTHS ALREADY PAST WOULD TEACH A CEO THE
+NOTIFICATION IS NOISE — ON THE ONE OCCASION IT MOST NEEDS TO READ AS SIGNAL.**
+The first notification a CEO ever receives sets what every later one means.
+
+⭐ **AND NOTHING WAS WITHHELD FROM ANY EXTERNAL PARTY.** The packs were **never
+released**, and release is a deliberate act nobody performed — so no director,
+lender or sponsor was owed a pack that did not arrive. The gap was internal and
+is now closed.
+
+**The series begins with the next publication.**
+
+### ⭐⭐ RULED 31 Jul — EXTERNAL PACK RECIPIENTS ARE UNLIMITED AND UNBILLED
+
+**A1 CLOSES. CADENCE HAS NO REMAINING DECISION BLOCKERS.**
+
+**The ruling:** external pack recipients are **unlimited and unbilled**.
+**Read-only, pack-scoped, no live workspace access**, reached by a **signed
+expiring capability naming ONE pack**.
+
+### The reasoning, recorded so it survives re-litigation
+
+⭐ **METERING THE BOARD IS THE FASTEST AVAILABLE WAY TO KILL THE MECHANISM THAT
+MAKES DISTRIBUTION THE STRONGEST LOCK-IN IN THE SET.**
+
+**A recipient's EXPECTATION of the pack is what converts cancellation from an
+internal decision into a conversation the CEO must have with someone they answer
+to.** A per-recipient charge gives the CEO a standing reason to trim the list, and
+every name trimmed removes one person who would ask where the pack went.
+
+**It also fits the existing commercial model**, which already has **unlimited
+users and one company per workspace** — a per-head charge here would be the only
+per-head charge in the product.
+
+### ⭐⭐ THE PRIOR STATE WAS A HAZARD, NOT MERELY AN OMISSION
+
+**The outcome matched the recommendation BY ACCIDENT.** The subscription gates on
+**companies rather than people**, and a `PackRecipient` is **neither a `User` nor
+a `Membership`**, so it touched none of the three counters:
 
 | gate | counts | counts a recipient? |
 |---|---|---|
@@ -7560,19 +7605,34 @@ behaviour". That was itself unmeasured. What is true:
 | `_slots_used` | `CompanyAccess` vs `company_slots` | no |
 | `viewer_count` | `Membership` role=viewer | ⭐ **reported, enforced NOWHERE** |
 
-**The subscription gates on COMPANIES, not people.** A `PackRecipient` is neither
-a `User` nor a `Membership`, so it touches none of the three.
+⭐ **AN UNRULED COMMERCIAL TERM SETTLED BY WHICHEVER CODE PATH HAPPENED TO EXIST
+IS THE HAZARD — INDEPENDENT OF WHICH WAY IT FELL.** Recorded in that form
+deliberately: the fact that the accident landed on the right answer is not
+mitigation, it is what would have made the next one hard to notice.
 
-⭐ **SO A RECIPIENT IS UNBILLED AND UNLIMITED TODAY — BY DEFAULT RATHER THAN BY
-RULING, WHICH HAPPENS TO MATCH THE RECOMMENDATION BY ACCIDENT.** That is the
-hazard the original note was reaching for and named backwards: the risk was never
-that the seat code would meter the board, it was that **an unruled commercial term
-would be settled by whichever code path happened to exist.**
+### ⭐ THE ENCODING MUST NOW SAY "RULED"
 
-`PackRecipient.billable` is **NULL, not False** — NULL reads as "not ruled", and
-False would be a silent ruling. **Either ruling is a configuration**: set
-`billable` and add the count to a gate. No model change is required for either
-outcome.
+**`PackRecipient.billable` becomes `False` EXPLICITLY. It must not stay NULL.**
+
+NULL encoded **"unruled"**, and that state is now closed. ⭐ **Leaving it NULL
+would invite the next reader to re-litigate a settled question** — the same class
+as a stale ledger line, in a column.
+
+**The three-counter assertion stays**, and its meaning changes: it now **encodes a
+ruling rather than recording a coincidence.** Adding a recipient must move none of
+the three, and that is now a requirement rather than an observation.
+
+### ⭐ CODE CHANGES THIS RULING REQUIRES — NOT MADE IN THIS LANE
+
+Recorded rather than done, because the dispatch was **LEDGER RULING, DO NOT
+BUILD**. Queued as **B20** so the ruling and its encoding do not drift apart:
+
+1. `PackRecipient.billable` default `False`, and a migration setting existing rows
+   — ⭐ **the one backfill this programme should perform**, because the rows
+   predate a ruling that now covers them and NULL would misreport them as unruled.
+2. `pack_dist.billing_policy()` to report `ruled: True`.
+3. The docstrings and the Stage 3 test comment that currently explain why the
+   question is open.
 
 ## ⭐⭐ §7s.1 — BUILT, STAGES 1-3 (31 Jul)
 
