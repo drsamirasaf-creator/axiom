@@ -296,6 +296,26 @@ def _cap_initiatives(db, cid):
     return out
 
 
+def _cap_initiative_line_links(db, cid):
+    """B10 — the DECLARED initiative → statement-line links, frozen with the pack.
+
+    ⭐ FROZEN LIKE EVERY OTHER INPUT. A link declared after publication must not
+    retro-attribute a movement in a pack already issued.
+    """
+    from .initiative_lines import links_for, unlinked
+    rows = links_for(db, cid)
+    un = unlinked(db, cid)
+    if not rows:
+        return _absent("no initiative declares a statement line for this company; "
+                       "initiative attribution is unavailable and every "
+                       f"initiative ({len(un)}) is reported as unlinked")
+    return _present(
+        links=[_row(r) for r in rows],
+        # ⭐ THE UNLINKED ARE NAMED, so a reader cannot mistake the linked ones
+        # for all of them.
+        unlinked=un)
+
+
 def _cap_forecast_sets(db, cid):
     """Section 3's stored output. ⭐ The PRIMARY set determines what the pack
     reports as "what is likely" — a set promoted to primary after publication
@@ -451,6 +471,7 @@ INPUT_CLASSES = {
     "documents": _cap_documents,
     "okr_rows": _cap_okr_rows,
     "initiatives": _cap_initiatives,
+    "initiative_line_links": _cap_initiative_line_links,
     "forecast_sets": _cap_forecast_sets,
     "sentinel_state": _cap_sentinel_state,
     "watch_events": _cap_watch,

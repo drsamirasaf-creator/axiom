@@ -211,3 +211,7 @@ _pack_dist.include(app, _get_db, _current_user)
 from .accounts import require_company_admin as _require_admin  # noqa: E402
 from . import assumptions_api as _assumptions  # noqa: E402
 _assumptions.include(app, _get_db, _require_admin)
+
+# B10/B11 — the declared initiative -> statement-line link. Imported so the model
+# registers; the bridge reads it through initiative_lines.attribute().
+from . import initiative_lines as _ilines  # noqa: F401,E402

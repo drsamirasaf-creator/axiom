@@ -342,6 +342,42 @@ def src_assumption_edits(db, cid):
     return out
 
 
+def src_line_links(db, cid):
+    """⭐ DECLARING THAT AN INITIATIVE MOVES A STATEMENT LINE IS A DECISION —
+    and the III.4 guard said so before anyone argued it.
+
+    It is a person asserting a causal claim about their own business, with a
+    share attached. That is the most consequential declaration in the product:
+    every equity-value attribution the bridge makes rests on it.
+    """
+    from .initiative_lines import InitiativeLineLink
+    out = []
+    for l in db.query(InitiativeLineLink).filter_by(company_id=cid).all():
+        row = {c.name: getattr(l, c.name) for c in l.__table__.columns}
+        share = ("no share declared" if row.get("weight") is None
+                 else f"{round(row['weight'] * 100, 2)}% of the line")
+        out.append(_d(
+            "line_link", l.id, cid=cid, type_="initiative_line_declared",
+            decided_at=row.get("declared_at"),
+            author=row.get("declared_by_label"),
+            statement=(f"initiative {row['initiative_id']} declared to move "
+                       f"{row['statement_line']} ({share})"),
+            rationale=row.get("note"),
+            linked={"initiative_id": row["initiative_id"],
+                    "statement_line": row["statement_line"]},
+            expected=row.get("weight"),
+            realised_absent=("the realised effect is the attributed movement, "
+                             "which the Value Bridge computes per period and "
+                             "which is not attributable to this declaration "
+                             "alone"),
+            status=(WITHDRAWN if row.get("revoked_at") else TAKEN),
+            attribution=(f"{row.get('declared_by_label') or 'someone'} declared "
+                         f"this link on "
+                         f"{(row.get('declared_at') or '').__str__()[:10]}; "
+                         f"{share}")))
+    return out
+
+
 # ⭐ THE SOURCE REGISTRY. Each entry is a READER over an existing store. Nothing
 # here writes, and there is no table named `decisions`.
 SOURCES = {
@@ -354,6 +390,7 @@ SOURCES = {
     "pack_release": src_releases,
     "watch_decision": src_watch_decisions,
     "assumption_edit": src_assumption_edits,
+    "line_link": src_line_links,
 }
 
 # ⭐ ATTRIBUTED, BUT AUTHORSHIP RATHER THAN DECISION — named with the reason,

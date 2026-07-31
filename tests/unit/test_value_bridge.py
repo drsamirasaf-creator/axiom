@@ -365,17 +365,22 @@ def test_an_anchor_that_resolves_to_nothing_is_named_not_silently_defaulted(two_
 # 6 · ⭐ INITIATIVE ATTRIBUTION — traceable or silent
 # ═══════════════════════════════════════════════════════════════════════════
 
-def test_initiative_attribution_is_absent_because_no_line_linkage_exists(two_packs):
-    """⭐ THE DISTINCTIVE CLAIM AND THE MOST FABRICABLE. A figure attributed to
-    initiative slippage must be traceable to the initiative AND to the line it
-    moved."""
+def test_initiative_attribution_is_absent_WHEN_NOTHING_IS_DECLARED(two_packs):
+    """⭐ NARROWED 31 Jul, NOT DELETED. B10 built the declared link, so the
+    driver is no longer absent BY CONSTRUCTION — it is absent when this company
+    has declared nothing, which is still the honest default and still the state
+    that must never be estimated.
+
+    The old assertion said "no link EXISTS from an initiative to a statement
+    line". That premise is now false; the claim that survives is that an
+    UNDECLARED company gets no attribution.
+    """
     cid, a, b = two_packs
     ini = [d for d in _bridge_of(b)["bridge"]["drivers"]
            if d["key"] == "initiatives"][0]
-    assert ini["amount"] is None, "an equity amount was attributed to initiatives"
+    assert ini["amount"] is None, "an equity amount was attributed with no link"
     assert ini["traceable"] is False
-    assert "no link exists from an initiative to a financial statement line" \
-        in ini["absent"]
+    assert "declares a statement line" in ini["absent"]
 
 
 def test_the_missing_linkage_is_measured_against_the_models_not_asserted():
@@ -392,13 +397,14 @@ def test_the_missing_linkage_is_measured_against_the_models_not_asserted():
             f"{M.__name__} gained a statement-line link — the driver is now stale"
 
 
-def test_the_initiative_movement_is_reported_as_evidence_not_attribution(two_packs):
-    """The movement is shown so a reader can see it; it is not priced."""
+def test_the_initiative_movement_is_reported_even_when_unpriced(two_packs):
+    """⭐ NARROWED with the test above. The movement is still shown so a reader
+    can see it; with nothing declared it is still not priced."""
     cid, a, b = two_packs
     ini = [d for d in _bridge_of(b)["bridge"]["drivers"]
            if d["key"] == "initiatives"][0]
     assert ini["detail"] is None or "changed" in ini["detail"]
-    assert "evidence, not an equity-value attribution" in ini["absent"]
+    assert ini["amount"] is None
 
 
 # ═══════════════════════════════════════════════════════════════════════════

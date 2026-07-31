@@ -327,24 +327,22 @@ def d_multiples(prior, current):
 
 
 def d_initiatives(prior, current):
-    """⭐ THE DISTINCTIVE CLAIM, AND THE MOST FABRICABLE — SO IT IS ABSENT.
+    """⭐ THE DISTINCTIVE CLAIM. Now computable WHERE A LINK IS DECLARED — and
+    still absent where it is not.
 
-    A figure attributed to initiative slippage must be traceable to the
-    initiative AND to the line it moved. Measured against the models:
+    Before B10 no link reached a statement line, so this driver was absent
+    entirely. It now attributes a line's movement to the initiatives that
+    DECLARED it, at the share they declared, and leaves everything else in the
+    residual.
 
-      * `Initiative.linked_item_code` points at an ASSESSMENT ITEM (a SWOT
-        back-link), not a statement line.
-      * `KpiInitiativeLink` links to a `kpi_key`; `KrInitiativeLink` to a key
-        result; `GoalInitiativeLink` to a goal. None reaches a financial line.
-      * `expected_impact_amount` / `actual_impact_amount` are currency figures
-        attributable to the INITIATIVE and to no line.
-
-    So the initiative is traceable and the LINE IT MOVED IS NOT. Traceable-or-
-    silent, applied to the one number the whole product is sold on: this driver
-    is absent and says why, and the initiative movement is reported as evidence
-    rather than as an equity-value attribution.
+    ⭐⭐ EXCLUSIVITY OF LINKAGE IS NOT EXCLUSIVITY OF CAUSE. A sole link
+    attributes its DECLARED WEIGHT and no more: a line with one linked initiative
+    and three real drivers must not lose its whole movement to the one link,
+    because the model cannot see the drivers nobody declared.
     """
     i0, i1 = _klass(prior, "initiatives"), _klass(current, "initiatives")
+    l1 = _klass(current, "initiative_line_links")
+
     detail = None
     if i0.get("present") and i1.get("present"):
         def _by_id(b):
@@ -360,14 +358,95 @@ def d_initiatives(prior, current):
                    or a[k].get("actual_impact_amount")
                    != b[k].get("actual_impact_amount")]
         detail = {"changed": changed, "count": len(changed)}
+
+    if not l1.get("present"):
+        # ⭐ ABSENCE STAYS ABSENT. No declared link, no attribution — and the
+        # movement is reported as evidence rather than priced.
+        return _driver(
+            "initiatives", "Initiative delivery versus slippage",
+            absent=(l1.get("reason") or "no initiative declares a statement line"),
+            basis="ax_initiative_line_links (declared, never inferred)",
+            detail=detail, traceable=False)
+
+    moves = _line_movements(prior, current)
+    attribution = _attribute_frozen(l1, moves)
+    total = sum(a["amount"] for a in attribution["attributed"]
+                if a.get("amount") is not None)
     return _driver(
         "initiatives", "Initiative delivery versus slippage",
-        absent=("no link exists from an initiative to a financial statement "
-                "line: linked_item_code points at an assessment item, and the "
-                "KPI/KR/goal links do not reach a statement line. The movement "
-                "below is evidence, not an equity-value attribution."),
-        basis="Initiative + its links, measured against the models",
-        detail=detail, traceable=False)
+        amount=total,
+        basis="declared initiative→line links, at the declared share",
+        detail={**(detail or {}), "attribution": attribution,
+                "line_movements": moves,
+                "unlinked": l1.get("unlinked")},
+        traceable=True)
+
+
+def _line_movements(prior, current):
+    """Movement per statement line, latest historical period, both packs."""
+    p0, p1 = _payload(prior), _payload(current)
+    if not p0 or not p1:
+        return {}
+    out = {}
+    for stmt in ("income_statement", "balance_sheet", "cash_flow"):
+        for line, series in (p1.get(stmt) or {}).items():
+            if not isinstance(series, dict):
+                continue
+            years = (p1.get("periods") or {}).get("historical") or []
+            if not years:
+                continue
+            ys = str(max(years))
+            a = ((p0.get(stmt) or {}).get(line) or {}).get(ys)
+            b = series.get(ys)
+            if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+                out[line] = b - a
+    return out
+
+
+def _attribute_frozen(link_block, line_movements):
+    """The attribution rule, run over the FROZEN links.
+
+    ⭐ IT DOES NOT TAKE A SESSION. A bridge that re-read the live links would
+    retro-attribute a movement in a pack already issued.
+    """
+    links = [l for l in (link_block.get("links") or [])
+             if not l.get("revoked_at")]
+    by_line = {}
+    for l in links:
+        by_line.setdefault(l.get("statement_line"), []).append(l)
+
+    attributed, residual = [], {}
+    for line, delta in (line_movements or {}).items():
+        declared = by_line.get(line) or []
+        if not declared:
+            continue                      # not this driver's residual to claim
+        weighted = [l for l in declared if l.get("weight") is not None]
+        unweighted = [l for l in declared if l.get("weight") is None]
+        total_w = sum(l["weight"] for l in weighted)
+        mode = "sole" if len(declared) == 1 else "proportional"
+        if total_w > 1.0 + 1e-9:
+            residual[line] = {"amount": delta,
+                              "reason": f"declared weights sum to {total_w} (>1)"}
+            continue
+        for l in weighted:
+            attributed.append({"initiative_id": l.get("initiative_id"),
+                               "statement_line": line, "mode": mode,
+                               "declared_weight": l["weight"],
+                               "amount": delta * l["weight"],
+                               "declared_by": l.get("declared_by_label")})
+        for l in unweighted:
+            attributed.append({"initiative_id": l.get("initiative_id"),
+                               "statement_line": line, "mode": mode,
+                               "declared_weight": None, "amount": None,
+                               "absent": ("no share declared — an unstated share "
+                                          "is unknown, not full ownership")})
+        left = delta * (1.0 - total_w)
+        if abs(left) > 1e-12 or not weighted:
+            residual[line] = {
+                "amount": left,
+                "reason": (f"{round((1.0 - total_w) * 100, 2)}% of this line's "
+                           f"movement is not covered by a declared share")}
+    return {"attributed": attributed, "residual": residual}
 
 
 DRIVERS = [d_trading, d_forecast_revision, d_discount_rate, d_multiples,

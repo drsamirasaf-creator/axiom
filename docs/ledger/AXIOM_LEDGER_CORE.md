@@ -150,8 +150,8 @@ stochastic engine is no longer blocked on a false premise.**)
 | B7 | **§7.44 period display** | Deferred to the entry-format lane. |
 | B8 | **§4y dataroom** | Not buildable now; naming also unruled. |
 | B9 | **§7o reseed** | Design ruled; not seeded. ⭐ **FLAGGED FOR AMENDMENT BEFORE BUILD** — its acceptance criterion requires a chain resolving to equity value, now known unbuildable as specified. It is one of FOUR blockers on the brochure page, not the only one (31 Jul). |
-| B10 | ⭐ **Initiative-to-statement-line link** | **Nothing.** Measured as absent; blocks the brochure proof point and the bridge's initiatives driver. |
-| B11 | ⭐ **The attribution rule** (sole / proportional / residual) | Ruled 31 Jul, not built. Blocks the proof point. |
+| B10 | ~~Initiative-to-statement-line link~~ | ⭐ **BUILT** — declared, never inferred. `ax_initiative_line_links`. |
+| B11 | ~~The attribution rule~~ | ⭐ **BUILT** — sole / proportional / residual, with the over-crediting trap asserted. |
 | B13 | ~~Monthly periods and cadence granularity~~ | ⭐ **BUILT `d8e31a5`** — three-way equivalence proven (annual 1668.63, quarterly ×1.0271, monthly ×1.0332); frequency derived not trusted; template v9 with no version gate. |
 | B15 | ⭐ **Brochure features map** | Ruled 31 Jul. Three required corrections before it ships: the missing loop, the two outputs, the Watch's own path. |
 | B14 | **Irregular multi-source ingestion** | Designed 31 Jul, not built. Depends on B13's granularity work. |
@@ -6751,6 +6751,72 @@ and `bs.retained_earnings` — see the registry vocabulary, which marks each
 **What it would unlock:** the strongest available cross-statement check, plus
 `cf.operating_cash_flow` as a stored rather than derived token, plus the
 `cash_conversion_quality` headline ratio on real data rather than a derivation.
+
+## ⭐⭐ B10/B11 · THE INITIATIVE → STATEMENT-LINE LINK — BUILT (31 Jul)
+
+### ⭐ THE PRE-BUILD MEASUREMENT — the chain was ONE HOP SHORT, and not where expected
+
+| link | exists? | live rows |
+|---|---|---|
+| `Initiative.linked_item_code` → assessment item | yes | — |
+| `KpiInitiativeLink` → `kpi_key` | ⭐ **yes** | **41** |
+| `KrInitiativeLink` → `kr_key`, `KeyResult.kpi_key` | yes | — |
+| `KpiPlan` (the LIVE KPI surface) | yes | **413** |
+| ⭐ **a KPI → statement line** | **only via `KpiDefinition.formula`** | ⭐ **0** |
+
+⭐ **INITIATIVE → KPI IS ALREADY DECLARED, 41 TIMES, ON LIVE DATA.** The missing
+hop is KPI → line: the live surface `KpiPlan` **carries no formula**, and the only
+model that does — `KpiDefinition`, whose formula ranges over the canonical
+statement keys — holds **ZERO ROWS** and is the subject of the open
+retire-or-repoint ruling **A6**.
+
+⭐ **SO THE LINK WAS NOT ROUTED THROUGH IT.** Building on an empty surface that
+may be deleted would have made this lane depend on an unruled question.
+
+### The link model
+
+`ax_initiative_line_links` — `(company_id, initiative_id, statement_line, weight,
+declared_by, declared_at, note, revoked_at)`. The statement-line vocabulary is
+**derived from `IS_KEYS`/`BS_KEYS`/`CF_KEYS`** plus the computed aggregates, and a
+link naming a line that does not exist is **refused** — otherwise it would
+contribute nothing while looking declared.
+
+⭐ **DECLARED, NEVER INFERRED.** A test fails the module for containing
+`corr`/`regress`/`fit`/`infer`. **Inferring the link would fabricate exactly the
+number the brochure proof point was withdrawn for asserting.**
+
+### ⭐⭐ THE ATTRIBUTION RULE, AND THE TRAP IT GUARDS
+
+- **sole** — one initiative declares the line;
+- **proportional** — several do, split by **declared** weight;
+- **residual** — everything not covered by a declared share.
+
+⭐⭐ **EXCLUSIVITY OF LINKAGE IS NOT EXCLUSIVITY OF CAUSE.** A sole link attributes
+its **declared weight and no more**. Asserted: revenue moves **1000**, one
+initiative declares **30%**, it receives **300 — not 1000** — and **700 is
+residual**, because the model cannot see the drivers nobody declared. **A
+partially-linked model over-credits whichever initiative was wired up first, and
+does so invisibly.**
+
+⭐ **AN UNSTATED SHARE ATTRIBUTES NOTHING.** NULL weight means **unknown** — not
+1.0, not 0. **Declared weights summing above 1 attribute nothing either**, and are
+not normalised: rescaling would silently invent a split nobody stated.
+
+⭐ **THE UNLINKED ARE NAMED.** An initiative with no declared link contributes
+nothing and is **reported as unlinked** — which is what stops a reader assuming
+the linked ones are all of them.
+
+### Which of the three gaps this closes
+
+| gap | state |
+|---|---|
+| **§7s.5's absent initiatives driver** | ⭐ **CLOSED.** It produces a number where a link is declared, at the declared share, and stays absent where none is. |
+| **§7o's chain stopping at `kpi_movement`** | ⚠ **MECHANISM CLOSED, CHAIN NOT.** §7o's seed declares no line link, so its chain still stops. Closing it is a seed change, not a mechanism one. |
+| **The withdrawn brochure proof point** | ❌ **STAYS WITHDRAWN.** This lane built the mechanism; **whether the claim is restored is a separate ruling**, and it is not restored by the mechanism existing. A test asserts CORE still says withdrawn. |
+
+**Links are frozen with the pack** — a link declared after publication cannot
+retro-attribute a movement in a pack already issued, and the attribution reader
+**takes no session** so it cannot re-read live.
 
 ## ⭐⭐ B16 · IN-APP EDITABLE ASSUMPTIONS — BUILT (§7u scope (b), 31 Jul)
 
