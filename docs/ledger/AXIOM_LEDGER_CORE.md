@@ -118,7 +118,7 @@ stochastic engine is no longer blocked on a false premise.**)
 | # | item | note |
 |---|---|---|
 | A1 | ~~External recipient billing~~ | ⭐ **RULED 31 Jul — unlimited and unbilled**, read-only, pack-scoped, no live workspace access. **Cadence has no remaining decision blockers.** Encoding change queued as B20. |
-| A2 | **`size_premium` = 0.2** | ⭐ **Verified still live 31 Jul: 8 datasets, 27 stored runs.** No correction applied, as ruled. |
+| A2 | **`size_premium` = 0.2** | ⭐⭐ **CORRECTED 31 Jul — the account is the OPERATOR'S OWN TEST ACCOUNT** (`livemode: false`, no money ever changed hands), **not a live paying customer.** The finding is unchanged and the value is still implausible; the remediation is now a **value correction on the user's own data via B16**, and ⭐ **the drafted customer message is WITHDRAWN.** 8 datasets, 27 runs, all `enterprise_id = NULL`. |
 | A3 | ~~Export permission model~~ | ⭐ **RULED 31 Jul — ONE visibility rule.** The export carries what the requesting user can already see and no more. Assertion in `test_export_visibility.py`. |
 | A4 | ~~σ contradiction~~ | ⭐ **RULED 31 Jul — option 1.** σ_RO is EV volatility and the floor is a DECLARED PRIOR. No rendered figure changes. **It was never a contradiction** (ninth wrong entry) and the mislabel was already fixed (tenth). Encoding queued as B22. |
 | A5 | ~~Quota counter~~ | ⭐ **RULED 31 Jul — uploads are NOT chargeable; the `source="direct"` filter is CORRECT.** Volume is never the meter. Intent given a mechanical guardian in `test_quota_intent.py`. |
@@ -142,6 +142,7 @@ stochastic engine is no longer blocked on a false premise.**)
 | B6 | ~~Grant/revoke admin UI~~ | ⭐ **ALREADY BUILT — verified 31 Jul.** `DepartmentAuthorityPanel.tsx`, mounted at `routes/team.tsx`, POSTs grant AND revoke. §7.9 corrected. |
 | **G1** | ⭐⭐ **BACKUPS — BLOCKED BY THE PLAN, NOT MERELY UNBUILT** | ⭐⭐ **`plan: HOBBY`, `maxBackupsCount: 0`.** The schedule mutation was attempted and refused; no credential would have worked. ⭐ **Unblocking it is a COMMERCIAL DECISION** — a paid plan, or an external dump target which needs its own ruling on location, custody and retention. **RPO today is TOTAL; RTO is undefined because recovery is impossible.** |
 | **G2–G6** | ⭐⭐ **RELIABILITY LAUNCH GATES — precede any relaunch carrying paying customers** | See *§8 — the reliability programme, measured state*. ⭐⭐ **G1: NO BACKUPS EXIST AT ALL** — no schedule and none ever taken. G2 restore untestable until G1. G3 nothing detects an outage. G4 no platform healthcheck, so a hung process is never restarted. G5 unprotected `main`, no staging. G6 pool unsized against a single process. |
+| **G13** | ⭐⭐ **Persist Stripe `livemode`; a test account is indistinguishable from a customer** | ⭐ **No column anywhere records it** — `is_demo`, `platform_role`, `livemode`, `is_test`, `is_internal` are all absent from `users`. AXIOM writes `subscription_status='active'` for a test subscription exactly as for a real one. ⭐ **Every customer count this era is unreliable until this lands.** |
 | B22 | ⭐ **Encode the σ ruling** | Move σ_RO into the §7u registry as a platform default with a stated basis, so the pack PINS it and it is inspectable; and RENAME `_calibrate_sigma` so the name does not assert a calibration that is not performed. ⭐ **A function whose name misdescribes it is a claim in the code.** |
 | ~~B23~~ | ~~Register the B16 route~~ | ⭐ **RETIRED UNBUILT 31 Jul — it was never needed.** Queued on a false measurement ("no JS runtime"); `bun` was present and merely off the measuring shell's PATH. The route was registered in the same lane. |
 | B21 | ⭐ **Widen the B16 gate to ADMIN AND CFO** | Ruled 31 Jul; the code shipped at `1ba395c` is **admin-only and refuses a CFO**. Attribution already covers the act whichever way the §4x tension resolves. |
@@ -7523,11 +7524,29 @@ the thread count.
 reconstructing PROVENANCE WITHIN a living database.** ⭐⭐ **THIS IS THE DATABASE
 ITSELF, AND IT IS THE LARGER EXPOSURE.**
 
+### ⭐⭐ THE ARGUMENT IS ASSET LOSS, NOT CUSTOMER DUTY — corrected 31 Jul
+
+**This section was written believing a paying customer's data sat in that
+volume. ⭐ IT DOES NOT — see *A2 corrected*.** The urgency is **not** a duty of
+care to someone who has paid.
+
+⭐⭐ **IT IS THE LOSS OF THE ASSET, AND THAT ARGUMENT DOES NOT WEAKEN:** the
+Meridian seed, the generated sample packs the brochure's every figure is drawn
+from, the Milliner work, and ⭐ **the corpus every measurement this era rests
+on** — the size_premium range, the σ calibration, the sole-ownership counts, the
+band coverage. **Losing it does not lose customers; it loses the evidence base
+that makes any claim about the product checkable.**
+
+⭐ **AND G1 REMAINS EXACTLY THE GATE IT ALREADY WAS: IT MUST CLOSE BEFORE THE
+FIRST REAL CUSTOMER SIGNS.** ⭐⭐ **That is now a deadline with slack in it rather
+than an active exposure — which is a reason to close it deliberately, not a
+reason to defer it**, because the window is the only one that will ever exist.
+
 | asset | recoverable? |
 |---|---|
 | application code | ✅ GitHub |
 | R2 objects (originals, documents) | ✅ separate provider, survives |
-| ⭐⭐ **every customer record, dataset, pack, assessment, decision, valuation run** | ❌ **NOT RECOVERABLE — lives only in that volume, which has no backup** |
+| ⭐⭐ **every account, dataset, pack, assessment, decision, valuation run — and the CORPUS every measurement this era rests on** | ❌ **NOT RECOVERABLE — lives only in that volume, which has no backup** |
 | environment variable **values** | ❌ exist only in Railway; `.env.example` records **names**, not values |
 
 ### ⭐⭐ THE GAPS, CLASSED
@@ -9867,6 +9886,101 @@ call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
 
+## ⭐⭐ A2 CORRECTED — THE "LIVE PAYING CUSTOMER" IS THE OPERATOR'S OWN TEST ACCOUNT (31 Jul)
+
+### ⭐ 1 · BOTH FACTS, AND THE CONTRADICTION
+
+| | |
+|---|---|
+| **what the ledger recorded** | *"LIVE AND PAYING · plan business · subscription_status active · live Stripe subscription · EULA accepted"* |
+| **what the user states** | **there is no live paying customer** |
+
+⭐⭐ **BOTH WERE CONSISTENT WITH AXIOM'S OWN DATA.** The account carries **every
+marker of a paying customer** and is not one. **The ledger did not misread the
+database; the database cannot tell the difference.**
+
+### ⭐⭐ 2 · WHAT THE ACCOUNT ACTUALLY IS — measured
+
+| probe | result |
+|---|---|
+| **Stripe key mode** | ⭐ **`sk_test_`** |
+| **subscription `livemode`** | ⭐⭐ **`false`** — the price too |
+| **status / amount** | `active`, unit_amount 499500 usd — ⭐ **a TEST checkout at the business price** |
+| **email domain** | ⭐ **the operator's own company domain**, one of two accounts on it |
+| **enterprises held by the tenant** | **0** |
+| **the 8 datasets** | ⭐ **`enterprise_id = NULL` on all eight**, created in **one ~2-hour session on the signup day** (16 Jul 18:50–20:46), dormant since |
+
+⭐⭐ **CONCLUSION: AN INTERNAL OPERATOR TEST ACCOUNT. NO MONEY EVER CHANGED
+HANDS.** The subscription is a **test-mode artefact**, and the usage pattern —
+signup, one evening of uploads and forecasts, nothing since — **is the founder
+trying the product, not a customer using it.**
+
+⭐ **THE CONTRADICTION WAS RESOLVED BY NEW EVIDENCE, NOT BY PREFERRING A PARTY.**
+The discriminator (`livemode`) sat **outside AXIOM entirely**, which is why
+neither the ledger nor any measurement against the codebase could reach it.
+
+### ⭐⭐ 3 · AND THE DEFECT THAT LET IT HAPPEN — NOTHING IN THE DATA DISTINGUISHES THEM
+
+`users` columns, in full:
+
+    id · email · password_hash · tenant · is_active · created_at · plan
+    accepted_eula · companies_allowed · stripe_customer_id
+    stripe_subscription_id · subscription_status
+
+⭐⭐ **`is_demo`, `platform_role`, `livemode`, `is_test`, `is_internal` and
+`account_type` are ALL ABSENT**, and a search of **every column in the database**
+for `livemode` or `is_test` returns **NONE**.
+
+⭐⭐ **AXIOM WRITES `subscription_status = 'active'` FOR A TEST-MODE SUBSCRIPTION
+EXACTLY AS IT WOULD FOR A REAL ONE.** The webhook never persists the flag Stripe
+sends.
+
+⭐ **A SYSTEM THAT CANNOT TELL A TEST ACCOUNT FROM A CUSTOMER ACCOUNT IS A DEFECT
+IN ITS OWN RIGHT**, and it is precisely what let this reach the ledger and stand
+for a fortnight. **It also means every count of "customers" this era is
+unreliable** — 4 accounts show `plan=business, subscription_status=active`, and
+**nothing on any of them says which, if any, are real.**
+
+⭐ **Queued as G13** — persist `livemode` on the subscription write and exclude
+non-live accounts from every customer-facing count.
+
+### ⭐ 4 · A2 RESTATED ON THE CORRECTED BASIS
+
+⭐⭐ **THE `size_premium = 0.2` FINDING IS UNCHANGED.** The value is still
+implausible against a corpus range of 0.018–0.03, the bounds check still flags it,
+and **B16 still makes it editable.** *(And B16's own justification survives: the
+gap it closed — no endpoint could write a financial assumption — was real.)*
+
+**What changes is the remediation:**
+
+| was | is |
+|---|---|
+| a **customer contact** requiring a ruling on notification | ⭐ **a value correction on data the user owns** |
+| a drafted message awaiting approval | ⭐⭐ **WITHDRAWN.** There is nobody to write to. |
+
+⭐ **A2 IS NO LONGER BLOCKED ON A RULING ABOUT SOMEONE ELSE'S DATA.** It is the
+user's own row, correctable in-app through B16 at the user's convenience — **and
+the correction is no longer the delicate act the entry described.**
+
+### ⭐⭐ 5 · THE ELEVENTH WRONG ENTRY — AND IT IS A DIFFERENT KIND
+
+**Ten prior wrong entries this era were disagreements BETWEEN THE LEDGER AND THE
+CODE**, six in the direction that causes rebuilding. **They were all findable by
+measurement.**
+
+⭐⭐ **THIS ONE IS A DISAGREEMENT BETWEEN THE LEDGER AND THE WORLD.** ⭐ **The code
+reported truthfully and the INTERPRETATION was wrong.**
+
+⭐⭐ **NO MEASUREMENT AGAINST THE CODEBASE COULD HAVE CAUGHT IT, BECAUSE THE DATA
+SAYS EXACTLY WHAT THE LEDGER SAYS.** Every re-verification — including *"verified
+still live 31 Jul: 8 datasets, 27 stored runs"* — **re-confirmed the true part and
+could never touch the false part.**
+
+⭐ **THE STANDING LESSON: "MEASURE, DO NOT READ AND CONCLUDE" DOES NOT PROTECT A
+CLAIM ABOUT WHAT SOMETHING IS IN THE WORLD.** Repeating the measurement made the
+entry look better-evidenced each time while the error was untouched. **A fact
+about the world needs a source outside the system that records it.**
+
 ## ⭐ OPEN — `size_premium` = 0.2 — THE ONLY REMAINING BLOCKER ON THIS FINDING
 
 The check is built (`9f1c1c1`); **the instance is not resolved, and resolving it
@@ -9874,9 +9988,11 @@ is a ruling, not an engineering step.**
 
 **Established:**
 
-    tenant            u-b756d543b812c8b8 — LIVE AND PAYING
-                      plan business · subscription_status active
-                      live Stripe subscription · EULA accepted
+    tenant            u-b756d543b812c8b8 — ⭐⭐ NOT A CUSTOMER. CORRECTED 31 Jul.
+                      plan business · subscription_status active   <- as recorded
+                      ⭐ Stripe subscription livemode = FALSE       <- MEASURED
+                      ⭐ email domain = the operator's own company
+                      ⭐ NO MONEY EVER CHANGED HANDS
     activity          dormant since 17 July
     datasets          8   (ids 8–15)
     stored runs       27

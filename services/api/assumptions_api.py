@@ -1,6 +1,9 @@
 """§7u scope (b) / B16 — in-app editable company assumptions.
 
-⭐ WHY THIS EXISTS AND WHY IT IS URGENT. A live paying customer holds
+⭐ WHY THIS EXISTS. ⭐⭐ CORRECTED 31 Jul: the account is the OPERATOR'S OWN TEST
+ACCOUNT (Stripe livemode false), NOT a live paying customer — see A2 in CORE. The
+GAP THIS CLOSED WAS STILL REAL (no endpoint could write a financial assumption),
+and the value is still implausible. An account holds
 `size_premium = 0.2` across eight datasets and twenty-seven stored runs, roughly
 halving their enterprise value. **No endpoint wrote any financial assumption**,
 so they could not correct it in-app — the only route was a re-upload. The

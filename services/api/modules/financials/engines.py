@@ -228,7 +228,8 @@ def assumption_audit(data: dict) -> dict:
 
     ⭐ WHY THIS EXISTS. `validate_dataset` tested presence and float-castability
     and nothing else, so 0.2, 20 and -5 validated identically to 0.02 on every
-    field. One live paying customer holds eight datasets and twenty-seven stored
+    field. ⭐ CORRECTED 31 Jul: the operator's own TEST account (Stripe livemode
+    false), not a paying customer — see A2 in CORE. It holds eight datasets and twenty-seven stored
     valuation runs carrying `size_premium = 0.2` — twenty percentage points added
     straight to cost of equity, roughly halving their enterprise value. Nothing
     in the system looked at it.
