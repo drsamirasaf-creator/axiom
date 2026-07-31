@@ -151,15 +151,15 @@ stochastic engine is no longer blocked on a false premise.**)
 | B20 | ⭐ **Encode the A1 ruling** | `billable` default `False` + backfill existing rows, `billing_policy()` to `ruled: True`, and the docstrings that still explain the question as open. ⭐ **The one backfill this programme should perform** — the rows predate a ruling that now covers them. |
 | B16 | ~~In-app editable assumptions~~ | ⭐ **BUILT** — 12 fields editable, bounds flag-not-refuse on write, admin-only per §4x, every write attributed. **A2 now has a remediation path.** |
 | B17 | ⭐ **§4l Control Tower** (product Performance Monitoring) | **NO CODE.** Operational monitoring (Sentry, `/health`) exists and is a DIFFERENT THING — the name collision is why this reads as built. |
-| B18 | **Web mobile-responsive pass** | **NO ENTRY, NO CODE.** Named only as the predecessor to the roadmap mobile app; Tailwind `sm:` appears in three files. |
+| B18 | **Web mobile-responsive pass** | ⭐⭐ **THE 'THREE FILES' CLAIM IS FALSE — measured 31 Jul: 72 source files use responsive breakpoints (29 routes, 28 components).** Responsive work is PARTLY DONE and uncatalogued, not absent. ⭐ **The open question is COVERAGE — which surfaces break on a phone — and that needs a viewport pass, not a from-scratch build.** |
 | B19 | **Mindmaps by department** | ⭐ **UNDESIGNED** — zero occurrences in either repository and no ledger entry. Undesigned and unbuilt are different states. |
 | B7 | **§7.44 period display** | Deferred to the entry-format lane. |
 | B8 | **§4y dataroom** | Not buildable now; naming also unruled. |
-| B9 | **§7o reseed** | Design ruled; not seeded. ⭐ **FLAGGED FOR AMENDMENT BEFORE BUILD** — its acceptance criterion requires a chain resolving to equity value, now known unbuildable as specified. It is one of FOUR blockers on the brochure page, not the only one (31 Jul). |
+| ~~B9~~ | ~~§7o reseed~~ | ⭐⭐ **BUILT — the row was STALE IN THE REBUILDING DIRECTION.** Seeded at `bba15a2` (criterion amended, then built to it), hop 1 at `e67262b`, and ⭐ **the causal chain COMPLETE AT FIVE HOPS at `9055f0d`** with a measured non-zero residual. The row still read *"design ruled; not seeded"*. |
 | B10 | ~~Initiative-to-statement-line link~~ | ⭐ **BUILT** — declared, never inferred. `ax_initiative_line_links`. |
 | B11 | ~~The attribution rule~~ | ⭐ **BUILT** — sole / proportional / residual, with the over-crediting trap asserted. |
 | B13 | ~~Monthly periods and cadence granularity~~ | ⭐ **BUILT `d8e31a5`** — three-way equivalence proven (annual 1668.63, quarterly ×1.0271, monthly ×1.0332); frequency derived not trusted; template v9 with no version gate. |
-| B15 | ⭐ **Brochure features map** | Ruled 31 Jul. Three required corrections before it ships: the missing loop, the two outputs, the Watch's own path. ⭐ **Also carries a "HOW YOU CAN CHECK THIS" section** — the seven verified disciplines, placed after the pack and before the CXO offer; see *The second question, ruled 31 Jul*. ⭐ **And the CXO APPEAL as a separate section** — see *The leading question, ruled 31 Jul*, item 3. It is a SECTION, not a question, and its three items are ordered by strength deliberately. |
+| B15 | ⭐ **Brochure — features map REMAINS; the document is REWRITTEN** | ⭐ **Stage 1 (claim audit, `4b108e4`) and Stage 2 (rewrite from CORE, `2b54b3a`) are DONE** — `AXIOM_Brochure_v3.html` ships the leading question, the value-proposition diagram without the struck closing bar, the pack, the second question's seven disciplines and the CXO offer. ⭐ **STILL OPEN: the FEATURES MAP as a second, distinct asset** with the loop, both outputs and the Watch's own path. |
 | B14 | **Irregular multi-source ingestion** | Designed 31 Jul, not built. Depends on B13's granularity work. |
 | ~~B12~~ | ⭐⭐ **BUILT AND WIRED — client-declared initiative impact** | Append-only declarations with actor, timestamp and prior value; plan-versus-actual on B10's DECLARED SHARE with five verdicts including the split between a delivery miss and a missing link. Carried by the Decision Record. ⭐ **The withdrawn proof point stays withdrawn.** |
 
@@ -10150,6 +10150,67 @@ CORE records `wacc_at` with the kinked kd as canonical and the guard reads
 call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
+
+## ⭐⭐ ENUMERATION 31 Jul — THREE STALE ROWS, AND THE EDIT-AND-SEE-IT ANSWER
+
+**Full report: `docs/reports/enumeration-31jul.md`.**
+
+### ⭐⭐ PART A — THE ANSWER IS: THEY CANNOT EDIT, AND IF THEY COULD, NOTHING MOVES
+
+**All four entities — assumptions, Objectives, Key Results, KPIs — are
+`require_company_admin`.** ⭐ **Not just B16; the whole OKR surface.**
+
+⭐⭐ **AND THERE IS NO CFO ROLE.** `Membership.role` is `admin` or `viewer`
+(measured live: 6 and 2), and `ax_department_authority` holds **0 rows**. A CFO is
+either an admin with full write or a viewer with none. ⭐ **B21 cannot be encoded
+without creating a role that does not exist.**
+
+**`My AXIOM` exists and links to NONE of the four.** ⭐ **They are scattered**, and
+`/assumptions` and `/initiative-impact` are reachable only by URL.
+
+⭐⭐ **AND THE MEASUREMENT THAT MATTERS: EDITING `size_premium` FROM ABSENT TO 0.20
+LEFT EQUITY VALUE IDENTICAL** (2,182.33; WACC `0.091603` at every value tested).
+`size_premium` is read **only in the private/relevered Ke branch**, and Meridian —
+declared `private` — **prices on the PUBLIC branch** because the branch is chosen
+by DATA PRESENCE while `dlom` is keyed on `ownership`. ⭐ **B16 therefore exposes
+fields that, for a company on the public branch, change nothing — and no surface
+says so.**
+
+⭐ **Recompute after an edit: NONE.** Not sync, not async, not the sweep.
+`_spawn_recompute` is on the **upload** path, not this one. **What ships for the
+three invalidation options is the fourth nobody listed: nothing** — runs are
+neither recomputed, marked, nor badged.
+
+### ⭐⭐ PART C — THREE STALE ROWS, CORRECTED IN PLACE
+
+| item | ⭐ the fault |
+|---|---|
+| **B9 · §7o reseed** | ⭐⭐ **TWELFTH WRONG ENTRY, in the REBUILDING direction** — read *"not seeded"* while §7o is built and its chain complete at five hops. |
+| **B18 · mobile** | ⭐ **Wrong the OTHER way** — *"three files"* against a measured **72**. It would have funded a from-scratch build of work already partly done. |
+| **B15 · brochure** | Stages 1 and 2 shipped; the row still described them as pending. |
+
+⭐ **And a fourth fault that was MINE:** a first parse read eight closed rows as
+open because **the `~~` marks the TITLE, not the identifier.** Caught before it was
+reported. **The instrument was wrong before the finding was — the second time this
+era.**
+
+### ⭐⭐ THE UNTRACKED ITEMS — the finding the enumeration exists to produce
+
+**Free Pilot · DCT Advisory · Partner Program · §7m Initiative Execution Suite ·
+Survey Designer · CXO Priorities Registry** — ⭐⭐ **NONE has a queue row.** They
+live under narrative headings, which is exactly why successive enumerations miss
+them. ⭐ **An item with no queue row is not tracked, whatever the prose says.**
+
+### ⭐ THE GUARD-PLANTING FAILURE — twice, and the fix is to stop touching the tree
+
+Guards prove they can fire by planting a known positive **into production source**.
+⭐⭐ **The removal is not kill-safe:** a timeout between plant and cleanup leaves a
+live `NameError` behind. `sentinel.py`, then `benchmarks/router.py`.
+
+⭐ **The kill-safe shape: plant in a COPY — read the source, mutate the string in
+memory, compile the mutated copy, never write the file.** `check-customer-counts`
+already works this way. An orphan sweep on start is second-best: it cleans up after
+the last crash rather than preventing the next.
 
 ## ⭐⭐ B12 · CLIENT-DECLARED INITIATIVE IMPACT — BUILT AND WIRED (31 Jul)
 
