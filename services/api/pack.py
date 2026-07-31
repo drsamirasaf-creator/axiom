@@ -15,7 +15,7 @@ and never by omitting the key. A section silently missing from a freeze is
 indistinguishable from one that had nothing to report, which is fabrication by
 silence in an artefact that leaves the building.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta as _timedelta, timezone
 
 from sqlalchemy import (JSON, Column, DateTime, ForeignKey, Integer, String,
                         UniqueConstraint)
@@ -205,13 +205,11 @@ def _cap_cfo_overrides(db, cid):
               .filter(MetricOverride.superseded_at.is_(None)).all())
     if not rows:
         return _absent("no overrides in force for this company")
-    return _present(overrides=[
-        {"id": r.id, "metric_ref": r.metric_ref, "metric_label": r.metric_label,
-         "target_scope": r.target_scope, "department_id": r.department_id,
-         "override_value": r.override_value,
-         "computed_value_at_override": r.computed_value_at_override,
-         "reason_category": r.reason_category, "reason_note": r.reason_note,
-         "author_label": r.author_label} for r in rows])
+    # ⭐ WHOLE ROWS, via _row. The first version hand-picked ten fields and
+    # dropped `created_at` — so the rendered attribution line lost its DATE,
+    # which §4x requires. That is the hand-synced-list defect `_row` exists to
+    # prevent, committed inside the function that prevents it.
+    return _present(overrides=[_row(r) for r in rows])
 
 
 def _cap_documents(db, cid):
@@ -618,3 +616,131 @@ def prunable_snapshots(db):
     return db.query(ChangesetSnapshot).filter(
         ChangesetSnapshot.retention == TRANSIENT,
         ChangesetSnapshot.owner_kind != OWNER_PACK)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# §7s.1 STAGE 2 — THE CALENDAR
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ⭐ PUBLICATION IS AUTOMATIC, DATED AND NON-SUPPRESSIBLE. A CEO may later decline
+# to DISTRIBUTE a pack; they may not prevent one existing. If suppression or
+# pre-release editing were permitted the series becomes a curated highlight reel
+# and every claim resting on immutability collapses.
+#
+# ⭐ ONE SCHEDULER. `prescience_decision._nightly_loop` already sweeps every
+# company nightly under a single-flight lock. The calendar extends that sweep; a
+# second timer would be a second thing to keep running, and the first thing to
+# quietly stop.
+
+DEFAULT_MONTHLY_DAY = 5          # monthly packs publish on the 5th
+DEFAULT_QUARTERLY_LAG_DAYS = 15  # quarterly at period-end + 15 days
+
+
+class PackSchedule(Base):
+    """Publication day per CID. Configurable; the defaults above apply when a
+    company has no row, so the calendar runs for every company from day one
+    rather than only for those someone remembered to configure."""
+    __tablename__ = "ax_pack_schedules"
+    id = Column(Integer, primary_key=True)
+    cid = Column(Integer, index=True, nullable=False, unique=True)
+    monthly_day = Column(Integer, nullable=False, default=DEFAULT_MONTHLY_DAY)
+    quarterly_lag_days = Column(Integer, nullable=False,
+                                default=DEFAULT_QUARTERLY_LAG_DAYS)
+    monthly_enabled = Column(Integer, nullable=False, default=1)
+    quarterly_enabled = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+def schedule_for(db, cid):
+    row = db.query(PackSchedule).filter_by(cid=cid).first()
+    if row is None:
+        return {"monthly_day": DEFAULT_MONTHLY_DAY,
+                "quarterly_lag_days": DEFAULT_QUARTERLY_LAG_DAYS,
+                "monthly_enabled": True, "quarterly_enabled": True,
+                "configured": False}
+    return {"monthly_day": row.monthly_day,
+            "quarterly_lag_days": row.quarterly_lag_days,
+            "monthly_enabled": bool(row.monthly_enabled),
+            "quarterly_enabled": bool(row.quarterly_enabled),
+            "configured": True}
+
+
+def _prev_month_end(d):
+    first = d.replace(day=1)
+    return first - _timedelta(days=1)
+
+
+def _prev_quarter_end(d):
+    q_first_month = ((d.month - 1) // 3) * 3 + 1
+    q_first = d.replace(month=q_first_month, day=1)
+    return q_first - _timedelta(days=1)
+
+
+def due_periods(db, cid, today):
+    """Which periods are DUE for publication as of `today`, newest first.
+
+    ⭐ DUE MEANS THE PUBLICATION DATE HAS PASSED, not that the data has arrived.
+    That distinction is the whole of item 2: a calendar that waited for actuals
+    would be a calendar that never fires in a bad month, which is precisely the
+    month a board most needs the pack.
+    """
+    sch = schedule_for(db, cid)
+    out = []
+    if sch["monthly_enabled"]:
+        pe = _prev_month_end(today)
+        pub_day = min(max(int(sch["monthly_day"]), 1), 28)
+        publish_on = (pe + _timedelta(days=1)).replace(day=pub_day)
+        if today >= publish_on:
+            out.append({"period_type": "monthly", "period_end": pe.isoformat(),
+                        "publish_on": publish_on.isoformat()})
+    if sch["quarterly_enabled"]:
+        qe = _prev_quarter_end(today)
+        publish_on = qe + _timedelta(days=int(sch["quarterly_lag_days"]))
+        if today >= publish_on:
+            out.append({"period_type": "quarterly", "period_end": qe.isoformat(),
+                        "publish_on": publish_on.isoformat()})
+    return out
+
+
+def publish_due(db, cid, today=None):
+    """Publish every due period not already published. Idempotent by construction.
+
+    ⭐ IDEMPOTENT BECAUSE THE SWEEP RUNS NIGHTLY. A period whose pack exists is
+    skipped; it is NOT republished as a new version, because a nightly sweep that
+    minted a version a night would turn "corrections never edit" into noise.
+    """
+    from datetime import date as _date
+    today = today or _date.today()
+    made = []
+    for due in due_periods(db, cid, today):
+        exists = (db.query(Pack)
+                    .filter_by(cid=cid, period_type=due["period_type"],
+                               period_end=due["period_end"])
+                    .first())
+        if exists is not None:
+            continue
+        pk = publish(db, cid, due["period_type"], due["period_end"])
+        made.append({"pack_id": pk.id, **due})
+    return made
+
+
+def sweep_calendar(db, today=None):
+    """Every company, every due period. Called from the ONE nightly loop.
+
+    ⭐ A FAILURE ON ONE COMPANY MUST NOT STOP THE SWEEP. Publication is
+    non-suppressible; letting one company's exception suppress every later
+    company's pack would be suppression by accident, which is the same outcome.
+    """
+    from .modules.enterprise_state.models import Enterprise
+    summary = {"companies": 0, "published": 0, "errors": 0, "packs": []}
+    for (cid,) in db.query(Enterprise.id).all():
+        summary["companies"] += 1
+        try:
+            made = publish_due(db, cid, today)
+            db.commit()
+            summary["published"] += len(made)
+            summary["packs"] += made
+        except Exception:
+            db.rollback()
+            summary["errors"] += 1
+    return summary

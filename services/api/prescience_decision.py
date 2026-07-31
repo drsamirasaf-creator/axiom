@@ -804,12 +804,42 @@ def recompute_all_frontiers(only_stale=True):
     return summary
 
 
+def _pack_calendar_sweep():
+    """§7s.1 Stage 2 — publish every due pack.
+
+    ⭐ EXTENDS THIS LOOP RATHER THAN ADDING A SECOND TIMER. One daemon already
+    sweeps every company nightly under a single-flight lock; a second timer is a
+    second thing to keep running and the first thing to quietly stop.
+
+    ⭐ IT RUNS AFTER THE RECOMPUTE, DELIBERATELY. The pack freezes computed
+    caches, so publishing before the sweep would freeze yesterday's viability
+    into today's pack.
+
+    ⭐ AND IT NEVER PROPAGATES. Publication is non-suppressible; letting a pack
+    failure take down the recompute loop would suppress every later night's
+    packs too, which is suppression by accident.
+    """
+    from . import pack as _pack
+    db = A.SessionLocal()
+    try:
+        summary = _pack.sweep_calendar(db)
+        if summary["published"] or summary["errors"]:
+            _log.info("pack calendar sweep: %s", summary)
+        return summary
+    finally:
+        db.close()
+
+
 def _nightly_loop():
     while True:
         try:
             recompute_all_frontiers(only_stale=True)   # logs its own summary
         except Exception:
             _log.exception("nightly sweep failed")
+        try:
+            _pack_calendar_sweep()
+        except Exception:
+            _log.exception("pack calendar sweep failed")
         _time.sleep(NIGHTLY_PERIOD_S)
 
 

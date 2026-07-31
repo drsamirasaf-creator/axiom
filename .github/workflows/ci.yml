@@ -132,6 +132,12 @@ jobs:
       # with a publication attached.
       - name: pack input coverage
         run: python scripts/check-pack-coverage.py
+      # §7s.1 Stage 2 — the same correction from the opposite direction: the
+      # export must carry every surface the app renders. Its section list was a
+      # hand-maintained literal and went stale SILENTLY against everything that
+      # shipped this year.
+      - name: export coverage
+        run: python scripts/check-export-coverage.py
       - run: pytest -q
       # Proves the tests guarding the assessment read path are not vacuous, by
       # reintroducing a plausible defect per test and requiring each to fail.
