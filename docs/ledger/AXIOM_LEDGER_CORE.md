@@ -7643,6 +7643,12 @@ reason to defer it**, because the window is the only one that will ever exist.
 
 **LAUNCH GATES — must precede a relaunch carrying paying customers:**
 
+⭐⭐ **SUPERSEDED IN SCOPE 31 Jul: the app returns to public availability ONLY
+when EVERY feature is built and tested — no partial relaunch, no staged
+availability, no soft launch.** The post-launch column below is post-THAT.
+⭐ **G11 has since been reclassed to LAUNCH**, and G2, G5, G6 and G7 are named
+in the condition. See *The launch condition, ruled 31 Jul*.
+
 | | gap |
 |---|---|
 | **G1** | ⭐⭐ **No backups exist at all.** The single largest exposure on this list. |
@@ -10156,6 +10162,103 @@ CORE records `wacc_at` with the kinked kd as canonical and the guard reads
 call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
+
+## ⭐⭐ THE LAUNCH CONDITION — EVERYTHING BUILT AND TESTED, OR NOT PUBLIC (ruled 31 Jul)
+
+### ⭐⭐ 1 · THE GOVERNING CONDITION
+
+> **The app returns to public availability ONLY when every feature is built and
+> tested.**
+>
+> ⭐ **No partial relaunch. No staged availability. No soft launch.**
+
+⭐ **RECORDED AS THE GOVERNING LAUNCH CONDITION**, superior to any individual
+gate's own classification — a gate marked *post-launch* is post-**this**, not a
+licence to open earlier.
+
+### ⭐⭐ 2 · WHAT THE CONDITION MAKES BINDING
+
+**Feature work now on the launch path:**
+
+| item | measured state |
+|---|---|
+| ⭐ **Prescience in full** | **four features from ZERO backend files**, plus ⭐⭐ **a plan tier absent from the data model** (`User.plan` is `free \| business`) |
+| **the ratio engine** | ⭐ **79 formulas that NOTHING EXECUTES** — the registry yaml is read only by a CI guard |
+| **Control Tower (§4l)** | ⭐ **ZERO code** — and the name collides with operational monitoring, which is why it reads as built |
+| **multi-source ingestion** | designed, not built |
+| **mobile** | responsive web only, **partly done and uncatalogued** (72 files carry breakpoints) |
+| **mindmaps** | ⭐ **undesigned** — zero occurrences in either repository |
+
+**§8 gates now on the launch path:**
+
+| gate | |
+|---|---|
+| **G2** | the restore test — ⭐ **pending the first scheduled backup, not blocked** |
+| **G5** | ⭐ **unprotected `main` AND no staging** — a bad commit reaches production behind a LOCAL hook only, with no environment between commit and live. ⭐ *(The dispatch listed these as G5 and G6 separately; CORE's G5 carries both — corrected here rather than renumbering the gate table.)* |
+| **G6** | ⭐ **pool sizing** — one process, a 15-connection ceiling, unbounded threads per upload |
+| **G7** | ⭐ **single region** — named in the condition because "every feature built and tested" does not survive a regional outage on launch day |
+| **G11** | ⭐⭐ **load testing — reclassed to LAUNCH by the thousand-company ruling**, because the unattended monthly sweep IS the untested load |
+
+⭐ **RECORDED AS ONE LIST DELIBERATELY.** These sit in three different sections
+today — features, §8 gates, and a reliability queue — and **a condition that spans
+three lists is a condition nobody can check.**
+
+### ⭐⭐ 3 · THE RISK THIS CONDITION CARRIES — recorded once, not disputed
+
+**Every gate closed today revealed something nobody knew was there:**
+
+| lane | what it found |
+|---|---|
+| G1 | ⭐⭐ **no backup had EVER been taken** |
+| B1 | an **inert notification** with **twenty published packs** behind it |
+| period labels | a guard **red on `main` for weeks**, never run |
+| financial-forecasts | a **shipped surface crashing** on a fix that was never deployed |
+| §7j | a **priced tier** that is four placeholders |
+| G13 | **every customer count** unreliable — four "paying" accounts, all test-mode |
+
+⭐⭐ **A COMPLETENESS CONDITION HAS NO NATURAL END WHILE MEASUREMENT KEEPS FINDING
+WORK.** Each of the above was discovered by looking, not by a plan; the supply of
+such findings is not known to be finite, and **"everything built and tested" is
+defined against a list that measurement keeps extending.**
+
+⭐ **THE CONDITION STANDS AS RULED. THE RISK IS RECORDED, NOT DISPUTED** — stated
+once here so it is visible to whoever next asks why the date moved, rather than
+re-argued each time.
+
+### ⭐⭐ 4 · THE CONSEQUENCE FOR VERIFICATION — THE CRAWLER GAP IS NOW LOAD-BEARING
+
+⭐⭐ **WITH NO STAGED AVAILABILITY, THE FIRST REAL USAGE IS THE FIRST PAYING
+CUSTOMER'S.** There is no cohort between the operator and revenue.
+
+**So the gap found at `a45d185` stops being a note and becomes structural:**
+
+- the crawler covers **92 routes**, `/financial-forecasts` among them;
+- ⭐⭐ **it executes NO JavaScript**, so a page that **throws in the browser** and a
+  page that **renders** both return **200** with the same shell;
+- **React error boundaries render after hydration** — server-side there is nothing
+  to see.
+
+⭐⭐ **A HEADLESS SMOKE PASS IS THEREFORE A LAUNCH GATE, NOT AN IMPROVEMENT** —
+asserting the error boundary did not render, over a route list **derived from
+`routeTree.gen.ts`** rather than hand-maintained.
+
+⭐ **The financial-forecasts crash is the worked example:** it was found by a human
+opening the page, and **nothing in the pipeline could have found it.**
+
+### ⭐⭐ 5 · THE FRONTEND HAS NO TEST SUITE, AND IT IS THE HALF A CUSTOMER TOUCHES
+
+**Measured at `f197514`: ZERO test files in `optimization-anchor`.**
+
+Its CI runs **typecheck · lint · ratchet · build** — ⭐ **and a hook-order violation
+passes all four.** It compiles, it lints, it builds, and it throws in a browser.
+
+⭐⭐ **UNDER A BUILD-EVERYTHING-FIRST CONDITION, THE HALF OF THE PRODUCT WITH NO
+TEST SUITE IS THE HALF A CUSTOMER TOUCHES.** The backend carries 1,347 tests and
+20 gates; **the surface a CEO actually opens carries none.**
+
+⭐ **"Every feature built and TESTED" cannot be satisfied by the frontend as it
+stands** — there is no instrument that would report it. **That is not an argument
+against the condition; it is the largest single item the condition creates.**
 
 ## ⭐⭐ THE FREE PILOT IS THE PRESCIENCE VERSION — AND IT CANNOT LAUNCH YET (ruled 31 Jul)
 
