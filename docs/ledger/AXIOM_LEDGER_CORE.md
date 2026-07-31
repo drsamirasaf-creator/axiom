@@ -6657,9 +6657,15 @@ demanding exact equality would be a test demanding the arithmetic be wrong.**
 
 ### ⭐ FREQUENCY IS DERIVED, NOT TRUSTED
 
-**Four datasets carry `frequency='quarterly'` while their periods infer annual.**
-A third value makes a stated-versus-inferred mismatch worse, so **one must be made
-authoritative.**
+⭐ **CORRECTED 31 Jul — the four-dataset evidence for this was FALSE**, and is
+corrected at its origin under INCIDENTAL FINDINGS below. All 36 stored datasets
+agree across column, payload and values.
+
+**The ruling stands on its own merits and was implemented:** a third frequency
+makes a stated-versus-inferred mismatch worse *if one ever arises*, so **the
+period VALUES are authoritative** and the divisor derives from them. A lying label
+cannot move it, and `frequency_check` reports a disagreement rather than resolving
+it.
 
 ### THE PACK STATES WHAT IT USED, AND HOW OLD ITS INPUTS ARE
 
@@ -6672,6 +6678,83 @@ AGE is the thing a reader would otherwise assume.
 
 **A quarterly pack followed by a monthly pack are BOTH VALID.** The Value Bridge
 **renders between them, or declares that it cannot.**
+
+### ⭐⭐ BUILT — `d8e31a5` (31 Jul)
+
+**THE ACCEPTANCE WAS MET, AND IT WAS THE THREE-WAY EQUIVALENCE, NOT A CODE READ:**
+
+    annual      EV 1668.63    ratio 1.0000
+    quarterly   EV 1713.87    ratio 1.0271
+    monthly     EV 1724.04    ratio 1.0332
+
+**Inside the ~3% real residual that must not be tuned away.** The defect
+reintroduced measures **15.09× low** against quarterly's **4.66×** — worse, at a
+larger divisor, exactly as the ruling predicted before the build.
+
+**41 tests, 1182 passing, seventeen gates green.**
+
+## ⭐⭐ LAW EXTENSION — A GUARD NOTHING INVOKES FAILS OPEN ON EVERYTHING IT EXISTS
+TO CATCH (31 Jul)
+
+**`check-period-labels-published` has been RED on `origin/main` since Stage 1 at
+`4648213`, and was never run.**
+
+⭐ **THIRD INSTANCE OF BUILT-BUT-NOT-WIRED, AND THE FIRST APPLIED TO A GUARD —
+which is worse than the other two.** An inert feature **withholds value**. An
+inert guard **withholds protection, silently and indefinitely**, and every lane
+that ran while it was red believed it had been checked.
+
+⭐ **EVERY GUARD MUST BE INVOKED BY SOMETHING THAT RUNS, AND ITS INVOCATION IS
+PART OF THE GUARD.** A guard in the repository and absent from CI is not a
+half-measure; it is a claim.
+
+### ⭐ AND THE FIRST READING OF IT WAS A FALSE GREEN
+
+The first measurement reported the gate **green on clean main**. It was not: an
+`&&` chain reported the wrong exit code, and **a pristine clone settled it.**
+
+⭐ **An instrument returning a false green ABOUT A GUARD THAT WAS NOT RUNNING** —
+two layers of the same failure, and the outer one nearly closed the inner one.
+
+### ⭐ "UNMAPPED" AND "DELIBERATELY HAS NO ENDPOINT" ARE DIFFERENT FACTS
+
+The pack freeze is registered with an **explicitly EMPTY endpoint list**, not
+omitted from the map. Its `period_labels` reach a reader through a **frozen
+snapshot**, which has no URL.
+
+⭐ **A GATE UNABLE TO DISTINGUISH THE TWO WILL BE SILENCED BY WHOEVER HITS IT
+NEXT** — the fastest way past a gate that cannot express "this one is fine" is to
+delete the entry.
+
+## ⭐ VERSION GATES — ENUMERATED FROM CODE, NOT FROM THE FIVE THAT FAILED (31 Jul)
+
+**Twelve comparison sites.** Of the five that broke on the v8 → v9 bump:
+
+- **Three pin the literal DELIBERATELY, as tripwires** — *"a bump must be an
+  acknowledged act, not a side effect."* They worked; updating them is the
+  acknowledgement.
+- **One derives from policy and correctly did not break.**
+- **The fifth was not a version gate at all.**
+
+⭐ **THE POLICY-DERIVED FORM IS THE PATTERN. THE LITERAL-PINNED ONES ARE LISTS
+THAT AGREE TODAY** — deliberate lists, but lists, and the distinction is only
+worth keeping where the acknowledgement is the point.
+
+**No version allow-list exists and none was added** (CORE §7.37). **A v8 workbook
+parses with monthly ABSENT — confirmed explicitly rather than assumed.**
+
+## ⭐ TWO OPERATIONAL FINDINGS FROM THE LANE (31 Jul)
+
+1. ⭐ **A CONTROL'S `finally` DOES NOT SURVIVE A KILL.** A 10-minute timeout killed
+   the pack-coverage guard **mid-control**, leaving its planted line in
+   `sentinel.py`. **The planted-line pattern can leave the repo dirty on any
+   timeout** — and the next run then reports the plant as a real finding.
+2. ⭐ **A NEGATIVE CONTROL BECAME UNREACHABLE BECAUSE THE FIX GOT STRONGER.** The
+   old control reproduced the discounting defect by MISLABELLING a quarterly
+   dataset; derivation now defeats that. **It was SPLIT, not deleted** — one test
+   asserts *the old attack vector is closed*, one reproduces the defect *via the
+   divisor, the only route that still can*. A control that no longer reproduces
+   anything proves the positive guard less than it claims.
 
 ## ⭐⭐ DESIGN — IRREGULAR MULTI-SOURCE INGESTION (31 Jul)
 
@@ -8028,9 +8111,28 @@ the existing preflight missed this.
 
 ## INCIDENTAL FINDINGS — RECORDED, NOT ACTIONED (30 Jul)
 
-1. **Four datasets carry `frequency='quarterly'` while their periods infer
-   annual.** ⭐ A discounting path has already chosen wrongly between annual and
-   quarterly rates once, **at 4.66×**.
+1. ⭐⭐ **FALSE — CORRECTED 31 Jul. Recorded here as it was, because it was
+   carried onward.**
+
+   **What was recorded:** *"Four datasets carry `frequency='quarterly'` while
+   their periods infer annual."*
+
+   **Measured at `d8e31a5`, across all 36 stored datasets:** the `frequency`
+   column, the payload's `periods.frequency`, and the **period values
+   themselves** agree on **every row**. The four quarterly datasets (ids 54–57)
+   carry `20231, 20232, …` — **genuinely quarterly on all three sources. Zero
+   disagreements.**
+
+   ⭐ **IT WAS CARRIED FROM A SCOPE REPORT INTO A BUILD DISPATCH WITHOUT
+   MEASUREMENT** — the same mechanism as the provenance law's instance 1, which
+   was also read, restated and dispatched as fact without one query. **Seventh
+   wrong entry found in this file this era.**
+
+   The concern it expressed was still worth acting on and was acted on: **the
+   divisor is now derived from the period values rather than the label**, so a
+   disagreement — had one existed, or should one arise — cannot reach the
+   discounting path. ⭐ **The remedy was right and the evidence for it was
+   invented.**
 2. ⭐ **No runtime code reads `axiom_ratio_registry.yaml`** — only two static CI
    guards. **79 ratios exist as a specification the engines do not execute**, so
    **the registry and `engines.py` are two sources of truth**, and the guards
