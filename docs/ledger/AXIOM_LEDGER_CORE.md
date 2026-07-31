@@ -10151,6 +10151,97 @@ call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
 
+## ⭐⭐ §7j PRESCIENCE — THE UPGRADE PROMPT IS NOT AN ENTITLEMENT DECISION (31 Jul)
+
+⭐⭐ **INTENDED DESIGN AND DEFECT WERE DISTINGUISHABLE, AND THE ANSWER IS NEITHER.
+IT IS A PLACEHOLDER.** The Meridian demo shows an upgrade prompt because **there
+is nothing behind the tabs and no check in front of them.**
+
+### ⭐ 1 · WHAT §7j ACTUALLY CONTAINS — measured, not status-checked
+
+| Prescience-only feature (per the tier definition) | state |
+|---|---|
+| **Ask AXIOM** *(Business taster, not Prescience-only)* | ⭐ **BUILT** — `/prescience/ask`, `/context`, `/conversations`, `/usage` |
+| **Radar / Sentinel** | ⭐ **BUILT** — `/radar/events`, `/internal/sentinel/recompute`, plus 5 frontier endpoints |
+| **Multiverse** | ⭐⭐ **NOT BUILT** |
+| **Resilience Field** | ⭐⭐ **NOT BUILT** |
+| **Causal Map** | ⭐⭐ **NOT BUILT** |
+| **Prescience Brief** | ⭐⭐ **NOT BUILT** |
+
+**13 endpoints exist across the Prescience layer. NONE of them serves the four
+tabs the Prescience page displays.**
+
+⭐ **FOUR OF THE FIVE PRESCIENCE-ONLY FEATURES ARE UNBUILT**, and the fifth
+(Radar/Sentinel) **is not surfaced on the Prescience page at all** — it renders
+inside the pack's *what is at risk* and on `/risk-analysis`.
+
+### ⭐⭐ 2 · THE ENTITLEMENT MECHANISM — THERE ISN'T ONE
+
+`src/routes/prescience-ai.tsx` is **100 lines**. Measured:
+
+- ⭐⭐ **it reads NO plan, NO tier, NO role**;
+- ⭐ **it makes NO API call whatsoever**;
+- **all four tabs render the same hard-coded `lockedBlurb` card** with a
+  *"Prescience · Upgrade"* badge and a link to `/pricing`.
+
+⭐⭐ **THE LOCK IS A CONSTANT, NOT A GATE.** There is no code path that unlocks it
+for anyone.
+
+⭐ **The page's own comment already said so** — *"an unbuilt placeholder behind
+`lockedBlurb`"* — so the fact was recorded in the file and never in the ledger.
+
+**A real plan gate does exist elsewhere:** `require_plan()` in
+`modules/identity/deps.py` refuses non-`business` plans, and
+`AXIOM_REQUIRE_PLAN` **is set in production**. ⭐ **It has nothing to do with this
+page.**
+
+### ⭐⭐ 3 · THE FOUR VIEWERS — ALL IDENTICAL, AND ONE CANNOT EXIST
+
+| viewer | what they see |
+|---|---|
+| anonymous, landing in Meridian (`showcase`) | ⭐ **the locked card** |
+| signed-in **Business** | ⭐ **the locked card** |
+| signed-in **Prescience** | ⭐⭐ **CANNOT EXIST.** `User.plan` is documented `free \| business` and live data holds **only** `business` (4) and `free` (7). ⭐ **"Prescience" appears once, as a key in `ASSESSOR_PLAN_CAPS` — it is not a plan a user can hold.** |
+| **operator** | ⭐ **the locked card** |
+
+⭐⭐ **THE TIER THAT CARRIES THE PRODUCT'S HIGHEST PRICE HAS NO REPRESENTATION IN
+THE DATA MODEL.** A customer could be charged $11,995/mo and the system would
+have nowhere to record what they bought.
+
+### ⭐ 4 · IS THERE AN OPERATOR PATH? NO — AND THE REASON MATTERS
+
+**There is no path for the operator to view Prescience on their own product.**
+
+⭐⭐ **NOT BECAUSE A GATE EXCLUDES THEM, BUT BECAUSE THERE IS NOTHING TO VIEW.**
+Granting any entitlement, to anyone, would change nothing — the card is a
+constant. **The founder cannot verify the tier because the tier is four
+placeholders.**
+
+### ⭐⭐ 5 · COMMERCIAL CONSEQUENCE — stated as fact
+
+**Affected prospect-facing surfaces:**
+
+| surface | effect |
+|---|---|
+| **the Meridian demo** | ⭐ a prospect clicking *Prescience AI* sees **four locked tabs and an upgrade badge** — ⭐⭐ **which reads as "you have not paid", not as "this does not exist yet"** |
+| **the free pilot** | its promise is *"nothing watered down — the pilot tastes the full engine"*. ⭐⭐ **The full engine cannot be tasted; four of its five named features are absent.** |
+| **the sample packs** | ⭐ **UNAFFECTED.** The pack draws on the Value Bridge, the frontier and Sentinel — **all built** — and none of it routes through this page. |
+
+⭐⭐ **AND ONE CORRECTION TO THE PREMISE:** the dispatch states *"the leading
+question is answered by the forward engine."* Per the ruling, **the leading
+question — *can you rank it?* — is answered by the VALUE BRIDGE**, which is in the
+pack, is built, and **is not gated.** ⭐ **The demo's strongest claim is
+unaffected by this finding.** What the demo cannot show is the **foresight layer**,
+which is a different and lesser claim.
+
+### ⭐ WHAT WAS NEVER RECORDED
+
+⭐⭐ **THE INTENT WAS NEVER WRITTEN DOWN.** CORE defines the tier, the price and
+the gating list; **nothing anywhere says whether the demo should show Prescience,
+or whether the locked card is a deliberate upsell or a stand-in for unbuilt work.**
+The page comment calls it a placeholder; the badge says *Upgrade*. ⭐ **Those are
+two different claims and both ship.**
+
 ## ⭐⭐ PLAN-VS-FORECAST CRASH — **THE SOURCE IS ALREADY FIXED. THE DEPLOY IS STALE.** (31 Jul)
 
 ⭐⭐ **NO CODE CHANGE WAS MADE, AND THAT IS THE FINDING.** Shipping a "fix" for a
