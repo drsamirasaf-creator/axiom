@@ -7613,15 +7613,41 @@ present and was not restored.**
 
 ### ⭐⭐ WHAT CORE SPECIFIED THAT THE PRODUCT CANNOT SUPPORT — one, and it is the diagram
 
-**The value-proposition diagram is specified in CORE with a `CLOSING BAR — the
-proof point`.** ⭐⭐ **THE PROOF POINT IS WITHDRAWN, SO THE BAR HAS NOTHING TO
+**The value-proposition diagram was specified in CORE with a `CLOSING BAR — the
+proof point`.** ⭐⭐ **THE PROOF POINT IS WITHDRAWN, SO THE BAR HAD NOTHING TO
 CARRY.** It was **drawn without the closing bar** rather than filled with a
 plausible substitute.
 
-⭐ **RECORDED AS A COLLISION, NOT RESOLVED:** CORE requires the bar; CORE also
-withdraws the only claim ruled to occupy it. **Whether the bar returns with a
-different claim, or is struck from the diagram spec, is a ruling this lane did not
-take.**
+⭐⭐ **RULED 31 Jul — THE BAR IS STRUCK, AND THIS COLLISION IS CLOSED.** See *The
+closing bar is struck* in the diagram spec above. **Struck, not held pending:** a
+slot held open for a withdrawn claim is an invitation to fill it.
+
+### ⭐⭐ THE COLLISION'S MECHANISM — RECORDED, BECAUSE IT IS NEW
+
+**Two CORE entries, EACH INDIVIDUALLY CORRECT, CONTRADICTING ONE ANOTHER:** the
+diagram spec **requiring the bar**, and the brochure ruling **withdrawing its only
+occupant.**
+
+⭐⭐ **EVERY PRIOR CORE FAULT THIS ERA WAS AN ENTRY DISAGREEING WITH THE CODE.**
+Ten wrong entries, six in the direction that causes rebuilding — all of them
+*ledger versus product*. ⭐ **THIS IS THE LEDGER DISAGREEING WITH ITSELF**, and no
+measurement against the code could have found it, because **both entries were true
+of the code.**
+
+⭐⭐ **IT SURFACED ONLY BECAUSE A LANE TRIED TO SATISFY BOTH.** Neither entry is
+wrong when read alone, so reading is not enough; **the contradiction is only
+visible from inside an attempt to obey both at once.**
+
+⭐⭐ **AND THE FAILURE MODE IS SILENT.** A build lane that satisfies one entry and
+**quietly ignores the other resolves the contradiction BY ACCIDENT and leaves it
+recorded** — the ledger still holds both, the next lane hits it again, and the
+resolution that happened is invisible because nobody wrote it down.
+
+⭐ **THE CORRECT BEHAVIOUR IS WHAT THAT LANE DID: BUILD TO NEITHER, AND REPORT.**
+Drawing the diagram without the bar satisfied the withdrawal; **declining to
+invent a substitute occupant refused to satisfy the spec**; and recording the
+collision put the decision in front of a human instead of resolving it in a
+commit.
 
 ## ⭐⭐ B15 STAGE 1 — THE BROCHURE CLAIM AUDIT (31 Jul)
 
@@ -7727,14 +7753,61 @@ gap in the CFO's work; those things were never general-ledger objects.
         ┌─────────────────┐   ┌────────────────────┐
         │ what it is worth│   │ what to do next    │
         └─────────────────┘   └────────────────────┘
-    ┌──────────────────────────────────────────────────────┐
-    │  CLOSING BAR — the proof point                       │
-    └──────────────────────────────────────────────────────┘
+
+⭐⭐ **THE DIAGRAM ENDS HERE. THERE IS NO CLOSING BAR — RULED 31 Jul, STRUCK.**
 
 ⭐ **ACTUALS SITS ON THE SAME TIER AS THE OTHER THREE, AND IS NEUTRAL.** Placing
 it above them, or styling it as the foundation, would draw the picture of a
 product built on top of the CFO's pack — the positioning the frame above rejects.
 It is one input of four.
+
+### ⭐⭐ THE CLOSING BAR IS STRUCK — RULED 31 Jul. **STRUCK, NOT HELD PENDING.**
+
+**The bar existed to carry a PER-INITIATIVE EQUITY FIGURE. That claim is withdrawn
+ON MEASUREMENT, NOT ON TIMING** — the attribution rule is built but **unproven on
+real data**, and restoring the claim is a separate ruling **that may never come.**
+
+⭐⭐ **A SLOT HELD OPEN FOR A WITHDRAWN CLAIM IS AN INVITATION TO FILL IT.** The
+next writer finds an **empty bar** and **a note saying what used to go there** —
+and that is how the withdrawn claim returns. **Not by a decision, by a vacancy.**
+
+⭐ **SO IT IS REMOVED FROM THE DRAWING, NOT ANNOTATED INSIDE IT.** A struck element
+left in place with an explanation underneath is the same vacancy wearing a
+disclaimer.
+
+### ⭐ THE DIAGRAM IS COMPLETE WITHOUT IT
+
+**Four inputs converging on the pack, resolving to two outputs — what it is worth,
+and what to do next.**
+
+⭐ **THE BAR WAS A PUNCHLINE, NOT A STRUCTURAL ELEMENT.** Nothing in the
+four-to-one-to-two structure depended on it, which is why its removal costs the
+diagram nothing.
+
+### ⭐⭐ WHAT REPLACED IT IS STRONGER THAN WHAT IT REPLACED
+
+**The brochure's closing evidence is the bridge's OWN FIGURES** (demo pack,
+`9055f0d`):
+
+| | |
+|---|---|
+| total movement | **−1,928.91** |
+| explained by named drivers | **−80.32** |
+| ⭐ **residual** | **−1,848.60** |
+
+⭐⭐ **A BRIDGE THAT DOES NOT CLOSE TEACHES A PROSPECT MORE ABOUT AXIOM'S
+CREDIBILITY THAN A CONFIDENT PER-INITIATIVE FIGURE WOULD.**
+
+⭐ **Same discipline as reporting 2 of 6 drivers computable with the other 4 named
+as absent — where most vendors would show six.** The evidence is that the product
+declines to explain what it cannot explain, and says so in its own numbers.
+
+### ⭐ STANDING CONSEQUENCE
+
+**If a closing claim is ever wanted, it is SPECIFIED FRESH and RULED ON ITS OWN
+EVIDENCE — never inherited from this spec.**
+
+⭐ **The collision recorded at `2b54b3a` CLOSES.**
 
 ### ⭐⭐ THE PROOF POINT — WITHDRAWN AS WRITTEN AND REPLACED (corrected 31 Jul)
 
