@@ -10163,6 +10163,108 @@ call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
 
+## ⭐⭐ ADMIN SUCCESSION AND ACCOUNTABLE PLATFORM ACCESS — BUILT (1 Aug)
+
+### ⭐ 1 · THE RANKING MODEL
+
+`ax_memberships.admin_rank` — **0 = primary, 1..n = deputies.** ⭐⭐ **NULLABLE,
+AND NULL MEANS UNRANKED — NOT "LAST".** Every existing admin is unranked because
+nothing distinguished them; **a default of 0 would have silently made all six
+live admins primaries**, and ordering them would assert a client decision nobody
+made. `ranked_admins()` sorts unranked **last and reports them as unranked.**
+
+⭐ **Added through the `_add()` runtime bootstrap, not alembic** — `ax_*` belongs
+to `accounts.Base`. **This seam has produced eight bugs; a test asserts the line.**
+
+### ⭐⭐ 2 · SUCCESSION WITHOUT AXIOM — and the revoke gap closed
+
+| endpoint | what it does |
+|---|---|
+| `GET  /companies/{id}/admins` | ranked admins **+ platform-access history** |
+| `POST /companies/{id}/admins/rank` | client-set order; ⭐ **ranking is NOT a grant** — naming a non-admin is 422 |
+| `POST /companies/{id}/admins/step-down` | ⭐⭐ **the common case, no support ticket** |
+| `POST /companies/{id}/admins/{mid}/revoke` | ⭐ **THE REVOKE GAP** — `revoke` reads `_get_viewer_row` and cannot touch an admin |
+| `POST /companies/{id}/support/grant-admin` | staff-gated recovery |
+
+⭐⭐ **TWO REFUSALS ARE THE DESIGN:**
+
+1. **Stepping down cannot leave a company with no admin** — the one outcome no
+   client can undo.
+2. ⭐ **With no ranked deputy it REFUSES rather than promoting an unranked
+   admin.** *"Refusing to choose is the point"* — the same rule `transfer_admin`
+   already applies.
+
+⭐ **The last admin cannot be revoked by anyone**, including themselves.
+
+### ⭐⭐ 3 · SUPPORT GRANTS ROLES, NEVER DATA
+
+Support names a user and makes them an admin. ⭐ **It does not set a rank —
+support restores ACCESS; the client decides ORDER.** A **reason is required**: an
+unexplained support grant is indistinguishable from an unauthorised one after the
+fact.
+
+⭐⭐ **NO CREDENTIAL RESET, AND A TEST ENFORCES IT BY AST** — no call to
+`set_password`/`hash_password`/`issue_token`, no assignment to `password_hash`.
+**Handing over a password would let one person continue another's authored
+history**, and the newer models denormalise `actor_label` precisely so a new admin
+inherits **authority without inheriting an identity.**
+
+⭐ **The guard was NARROWED once:** it first banned the *word* "credential" and
+failed on the module's own client-facing reassurance. ⭐⭐ **A guard that forbids
+the word rather than the capability punishes saying the right thing.**
+
+### ⭐⭐ 4 · THE VERIFICATION SPLIT — RECORDED, NOT ASSUMED
+
+**The whole capability is a way into an account, so SOCIAL ENGINEERING IS THE
+ATTACK.**
+
+| ⭐ ENFORCED BY CODE | ⭐⭐ PROCEDURAL — no code can check it |
+|---|---|
+| caller holds `staff`/`super`, server-side | that the requester **is who they claim to be** |
+| target is an existing user, named by id | that they are entitled to administer **that** company |
+| the company exists | that the departing admin is genuinely unavailable |
+| the act is audited with actor, target, company | that the request did not come from a **compromised mailbox** |
+| the client's admins are notified | |
+
+⭐ **Written into the module as two named lists, so the procedural half cannot be
+mistaken for something the code handles.**
+
+### ⭐⭐ 5 · PLATFORM ACCESS IS MARKED AND VISIBLE
+
+**Marked at the BYPASS SITE**, not left to each endpoint — an endpoint that forgot
+would produce an audit row **indistinguishable from a client admin's**, which is
+the state this closes. Action: `platform_access_used`.
+
+⭐ **One row per actor/company/day.** A support session touching twenty endpoints
+is **one act of access**, and twenty rows would be noise a client stops reading.
+
+⭐⭐ **AND MARKING CAN NEVER BREAK THE ACT IT MARKS** — the write is wrapped,
+because turning an audit gap into an outage is the worse trade.
+
+**Visible on the team surface** (`optimization-anchor`): administrators with their
+rank, and every platform access with its reason. ⭐ **An explicit "AXIOM support
+has not accessed this company" when there is none** — a blank section reads as
+*not implemented* rather than *has not happened*.
+
+### ⭐⭐ 6 · THE PILOT ASYMMETRY — RULED
+
+**`transfer_admin` does NOT consult `_pilot_transferred_away`, while the general
+bypass does.** ⭐⭐ **That was an OMISSION LEFT IN PLACE BECAUSE IT HAPPENED TO BE
+USEFUL. It is now a recovery path ON PURPOSE**, stated in the code:
+
+> A company that has left the pilot can still lose its only admin, and the
+> alternative is a customer permanently locked out of their own account. ⭐
+> **General platform access still ends at transfer; only the ability to restore an
+> ADMIN SEAT survives — roles, never data.**
+
+### ⭐ TOKEN EXPOSURE — NOT WIDENED
+
+⭐⭐ **The new endpoints take a SESSION (`get_current_user`), not
+`AXIOM_ADMIN_TOKEN`.** A leaked token still reaches `POST /admin/grant` (a
+billing capability) and the recompute endpoints — ⭐ **it gains NO admin-grant
+power from this lane.** The support grant requires a signed-in `staff`/`super`
+user.
+
 ## ⭐⭐ PLATFORM ACCESS, ADMIN SUCCESSION, TRANSFER AND ATTRIBUTION (1 Aug)
 
 ⭐ **A CORRECTION FIRST, AND IT UNDERPINS EVERYTHING BELOW.** `ad39e20` recorded

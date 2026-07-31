@@ -179,6 +179,15 @@ class Membership(Base):
     company_id = Column(Integer, index=True, nullable=False)
     role = Column(String(16), default="viewer", nullable=False)
     status = Column(String(16), default="pending", nullable=False)
+    # ⭐⭐ ADMIN SUCCESSION. 0 = PRIMARY; 1, 2, … = deputies in order. NULL means
+    # UNRANKED — which is a real state, not a synonym for "last": every existing
+    # admin is unranked because nothing distinguished them, and inventing an
+    # order would assert a client decision nobody made.
+    #
+    # ⭐ CLIENT-SET AND CHANGEABLE. It is why `transfer_admin` refuses to guess
+    # when several admins exist — with a rank, succession no longer needs a
+    # guess, and support recovery becomes the FALLBACK rather than the path.
+    admin_rank = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     approved_at = Column(DateTime, nullable=True)
     last_seen_at = Column(DateTime, nullable=True)
@@ -1491,9 +1500,49 @@ def _pilot_transferred_away(db, company_id: int) -> bool:
         company_id=company_id, status="Transferred").first() is not None
 
 
+# ⭐⭐ PLATFORM ACCESS IS NEVER SILENT. Ruled 31 Jul. The bypass returned a
+# TRANSIENT membership that was never persisted, so AXIOM staff never appeared in
+# a client's team list and the audit could not distinguish platform access from a
+# granted membership. Both are now marked at the point of use.
+PLATFORM_BYPASS_ACTION = "platform_access_used"
+
+
+def _mark_platform_access(db, user, company_id: int, why: str = ""):
+    """⭐ Record that this act was PLATFORM ACCESS, not a granted membership.
+
+    Written at the BYPASS SITE rather than left to each endpoint: an endpoint
+    that forgot would produce an audit row indistinguishable from a client
+    admin's, which is exactly the state this closes.
+
+    ⭐ One row per (actor, company, day) — a support session touching twenty
+    endpoints is ONE act of access, and twenty rows would be noise a client
+    stops reading.
+    """
+    try:
+        since = datetime.utcnow().replace(hour=0, minute=0, second=0,
+                                          microsecond=0)
+        seen = (db.query(AuditLog)
+                  .filter(AuditLog.actor_user_id == user.id,
+                          AuditLog.action == PLATFORM_BYPASS_ACTION,
+                          AuditLog.target_id == str(company_id),
+                          AuditLog.created_at >= since).first())
+        if seen is None:
+            audit(db, user.id, PLATFORM_BYPASS_ACTION, "company", company_id,
+                  detail=(why or "AXIOM support acted with platform access; no "
+                                 "membership was granted"))
+            db.flush()
+    except Exception:
+        # ⭐ MARKING MUST NEVER BREAK THE ACT IT MARKS. A failure here would turn
+        # an audit gap into an outage, which is a worse trade.
+        pass
+
+
 def _operator_bypass_ok(db, user, company_id: int) -> bool:
-    return (user.platform_role in ("staff", "super")
-            and not _pilot_transferred_away(db, company_id))
+    ok = (user.platform_role in ("staff", "super")
+          and not _pilot_transferred_away(db, company_id))
+    if ok:
+        _mark_platform_access(db, user, company_id)
+    return ok
 
 
 def _slots_used(db, account_id: int) -> int:
@@ -12387,6 +12436,108 @@ def rotate_cid(company_id: int, member=Depends(require_company_admin),
                        "no longer be used to join"}
 
 
+# --------------------------------------------------- admin ranking & succession
+class RankIn(BaseModel):
+    order: list[int]                    # user_ids, primary first
+
+
+class StepDownIn(BaseModel):
+    to_user_id: int | None = None
+
+
+class SupportGrantIn(BaseModel):
+    user_id: int
+    reason: str
+
+
+@router.get("/companies/{company_id}/admins")
+def list_admins(company_id: int, member=Depends(require_company_admin),
+                db=Depends(get_db)):
+    """Ranked administrators, and ⭐ ANY PLATFORM ACCESS THIS COMPANY HAS SEEN.
+
+    ⭐⭐ THE SECOND HALF IS THE POINT. AXIOM staff never appear as members —
+    the bypass grants no membership — so without this the client has no surface
+    on which platform access is visible at all.
+    """
+    from .succession import ranked_admins
+    rows = ranked_admins(db, company_id)
+    names = {}
+    try:
+        for u in db.query(User).filter(
+                User.id.in_([r.user_id for r in rows] or [0])).all():
+            names[u.id] = u.name or u.email
+    except Exception:
+        pass
+    events = (db.query(AuditLog)
+                .filter(AuditLog.action == PLATFORM_BYPASS_ACTION,
+                        AuditLog.target_id == str(company_id))
+                .order_by(AuditLog.created_at.desc()).limit(50).all())
+    return {
+        "company_id": company_id,
+        "admins": [{"membership_id": r.id, "user_id": r.user_id,
+                    "name": names.get(r.user_id),
+                    "admin_rank": r.admin_rank,
+                    "is_primary": r.admin_rank == 0,
+                    # ⭐ UNRANKED IS REPORTED AS SUCH, not as "last".
+                    "unranked": r.admin_rank is None} for r in rows],
+        "platform_access": [
+            {"at": e.created_at.isoformat() if e.created_at else None,
+             "actor_user_id": e.actor_user_id, "detail": e.detail}
+            for e in events],
+        "platform_access_note": (
+            "AXIOM support can act on this company to restore administrator "
+            "access. Support never appears as a member and never reads your "
+            "financial data. Every occurrence is listed above."),
+    }
+
+
+@router.post("/companies/{company_id}/admins/rank")
+def rank_admins(company_id: int, body: RankIn,
+                member=Depends(require_company_admin),
+                user: User = Depends(get_current_user), db=Depends(get_db)):
+    from .succession import set_ranks
+    out = set_ranks(db, company_id, body.order, actor=user)
+    db.commit()
+    return {"ok": True, "ranking": out}
+
+
+@router.post("/companies/{company_id}/admins/step-down")
+def admin_step_down(company_id: int, body: StepDownIn,
+                    member=Depends(require_company_admin),
+                    user: User = Depends(get_current_user), db=Depends(get_db)):
+    """⭐⭐ THE CLIENT PROMOTES A DEPUTY WITHOUT AXIOM. The primary leaving is the
+    common case; a recovery path used routinely stops being a recovery path."""
+    from .succession import step_down
+    out = step_down(db, company_id, actor=user, to_user_id=body.to_user_id)
+    db.commit()
+    return {"ok": True, **out}
+
+
+@router.post("/companies/{company_id}/admins/{membership_id}/revoke")
+def admin_revoke(company_id: int, membership_id: int,
+                 member=Depends(require_company_admin),
+                 user: User = Depends(get_current_user), db=Depends(get_db)):
+    """⭐ THE REVOKE GAP. `revoke` reads `_get_viewer_row` and cannot touch an
+    admin — half of why lockout was total."""
+    from .succession import revoke_admin
+    out = revoke_admin(db, company_id, membership_id, actor=user)
+    db.commit()
+    return out
+
+
+@router.post("/companies/{company_id}/support/grant-admin")
+def support_grant(company_id: int, body: SupportGrantIn,
+                  user: User = Depends(get_current_user), db=Depends(get_db)):
+    """⭐⭐ SUPPORT GRANTS ROLES, NEVER DATA. No credential reset — that would
+    attribute one person's history to another."""
+    from .succession import support_grant_admin
+    _mark_platform_access(db, user, company_id, "support granted admin access")
+    out = support_grant_admin(db, company_id, body.user_id, actor=user,
+                              reason=body.reason)
+    db.commit()
+    return out
+
+
 # ------------------------------------------------------------ admin transfer
 @router.post("/companies/{company_id}/transfer-admin")
 def transfer_admin(company_id: int, body: TransferIn,
@@ -12412,7 +12563,21 @@ def transfer_admin(company_id: int, body: TransferIn,
     """
     admins = db.query(Membership).filter_by(company_id=company_id, role="admin",
                                             status="active").all()
+    # ⭐⭐ RULED 31 Jul — SUPPORT-SIDE ADMIN TRANSFER SURVIVES A PILOT
+    # TRANSFERRING AWAY, BY INTENT. It does NOT consult `_pilot_transferred_away`
+    # (which the general bypass does), and that difference was previously an
+    # OMISSION LEFT IN PLACE BECAUSE IT HAPPENED TO BE USEFUL.
+    #
+    # It is now a RECOVERY PATH ON PURPOSE: a company that has left the pilot can
+    # still lose its only admin, and the alternative is a customer permanently
+    # locked out of their own account. ⭐ General platform access still ends at
+    # transfer; only the ability to restore an ADMIN SEAT survives — roles, never
+    # data.
     is_staff = user.platform_role in ("staff", "super")
+    if is_staff:
+        _mark_platform_access(db, user, company_id,
+                              "support-side admin transfer (survives "
+                              "transfer-away by intent)")
     if not is_staff and not any(a.user_id == user.id for a in admins):
         raise HTTPException(403, "Only the current administrator or AXIOM staff "
                                  "may transfer the admin seat")
@@ -13124,6 +13289,9 @@ def _ensure_ax_columns(engine):
     # UNKNOWN, and a DEFAULT false would classify every pre-existing account as a
     # test account on no evidence — the inference-from-appearance that produced
     # the eleventh wrong entry, run backwards.
+    # ⭐ admin succession — NULLABLE, no default: an existing admin is UNRANKED,
+    # and a default of 0 would silently make every one of them a primary.
+    _add("ax_memberships", "admin_rank", "admin_rank INTEGER")
     _add("ax_accounts", "livemode", "livemode BOOLEAN")
     _add("ax_accounts", "livemode_source", "livemode_source VARCHAR(24)")
     # Project Execution Suite — CSF owner + demo provenance on projects
