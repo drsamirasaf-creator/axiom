@@ -153,7 +153,7 @@ stochastic engine is no longer blocked on a false premise.**)
 | B10 | ~~Initiative-to-statement-line link~~ | ⭐ **BUILT** — declared, never inferred. `ax_initiative_line_links`. |
 | B11 | ~~The attribution rule~~ | ⭐ **BUILT** — sole / proportional / residual, with the over-crediting trap asserted. |
 | B13 | ~~Monthly periods and cadence granularity~~ | ⭐ **BUILT `d8e31a5`** — three-way equivalence proven (annual 1668.63, quarterly ×1.0271, monthly ×1.0332); frequency derived not trusted; template v9 with no version gate. |
-| B15 | ⭐ **Brochure features map** | Ruled 31 Jul. Three required corrections before it ships: the missing loop, the two outputs, the Watch's own path. |
+| B15 | ⭐ **Brochure features map** | Ruled 31 Jul. Three required corrections before it ships: the missing loop, the two outputs, the Watch's own path. ⭐ **Now also carries the CXO APPEAL as a separate section** — see *The leading question, ruled 31 Jul*, item 3. It is a SECTION, not a question, and its three items are ordered by strength deliberately. |
 | B14 | **Irregular multi-source ingestion** | Designed 31 Jul, not built. Depends on B13's granularity work. |
 | B12 | **Client-declared initiative impact** | Designed, not built. Supplies B10's link by declaration rather than inference. |
 
@@ -7169,6 +7169,130 @@ FABRICATION BY SILENCE.**
 
 ⭐ **THE LAST CLAUSE IS THE REAL PROMISE.** The first two are what every data
 product says.
+
+## ⭐⭐ THE LEADING QUESTION — RULED 31 Jul, AND THE TWO-LEVEL STRUCTURE
+
+⭐⭐ **RECORDED AS A FIRST ENTRY, NOT A CORRECTION.** The dispatch instructed a
+correction in place of a ruling *"superseded twice today"*. **Measured across ALL
+commits touching `docs/`: none of the four question forms appears anywhere in the
+ledger's history.** The two superseded versions were deliberated and never
+written down.
+
+⭐ **THAT IS THE FINDING, AND IT IS THE UNRECORDED-PROVENANCE SHAPE.** Two rounds
+of commercial reasoning existed only in conversation, so the ledger could neither
+supersede them nor stop them being re-proposed. **The superseded forms are
+therefore recorded BELOW, with their specific failures**, which is the only thing
+that keeps a discarded question discarded.
+
+### ⭐⭐ THE QUESTION — enterprise level
+
+> **"You know what created value last year. Can you rank it?"**
+>
+> Follow-on: **"And which three things should you fix first?"**
+
+### ⭐ WHY THIS FORM SURVIVED AND THE OTHERS DID NOT
+
+**The first clause CONCEDES THE PROSPECT'S ANSWER BEFORE HE GIVES IT.** Revenue
+growth, cost control, initiatives, growth platforms — the whole list of plausible
+causes has **nowhere to go**. It is granted in the premise, so it cannot be
+deployed as a rebuttal.
+
+**The second clause asks for the ORDERING NO LIST CONTAINS.** ⭐ **Ranking
+requires attribution**, and attribution is exactly what a list of causes does not
+have.
+
+⭐⭐ **IT IS THE VALUE BRIDGE ASKED OUT LOUD.** The product answers it
+**structurally rather than by claim** — the drivers, their amounts, and the
+residual are the ranking. **A question the artefact answers by existing does not
+need a proof point to survive scrutiny.**
+
+The follow-on converts the ranking into the forward action, which is the standing
+claim order: **value-maximising actions lead.**
+
+### ⭐⭐ THE SUPERSEDED FORMS — recorded so none is re-proposed
+
+| form | ⭐ the specific failure |
+|---|---|
+| *"What did last month do to the value of your company?"* | ⭐ **Admits "we get an annual valuation."** It STARTS AN ARGUMENT rather than a silence — and an argument about cadence is one the prospect can win. |
+| *"You know which initiatives are late. Do you know what they cost?"* | ⭐ **"Cost" reads as SPEND, which a CFO knows to the pound. It INSULTS HIM.** |
+| *"When your board asks what created value this year, what do you show them?"* | ⭐ **Answerable qualitatively, with a list.** The prospect produces one and the question is over. |
+
+⭐⭐ **THE GOVERNING TEST: ANY QUESTION A COMPETENT CFO CAN ANSWER CONFIDENTLY IS
+NOT THE QUESTION.** All three fail it. The ruled form does not, because ranking
+without attribution is not a thing a competent CFO can do.
+
+⭐ **This does NOT touch the locked positioning line**, which stands as authored
+and remains the platform descriptor. A leading question is a conversation opener,
+not a descriptor, and a later reader must not merge them.
+
+### ⭐⭐ 2 · RULED — DEPARTMENTAL ENTERPRISE-VALUE ATTRIBUTION IS OUT OF SCOPE, PERMANENTLY
+
+**It is NOT A GAP. It is not unbuilt work. It is a thing AXIOM declines to do.**
+
+⭐⭐ **A FUNCTION DOES NOT CREATE VALUE INDEPENDENTLY.** Any split across
+departments would be **ARBITRARY ALLOCATION DRESSED AS MEASUREMENT** — the
+fabrication class the residual discipline exists to prevent, one level up from
+the initiative.
+
+**AXIOM attributes value movement to DRIVERS and, since B10, to INITIATIVES.
+Never to DEPARTMENTS.**
+
+⭐ **RECORDED SO A LATER LANE DOES NOT READ THE ABSENCE AS UNBUILT WORK.** The
+absence is the ruling being obeyed.
+
+**Measured at `9055f0d`, and the code already agrees:**
+
+- **Nothing in the value path is department-aware.** `initiative_lines.py`,
+  `value_bridge.py`, `pack_render.py` and `brief.py` contain **no roll-up keyed
+  on department**, and no `group_by` over `Department` exists anywhere in the
+  API.
+- ⭐ **The attributed record carries `initiative_id` and NO DEPARTMENT**, and
+  neither does the frozen link nor the `unlinked` list.
+- ⭐⭐ **AND THE FREEZE MAKES IT MORE THAN AN OMISSION.** `_attribute_frozen`
+  **takes no session, deliberately**, so a published pack **cannot resolve a
+  department at read time at all** — the join would have to go back to live
+  `ax_initiatives` rows, which is precisely the retro-attribution the freeze
+  exists to forbid. **A departmental roll-up is not "derivable but not built"
+  for a published pack; it is not derivable from the artefact.**
+
+⭐ **The exclusivity trap applies one level up and is now moot.** Two departments'
+initiatives declaring the same line would have made a naive roll-up
+double-count — **exclusivity of linkage is not exclusivity of cause** — and the
+ruling removes the roll-up rather than attempting to make it safe.
+
+### ⭐⭐ 3 · THE CXO APPEAL — A BROCHURE SECTION, NOT A QUESTION
+
+**The enterprise story BRINGS AXIOM IN. The departmental story is WHY SEVEN
+EXECUTIVES REFUSE TO GIVE IT UP.** Ordered by strength:
+
+1. ⭐⭐ **"See what the board sees."** A CXO understands the CEO and board
+   perspective and **where their department sits in it**. ⭐ **A want NO CXO
+   STATES AND EVERY CXO HAS.** Access to a room they are normally outside.
+2. ⭐⭐ **"See what your people will not tell you."** Anonymous negative feedback
+   and innovative ideas about **their own department**, sliced by management
+   level. ⭐ **THE MOST DIFFERENTIATED ITEM ON THE LIST — every other has an
+   approximate competitor and this one does not**, and it is **the mechanism that
+   makes a free pilot sticky.**
+3. **Enterprise view of performance and where the department fits · formalised
+   objective–KR–KPI–initiative line of sight · stakeholder-feedback insight.**
+   ⭐ **True, and TABLE STAKES — reasons to KEEP AXIOM, not reasons to WANT it.**
+
+⭐ **Item 3 is recorded in its weak position deliberately.** It is the list most
+naturally led with, and leading with it is why the departmental pitch reads as a
+reporting tool.
+
+### ⭐⭐ 4 · THE TWO-LEVEL STRUCTURE IS THE PILOT CONVERSION MECHANISM
+
+**NOT one line landing on seven people.**
+
+| level | audience | instrument |
+|---|---|---|
+| **enterprise** | CEO, CFO, board | ⭐ **the QUESTION** — *"you know what created value last year; can you rank it?"* |
+| **departmental** | each CXO | ⭐ **the OFFER** — see what the board sees; see what your people will not tell you |
+
+⭐⭐ **RECORDED AS THE CONVERSION MECHANISM, NOT AS TONE.** The enterprise
+question wins the pilot; the seven departmental offers are what stop it lapsing.
+**A pilot that lands only at enterprise level has one champion and no floor.**
 
 ## ⭐⭐ BROCHURE — THE VALUE-PROPOSITION DIAGRAM (ruled 31 Jul)
 
