@@ -7562,6 +7562,70 @@ version of the same claim.**
 ⭐ **The locked positioning descriptor is unaffected** and is still used verbatim
 wherever the platform is described.
 
+## ⭐⭐ B15 STAGE 1 — THE BROCHURE CLAIM AUDIT (31 Jul)
+
+**Artefact:** `docs/brochure/AXIOM_Capabilities_Brochure_v2.html`, 7 pages.
+**Full audit:** `docs/reports/b15-stage1-brochure-claim-audit.md`. **No brochure
+text was written — that is Stage 2.**
+
+⭐ **COVERAGE STATED, NOT IMPLIED.** Every claim on **page 8** was verified, plus
+the superseded/omitted analysis across all seven pages. Pages 1–7 are enumerated
+by section and **not each individually verified.**
+
+### ⭐⭐ FALSE — one confirmed, and worse than the ledger recorded
+
+> *"An automated check runs on every release and **fails it if a second copy of
+> any of those calculations appears anywhere in the platform**."*
+
+⭐⭐ **THE GUARD FAILS ON A DEVIATION FROM AN EXPECTED COUNT, NOT ON A SECOND
+COPY — AND ONE EXPECTED COUNT IS SEVENTEEN.** `TOTAL_DEBT 17 site(s) in 5
+file(s) · expected 17`, **passing**. And a **second `net_debt` exists and is
+explicitly permitted**, printed by the guard as an unwired name collision.
+
+⭐ **The recorded framing — "roic 1/1, honest about the call site" — UNDERSTATED
+IT.** ROIC genuinely is 1/1. The falsity is that the **mechanism is a count
+ratchet, not a uniqueness check.**
+
+⭐ **TRUE INSTEAD, drafted for Stage 2:** six quantities have a **declared owner**
+and a guard that **fails the build when the number of computing sites changes**;
+five resolve to one site, **total debt is computed in seventeen places and the
+guard holds that number so it cannot grow.** ⭐ **A ratchet that names its own
+worst number is more credible than a uniqueness claim that dies to one command.**
+
+### ✅ TRUE — 9 verified
+
+absence never zeroed (`_n` + guard) · FCFF/FCFE distinct · five forecast methods
+with **inverse-MAE** ensemble weights and divergence reported · levers searched
+jointly with marginal contribution · viability boundary and distance ·
+k-anonymity floor with **complement** suppression enforced on the **(dept,
+seniority) cell** · cite-or-decline with page-level citations · expansion,
+deferral and abandonment priced · versioned, non-destructive, original
+re-downloadable.
+
+### ⚠️ UNVERIFIABLE AS STATED — 6
+
+*"no executive can solve by intuition"* · *"a spreadsheet structurally cannot
+see"* · *"separates analysis from generated plausibility"* · ⭐ **the page title
+"Advanced analytics" and "the analytical engine, in full" — inadmissible under
+the rule ruled hours earlier** · *"works with any system you already run"* (no
+integration surface enumerated) · the uncertainty-set downside claim, ⭐ **recorded
+as UNVERIFIED rather than assumed true.**
+
+### ⭐ SUPERSEDED — 4
+
+The document **leads with a capability list** (the leading question makes the
+features map interior) · the page-8 **framing** (contents largely survive) · the
+h1 descriptor is **not** the locked positioning line · *"Optimize Valuation"*
+struck.
+
+### ⭐⭐ OMITTED — and the largest gap is the new headline
+
+**Value Bridge: 0 mentions. Decision Record: 0. The Pack: 0.** Cadence, monthly
+and the Watch appear only in their pre-§7s senses.
+
+⭐⭐ **THE QUESTION *"CAN YOU RANK IT?"* IS ANSWERED BY THE VALUE BRIDGE, WHICH THE
+BROCHURE DOES NOT MENTION ONCE.** Not a missing feature — **a missing headline.**
+
 ## ⭐⭐ BROCHURE — THE VALUE-PROPOSITION DIAGRAM (ruled 31 Jul)
 
 **Topic ownership:** the brochure owns pricing and commercial terms; **this file
