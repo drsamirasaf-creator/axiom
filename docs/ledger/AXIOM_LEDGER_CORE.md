@@ -10163,6 +10163,122 @@ call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
 
+## ⭐⭐ PLATFORM ACCESS, ADMIN SUCCESSION, TRANSFER AND ATTRIBUTION (1 Aug)
+
+⭐ **A CORRECTION FIRST, AND IT UNDERPINS EVERYTHING BELOW.** `ad39e20` recorded
+*"`platform_role` absent from `users`."* ⭐⭐ **THAT WAS TRUE OF THE WRONG TABLE.**
+There are **two user tables**: `users` (identity — `plan`, `is_active`, Stripe) and
+**`ax_users` (accounts — `platform_role`, `status`)**, holding **13 and 11 rows
+respectively.** `platform_role` lives on `ax_users` and always has. **Two
+declarative bases, again.**
+
+### ⭐⭐ 1 · PLATFORM-SIDE ACCESS — AND IT IS INVISIBLE TO THE CLIENT
+
+**Live: 1 `super` (active) · 12 `user` · 0 `staff`.**
+
+`_operator_bypass_ok(db, user, cid)` = `platform_role in ("staff","super")` **and
+not `_pilot_transferred_away(cid)`**. It is consulted inside the membership
+resolvers, and on success returns:
+
+```
+Membership(user_id=user.id, company_id=…, role="admin", status="active")
+                                              # transient bypass object
+```
+
+| property | finding |
+|---|---|
+| persisted? | ⭐⭐ **NO — the row is never written** |
+| audited at the bypass site? | ⭐⭐ **NO** — `audit()` is called by the *endpoints*, so the ACTOR ID is recorded, but **nothing marks the act as PLATFORM ACCESS rather than a granted membership** |
+| ⭐ **visible to the client?** | ⭐⭐ **NO.** No membership row exists, so **AXIOM staff never appear in the company's team list** |
+| bounded? | ⭐ **YES, and deliberately** — it stops once a pilot is **transferred away** |
+
+⭐⭐ **THAT IS THE SILENT CAPABILITY: a super acts as admin on a client company,
+the write is attributed to a user id the client has never seen, and no surface
+tells them platform access exists.** The bound on transferred pilots is real and
+is the strongest thing here.
+
+**`AXIOM_ADMIN_TOKEN`** (HMAC-compared; unset ⇒ honest 503) unlocks: frontier
+recompute · sentinel recompute · document intelligence · ⭐⭐ **`POST /admin/grant`,
+which SETS A USER'S PLAN.** The cron uses the recompute endpoints; ⭐ **the same
+secret also grants entitlements**, and a leaked token is therefore a billing
+capability, not only a maintenance one.
+
+### ⭐⭐ 2 · ADMIN DISTINCTION AND SUCCESSION
+
+⭐⭐ **NOTHING DISTINGUISHES ONE ADMIN FROM ANOTHER.** No primary, no owner, no
+creator flag, no ordering. `ax_memberships` constrains only `(user_id,
+company_id)`, and the recorded ruling is **flat admins with no tier**.
+
+**Grant paths:** company creation (creator → admin) · pilot/checkout transfer
+(buyer → admin) · `transfer_admin`.
+
+**`transfer_admin`** — the current admin **or platform staff/super**. ⭐ **It
+REFUSES TO GUESS**: with several admins it demands `from_user_id` and 409s
+otherwise. *"The old code's failure was not that it picked wrongly, but that it
+picked at all."*
+
+⭐ **`revoke` handles VIEWERS ONLY** (`_get_viewer_row`) — **an admin cannot be
+revoked through it.**
+
+### ⭐⭐ IS LOCKOUT TOTAL? — **FOR THE CLIENT YES; FOR AXIOM NO**
+
+⭐⭐ **ALL SIX LIVE COMPANIES HAVE EXACTLY ONE ACTIVE ADMIN.** Every one is a
+single point of failure today.
+
+- ⭐ **The client has no self-service recovery**: no second admin, no ordering to
+  promote by, and `revoke` cannot even touch an admin row.
+- ⭐ **AXIOM can recover it** — `transfer_admin` accepts staff/super directly.
+- ⭐⭐ **AND AN ASYMMETRY WORTH NAMING: `transfer_admin`'s staff check does NOT
+  consult `_pilot_transferred_away`, while the general bypass does.** So after a
+  pilot transfers, platform *general* access ends but **the ability to move the
+  admin seat does not.** ⭐ **Whether that is intended is NOT determinable from the
+  code** — it may be deliberate (a recovery path that must survive transfer) or an
+  omission. **The record is silent.**
+
+### ⭐ 3 · TRANSFER MECHANICS — BUILT
+
+| mechanism | what it moves | who may invoke |
+|---|---|---|
+| **`TransferOffer`** (`ax_transfer_offers`) | an offer of a **pilot company** to a CFO's email; on that buyer's Stripe checkout the purchased slot applies to the transfer instead of a blank company create | created by the operator; ⭐ **revocation requires `require_super`**; revocable only while pending |
+| **`transfer_admin`** | ⭐ **the admin SEAT only** — the named admin becomes `viewer`, the target becomes `admin` | current admin or staff/super |
+
+⭐ **No path transfers OWNERSHIP of data or the account** — it moves membership
+and, for pilots, which account a slot is charged against.
+
+### ⭐⭐ 4 · DEACTIVATION AND ATTRIBUTION — MOSTLY DURABLE, ONE EXCEPTION
+
+**Deactivation sets `Membership.status = "revoked"`; the user row survives.**
+
+⭐ **THE NEWER MODELS STORE A DENORMALISED LABEL, SO ATTRIBUTION SURVIVES:**
+`actor_label` on **AssumptionEdit**, **InitiativeImpactDeclaration**,
+**WatchEvent**, **pack distribution**; `declared_by_label` on
+**InitiativeLineLink**; `published_by` (id) on **Pack**.
+
+⭐⭐ **THE EXCEPTION: `_uploader_names(db, rows)` RESOLVES NAMES AT READ TIME** for
+dataset upload provenance — it queries `User` by id and falls back to
+`f"user #{id}"` **only if the row is missing**, inside a bare
+`except Exception: pass`.
+
+⭐ **SO THE ANSWER TO THE DESIGN QUESTION: PROMOTING A NEW ADMIN IS CLEAN.**
+Deactivating a user does not delete them, and every decision-bearing surface
+carries a stored label. **Only dataset-upload attribution resolves late**, and it
+degrades to `user #N` rather than to blank — ⭐ **a downgrade, not a loss.**
+
+### ⭐ WHAT B21 WOULD NEED — the same resolver, sized
+
+1. ⭐ **A ROLE VOCABULARY.** `Membership.role` is `admin | viewer` today, and
+   `String(16)` — **CFO is not a value it can hold with meaning**, because nothing
+   consumes it.
+2. **A GRANT SURFACE.** `ax_department_authority` exists and holds **0 rows**; the
+   grant/revoke UI is queued as **B6** and unbuilt.
+3. ⭐⭐ **A RESOLVER EVERY WRITE PATH CONSULTS.** Today that is
+   `require_company_admin`, bound at **each** endpoint. B21 cannot widen one
+   check — **it must widen a resolver that ~30 write endpoints already share**, or
+   the roles diverge per endpoint.
+4. ⭐ **AND A RULING ON §4x**, which says *"a CXO cannot edit source data — not
+   enterprise-wide, not his own department, not any artifact, ever."* **A CFO is a
+   CXO.** That tension is recorded and unresolved.
+
 ## ⭐⭐ `is_active` — THE SINGLE-ACTIVE INVARIANT (1 Aug)
 
 ### ⭐ 1 · THE EXTENT, AND THE MECHANISM
