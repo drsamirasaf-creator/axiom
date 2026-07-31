@@ -572,3 +572,84 @@ COMPONENTS.update({
     "coverage": c_coverage,
     "reforecast": c_reforecast,
 })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# §7s.4 — THE DECISION RECORD'S MONTHLY FACE
+# ─────────────────────────────────────────────────────────────────────────────
+# ⭐ TWO SECTIONS, NOT A NEW SPINE QUESTION. The spine is seven questions and
+# stays seven; these ride alongside the disclosure sections in PACK_ALWAYS, for
+# the same reason `adjustments` and `provenance` do — they are not one of the
+# seven, they are what makes the seven answerable.
+
+def _period_bounds(src):
+    """The pack's period, taken from the freeze rather than from a clock."""
+    return src.klass("period_labels")
+
+
+def c_decisions_taken(src):
+    """Decisions taken this period.
+
+    ⭐ RENDERS FROM THE FROZEN PROJECTION. The component never calls
+    `decision_record.project` — that ran at freeze time. A render-time projection
+    would read live source events and the pack would move after publication.
+    """
+    block = src.klass("decisions")
+    if not block.get("present"):
+        # ⭐ ABSENCE DECLARES. A company with no decisions gets the section,
+        # stating so — omitting it would let a reader infer the period simply
+        # had none reported.
+        return _section("decisions_taken", "Decisions taken this period",
+                        present=False, missing=block.get("reason"))
+    rows = block.get("decisions") or []
+    return _section("decisions_taken", "Decisions taken this period", present=True,
+                    body={"count": len(rows), "decisions": rows,
+                          "note": ("No decisions are recorded for this company."
+                                   if not rows else
+                                   "Every row carries its author, the state at "
+                                   "decision, and the source it was read from.")})
+
+
+def c_realised_effects(src):
+    """Realised effects of decisions taken in earlier periods.
+
+    ⭐ THE COMPOUNDING HALF, AND INVISIBLE IN MONTH ONE BY CONSTRUCTION. A design
+    judged on its first pack will undervalue it, which is why the section states
+    what is still unmeasured rather than rendering empty.
+    """
+    block = src.klass("decisions")
+    if not block.get("present"):
+        return _section("realised_effects",
+                        "Realised effects of earlier decisions",
+                        present=False, missing=block.get("reason"))
+    rows = block.get("decisions") or []
+    realised = [d for d in rows if d.get("realised_effect") is not None]
+    unmeasured = [d for d in rows if d.get("realised_effect") is None]
+    return _section("realised_effects", "Realised effects of earlier decisions",
+                    present=True,
+                    body={"realised": realised,
+                          "realised_count": len(realised),
+                          # ⭐ COUNTED AND EXPLAINED, NOT HIDDEN. "Not yet
+                          # measurable" is a legitimate state, and a reader must
+                          # be able to see how much is still open.
+                          "unmeasured_count": len(unmeasured),
+                          "unmeasured_reasons": sorted({
+                              d.get("realised_effect_absent")
+                              for d in unmeasured if d.get("realised_effect_absent")
+                          }),
+                          "note": ("No earlier decision has a measurable effect "
+                                   "yet. This section compounds: it is empty by "
+                                   "construction in a first pack."
+                                   if not realised else
+                                   f"{len(realised)} earlier decision(s) now have "
+                                   f"a measurable outcome.")})
+
+
+COMPONENTS.update({
+    "decisions_taken": c_decisions_taken,
+    "realised_effects": c_realised_effects,
+})
+
+# ⭐ THE PACK CARRIES BOTH, OUTSIDE THE SEVEN. Inserted before `provenance` so
+# the document closes on what produced its figures.
+PACK_ALWAYS = ["decisions_taken", "realised_effects", "adjustments", "provenance"]

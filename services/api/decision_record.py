@@ -1,0 +1,453 @@
+"""§7s.4 — the Decision Record. A PROJECTION, not a fifth audit table.
+
+⭐ IT READS SOURCE EVENTS AND COPIES NOTHING. Overrides, sign-offs, recommendation
+dispositions, initiative approvals, changeset decisions, authority grants, pack
+releases and watch events are ALREADY attributed and ALREADY stored. A second copy
+is a second source of truth, and this era's own log records which way that goes.
+
+⭐ `decision_id` IS DERIVED, NOT ALLOCATED — `"{source}:{row_id}"`. An allocated id
+would need a table to allocate it from, and that table would be the fifth audit
+store this design exists to avoid.
+
+⭐ REALISED EFFECT IS THE COMPOUNDING HALF AND MUST NOT BE FABRICATED. Where an
+earlier decision's outcome is now measurable, it is linked. Where it is not, the
+field is ABSENT with a stated reason — never zero, never inferred. **A decision
+whose effect cannot yet be measured is a legitimate state, not a gap to fill**,
+and it is invisible in month one by construction.
+"""
+from datetime import datetime
+
+# Status values for a projected decision.
+TAKEN = "taken"                 # decided; effect not yet measurable
+REALISED = "realised"           # decided, and the outcome is measurable
+SUPERSEDED = "superseded"       # decided, then replaced by a later decision
+WITHDRAWN = "withdrawn"         # decided, then revoked
+
+
+def _d(source, row_id, *, cid, type_, decided_at, author, statement,
+       rationale=None, computed_state=None, linked=None,
+       expected=None, realised=None, realised_absent=None, status=TAKEN,
+       attribution=None):
+    """One projected decision.
+
+    ⭐ `realised_effect` AND `realised_effect_absent` ARE MUTUALLY EXCLUSIVE, and
+    exactly one is always set. A row carrying neither would read as "no effect";
+    a row carrying both would be a contradiction the reader has to adjudicate.
+    """
+    if realised is None and realised_absent is None:
+        realised_absent = "not yet measurable"
+    return {
+        "decision_id": f"{source}:{row_id}",
+        "source": source,
+        "cid": cid,
+        "type": type_,
+        "decided_at": decided_at.isoformat() if isinstance(decided_at, datetime)
+        else decided_at,
+        "author": author or "",
+        "statement": statement,
+        "rationale": rationale,
+        # ⭐ THE NUMBER AS IT STOOD WHEN THE DECISION WAS TAKEN. Without it the
+        # record says what was decided and not what it was decided ABOUT.
+        "computed_state_at_decision": computed_state,
+        "linked_object_ref": linked,
+        "expected_effect": expected,
+        "realised_effect": realised,
+        "realised_effect_absent": realised_absent,
+        "status": status,
+        # §4x — travels whole, never a hand-picked field list
+        "attribution": attribution,
+    }
+
+
+def _name(db, user_id, fallback=""):
+    if not user_id:
+        return fallback
+    from .accounts import User
+    u = db.get(User, user_id)
+    return (u.name or u.email) if u is not None else fallback
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# THE SOURCES — each reads its own store, in place
+# ═══════════════════════════════════════════════════════════════════════════
+
+def src_overrides(db, cid):
+    """A CXO adjusting a figure. ⭐ THE DECISION IS THE ADJUSTMENT; the computed
+    value it replaced is the state at decision, which the model already froze."""
+    from .overrides import REASON_LABEL, MetricOverride
+    out = []
+    for o in db.query(MetricOverride).filter_by(company_id=cid).all():
+        # ⭐ WHOLE-ROW SERIALISATION, not a hand-picked field list. The overrides
+        # serialiser dropped `created_at` exactly this way in Stage 2 and the
+        # §4x attribution line silently lost its date.
+        row = {c.name: getattr(o, c.name) for c in o.__table__.columns}
+        when = row.get("created_at")
+        line = (f"computed {row.get('computed_value_at_override')}, "
+                f"adjusted to {row.get('override_value')} by "
+                f"{row.get('author_label') or 'an authorised approver'}, "
+                f"{REASON_LABEL.get(row.get('reason_category'), row.get('reason_category'))}")
+        if row.get("reason_note"):
+            line += f" — {row['reason_note']}"
+        if when:
+            line += f", {when.isoformat()[:10]}"
+        out.append(_d(
+            "override", o.id, cid=cid, type_="figure_adjusted", decided_at=when,
+            author=row.get("author_label"),
+            statement=(f"{row.get('metric_label') or row.get('metric_ref')} "
+                       f"adjusted to {row.get('override_value')}"),
+            rationale=row.get("reason_note"),
+            computed_state=row.get("computed_value_at_override"),
+            linked={"metric_ref": row.get("metric_ref"),
+                    "department_id": row.get("department_id")},
+            expected=None,
+            realised_absent=("an override states a figure; its realised effect is "
+                             "the figure itself, which is already recorded"),
+            status=(SUPERSEDED if row.get("superseded_at") else TAKEN),
+            attribution=line))
+    return out
+
+
+def src_signoffs(db, cid):
+    """A CXO attesting to a dashboard AS SHOWN. ⭐ `signed_state` IS the computed
+    state at decision — the model already persists the displayed values per
+    metric, which is exactly what this field means."""
+    from .overrides import DashboardSignoff
+    out = []
+    for s in db.query(DashboardSignoff).filter_by(company_id=cid).all():
+        row = {c.name: getattr(s, c.name) for c in s.__table__.columns}
+        out.append(_d(
+            "signoff", s.id, cid=cid, type_="dashboard_attested",
+            decided_at=row.get("signed_at") or row.get("created_at"),
+            author=row.get("signer_label") or _name(db, row.get("signer_user_id")),
+            statement="Dashboard attested as shown",
+            computed_state=row.get("signed_state"),
+            linked={"department_id": row.get("department_id")},
+            realised_absent=("an attestation asserts a state; it has no separate "
+                             "realised effect"),
+            status=(SUPERSEDED if row.get("superseded_at") else TAKEN)))
+    return out
+
+
+def src_dispositions(db, cid):
+    """A company's decision on an AXIOM recommendation — adopted, parked or
+    dismissed. ⭐ ADOPTION IS THE ONE THAT COMPOUNDS: it links to an initiative
+    whose impact becomes measurable later."""
+    from .accounts import Initiative, RecommendationDisposition
+    out = []
+    for r in db.query(RecommendationDisposition).filter_by(company_id=cid).all():
+        row = {c.name: getattr(r, c.name) for c in r.__table__.columns}
+        expected = realised = None
+        absent = None
+        ini = db.get(Initiative, row["initiative_id"]) if row.get("initiative_id") else None
+        if ini is not None:
+            expected = ini.expected_impact_amount
+            realised = ini.actual_impact_amount
+            if realised is None:
+                absent = (f"initiative {ini.ref_code or ini.id} has no actual "
+                          f"impact recorded yet")
+        else:
+            absent = "no initiative is linked to this disposition"
+        out.append(_d(
+            "disposition", r.id, cid=cid,
+            type_=f"recommendation_{row.get('status') or 'none'}",
+            decided_at=row.get("decided_at") or row.get("first_seen_at"),
+            author=_name(db, row.get("decided_by")),
+            statement=f"Recommendation {row.get('fingerprint')} "
+                      f"{row.get('status') or 'undecided'}",
+            rationale=row.get("note"),
+            linked={"initiative_id": row.get("initiative_id"),
+                    "fingerprint": row.get("fingerprint")},
+            expected=expected, realised=realised, realised_absent=absent,
+            status=(REALISED if realised is not None else TAKEN)))
+    return out
+
+
+def src_initiatives(db, cid):
+    """Approving an initiative, and what it turned out to be worth."""
+    from .accounts import Initiative
+    out = []
+    for i in db.query(Initiative).filter_by(company_id=cid).all():
+        row = {c.name: getattr(i, c.name) for c in i.__table__.columns}
+        realised = row.get("actual_impact_amount")
+        absent = None if realised is not None else (
+            "no actual impact has been recorded against this initiative")
+        out.append(_d(
+            "initiative", i.id, cid=cid, type_="initiative_approved",
+            decided_at=row.get("created_at"),
+            author=row.get("owner_name") or _name(db, row.get("created_by")),
+            statement=row.get("title") or f"Initiative {row.get('ref_code')}",
+            rationale=row.get("description"),
+            linked={"initiative_id": i.id, "ref_code": row.get("ref_code"),
+                    "department_id": row.get("department_id")},
+            expected=row.get("expected_impact_amount"),
+            realised=realised, realised_absent=absent,
+            status=(REALISED if realised is not None else TAKEN)))
+    return out
+
+
+def src_changeset_items(db, cid):
+    """⭐ NOT IN THE NAMED LIST, AND IT IS THE PUREST DECISION IN THE SYSTEM.
+    The approval gate records, per item, `decision`, `decided_by_user_id`,
+    `decided_at` and `decision_note` — an approve/reject on a specific proposed
+    change, with the OLD AND NEW VALUE both stored. That is a decision, an actor,
+    a timestamp and the state at decision, already captured."""
+    from .changeset import Changeset, ChangesetItem
+    cs_ids = [c for (c,) in db.query(Changeset.id).filter_by(company_id=cid).all()]
+    if not cs_ids:
+        return []
+    out = []
+    rows = (db.query(ChangesetItem)
+              .filter(ChangesetItem.changeset_id.in_(cs_ids))
+              .filter(ChangesetItem.decided_at.isnot(None)).all())
+    for it in rows:
+        row = {c.name: getattr(it, c.name) for c in it.__table__.columns}
+        out.append(_d(
+            "changeset_item", it.id, cid=cid,
+            type_=f"change_{row.get('decision') or 'undecided'}",
+            decided_at=row.get("decided_at"),
+            author=_name(db, row.get("decided_by_user_id")),
+            statement=(f"{row.get('op')} {row.get('category')} "
+                       f"{row.get('entity_label') or row.get('entity_key')}"),
+            rationale=row.get("decision_note"),
+            computed_state=row.get("old_value"),
+            linked={"changeset_id": row.get("changeset_id"),
+                    "entity_key": row.get("entity_key")},
+            expected=row.get("new_value"),
+            realised=(row.get("new_value") if row.get("applied") else None),
+            realised_absent=(None if row.get("applied")
+                             else "this change was decided but not applied")))
+    return out
+
+
+def src_authority(db, cid):
+    """⭐ NOT IN THE NAMED LIST. Granting or revoking who may speak for a
+    department is a governance decision, and revocation already carries a
+    `revoke_reason` — a rationale the model asked for."""
+    from .accounts import Department
+    from .overrides import DepartmentAuthority
+    out = []
+    for g in db.query(DepartmentAuthority).filter_by(company_id=cid).all():
+        row = {c.name: getattr(g, c.name) for c in g.__table__.columns}
+        dept = db.get(Department, row["department_id"])
+        who = _name(db, row.get("user_id"), "a user")
+        dname = dept.name if dept is not None else row["department_id"]
+        out.append(_d(
+            "authority", g.id, cid=cid, type_="authority_granted",
+            decided_at=row.get("granted_at"),
+            author=_name(db, row.get("granted_by")),
+            statement=f"{who} granted {row.get('role_label') or row.get('role')} "
+                      f"authority for {dname}",
+            linked={"department_id": row["department_id"],
+                    "user_id": row.get("user_id")},
+            realised_absent="an authority grant has no measurable outcome",
+            status=(WITHDRAWN if row.get("revoked_at") else TAKEN)))
+        if row.get("revoked_at"):
+            out.append(_d(
+                "authority_revoked", g.id, cid=cid, type_="authority_revoked",
+                decided_at=row["revoked_at"],
+                author=_name(db, row.get("revoked_by")),
+                statement=f"{who}'s authority for {dname} revoked",
+                rationale=row.get("revoke_reason"),
+                linked={"department_id": row["department_id"]},
+                realised_absent="a revocation has no measurable outcome"))
+    return out
+
+
+def src_releases(db, cid):
+    """A CEO releasing a pack. ⭐ `PackRelease` WAS WRITTEN IN THIS SHAPE
+    DELIBERATELY (Stage 3) so this projection reads it without translation."""
+    from .pack_dist import PackRelease
+    out = []
+    for r in db.query(PackRelease).filter_by(cid=cid).all():
+        row = {c.name: getattr(r, c.name) for c in r.__table__.columns}
+        out.append(_d(
+            "pack_release", r.id, cid=cid, type_="pack_released",
+            decided_at=row.get("occurred_at"), author=row.get("actor_label"),
+            statement=(f"Pack {row.get('pack_id')} v{row.get('pack_version')} "
+                       f"released to {row.get('recipient_count')} recipient(s)"),
+            rationale=row.get("note"),
+            linked={"pack_id": row.get("pack_id")},
+            realised_absent="a release is a distribution act with no separate "
+                            "measurable outcome"))
+    return out
+
+
+def src_watch_decisions(db, cid):
+    """What was decided in response to a threshold crossing.
+
+    ⭐ THE ONE SOURCE WHOSE REALISED EFFECT IS RECORDED AT THE SAME PLACE AS THE
+    DECISION. `WatchEvent.realised_value` was added in §7s.6 for exactly this.
+    """
+    from .watch import WatchEvent
+    out = []
+    rows = (db.query(WatchEvent).filter_by(cid=cid)
+              .filter(WatchEvent.decided_at.isnot(None)).all())
+    for e in rows:
+        row = {c.name: getattr(e, c.name) for c in e.__table__.columns}
+        realised = row.get("realised_value")
+        out.append(_d(
+            "watch_decision", e.id, cid=cid, type_="watch_response",
+            decided_at=row.get("decided_at"),
+            author=_name(db, row.get("decided_by"), row.get("actor_label") or ""),
+            statement=(f"Response to {row.get('signal_label')} "
+                       f"{row.get('from_band')} → {row.get('to_band')}"),
+            rationale=row.get("decision_note"),
+            computed_state=row.get("value"),
+            linked={"watch_event_id": e.id, "signal_key": row.get("signal_key")},
+            expected=row.get("equity_value_impact"),
+            realised=realised,
+            realised_absent=(None if realised is not None else
+                             "no realised value has been recorded against this "
+                             "response"),
+            status=(REALISED if realised is not None else TAKEN)))
+    return out
+
+
+# ⭐ THE SOURCE REGISTRY. Each entry is a READER over an existing store. Nothing
+# here writes, and there is no table named `decisions`.
+SOURCES = {
+    "override": src_overrides,
+    "signoff": src_signoffs,
+    "disposition": src_dispositions,
+    "initiative": src_initiatives,
+    "changeset_item": src_changeset_items,
+    "authority": src_authority,
+    "pack_release": src_releases,
+    "watch_decision": src_watch_decisions,
+}
+
+# ⭐ ATTRIBUTED, BUT AUTHORSHIP RATHER THAN DECISION — named with the reason,
+# because a silent omission and a considered exclusion look identical.
+NOT_A_DECISION = {
+    "Objective": "authoring an objective is drafting, not deciding",
+    "KeyResult": "same — the DECISION is the initiative or disposition it drives",
+    "KpiPlan": "a plan row is a target, not a decision about one",
+    "KpiDefinition": "defining a metric is configuration",
+    "KpiInitiativeLink": "a link is a relationship, not a judgement",
+    "KpiObjectiveLink": "a link is a relationship, not a judgement",
+    "KrInitiativeLink": "a link is a relationship, not a judgement",
+    "GoalInitiativeLink": "a link is a relationship, not a judgement",
+    "Thread": "a discussion, not a resolution",
+    "Document": "uploading evidence is not deciding on it",
+    "FinancialDataset": "an upload is data arriving; the DECISIONS about it are "
+                        "the changeset items and overrides",
+    "Invite": "an invitation is access administration",
+    "AssessmentInvite": "an invitation is access administration",
+    "InitiativeAssignment": "assignment follows the approval already carried",
+    "StrategicMove": "a move in the library is an option, not a decision to take it",
+    "FrontierJob": "job bookkeeping",
+    "PilotCompany": "commercial lifecycle, not a company's own decision",
+    "TransferOffer": "commercial lifecycle, not a company's own decision",
+    "ReportIssue": "issuing a report is a publication act; the Pack release "
+                   "carries the decision",
+    "ReportShare": "sharing is distribution; the release carries the decision",
+    "Pack": "publication is automatic and non-suppressible — by construction NOT "
+            "a decision (§7s Stage 2)",
+    "PackRecipient": "adding a recipient is list administration",
+    "PackAutoRelease": "standing auto-release IS a decision, and is carried via "
+                       "the releases it produces rather than twice",
+    "Changeset": "the parent; its ITEMS carry the per-change decisions",
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐ DECIDED BUT NOT ATTRIBUTED — reported, never inferred
+# ═══════════════════════════════════════════════════════════════════════════
+
+ATTRIBUTION_GAPS = [
+    {
+        "decision": "plan change (dataset payload edited in place)",
+        "actor_recoverable": False,
+        "evidence": ("FinancialDataset carries `uploaded_by_user_id`, which "
+                     "attributes an UPLOAD. §7v added `data_written_at`, which "
+                     "records WHEN a payload was rewritten in place — and no "
+                     "column records WHO. The showcase backfills mutate via "
+                     "flag_modified with no actor in scope at all."),
+        "capture_lane": "later; not this one",
+    },
+    {
+        "decision": "assumption change (company assumptions inside the payload)",
+        "actor_recoverable": False,
+        "evidence": ("Same vehicle as a plan change, and already demonstrated: "
+                     "eight datasets carry `size_premium = 0.2` with "
+                     "`uploaded_by_user_id`, `original_filename` and "
+                     "`template_version` all null. Whether it was an error or a "
+                     "deliberate entry is undetermined and unrecoverable."),
+        "capture_lane": "later; not this one",
+    },
+    {
+        "decision": "valuation-basis change",
+        "actor_recoverable": False,
+        "evidence": ("ValuationRun has NO actor column of any kind. §7v's "
+                     "`provenance` records `basis_label` and the full input set, "
+                     "so WHAT was chosen is recoverable and WHO chose it is not."),
+        "capture_lane": "later; not this one",
+    },
+]
+
+# ⭐ NO INFERRED ACTORS. Per the provenance law, an unrecorded fact is
+# UNRECOVERABLE, not false — and attributing one of these to "the company's
+# admin" because that is the only name available would put a fabricated actor
+# into the diligence artefact this record exists to be.
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# THE PROJECTION
+# ═══════════════════════════════════════════════════════════════════════════
+
+def project(db, cid, *, start=None, end=None):
+    """Every decision for a company, newest first. Reads sources in place."""
+    out = []
+    for name, fn in SOURCES.items():
+        try:
+            out.extend(fn(db, cid))
+        except Exception as exc:
+            # ⭐ A FAILING SOURCE IS DECLARED, NOT SKIPPED. A projection quietly
+            # missing a source would under-report decisions in a diligence
+            # artefact, which is the most expensive place for a plausible
+            # absence.
+            out.append(_d(name, 0, cid=cid, type_="source_unavailable",
+                          decided_at=None, author="",
+                          statement=f"decisions from '{name}' could not be read",
+                          rationale=f"{type(exc).__name__}: {exc}",
+                          realised_absent="the source could not be read"))
+    def _key(d):
+        return d["decided_at"] or ""
+    out = [d for d in out if _in_window(d, start, end)]
+    return sorted(out, key=_key, reverse=True)
+
+
+def _in_window(d, start, end):
+    when = d.get("decided_at")
+    if when is None:
+        return True             # undated rows are never filtered out silently
+    if start is not None and when < _iso(start):
+        return False
+    if end is not None and when > _iso(end):
+        return False
+    return True
+
+
+def _iso(v):
+    return v.isoformat() if isinstance(v, datetime) else str(v)
+
+
+def taken_in_period(decisions, start, end):
+    """Decisions taken this period."""
+    return [d for d in decisions
+            if d.get("decided_at") and _iso(start) <= d["decided_at"] <= _iso(end)]
+
+
+def realised_from_earlier(decisions, start):
+    """⭐ THE COMPOUNDING HALF: decisions taken in EARLIER periods whose effect is
+    now measurable. Invisible in month one by construction — a design judged on
+    its first pack will undervalue it."""
+    return [d for d in decisions
+            if d.get("realised_effect") is not None
+            and d.get("decided_at") and d["decided_at"] < _iso(start)]
+
+
+def unmeasured(decisions):
+    """Decisions whose effect is not yet measurable. ⭐ A LEGITIMATE STATE, not a
+    gap to fill — and counted, so a reader can see how much is still open."""
+    return [d for d in decisions if d.get("realised_effect") is None]

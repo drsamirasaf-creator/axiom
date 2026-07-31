@@ -305,6 +305,25 @@ def _cap_forecast_sets(db, cid):
                            "is_primary": r.is_primary} for r in rows])
 
 
+def _cap_decisions(db, cid):
+    """§7s.4 — the Decision Record, PROJECTED at freeze time.
+
+    ⭐ THE PROJECTION IS COMPUTED AND ITS RESULT FROZEN, not re-projected at
+    render time. A pack that re-projected would show today's decisions under
+    yesterday's pack's name — and the source events are exactly the rows most
+    likely to gain a `decided_at` after publication.
+    """
+    from .decision_record import project
+    rows = project(db, cid)
+    if not rows:
+        return _absent("no attributed decisions recorded for this company")
+    return _present(decisions=rows, count=len(rows),
+                    realised=len([d for d in rows
+                                  if d.get("realised_effect") is not None]),
+                    unmeasured=len([d for d in rows
+                                    if d.get("realised_effect") is None]))
+
+
 def _cap_watch(db, cid):
     """§7s.6 — what fired during the period, what was decided, what it was worth.
 
@@ -429,6 +448,7 @@ INPUT_CLASSES = {
     "forecast_sets": _cap_forecast_sets,
     "sentinel_state": _cap_sentinel_state,
     "watch_events": _cap_watch,
+    "decisions": _cap_decisions,
     "dispositions": _cap_dispositions,
     "strategic_move_library": _cap_strategic_moves,
     "computed_caches": _cap_computed_caches,
