@@ -193,13 +193,25 @@ def _ensure_showcase_enterprises(db):
                 fin_models.FinancialDataset.name.like(f"{prefix}%")).all():
             if d.enterprise_id != ent.id:
                 d.enterprise_id = ent.id
-        # ⭐⭐ THROUGH THE SHARED WRITER, NOT DIRECTLY. This line set the flag
-        # without clearing siblings, and — because the showcase seed runs on
-        # EVERY BOOT — it re-armed a second active row after every deploy.
-        # Enterprise 20 carried two active datasets for a week because of it.
-        # A second writer is a second source of truth.
-        from ..accounts import set_active_dataset
-        set_active_dataset(db, ent.id, ds.id)   # so /companies/{id}/reports works
+        # ⭐⭐ A SEED CREATES WHAT IS MISSING. IT DOES NOT RE-DECIDE WHAT IS
+        # CURRENT.
+        #
+        # This has now been wrong twice, in opposite directions:
+        #   1. It set `ds.is_active = True` WITHOUT clearing siblings, so the
+        #      showcase carried two active datasets and the resolver was correct
+        #      only by `version DESC` — deterministic BY ACCIDENT.
+        #   2. Routing it through `set_active_dataset(db, ent.id, ds.id)` passed
+        #      the SEED'S OWN row, so every boot CLEARED the real upload (ds 45)
+        #      and activated the seed row (ds 3) — deterministic AND WRONG, which
+        #      is the worse of the two. Five demo surfaces went blank and the
+        #      valuation moved by half.
+        #
+        # ⭐ THE RULE THAT SURVIVES BOTH: activate only when the company has NO
+        # active dataset at all. A later upload always wins, and the seed never
+        # overrides a decision a real ingest already made.
+        from ..accounts import _active_company_dataset, set_active_dataset
+        if _active_company_dataset(db, ent.id) is None:
+            set_active_dataset(db, ent.id, ds.id)   # so /companies/{id}/reports works
     return made
 
 

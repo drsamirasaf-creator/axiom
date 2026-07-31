@@ -994,7 +994,18 @@ def showcase_integrity_check():
                      f"{[c.get('name') for c in companies]}")
     if not companies:
         return fails
-    cid = companies[0].get("company_id")
+    # ⭐⭐ TARGET THE DEMO BY NAME, NOT BY POSITION. `companies[0]` silently
+    # follows whatever sorts first, so the guard protected an arbitrary company
+    # and the showcase could rot untouched — which is exactly what happened on
+    # 1 Aug: five Meridian surfaces went blank and this check, had it run, might
+    # not even have been looking at Meridian.
+    _named = next((c for c in companies
+                   if "meridian" in str(c.get("name", "")).lower()), None)
+    if _named is None:
+        fails.append("DEMO ROT: no company named Meridian is visible to this "
+                     "session — the demo target itself is missing")
+        return fails
+    cid = _named.get("company_id")
     # valuation analytics is keyed by the ACTIVE dataset id, not the company id
     _, dsl = get(f"/companies/{cid}/datasets")
     active_ds = (dsl or {}).get("active_dataset_id") if isinstance(dsl, dict) else None

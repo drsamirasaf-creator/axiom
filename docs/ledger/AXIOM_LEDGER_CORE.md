@@ -10163,6 +10163,112 @@ call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
 
+## ⭐⭐ MERIDIAN RESTORED — THE SEED RULE, AND THE GUARD CARDINALITY COULD NOT GIVE (1 Aug)
+
+### ⭐ 1 · THE WRITER FIRST, THEN THE DATA
+
+⭐⭐ **THE SEED RULE, STATED SO IT SURVIVES BOTH FAILURES:**
+
+> **A seed creates what is missing. It does not re-decide what is current.**
+
+`_ensure_showcase_enterprises` now activates its row **only when the company has
+NO active dataset at all.** ⭐ **A later upload always wins.**
+
+**This line has now been wrong twice, in opposite directions:**
+
+| | what it did | verdict |
+|---|---|---|
+| **before `9d708c3`** | `ds.is_active = True` with no clearing → two active rows | ⭐ **deterministic BY ACCIDENT** (`version DESC` saved it) |
+| ⭐⭐ **after `9d708c3`** | `set_active_dataset(db, ent.id, ds.id)` — **the seed's OWN row** → cleared the real upload every boot | ⭐⭐ **deterministic AND WRONG** |
+
+⭐⭐ **I MADE IT WORSE WHILE FIXING IT.** The invariant was right; **the argument
+to it was wrong**, and I never asked *which* dataset the seed should activate.
+**Fixing the flag alone would have been undone by the next boot** — the lesson from
+the prior lane, applied to that lane's own fix.
+
+### ⭐⭐ 2 · RESTORED — ASSERTED EXACTLY
+
+`set_active_dataset(20, 45)` → `{"active": 45, "cleared": [3]}`. Ownership needed
+no change (**"already agrees"**).
+
+| | asserted | measured |
+|---|---|---|
+| active dataset | 45 | ✅ **45** |
+| equity value | 3,436.211694 | ✅ |
+| DLOM | 0.2 | ✅ |
+| equity after DLOM | 2,748.969356 | ✅ |
+| WACC | 0.130458 | ✅ |
+| ownership | private | ✅ |
+
+⭐ **All 20 published pack content hashes UNCHANGED.**
+
+### ⭐ 3 · THE FIVE SURFACES — ROW COUNTS, NOT HTTP 200
+
+| surface | rows |
+|---|---|
+| Objectives (active ds 45) | **21** |
+| Key Results (nested) | **42** |
+| KPI plans on the active dataset | **49** |
+| Departments | **7** |
+| Departments carrying objectives | ⭐ **7 of 7** |
+
+⭐ **`has_data` → True.** **A 200 proves nothing about this class** — the surface
+was always honest; the selection was wrong.
+
+### ⭐⭐ 4 · THE GUARD CARDINALITY COULD NOT GIVE
+
+`scripts/check-showcase-dataset.py` — **23rd gate.** The showcase's active dataset
+must be **one the published packs are frozen against.**
+
+⭐⭐ **`check-single-active-dataset` WAS PERFECTLY SATISFIED THROUGHOUT THE
+REGRESSION.** Exactly one dataset was active — **the wrong one.** ⭐ **A
+CONSTRAINT ON CARDINALITY CANNOT CATCH AN ERROR OF IDENTITY**, and the packs are
+the evidence of identity because they are immutable and pin a `dataset_id`.
+
+**Control (in memory, no file touched):** flags the exact 1 Aug shape · flags
+packs-with-nothing-active · accepts agreement · ⭐ **accepts a showcase with NO
+packs** — a demo that has never published has nothing to disagree with, and
+failing on it would make the gate unpassable for a new showcase.
+
+**Live: 3 showcase companies checked.** Halcyon (21) and Helios (22) were
+**already correct**; only Meridian was wrong.
+
+### ⭐⭐ 5 · THE CRAWLER — WIRED, AND TARGETED BY NAME
+
+⭐⭐ **EIGHTH BUILT-BUT-NOT-WIRED INSTANCE — AND THE FIRST ON THE STANDING
+VERIFICATION METHOD ITSELF.** The check was correct for weeks and **nothing ran
+it.**
+
+`.github/workflows/demo-rot.yml` — scheduled daily, opens a labelled issue on
+failure. ⭐⭐ **AND IT REFUSES TO PASS SILENTLY WHEN UNCONFIGURED**: with secrets
+absent it **exits 1**, because *a green tick from a job that checked nothing is
+the exact failure this guard is about.*
+
+⭐ **Retargeted from `companies[0]` to Meridian BY NAME.** A positional target
+**silently follows whatever sorts first**, so the guard was protecting an
+arbitrary company while the showcase rotted — and it now **fails loudly if no
+company named Meridian is visible at all.**
+
+### ⭐ 6 · ANONYMOUS LANDING — measured, and it works
+
+| anon request | result |
+|---|---|
+| `GET /companies/20` | **200** |
+| ⭐ `GET /companies/20/objectives` | **200 · `has_data=True` · ds 45 · 21 objectives · 42 key results** |
+| `/showcase`, `/companies` | 404 — not routes |
+
+⭐ **The anonymous showcase carve-out reaches the RESTORED dataset**, so a
+prospect who lands without signing in sees the populated demo.
+
+### ⭐ TWO TEST NARROWINGS, BOTH MINE
+
+1. A prior-lane test **pinned a COMMENT SENTENCE** in `seed.py` and broke when the
+   comment was rewritten to record the second failure. ⭐⭐ **A TEST THAT PINS
+   PROSE FAILS WHEN THE PROSE IMPROVES** — narrowed to the mechanism.
+2. My new test matched `set_active_dataset(...)` **inside the fix's own
+   explanatory comment.** ⭐ **Third time this era a guard matched the text
+   DESCRIBING a rule instead of the rule** — it now skips comment lines.
+
 ## ⭐⭐ MERIDIAN RENDERS EMPTY — **A REGRESSION I INTRODUCED AT `9d708c3`** (1 Aug)
 
 ⭐⭐ **PRODUCTION IS DEGRADED RIGHT NOW.** The demo — the sales asset — shows no

@@ -1,0 +1,93 @@
+# ⭐⭐ THE DEMO-ROT GUARD, ON AN AUTOMATED PATH AT LAST.
+#
+# `scripts/auth-regression.py` has carried a correct empty-state check for weeks —
+# it asserts `has_data` on /objectives and /kpi-variance and reports "EMPTY — demo
+# surface not populated". ⭐ IT WAS REFERENCED BY NO WORKFLOW. On 1 Aug five
+# Meridian surfaces went blank, every unit gate stayed green, and a human found it
+# by opening the page.
+#
+# ⭐ EIGHTH BUILT-BUT-NOT-WIRED INSTANCE THIS ERA — and the first on the standing
+# VERIFICATION METHOD itself. A guard nobody runs fails open on everything it
+# exists to catch.
+#
+# ⭐⭐ IT NEEDS CREDENTIALS AND A LIVE HOST, which is why it never made it into
+# `ci.yml`: a push-triggered job cannot hold them safely and would fail on every
+# fork. It runs on a schedule with repository secrets, and — CRITICALLY — it is
+# SKIPPED LOUDLY rather than passing silently when they are absent, because a
+# green tick from a job that did nothing is the failure this whole guard is about.
+name: demo-rot
+
+on:
+  schedule:
+    - cron: "17 6 * * *"        # daily, after the nightly sweeps settle
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: demo-rot
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Refuse to pass silently when unconfigured
+        env:
+          BASE: ${{ secrets.AXIOM_CRAWL_BASE_URL }}
+          EMAIL: ${{ secrets.AXIOM_CRAWL_EMAIL }}
+          PASSWORD: ${{ secrets.AXIOM_CRAWL_PASSWORD }}
+        run: |
+          if [ -z "$BASE" ] || [ -z "$EMAIL" ] || [ -z "$PASSWORD" ]; then
+            echo "::error::demo-rot is NOT configured — AXIOM_CRAWL_BASE_URL,"
+            echo "::error::AXIOM_CRAWL_EMAIL and AXIOM_CRAWL_PASSWORD must be set."
+            echo "::error::Failing rather than passing: a green tick from a job"
+            echo "::error::that checked nothing is the defect this guard exists for."
+            exit 1
+          fi
+
+      - name: Install
+        run: pip install -q httpx requests
+
+      - name: Crawl the demo
+        env:
+          AXIOM_BASE_URL: ${{ secrets.AXIOM_CRAWL_BASE_URL }}
+          AXIOM_EMAIL: ${{ secrets.AXIOM_CRAWL_EMAIL }}
+          AXIOM_PASSWORD: ${{ secrets.AXIOM_CRAWL_PASSWORD }}
+        run: python3 scripts/auth-regression.py
+
+      - name: Raise an issue when the demo has rotted
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = "Demo rot: a showcase surface is empty";
+            const body = `The scheduled demo-rot crawl failed.
+
+            Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}
+
+            This guard asserts the demo is POPULATED, not merely reachable — an
+            empty surface returns HTTP 200 and proves nothing.`;
+            const open = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: "open", labels: "demo-rot",
+            });
+            if (open.data.length) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: open.data[0].number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ["demo-rot"],
+              });
+            }

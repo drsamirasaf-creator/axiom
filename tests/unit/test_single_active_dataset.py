@@ -95,12 +95,20 @@ def test_there_is_a_SINGLE_WRITER_and_it_clears_before_it_sets():
 def test_the_SEED_no_longer_writes_the_flag_directly():
     """⭐⭐ THE MECHANISM. The showcase seed set is_active directly without
     clearing siblings, and seed_showcase() runs from core/db.py on EVERY BOOT —
-    so clearing the flag by hand would have been undone by the next deploy."""
+    so clearing the flag by hand would have been undone by the next deploy.
+
+    ⭐ NARROWED 1 Aug. It asserted a specific COMMENT SENTENCE, which broke when
+    the comment was rewritten to record the SECOND way this line was wrong — the
+    rule never changed. ⭐⭐ A TEST THAT PINS PROSE FAILS WHEN THE PROSE IMPROVES;
+    it now asserts the mechanism.
+    """
     src = open("services/api/core/seed.py", encoding="utf-8").read()
     assert "set_active_dataset(db, ent.id, ds.id)" in src
     assert "ds.is_active = True                 # so" not in src, \
         "the seed still sets the flag directly"
-    assert "A second writer is a second source of truth" in src
+    # ⭐ the seed routes through the shared writer AND is guarded, so it can
+    # neither leave two rows active nor override a real upload.
+    assert "if _active_company_dataset(db, ent.id) is None:" in src
 
 
 def test_the_resolver_is_ORDERED_so_the_answer_cannot_be_a_coin_flip():
