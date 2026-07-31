@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AXIOM — a strategy-execution platform</title>
+<!--
+  ⭐ SOURCE OF TRUTH: docs/ledger/AXIOM_LEDGER_CORE.md. Written from CORE, not
+  from v2 — the old document's structure encodes a superseded pitch and editing
+  it would inherit that structure.
+
+  ⭐ EVERY FIGURE IN THIS DOCUMENT COMES FROM THE GENERATED MERIDIAN DEMO PACKS
+  AT 9055f0d AND IS LABELLED A DEMO FIGURE. Never a customer outcome.
+
+  ⭐ WITHDRAWN AND NOT PRESENT: any claim attributing a quantity of equity value
+  to a named initiative. AXIOM holds no business case per initiative, so a
+  bottom-up initiative valuation would be fabricated. See CORE.
+-->
+<style>
+  :root { --ink:#1a1a1a; --muted:#5a5a5a; --rule:#d9d4c7; --paper:#faf8f3; --brass:#8a7340; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink);
+         font:16px/1.6 Georgia,'Times New Roman',serif; }
+  .page { max-width:56rem; margin:0 auto; padding:4rem 2rem; border-bottom:1px solid var(--rule); }
+  h1 { font-size:2.1rem; line-height:1.25; margin:0 0 1rem; font-weight:normal; }
+  h2 { font-size:1.4rem; margin:2.5rem 0 .75rem; font-weight:normal; color:var(--brass); }
+  h3 { font-size:1.05rem; margin:1.5rem 0 .35rem; font-weight:bold; }
+  p  { margin:.6rem 0; }
+  .lede { font-size:1.15rem; color:var(--muted); }
+  .q { font-size:1.6rem; line-height:1.4; margin:1.5rem 0; padding-left:1.25rem;
+       border-left:3px solid var(--brass); }
+  .kicker { text-transform:uppercase; letter-spacing:.12em; font-size:.75rem;
+            color:var(--muted); font-family:system-ui,sans-serif; }
+  table { border-collapse:collapse; width:100%; margin:1rem 0; font-size:.95rem; }
+  th,td { text-align:left; padding:.5rem .6rem; border-bottom:1px solid var(--rule);
+          vertical-align:top; }
+  th { font-family:system-ui,sans-serif; font-size:.8rem; text-transform:uppercase;
+       letter-spacing:.06em; color:var(--muted); }
+  pre { font-family:ui-monospace,Menlo,monospace; font-size:.8rem; line-height:1.45;
+        background:#fff; border:1px solid var(--rule); padding:1rem; overflow-x:auto; }
+  .demo { font-family:system-ui,sans-serif; font-size:.78rem; color:var(--muted);
+          border:1px solid var(--rule); padding:.4rem .6rem; display:inline-block;
+          margin:.5rem 0; }
+  .not { background:#fff; border:1px solid var(--rule); padding:1.25rem 1.5rem; margin:1.5rem 0; }
+  ol.claims { padding-left:1.2rem; }
+  ol.claims li { margin:.4rem 0; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════ 1 · COVER — the question, then the diagram ══════════════ -->
+<section class="page">
+  <p class="kicker">AXIOM</p>
+  <!-- ⭐ THE LOCKED POSITIONING DESCRIPTOR, VERBATIM. Not a capability list. -->
+  <h1>A strategy-execution platform that supports dynamic corporate
+      transformation, powered by advanced analytics.</h1>
+
+  <p class="q">“You know what created value last year.<br><strong>Can you rank it?</strong>”</p>
+  <p class="lede">And which three things should you fix first?</p>
+
+  <p>Most companies can list what created value — revenue growth, cost control,
+  a handful of initiatives, a new platform. <strong>The list is not the
+  problem.</strong> The ordering is. Ranking requires attribution, and attribution
+  is the one thing a list does not carry.</p>
+
+  <p><strong>AXIOM answers that question with a document, not an assertion.</strong>
+  The ranking is the product’s output — a decomposition of the change in what the
+  business is worth, driver by driver, with the part nothing explains left
+  visible.</p>
+
+  <h2>Four inputs, one pack, two answers</h2>
+<pre>
+  ┌──────────┬──────────────┬──────────────┬───────────┐
+  │ actuals  │ initiatives  │ stakeholders │ valuation │
+  │          │              │              │           │
+  └────┬─────┴──────┬───────┴──────┬───────┴─────┬─────┘
+       └────────────┴──────┬───────┴─────────────┘
+                  ┌────────▼─────────┐
+                  │  the dated pack  │
+                  └────────┬─────────┘
+               ┌───────────┴───────────┐
+               ▼                       ▼
+      ┌─────────────────┐   ┌─────────────────────┐
+      │ what it is worth│   │  what to do next    │
+      └─────────────────┘   └─────────────────────┘
+</pre>
+  <p>Your actuals are one input of four, and they are the one you already have.
+  <strong>The other three — initiative status, stakeholder signal, and a
+  valuation model — were never general-ledger objects.</strong> That is not a gap
+  in the finance function’s work. Those things live in different systems, or in
+  nobody’s.</p>
+</section>
+
+<!-- ══════════════ 2 · WHAT IT DOES NOT DO — early, deliberately ══════════════ -->
+<section class="page">
+  <h1>First, what AXIOM does not do.</h1>
+  <div class="not">
+    <p><strong>It does not touch your ledger.</strong></p>
+    <p><strong>It does not close your books.</strong></p>
+    <p><strong>It does not replace the CFO’s pack.</strong></p>
+  </div>
+  <p>The management accounts answer <em>what happened</em>. AXIOM answers
+  <em>what it is worth</em> and <em>what to do next</em>. Those are different
+  questions, and the second pair cannot be derived from the ledger — the inputs
+  are not in it.</p>
+  <p>AXIOM is not an extension of your reporting stack. A product that extends an
+  existing pack is a line item on top of a line item, and the first budget review
+  removes it.</p>
+</section>
+
+<!-- ══════════════ 3 · THE PACK — headline material ══════════════ -->
+<section class="page">
+  <h1>The pack: dated, selective, and the same seven sections every time.</h1>
+  <p class="lede">It arrives on a schedule whether or not anyone had time.</p>
+
+  <p>The pack is <strong>selective by design</strong> — seven sections in a fixed
+  order, so that a reader who has seen last month’s can find this month’s answer
+  in the same place. It is not a dashboard, and it is not everything AXIOM knows.</p>
+
+  <table>
+    <tr><th>#</th><th>Section</th><th>What it answers</th></tr>
+    <tr><td>1</td><td>What changed</td><td>Movement since the last pack</td></tr>
+    <tr><td>2</td><td>Why — the ratios</td><td>What the movement was made of</td></tr>
+    <tr><td>3</td><td>What is likely</td><td>The forecast, and how much the methods disagree</td></tr>
+    <tr><td>4</td><td>What is at risk</td><td>Distance to the point where solvency breaks</td></tr>
+    <tr><td>5</td><td>Initiatives</td><td>What is being done, and whether it is landing</td></tr>
+    <tr><td>6</td><td>What to do next</td><td>Value-maximising actions, ranked</td></tr>
+    <tr><td>7</td><td>The Value Bridge</td><td><strong>What created value, ranked</strong></td></tr>
+  </table>
+
+  <h2>The Value Bridge — the section that answers the question</h2>
+  <p>The bridge decomposes the movement in equity value between two packs into
+  named drivers, and <strong>shows what none of them explain</strong>.</p>
+
+  <p class="demo">Demo figures — generated Meridian sample pack, not a customer outcome.</p>
+  <table>
+    <tr><th>Quantity</th><th>Demo pack</th></tr>
+    <tr><td>Equity value, pack 1 → pack 2</td><td>2,182.33 → 253.41</td></tr>
+    <tr><td>Total movement</td><td>−1,928.91</td></tr>
+    <tr><td>Explained by named drivers</td><td>−80.32</td></tr>
+    <tr><td><strong>Residual — explained by nothing</strong></td><td><strong>−1,848.60</strong></td></tr>
+  </table>
+
+  <p><strong>The residual is the point.</strong> It is a subtraction, not a
+  balancing figure: what the named drivers did not account for, left on the page
+  at full size. A bridge that reconciles exactly has been made to reconcile.</p>
+
+  <p>In the same demo pack, <strong>two of six drivers are computable and four
+  are declared absent by name</strong> — trading, forecast revision, discount rate
+  and multiples — each with the reason it could not be computed. AXIOM reports
+  what it cannot compute rather than filling the gap.</p>
+
+  <h2>The Decision Record</h2>
+  <p>Decisions taken against a pack are recorded with who took them and when, and
+  the following pack reports what followed. <strong>This is what closes the
+  loop</strong> — the pack that shows whether the last pack’s decision was worth
+  taking.</p>
+
+  <h2>The Watch — event-timed, not monthly</h2>
+  <p>Some things cannot wait for the pack. A covenant breach on the 12th reported
+  on the 5th is a post-mortem, not a warning. The Watch alerts named recipients
+  when a threshold is crossed, <strong>on its own timing</strong>, and appears in
+  the next pack as part of what is at risk.</p>
+</section>
+
+<!-- ══════════════ 4 · THE SECOND QUESTION ══════════════ -->
+<section class="page">
+  <p class="kicker">The second question</p>
+  <h1>“How would you know?”</h1>
+  <p class="lede">A ranked decomposition is worth having only if the ranking is
+  defensible. This page is for the reader who asks; it is skippable by the reader
+  who does not.</p>
+
+  <p>What distinguishes AXIOM is not that the mathematics is more advanced.
+  <strong>It is that a corporate-finance practitioner set the rules.</strong> Each
+  discipline below is a decision you would recognise as one only someone who has
+  done valuation work would make — and each is visible in the artefact, so you can
+  check it rather than take it.</p>
+
+  <table>
+    <tr><th>Discipline</th><th>Where you can see it</th></tr>
+    <tr><td>DLOM sits outside the enterprise-to-equity reconciliation</td>
+        <td>The bridge shows equity value, then the discount, then equity value
+            after it — applied after the reconciliation, never inside it</td></tr>
+    <tr><td>Debt and cash are separate signed lines</td>
+        <td>Cash is added as its own step; preferred and minority stay separate
+            rather than being folded into a single net figure</td></tr>
+    <tr><td>Free cash flow to firm and to equity are kept distinct</td>
+        <td>Two labelled rows, never one “free cash flow”</td></tr>
+    <tr><td>Two methods shown, and their disagreement stated</td>
+        <td>The comparables range appears beside the intrinsic valuation, with
+            the verdict — above, below, or within</td></tr>
+    <tr><td>The residual is shown, not absorbed</td>
+        <td>The Value Bridge, above: −1,848.60 of a −1,928.91 movement</td></tr>
+    <tr><td>The assumptions are registered and inspectable</td>
+        <td>Each pack pins the assumption set it was produced under</td></tr>
+    <tr><td>Absence is declared, never zeroed</td>
+        <td>A missing input produces a stated blank and the name of the data it
+            would need — and a release fails if that discipline is broken</td></tr>
+  </table>
+
+  <h3>The clearest example is the registry declining to pin itself</h3>
+  <p>AXIOM holds a registry of ratio definitions that production does not yet
+  read. Rather than pin a version for it, <strong>the pack records that it is not
+  consumed, and why</strong> — because pinning a version for something nothing
+  renders would assert more than the system knows.</p>
+
+  <h3>One definition per number — stated as it actually works</h3>
+  <p>Six quantities — net debt, total debt, invested capital, return on invested
+  capital, economic value added and cost of capital — <strong>have a declared
+  owner and an automated check that fails the build when the number of places
+  computing them changes.</strong></p>
+  <p>Five of the six resolve to a single site today. <strong>Total debt is
+  computed in seventeen places</strong>, and the check holds that number so it
+  cannot grow unnoticed. We would rather tell you the number than claim it is
+  one.</p>
+</section>
+
+<!-- ══════════════ 5 · WHAT IS INSIDE — the features map, interior ══════════════ -->
+<section class="page">
+  <h1>What is inside.</h1>
+  <p class="lede">The loop, not a menu. Each period’s results become the next
+  period’s inputs.</p>
+
+<pre>
+   inputs                    the loop                        outputs
+  ─────────                ─────────────                   ─────────
+
+  actuals ┐            ┌─────────────────┐            ┌──────────────────┐
+          ├──────────► │     ANALYZE     │ ─────────► │  the dated pack  │
+  people  ┤            │        ↓        │            │   (selective)    │
+          │            │    STRATEGIZE   │            └──────────────────┘
+  context ┘            │        ↓        │            ┌──────────────────┐
+                       │     EXECUTE     │ ─────────► │  the full export │
+                       └────────┬────────┘            │  (exhaustive)    │
+                         ▲      │                     └──────────────────┘
+                         │      │                     ┌──────────────────┐
+                         │      └───────────────────► │    the Watch     │
+                         │                            │  (event-timed)   │
+                         └──── results become the ────┴──────────────────┘
+                               next period's inputs
+</pre>
+
+  <h2>Two documents, deliberately different</h2>
+  <p>The <strong>pack</strong> is selective — seven sections, so a reader can
+  navigate it. The <strong>export</strong> is exhaustive — every section AXIOM can
+  produce, for readers who do not have access to the application and should not
+  have to guess what was left out. <strong>An export that fails by being
+  incomplete is a different failure from a pack that fails by being long</strong>,
+  and they are built to different rules.</p>
+  <p class="demo">Demo pack: 7 pack sections; 21 export sections.</p>
+
+  <h2>What the loop contains</h2>
+  <h3>Analyse</h3>
+  <p>Financial performance and ratios; enterprise valuation on two methods with
+  their disagreement stated; a solvency boundary and the distance from today’s
+  position to it; benchmarking; and a structured assessment of the organisation
+  from the people inside it.</p>
+  <h3>Strategise</h3>
+  <p>Forecasting on five methods, with the spread reported when they disagree
+  rather than averaged away. A joint search across margin, working capital,
+  capital intensity, growth and leverage under solvency constraints, returning
+  each lever’s marginal contribution. Flexibility — the option to expand, defer or
+  abandon — priced rather than asserted.</p>
+  <h3>Execute</h3>
+  <p>Objectives, key results and initiatives with declared ownership; initiatives
+  linked to the statement lines they are declared to move, <strong>at a declared
+  share</strong>; and the decision record that reports what followed.</p>
+</section>
+
+<!-- ══════════════ 6 · WHAT AXIOM DOES, IN ORDER ══════════════ -->
+<section class="page">
+  <h1>What it is for, in order of what it is worth.</h1>
+
+  <h2>1 · Value-maximising actions</h2>
+  <p>What to do next, ranked by what it is worth doing — the joint lever search,
+  with each lever’s marginal contribution and the constraints that bind.</p>
+
+  <h2>2 · Risk, volatility and underperformance</h2>
+  <p>Where solvency breaks, how far today’s position is from that edge, and which
+  measures are moving the wrong way — monitored between cycles rather than
+  discovered at the next one.</p>
+
+  <h2>3 · Stakeholder feedback — the causal chain</h2>
+  <p>This is not a softer fourth feature. <strong>It is what stops the headline
+  number being a claim.</strong> A signal from the organisation reaches an
+  initiative, the initiative owns a key result, the key result drives a measure,
+  and the measure moves a line in the statements. Each hop is a record you can
+  open.</p>
+  <p>Responses are anonymous, and the anonymity survives arithmetic: results are
+  suppressed below a minimum respondent count, suppression extends to the
+  complement so a small group cannot be recovered by subtraction, and the floor is
+  applied to the department-and-seniority cell rather than to either dimension
+  alone.</p>
+
+  <h2>4 · Alignment</h2>
+  <p>Objectives, key results, measures and initiatives in one line of sight, so
+  that the thing being reported and the thing being worked on are the same thing.</p>
+</section>
+
+<!-- ══════════════ 7 · THE CXO OFFER ══════════════ -->
+<section class="page">
+  <h1>For each executive around the table.</h1>
+  <p class="lede">The enterprise question is why AXIOM arrives. This is why it
+  stays.</p>
+
+  <h2>See what the board sees</h2>
+  <p>The enterprise picture as the chief executive and the board see it — and
+  where your function sits inside it. Most executives run their function against
+  their own numbers and infer the rest. <strong>This is access to a room you are
+  normally outside.</strong></p>
+
+  <h2>See what your people will not tell you</h2>
+  <p>Anonymous feedback and improvement ideas about your own function, from the
+  people in it, sliced by management level. Not a company-wide engagement score —
+  <strong>the specific things your team believes and has not said to you.</strong></p>
+
+  <h2>And the working layer</h2>
+  <p>The enterprise view of performance and where your function fits; a formal
+  line of sight from objectives through key results and measures to initiatives;
+  and the stakeholder feedback in structured form.</p>
+</section>
+
+<!-- ══════════════ 8 · COMMERCIAL ══════════════ -->
+<section class="page">
+  <h1>Start with a pilot you did not have to build.</h1>
+  <p>We take your financial history and your organisation structure, produce the
+  first pack, and walk you through it. <strong>You judge the artefact, not the
+  demo.</strong></p>
+  <p>If the first pack does not tell you something you did not already know, there
+  is nothing to discuss — which is a faster answer than a procurement cycle.</p>
+  <p class="demo">All figures in this document are drawn from the generated
+  Meridian sample pack and are demonstration figures, not customer outcomes.</p>
+</section>
+
+</body>
+</html>

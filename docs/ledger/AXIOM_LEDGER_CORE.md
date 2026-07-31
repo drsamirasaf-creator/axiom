@@ -7562,6 +7562,67 @@ version of the same claim.**
 ⭐ **The locked positioning descriptor is unaffected** and is still used verbatim
 wherever the platform is described.
 
+## ⭐⭐ B15 STAGE 2 — THE BROCHURE, REWRITTEN (31 Jul)
+
+**Asset:** `docs/brochure/AXIOM_Brochure_v3.html`. ⭐ **WRITTEN FROM CORE, NOT
+FROM v2** — the old document's structure encodes a superseded pitch, and editing
+it would inherit that structure. **v2 is left in place as the audited record.**
+
+⭐⭐ **THE REWRITE RESOLVES STAGE 1'S COVERAGE LIMIT.** Pages 1–7 of v2 were
+enumerated by section rather than verified individually. **A rewrite retires an
+unverified claim by DELETION rather than by inspection**, and every claim that
+survived into v3 was verified in this lane.
+
+### Source of truth and figure provenance
+
+| | |
+|---|---|
+| **source of truth** | `docs/ledger/AXIOM_LEDGER_CORE.md` |
+| **figures** | ⭐ **the generated Meridian demo packs at `9055f0d`**, regenerated and re-measured at `4b108e4` |
+| **labelling** | every figure carries *"demonstration figures, not customer outcomes"* |
+
+### ⭐ THE SURVIVING CLAIMS — each verified in this lane
+
+**Structure, measured from code:** the pack spine is **7 sections** (`SPINE`) and
+the export is **21** (`COMPONENTS`) — the two-document ruling, asserted rather
+than described.
+
+**Demo figures, from pack 2:** equity value **2,182.33 → 253.41**; total movement
+**−1,928.91**; explained **−80.32**; ⭐ **residual −1,848.60**; and **2 of 6
+drivers computable, 4 declared absent by name.**
+
+**Disciplines:** all seven from the second-question ruling, re-stated with where
+each is visible. **The registry declining to pin itself is included.**
+
+**The ratchet formulation replaces the single-site claim** — six quantities with a
+declared owner, five at one site, ⭐ **total debt named at seventeen.**
+
+**Also verified here:** `realised_effects` reports realised and unmeasured
+decisions with reasons; the Watch carries `recipient_email` / `recipient_basis`
+and ⭐ **never broadcasts**; five forecast methods with the spread reported; the
+joint lever search with marginal contribution; expand/defer/abandon priced; the
+k-anonymity floor with complement suppression on the **cell**; initiatives linked
+to statement lines **at a declared share**.
+
+### ⭐ WHAT WAS STRUCK
+
+"Actionable intelligence" · "Optimize Valuation" · every comparative superlative ·
+every technique name · the "Advanced analytics" framing · ⭐ **and any figure
+attributing equity value to a named initiative — the withdrawn proof point is not
+present and was not restored.**
+
+### ⭐⭐ WHAT CORE SPECIFIED THAT THE PRODUCT CANNOT SUPPORT — one, and it is the diagram
+
+**The value-proposition diagram is specified in CORE with a `CLOSING BAR — the
+proof point`.** ⭐⭐ **THE PROOF POINT IS WITHDRAWN, SO THE BAR HAS NOTHING TO
+CARRY.** It was **drawn without the closing bar** rather than filled with a
+plausible substitute.
+
+⭐ **RECORDED AS A COLLISION, NOT RESOLVED:** CORE requires the bar; CORE also
+withdraws the only claim ruled to occupy it. **Whether the bar returns with a
+different claim, or is struck from the diagram spec, is a ruling this lane did not
+take.**
+
 ## ⭐⭐ B15 STAGE 1 — THE BROCHURE CLAIM AUDIT (31 Jul)
 
 **Artefact:** `docs/brochure/AXIOM_Capabilities_Brochure_v2.html`, 7 pages.
