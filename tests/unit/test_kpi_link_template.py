@@ -160,7 +160,7 @@ def test_version_bump_and_backwards_acceptance():
     # a side effect. Updating it here is the acknowledgement. What must NEVER
     # come back is the accept-LIST below: the stamp is forensic metadata and
     # version is never a precondition for upload (CORE §7.37).
-    assert ingest.TEMPLATE_VERSION == "7M-v8.0"
+    assert ingest.TEMPLATE_VERSION == "7M-v9.0"   # v8 -> v9: monthly (31 Jul)
     # ⭐ The intent in the docstring — "a customer holding last quarter's workbook
     # must still be able to upload it" — is now guaranteed by policy rather than
     # by an allow-list: NO version gate exists on either template path, so every

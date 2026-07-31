@@ -141,11 +141,21 @@ _border = Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
 FIRST_COL = 2            # period columns start at B
 ANNUAL_COLS = 6            # v7.3: 2020..2025 (2025 added as HISTORICAL)
 QUARTERLY_COLS = 12
+MONTHLY_COLS = 24          # v8: two years of monthly history
+# ⭐ LOOKUPS, NOT `if annual else quarterly`. The binary form silently gave a
+# MONTHLY upload the QUARTERLY caps — a third frequency does not fit a boolean,
+# and the failure would have been a monthly plan truncated to 40 columns with no
+# error. One table per question, keyed by frequency.
+HISTORY_COLS = {"annual": ANNUAL_COLS, "quarterly": QUARTERLY_COLS,
+                "monthly": MONTHLY_COLS}
 # v7: optional CLIENT-PLAN forecast columns appended after the historical ones.
 # Left blank by default (no period year) so a history-only upload is unaffected —
 # the parser skips any column whose Period (year) cell is empty.
 FORECAST_ANNUAL = 8
 FORECAST_QUARTERLY = 40   # v7.6: ten years of quarters
+FORECAST_MONTHLY = 60     # v8: five years of months — see engines.MAX_FORECAST_PERIODS
+FORECAST_COLS = {"annual": FORECAST_ANNUAL, "quarterly": FORECAST_QUARTERLY,
+                 "monthly": FORECAST_MONTHLY}
 # ⭐ ROW-4 PERIOD DISPLAY FORMATS (v7.6). DISPLAY ONLY — the CELL VALUE stays an
 # integer (2024, or 20241 in YYYYQ), so the parser reads exactly what it read
 # before and neither `read_cols` nor the succession check is affected.
@@ -466,8 +476,8 @@ def build_company_template(*, company_id: int, company_name: str, currency: str,
     if standard not in LABELS:
         standard = "us_gaap"
     lab = LABELS[standard]
-    ncols = ANNUAL_COLS if frequency == "annual" else QUARTERLY_COLS
-    nfcst = FORECAST_ANNUAL if frequency == "annual" else FORECAST_QUARTERLY
+    ncols = HISTORY_COLS.get(frequency, QUARTERLY_COLS)
+    nfcst = FORECAST_COLS.get(frequency, FORECAST_QUARTERLY)
     unit_label = {"actual": "actual amounts", "thousands": "in thousands",
                   "millions": "in millions"}.get(statement_units, statement_units)
 

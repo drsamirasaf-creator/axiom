@@ -298,7 +298,7 @@ def test_no_version_gate_was_reintroduced():
     # a side effect. Updating it here is the acknowledgement. What must NEVER
     # come back is the accept-LIST below: the stamp is forensic metadata and
     # version is never a precondition for upload (CORE §7.37).
-    assert ingest.TEMPLATE_VERSION == "7M-v8.0"
+    assert ingest.TEMPLATE_VERSION == "7M-v9.0"   # v8 -> v9: monthly (31 Jul)
     assert not hasattr(ingest, "ACCEPTED_TEMPLATE_VERSIONS")
     assert not any("ACCEPTED" in n and "VERSION" in n for n in dir(ingest)), \
         "a version allow-list under another name is still a gate"

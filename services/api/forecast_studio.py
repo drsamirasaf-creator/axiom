@@ -43,7 +43,8 @@ METHODS = ("trend", "driver", "smoothing", "montecarlo", "ensemble")
 # to fifteen years — expressed in the unit the engine actually steps in. The old
 # single pair meant a quarterly customer could not ask for more than 3.75 years
 # while the control implied fifteen.
-HORIZON_BOUNDS = {"annual": (3, 15), "quarterly": (12, 60)}
+HORIZON_BOUNDS = {"annual": (3, 15), "quarterly": (12, 60),
+                  "monthly": (12, 60)}   # v9: months, same span as quarters
 HORIZON_MIN, HORIZON_MAX = HORIZON_BOUNDS["annual"]     # back-compat for annual callers
 
 
@@ -53,7 +54,9 @@ def horizon_bounds(frequency: str) -> tuple[int, int]:
 
 def period_word(frequency: str, n: int = 2) -> str:
     """The unit a horizon is counted in — 'quarter(s)' or 'year(s)'."""
-    w = "quarter" if frequency == "quarterly" else "year"
+    # ⭐ A LOOKUP, NOT A TERNARY. `quarter if quarterly else year` called a
+    # MONTHLY horizon "years" — a 24-month plan announced as 24 years.
+    w = {"quarterly": "quarter", "monthly": "month"}.get(frequency, "year")
     return w if n == 1 else w + "s"
 MC_PATHS = 2000
 MC_SEED = 26202

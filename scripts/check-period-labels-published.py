@@ -63,6 +63,17 @@ KNOWN_EMITTERS = {
     "data_coverage",                        # engines.py  -> coverage
     "stochastic_statements",                # proforma.py -> root
     "statement_of_comprehensive_income",    # oci.py      -> root
+    # ⭐ §7s.1's pack freeze. ITS CONSUMER IS NOT AN ENDPOINT — it writes period
+    # labels into a FROZEN SNAPSHOT that the pack renderer reads, so there is no
+    # URL for the frontend check to match. Registered with an explicit empty
+    # endpoint list rather than left unmapped, because "unmapped" and
+    # "deliberately has no endpoint" are different facts and the gate could not
+    # tell them apart.
+    #
+    # ⭐ THIS GATE WAS RED FROM 4648213 UNTIL 31 Jul AND NOBODY RAN IT — the
+    # built-but-not-wired class applied to a GUARD. A guard nothing invokes is
+    # indistinguishable from one that passes.
+    "_cap_period_labels",                   # pack.py     -> frozen snapshot
 }
 
 # Endpoint URL fragments whose payload carries `period_labels`, by emitter.
@@ -73,6 +84,10 @@ ENDPOINTS = {
     "data_coverage":                     ["/financials/datasets/${id}/profile"],
     "stochastic_statements":             ["/pro-forma"],
     "statement_of_comprehensive_income": ["/comprehensive-income"],
+    # ⭐ EMPTY BY DESIGN, NOT BY OMISSION. The pack freeze has no endpoint; its
+    # labels reach a reader through the rendered pack, which is checked by
+    # check-pack-coverage rather than by a URL match here.
+    "_cap_period_labels": [],
 }
 # Matched loosely: the distinctive tail of each path.
 URL_MARKERS = ["/pro-forma", "/comprehensive-income", "/metrics/dashboard/",

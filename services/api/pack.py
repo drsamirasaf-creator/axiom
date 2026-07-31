@@ -547,6 +547,12 @@ def freeze_inputs(db, cid):
     # ⭐ ASSIGNED INTO `frozen`, NOT INTO `classes`. `_jsonable` returns a COPY,
     # so mutating the source dict afterwards reaches nothing — the first version
     # did exactly that and the key was simply absent from the snapshot.
+    # ⭐ CADENCE AND INPUT AGE ARE FROZEN WITH THE PACK. Deriving them at render
+    # time would let a pack change its stated cadence when a later upload added a
+    # finer granularity — the pack would silently restate what it had reported.
+    frozen["cadence"] = _jsonable(cadence_for(frozen))
+    frozen["financial_input_age"] = _jsonable(
+        financial_input_age(frozen, frozen["cadence"]))
     for name, fn in DERIVED_CLASSES.items():
         frozen["classes"][name] = _jsonable(fn(db, cid, frozen))
     return frozen
@@ -963,3 +969,113 @@ def sweep_calendar(db, today=None):
             db.rollback()
             summary["notify_errors"] += 1
     return summary
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# §7s CADENCE GRANULARITY — follows the DATA, per period (31 Jul)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ⭐ NOT A COMPANY-LEVEL SETTING. Mixed granularity is the NORMAL case — annual
+# history with monthly recent periods — so a company-level "this client is
+# monthly" flag would be wrong for most of its own series. The pack selects from
+# what exists FOR THE REPORTING PERIOD.
+#
+# ⭐ AND IT DECLARES WHAT IT USED, AND HOW OLD THE FINANCIALS ARE. A monthly pack
+# carrying quarterly financials is HONEST. A monthly pack silently carrying
+# two-month-old financials is not. This is absence-declares applied to STALENESS
+# rather than to missing data: the input is present, and its AGE is the thing a
+# reader would otherwise assume.
+
+CADENCE_PREFERENCE = ("monthly", "quarterly", "annual")
+
+
+def cadence_for(frozen_or_data, period_end=None):
+    """Which cadence the pack should report at, and why.
+
+    Monthly if monthly periods exist for the reporting period; quarterly
+    otherwise; annual if that is all there is.
+    """
+    from .modules.financials.periods import derive_frequency
+
+    data = frozen_or_data
+    if isinstance(data, dict) and "classes" in data:
+        ds = (data.get("classes") or {}).get("active_financial_dataset") or {}
+        data = ds.get("payload") if ds.get("present") else None
+    if not isinstance(data, dict):
+        return {"cadence": None, "present": False,
+                "reason": "no dataset, so no cadence can be selected"}
+
+    periods = (data.get("periods") or {})
+    hist = list(periods.get("historical") or [])
+    fcst = list(periods.get("forecast") or [])
+    all_p = hist + fcst
+    if not all_p:
+        return {"cadence": None, "present": False,
+                "reason": "the dataset declares no periods"}
+
+    # ⭐ DERIVED PER VALUE, so a MIXED series is seen as mixed rather than
+    # collapsed to whichever label the dataset happens to carry.
+    by_freq = {}
+    for v in all_p:
+        f = derive_frequency([v])
+        if f:
+            by_freq.setdefault(f, []).append(v)
+
+    available = [f for f in CADENCE_PREFERENCE if by_freq.get(f)]
+    if not available:
+        return {"cadence": None, "present": False,
+                "reason": f"no period value decodes to a known frequency: {all_p[:4]}"}
+    chosen = available[0]
+    return {"cadence": chosen, "present": True,
+            "available": available,
+            "mixed": len(available) > 1,
+            "periods_at_cadence": sorted(by_freq[chosen]),
+            "reason": (f"{chosen} periods are present"
+                       if len(available) == 1 else
+                       f"{chosen} is the finest granularity present; the series "
+                       f"also carries {', '.join(available[1:])}")}
+
+
+def financial_input_age(frozen_or_data, cadence_block=None):
+    """How old the financial inputs are, at the chosen cadence.
+
+    ⭐ THE PACK MUST STATE THIS. A monthly pack whose newest financial period is
+    two months old is not wrong — it is stale, and the reader cannot tell those
+    apart from the figures. Stating it converts a silent assumption into a
+    declared fact.
+    """
+    from .modules.financials.periods import derive_frequency, newest_period
+
+    data = frozen_or_data
+    if isinstance(data, dict) and "classes" in data:
+        ds = (data.get("classes") or {}).get("active_financial_dataset") or {}
+        data = ds.get("payload") if ds.get("present") else None
+    if not isinstance(data, dict):
+        return {"present": False, "reason": "no dataset, so no input age"}
+
+    hist = list((data.get("periods") or {}).get("historical") or [])
+    if not hist:
+        return {"present": False,
+                "reason": "the dataset declares no historical periods"}
+    # ⭐ NOT max(hist). Across a mixed series the encodings are not numerically
+    # comparable — a quarterly 20243 is smaller than a monthly 202401 — so max()
+    # returns an OLDER period and reports it as the newest.
+    newest = newest_period(hist)
+    if newest is None:
+        return {"present": False,
+                "reason": "no historical period decodes to a known frequency"}
+    freq = derive_frequency([newest])
+    if freq is None:
+        return {"present": False,
+                "reason": f"the newest period {newest} does not decode"}
+    cad = (cadence_block or {}).get("cadence")
+    out = {"present": True, "newest_period": newest, "newest_frequency": freq,
+           "pack_cadence": cad}
+    if cad and cad != freq:
+        # ⭐ THE HONEST CASE, NAMED. A monthly pack on quarterly financials.
+        out["note"] = (f"this pack reports at {cad} cadence while its newest "
+                       f"financial period is {freq} — the financials are "
+                       f"coarser than the cadence")
+    else:
+        out["note"] = f"financials and cadence are both {freq}"
+    return out

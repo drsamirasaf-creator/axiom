@@ -143,18 +143,42 @@ def test_quarterly_valuation_lands_in_the_same_band_as_annual():
         "outside a sane band; the discounting is period-blind again")
 
 
-def test_the_pre_fix_behaviour_would_fail_this_test():
-    """Pin the defect itself, so a regression reproduces the original symptom.
+def test_mislabelling_the_frequency_NO_LONGER_reproduces_the_defect():
+    """⭐ THE OLD NEGATIVE CONTROL BECAME UNREACHABLE BECAUSE THE FIX GOT
+    STRONGER, and that is worth asserting rather than deleting.
 
-    Mislabelling the quarterly dataset as annual is exactly what the kernel did
-    before: annual rates applied once per period.
+    This test used to reproduce the defect by setting
+    `periods.frequency = "annual"` on a quarterly dataset — which is exactly what
+    the kernel did before. Since 31 Jul the divisor is DERIVED FROM THE PERIOD
+    VALUES rather than read from the label, so a lying label cannot produce the
+    defect any more. The old attack vector is closed, and this asserts that it is.
     """
     A = _annual_dataset()
     Q = _quarterise(A)
-    broken = copy.deepcopy(Q)
-    broken["periods"]["frequency"] = "annual"
+    liar = copy.deepcopy(Q)
+    liar["periods"]["frequency"] = "annual"          # the old attack
     ev_a = val.run(A, "proforma")["deterministic"]["enterprise_value"]
-    ev_broken = val.run(broken, "proforma")["deterministic"]["enterprise_value"]
+    ev_liar = val.run(liar, "proforma")["deterministic"]["enterprise_value"]
+    assert 0.85 <= ev_liar / ev_a <= 1.15, (
+        f"a mislabelled quarterly dataset valued at {ev_liar / ev_a:.3f} of the "
+        f"annual case — the label is being trusted again")
+
+
+def test_the_defect_still_reproduces_WHEN_THE_DIVISOR_IS_FORCED():
+    """⭐ AND THE DEFECT ITSELF IS STILL PINNED, via the only route that can now
+    produce it. A negative control that no longer reproduces anything proves the
+    positive guard less than it claims — so the reproduction moves to the
+    divisor, which is where the arithmetic actually lives.
+    """
+    A = _annual_dataset()
+    Q = _quarterise(A)
+    ev_a = val.run(A, "proforma")["deterministic"]["enterprise_value"]
+    orig = val.PERIODS_PER_YEAR.copy()
+    try:
+        val.PERIODS_PER_YEAR["quarterly"] = 1        # annual rates, per quarter
+        ev_broken = val.run(Q, "proforma")["deterministic"]["enterprise_value"]
+    finally:
+        val.PERIODS_PER_YEAR.clear(); val.PERIODS_PER_YEAR.update(orig)
     assert ev_broken / ev_a < 0.35, (
         "the pre-fix path should understate by roughly 5x; if this no longer "
         "holds the fixture has drifted and the guard above proves less than it claims")

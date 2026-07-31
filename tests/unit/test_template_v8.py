@@ -75,8 +75,15 @@ def test_the_policy_tax_rate_has_its_own_cell():
 
 
 def test_the_version_is_stamped_but_the_family_is_the_gate():
+    # ⭐ DERIVED, NOT PINNED — and deliberately unlike the three tripwires. This
+    # test's own name says the FAMILY is the gate and the version is only
+    # stamped, so pinning the version here would assert the opposite of what the
+    # test is for. `test_template_policy_agreement` already uses this form and
+    # was the ONE version assertion that did not break on the v8 -> v9 bump.
+    from services.api.modules.financials import template_policy as _policy
     wb = _wb("us_gaap")
-    assert wb["Instructions"]["A1"].value.startswith("AXIOM-FIN-TEMPLATE v8")
+    stamp = wb["Instructions"]["A1"].value
+    assert stamp.startswith(f"AXIOM-FIN-TEMPLATE {_policy.GENERIC_VERSION}")
     # a v1 file must still parse — CORE §7.37, version is never a gate
     wb["Instructions"]["A1"] = "AXIOM-FIN-TEMPLATE v1 us_gaap"
     b = io.BytesIO(); wb.save(b)

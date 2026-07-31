@@ -48,7 +48,11 @@ COMPANY_FAMILY = "AXIOM-COMPANY-TEMPLATE"  # _AXIOM!A1 on the per-company book
 # Three strings for one fact used to be kept in step by hand, and one of them
 # was wrong for weeks — user-facing copy said "the v7 template" while the
 # builder stamped v1. They are derived from one number now.
-VERSION_MAJOR = 8
+# ⭐ 8 -> 9 ON 31 Jul: the template gains MONTHLY as a third frequency.
+# The parser accepts prior versions unchanged, and monthly PARSES AS ABSENT for
+# them — a v8 file has no monthly columns to read, which is a fact about the file
+# rather than a failure of it.
+VERSION_MAJOR = 9
 GENERIC_VERSION = f"v{VERSION_MAJOR}"
 COMPANY_VERSION = f"7M-v{VERSION_MAJOR}.0"
 USER_FACING_VERSION = f"v{VERSION_MAJOR}"

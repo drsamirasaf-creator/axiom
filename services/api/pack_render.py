@@ -39,6 +39,12 @@ class Source:
     def versions(self):
         raise NotImplementedError
 
+    def cadence(self):
+        raise NotImplementedError
+
+    def financial_input_age(self):
+        raise NotImplementedError
+
 
 class FrozenSource(Source):
     """⭐ READS THE SNAPSHOT, NEVER LIVE STATE. This is what makes a published
@@ -59,6 +65,15 @@ class FrozenSource(Source):
 
     def versions(self):
         return self._f.get("versions") or {}
+
+    def cadence(self):
+        return self._f.get("cadence") or {"present": False,
+                                          "reason": "this pack predates cadence "
+                                                    "selection"}
+
+    def financial_input_age(self):
+        return self._f.get("financial_input_age") or {
+            "present": False, "reason": "this pack predates input-age reporting"}
 
     def captured_at(self):
         return self._f.get("captured_at")
@@ -96,6 +111,16 @@ class LiveSource(Source):
 
     def versions(self):
         return self._P.pinned_versions(self._db, self._cid)
+
+    def cadence(self):
+        return self._P.cadence_for(self.dataset() and
+                                   {"classes": {"active_financial_dataset":
+                                                self.klass("active_financial_dataset")}})
+
+    def financial_input_age(self):
+        return self._P.financial_input_age(
+            {"classes": {"active_financial_dataset":
+                         self.klass("active_financial_dataset")}}, self.cadence())
 
     def captured_at(self):
         return datetime.now(timezone.utc).isoformat()
@@ -410,12 +435,20 @@ def c_adjustments(src):
 
 
 def c_provenance(src):
-    """The pinned versions and the frozen input inventory."""
+    """The pinned versions, the frozen input inventory, ⭐ AND THE CADENCE AND
+    AGE OF THE FINANCIALS.
+
+    A monthly pack carrying quarterly financials is honest; a monthly pack
+    silently carrying two-month-old financials is not. The reader cannot tell
+    those apart from the figures, so the pack states it.
+    """
     return _section("provenance", "Provenance — what produced these figures",
                     present=True,
                     body={"versions": src.versions(),
                           "captured_at": src.captured_at(),
-                          "source_kind": src.kind})
+                          "source_kind": src.kind,
+                          "cadence": src.cadence(),
+                          "financial_input_age": src.financial_input_age()})
 
 
 # ⭐ THE COMPONENT LIBRARY. One entry per section; both documents draw from here.

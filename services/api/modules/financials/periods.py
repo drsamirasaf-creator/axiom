@@ -31,11 +31,27 @@ everything can import it, and `ingest` re-exports for its existing callers.
 # Decoding is done here, once, rather than at each comparison site, so annual and
 # quarterly cannot drift apart the way the two halves of a duplicated rule do.
 
+# ⭐ MONTHLY IS YYYYMM — SIX DIGITS, and that is what makes the three
+# frequencies STRUCTURALLY DISTINGUISHABLE rather than a matter of trust:
+#
+#     2024      4 digits   annual
+#     20241     5 digits   quarterly   (year, quarter)
+#     202401    6 digits   monthly     (year, month)
+#
+# The encodings cannot collide, so `derive_frequency` below can read the data
+# rather than believe a label. That property is why monthly uses YYYYMM and not,
+# say, YYYYM — a five-digit 20241 would then mean both 2024 Q1 and 2024 Jan.
+SUBPERIODS = {"annual": 1, "quarterly": 4, "monthly": 12}
+
+
 def decode_period(value: int, frequency: str) -> tuple[int, int | None]:
-    """YYYYQ -> (year, quarter) for quarterly; (year, None) for annual."""
+    """YYYYQ -> (year, quarter); YYYYMM -> (year, month); YYYY -> (year, None)."""
     if frequency == "quarterly":
         year, q = divmod(int(value), 10)
         return year, q
+    if frequency == "monthly":
+        year, m = divmod(int(value), 100)
+        return year, m
     return int(value), None
 
 
@@ -45,6 +61,8 @@ def period_is_valid(value: int, frequency: str) -> bool:
         return False
     if frequency == "quarterly":
         return q is not None and 1 <= q <= 4
+    if frequency == "monthly":
+        return q is not None and 1 <= q <= 12
     return True
 
 
@@ -53,12 +71,24 @@ def next_period(value: int, frequency: str) -> int:
     year, q = decode_period(value, frequency)
     if frequency == "quarterly":
         return (year + 1) * 10 + 1 if q == 4 else year * 10 + (q + 1)
+    if frequency == "monthly":
+        # ⭐ THE SAME CARRY, AT A DIFFERENT MODULUS. 202412 -> 202501, and
+        # 202413 does not exist — the quarterly lesson at twelve instead of four.
+        return (year + 1) * 100 + 1 if q == 12 else year * 100 + (q + 1)
     return year + 1
+
+
+_MONTH_ABBR = ("", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 
 def format_period(value: int, frequency: str) -> str:
     year, q = decode_period(value, frequency)
-    return f"{year}Q{q}" if frequency == "quarterly" else str(year)
+    if frequency == "quarterly":
+        return f"{year}Q{q}"
+    if frequency == "monthly":
+        return f"{_MONTH_ABBR[q]} {year}" if q and 1 <= q <= 12 else str(value)
+    return str(year)
 
 
 def advance(period: int, n: int, frequency: str) -> int:
@@ -114,12 +144,92 @@ def forecast_periods(last_historical: int, n: int, frequency: str) -> list[int]:
     return out
 
 
-def frequency_of(data: dict) -> str:
-    """The dataset's declared frequency, defaulting to annual.
+def derive_frequency(values) -> str | None:
+    """The frequency the PERIOD VALUES actually are, or None if undecidable.
 
-    Datasets written before the key existed are annual, which is correct — and
-    it is a DECLARATION, never inferred from how the periods happen to look."""
-    return ((data or {}).get("periods", {}) or {}).get("frequency") or "annual"
+    ⭐ FREQUENCY IS DERIVED, NOT TRUSTED. A stored label is metadata and can be
+    wrong; the encoded values are the data. Because the three encodings differ in
+    DIGIT COUNT and cannot collide, this is a reading rather than a guess.
+
+    Returns None for an empty or mixed set rather than picking one — a dataset
+    whose periods are not all the same shape has no single frequency, and
+    choosing the majority would silently discard the rest.
+    """
+    widths = {len(str(int(v))) for v in (values or []) if str(v).strip().lstrip("-").isdigit()}
+    if not widths or len(widths) > 1:
+        return None
+    return {4: "annual", 5: "quarterly", 6: "monthly"}.get(next(iter(widths)))
+
+
+def period_ordinal(value: int) -> float:
+    """A comparable position in time for a period of ANY frequency.
+
+    ⭐ COMPARING ENCODINGS NUMERICALLY IS INVALID ACROSS FREQUENCIES, and the
+    failure is silent. A quarterly 20243 is numerically SMALLER than a monthly
+    202401, so `max()` over a mixed series returns the wrong period and reports a
+    stale figure as the newest one. Found by the mixed-series test, not by
+    reading.
+
+    Returns years-with-fraction: 2024 -> 2024.0, 2024Q3 -> 2024.5, Mar 2024 ->
+    2024.1667. Comparable across all three.
+    """
+    f = derive_frequency([value])
+    if f is None:
+        return float("-inf")
+    year, sub = decode_period(int(value), f)
+    if sub is None:
+        return float(year)
+    return float(year) + (sub - 1) / SUBPERIODS[f]
+
+
+def newest_period(values):
+    """The latest period in a possibly MIXED set, or None."""
+    cands = [v for v in (values or []) if derive_frequency([v]) is not None]
+    return max(cands, key=period_ordinal) if cands else None
+
+
+def frequency_check(data: dict) -> dict:
+    """Declared against derived. ⭐ REPORTED, NEVER SILENTLY RECONCILED.
+
+    A label disagreeing with its own periods is a live inconsistency, and this
+    codebase already carries the consequence of choosing wrongly between annual
+    and quarterly rates — measured at 4.66x. Adding a third frequency without a
+    check would widen exactly that.
+    """
+    periods = (data or {}).get("periods", {}) or {}
+    declared = periods.get("frequency")
+    values = list(periods.get("historical") or []) + list(periods.get("forecast") or [])
+    derived = derive_frequency(values)
+    return {"declared": declared, "derived": derived,
+            "effective": derived or declared or "annual",
+            "agree": (derived is None or declared is None
+                      or derived == declared),
+            "reason": (None if (derived is None or declared is None
+                                or derived == declared)
+                       else f"declared {declared!r} but the period values are "
+                            f"{derived!r}")}
+
+
+def frequency_of(data: dict) -> str:
+    """The frequency to COMPUTE with.
+
+    ⭐ CHANGED 31 Jul: this returns the DERIVED frequency where the values decide
+    it, falling back to the declaration only when they cannot. The previous
+    docstring said frequency is "a DECLARATION, never inferred" — which was safe
+    while there were two frequencies and no way to tell them apart from the
+    values. There is now: 4, 5 and 6 digits are annual, quarterly and monthly and
+    cannot collide.
+
+    ⭐ THE DISCOUNTING PATH IS WHY. The divisor must match the ACTUAL period
+    spacing or the arithmetic is wrong no matter what the label says, and being
+    wrong there is the 4.66x defect. A disagreement is surfaced by
+    `frequency_check`, not resolved by preferring the label.
+
+    Measured before changing: all 36 stored datasets agree across column,
+    payload and values, so this changes no existing result.
+    """
+    chk = frequency_check(data)
+    return chk["effective"]
 
 
 # ── entry parsing (Part B) ──────────────────────────────────────────────────

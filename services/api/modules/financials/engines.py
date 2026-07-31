@@ -124,7 +124,12 @@ def _series(block: dict, key: str, years: list) -> list:
 # years and 40 quarters. They are NOT the same number because they do not measure
 # the same thing, and a single shared constant would have to be wrong for one of
 # them.
-MAX_FORECAST_PERIODS = {"annual": 15, "quarterly": 40}
+# ⭐ MONTHLY = 60, FIVE YEARS, AND IT IS NOT TEN. Quarterly's 40 is ten years
+# because a ten-year quarterly plan is a thing clients build. A ten-year MONTHLY
+# plan is a quarterly plan with 80 extra columns of false precision, and offering
+# 120 forecast columns would push the template past 130 columns to serve a case
+# nobody plans in. Five years is the horizon monthly planning actually reaches.
+MAX_FORECAST_PERIODS = {"annual": 15, "quarterly": 40, "monthly": 60}
 MAX_HISTORICAL_PERIODS = {"annual": 10, "quarterly": 40}
 
 

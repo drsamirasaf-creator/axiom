@@ -64,17 +64,30 @@ def _r(x, nd=6):
 # understated EV reads as a poor business rather than as a suspicious number,
 # which is why it could have shipped unnoticed.
 
-PERIODS_PER_YEAR = {"annual": 1, "quarterly": 4}
+# ⭐ MONTHLY ADDED 31 Jul. It is the SAME DEFECT CLASS AT A DIFFERENT DIVISOR:
+# a 60-month plan discounted at annual rates applies SIXTY years of discounting
+# to FIVE years of cash flow, and prices the terminal perpetuity off a MONTHLY
+# final cash flow with an ANNUAL spread — roughly 12x too wide a denominator.
+# The quarterly error was 4.66x low; the monthly one is worse and fails the same
+# silent way, reading as a poor business rather than a broken number.
+PERIODS_PER_YEAR = {"annual": 1, "quarterly": 4, "monthly": 12}
 
 
 def periods_per_year(data: dict) -> int:
-    """How many forecast periods make a year, from the dataset's own declaration.
+    """How many forecast periods make a year.
+
+    ⭐ DERIVED FROM THE PERIOD VALUES, NOT THE DECLARED LABEL (31 Jul). The
+    divisor must match the ACTUAL period spacing or the discounting is wrong
+    whatever the label says — and being wrong here is the 4.66x defect. A label
+    that disagrees with its own periods is surfaced by `periods.frequency_check`,
+    not resolved by preferring the label.
 
     Read from the data rather than passed in: `run()` has 8+ call sites, most of
     which never saw the upload and could not supply it. Datasets written before
-    the key existed read as annual, which is correct — every one of them is."""
-    freq = ((data or {}).get("periods", {}) or {}).get("frequency") or "annual"
-    return PERIODS_PER_YEAR.get(freq, 1)
+    the key existed read as annual, which is correct — every one of them is.
+    """
+    from ..financials.periods import frequency_of
+    return PERIODS_PER_YEAR.get(frequency_of(data), 1)
 
 
 def to_period_rate(annual_rate: float, ppy: int) -> float:
