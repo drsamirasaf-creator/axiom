@@ -62,6 +62,7 @@ def init_db():
     # create_all() never sees ax_packs. Registering the snapshot producer here
     # keeps ONE registration point rather than a second mechanism.
     from .. import pack as _pack                             # noqa: F401
+    from .. import pack_dist as _pack_dist                    # noqa: F401
     _pack.register()
     ensure_schema()
     from .seed import seed_showcase

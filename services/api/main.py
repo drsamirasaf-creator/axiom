@@ -196,3 +196,10 @@ app.include_router(platform_router)
 app.include_router(intelligence_router)
 
 include_accounts(app)
+
+# §7s.1 Stage 3 — Cadence distribution. Bound AFTER include_accounts so it can
+# take that module's own get_db and auth dependency rather than re-declaring
+# them, which is how two auth paths are born.
+from .accounts import get_db as _get_db, get_current_user as _current_user  # noqa: E402
+from . import pack_dist as _pack_dist  # noqa: E402
+_pack_dist.include(app, _get_db, _current_user)
