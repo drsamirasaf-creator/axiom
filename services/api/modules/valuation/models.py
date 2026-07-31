@@ -1,5 +1,6 @@
 """Valuation provenance (Product §8, Math §3). REQ-VAL-006."""
 from datetime import datetime, timezone
+import sqlalchemy as sa
 from sqlalchemy import String, Integer, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 from ...core.db import Base
@@ -29,3 +30,8 @@ class ValuationRun(Base):
     # make an unreproducible run look reproducible — the one outcome worse than
     # an honestly absent record. `provenance is None` reads as "predates §7v".
     provenance: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # ⭐⭐ INVALIDATION RULED 31 Jul: MARK STALE. NULL means "not marked", which
+    # is NOT the same claim as "verified current" — nothing here asserts a run
+    # is still right, only that nothing has been observed to supersede it.
+    stale_since = sa.Column(sa.DateTime, nullable=True)
+    stale_reason = sa.Column(sa.Text, nullable=True)

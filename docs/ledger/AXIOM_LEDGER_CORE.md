@@ -10163,6 +10163,102 @@ call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
 
+## ⭐⭐ IN-APP EDIT SURFACES — GATHERED, RECOMPUTED, RULED, AND HONEST (31 Jul)
+
+### ⭐ 1 · THE GATHERING
+
+**All four edit surfaces are now tabs in My AXIOM:** *Objectives & KRs*
+(`/target-state`) · *KPIs* (`/data-input`) · *Assumptions* (`/assumptions`) ·
+*Declared Impact* (`/initiative-impact`).
+
+⭐⭐ **A SURFACE REACHABLE ONLY BY TYPING A URL IS UNSHIPPED.** Two of the four
+were exactly that — **and both were built in this same programme.** Seventh
+instance of built-but-not-wired.
+
+### ⭐⭐ 2 · RECOMPUTE ON SAVE — SYNCHRONOUS, AND THE MEASUREMENT SAYS WHY
+
+**Measured before choosing:**
+
+| concurrency | wall | p50 | errors |
+|---|---|---|---|
+| 5 | 32 ms | 6.4 ms | 0 |
+| 20 | 127 ms | 12.5 ms | 0 |
+| **50** | **319 ms** | **12.6 ms** | ⭐ **0** |
+
+⭐⭐ **THE POOL CONCERN DOES NOT APPLY: THE VALUATION IS PURE CPU AND TAKES NO
+DATABASE CONNECTION.** The 15-connection ceiling is untouched by it. **The real
+exposure is `_spawn_recompute` on the UPLOAD path**, which opens a session per
+raw thread — unchanged, and still G6's problem.
+
+**End to end, measured: 8–9 ms per save including the recompute.** The response
+carries the new equity value and WACC, so ⭐ **the customer sees what the save did
+without a refresh or a re-upload.**
+
+⭐ **RETURNED, NOT STORED.** Writing a `ValuationRun` per save would manufacture
+history nobody asked for. ⭐ **A failed preview is reported, never swallowed** —
+the edit still saved.
+
+**Published packs do not move** — inputs frozen by value; asserted.
+
+### ⭐⭐ 3 · INVALIDATION — RULED: **MARK STALE**
+
+**The three options shipped as none of them, with the UI listing them and acting
+on none. That is over.**
+
+| option | why not |
+|---|---|
+| **recompute** | ⭐ **silently rewrites a figure a reader may already have seen** — and in this codebase *corrections never edit* |
+| **leave with a badge** | the most easily ignored |
+| ⭐⭐ **MARK STALE — CHOSEN** | **the only option that changes what a reader SEES without changing what the number WAS** |
+
+`stale_since` + `stale_reason` on `ValuationRun`, ⭐ **nullable with no default:
+NULL means "not marked", which is NOT the claim "verified current."** Nothing is
+backfilled — retro-marking would assert a verdict nobody measured.
+
+⭐ **The interface now matches the product**: it reports how many runs were marked
+and says they are kept and readable.
+
+### ⭐⭐ 4 · THE BRANCH FINDING — AND A CORRECTION TO `ad39e20`
+
+⭐⭐ **`ad39e20` SAID THE BRANCH IS CHOSEN BY DATA PRESENCE. THAT IS WRONG.** The
+code reads `if own == "public"` — ⭐ **it IS keyed on `ownership`.**
+
+**The real defect is worse and simpler: THERE ARE TWO `ownership` VALUES.**
+
+| | Meridian seed |
+|---|---|
+| `enterprises.ownership` | ⭐ **`private`** |
+| `dataset.data["company"]["ownership"]` | ⭐⭐ **`public`** |
+
+**The valuation reads the PAYLOAD's.** ⭐ **So the screen says private and the
+engine prices public**, and `size_premium`, `specific_risk_premium` and
+`unlevered_industry_beta` are silently inert.
+
+⭐⭐ **AND IT IS LIVE, NOT ONLY IN THE SEED: 3 production datasets carry
+`enterprise=public` with `payload=private`.** 21 agree on private, 4 on public.
+
+⭐ **WHAT A CORRECT RULE WOULD KEY ON:** ⭐⭐ **ONE ownership value with ONE
+owner.** The dataset payload is the defensible home — it is what the engine reads,
+it is versioned, and it is frozen into the pack — with the enterprise row
+**derived from it** rather than set independently. **Not changed in this lane, as
+instructed.**
+
+**What ships instead is honesty:** `effective_fields()` reports, per field,
+whether it can move anything **and why not**, ⭐ **BEFORE the edit as well as
+after.** ⭐ **The input stays ENABLED** — the value is stored either way, and
+refusing an inert edit is worse than storing one. ⭐ **An unknown ownership
+returns `effective: None`** — undetermined, not inert.
+
+### ⭐ 5 · THE ROLE GAP — REPORTED, ITS TRUE SIZE
+
+**There is no CFO role.** `Membership.role` ∈ `{admin, viewer}` — live: **6 admin,
+2 viewer**. `ax_department_authority`: **0 rows**.
+
+⭐⭐ **B21 CANNOT BE ENCODED BY WIDENING A CHECK.** It requires **creating a role
+that does not exist**, and the shape is at least: a role vocabulary, a grant
+surface, a resolver every write path consults, and a ruling on what §4x's *"a CXO
+cannot edit source data"* means once a CFO can. **Reported, not built.**
+
 ## ⭐⭐ FRONTEND DEPLOY PATH — **THE FIX IS LIVE. THE CRASH WAS A STALE CLIENT.** (31 Jul)
 
 ⭐⭐ **THIS OVERTURNS THE `a45d185` DIAGNOSIS, WHICH SAID THE DEPLOY WAS STALE.**
