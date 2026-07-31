@@ -848,6 +848,12 @@ the item having been forgotten.**
 
 **3. FREE PILOT ARC (locked design)**
 
+⭐⭐ **RULED 31 Jul — THE FREE PILOT IS THE PRESCIENCE VERSION, AND IT CANNOT
+LAUNCH UNTIL PRESCIENCE EXISTS.** Four of the five Prescience-only features have
+zero backend files and `User.plan` cannot hold a Prescience value. ⭐ **This arc
+is BLOCKED, not merely unscheduled** — see *The Free Pilot is the Prescience
+version*. **It is the critical path to the conversion mechanism.**
+
 -   Sales motion: super admin creates pilot company (no slot burn) →
     uploads client data → invites exec participants → reports ready →
     invites CFO as read-only viewer → Zoom walkthrough → CFO registers +
@@ -10150,6 +10156,118 @@ CORE records `wacc_at` with the kinked kd as canonical and the guard reads
 call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
+
+## ⭐⭐ THE FREE PILOT IS THE PRESCIENCE VERSION — AND IT CANNOT LAUNCH YET (ruled 31 Jul)
+
+**Recorded against BOTH the Free Pilot arc and §7j, because the dependency runs
+between them and neither entry alone would show it.**
+
+### ⭐ 1 · RULED — THE FREE PILOT IS THE AXIOM PRESCIENCE VERSION
+
+**Not Business, not a reduced build.** The pilot tastes the **full** engine, which
+is what *"nothing watered down"* has always meant.
+
+### ⭐⭐ 2 · THE CONSEQUENCE — THE PILOT CANNOT LAUNCH UNTIL PRESCIENCE EXISTS
+
+**Measured at `4d3500e`:**
+
+| | |
+|---|---|
+| **Multiverse · Resilience Field · Causal Map · Prescience Brief** | ⭐⭐ **ZERO backend files** |
+| `prescience-ai.tsx` | ⭐ **100 lines rendering a hard-coded locked card** — no plan read, no tier read, **no API call** |
+| `User.plan` | ⭐⭐ **`free \| business` ONLY — a Prescience account CANNOT BE CREATED** |
+
+⭐⭐ **SO THE PROMISE CANNOT BE HONOURED UNTIL ALL THREE CHANGE.** Not one of them:
+building the four engines still leaves no tier to grant, and creating the tier
+still leaves four locked tabs.
+
+⭐⭐ **THIS IS NOW THE CRITICAL PATH TO THE PILOT MOTION, AND THE PILOT MOTION IS
+THE CONVERSION MECHANISM.** ⭐ **It is therefore the critical path to revenue**,
+which is a materially different priority from where §7j sat an hour ago — recorded
+as a status line in a queue.
+
+### ⭐⭐ 3 · RULED — THE LOCKED CARD MUST STOP CLAIMING ENTITLEMENT
+
+**Required before ANY prospect-facing surface ships.**
+
+| what ships today | the claim it makes |
+|---|---|
+| the page comment | *"an unbuilt placeholder"* |
+| ⭐ the badge on screen | ⭐⭐ **"Prescience · Upgrade"** |
+
+⭐⭐ **BOTH SHIP, AND THEY ARE DIFFERENT CLAIMS.** A prospect reads **"you have not
+paid"** when the truth is **"this does not exist yet."**
+
+⭐⭐ **THAT IS A FALSE CLAIM ON A PROSPECT-FACING SURFACE, STRUCK BY THE SAME
+ADMISSIBILITY RULE THAT WITHDREW THE BROCHURE PROOF POINT** — *a claim is
+admissible only when the demo artefact answers it*, and this one is answered in the
+negative by the artefact itself.
+
+⭐ **Either REMOVE the tabs or LABEL them as in development. Recorded as REQUIRED;
+which of the two is a SEPARATE RULING.**
+
+### ⭐ 4 · WHAT WAS NEVER WRITTEN DOWN — the reason this went undetected
+
+**CORE defines the tier, its price and its gating list.** ⭐⭐ **It has never
+recorded whether the demo should SHOW Prescience, nor whether the locked card is a
+deliberate upsell or a stand-in for unbuilt work.**
+
+⭐ **ON THE INTENT QUESTION THE RECORD IS SILENT, NOT WRONG.** That distinction is
+the finding: a wrong entry gets caught by measurement, and ⭐⭐ **a silent one is
+caught only when somebody looks at the screen.**
+
+### ⭐⭐ 5 · THE PRICING EXPOSURE — AND A VOID FIGURE THAT CAME BACK
+
+**What the Prescience tier actually contains:**
+
+| component | reality |
+|---|---|
+| **Ask AXIOM** | ⭐ built — **but it is the BUSINESS taster**, included at the lower tier |
+| **Radar / Sentinel** | built — ⭐ **renders elsewhere (`/risk-analysis`, the pack's *what is at risk*), NOT on the Prescience page** |
+| Multiverse · Resilience · Causal Map · Prescience Brief | ⭐⭐ **four placeholders** |
+
+⭐⭐ **SO THE TIER IS PRICED ON ONE BUILT FEATURE THAT BELONGS TO THE TIER BELOW,
+ONE THAT RENDERS SOMEWHERE ELSE, AND FOUR THINGS THAT DO NOT EXIST.**
+
+### ⭐⭐ THE PRICE IS $11,995/mo, NOT $14,995 — CORRECTED IN THE DISPATCH ITSELF
+
+⭐ **The ruling as dispatched cited `$14,995`.** ⭐⭐ **CORE RECORDS THAT FIGURE AS
+VOID**, superseded 31 Jul, alongside the note that *"this file continued to assert
+it in two places for a month."*
+
+**The live figures: AXIOM Prescience `$11,995/mo` ($119,950/yr); Business `$4,995`
++ Upgrade `$7,000` = `$11,995` exactly.**
+
+⭐⭐ **THE VOID FIGURE RE-ENTERED THROUGH A DISPATCH, WHICH IS THE THIRD TIME IT HAS
+APPEARED.** It is internally consistent (`4,995 + 10,000 = 14,995`), so **nothing
+about it looks wrong from inside** — which is precisely why it keeps coming back.
+**Recorded here so the next appearance is recognised rather than re-adopted.**
+
+### ⭐ 6 · THE LEADING QUESTION DOES NOT DEPEND ON THE FORWARD ENGINE
+
+⭐⭐ **`can you rank it?` IS ANSWERED BY THE VALUE BRIDGE — built, in the pack, and
+UNGATED.**
+
+⭐ **Checked across CORE while recording this: no entry states the dependency the
+other way**, so there is nothing to correct in place. The confusion arose in a
+dispatch, not in the file. ⭐ **Recorded affirmatively anyway**, because an absence
+of wrong text is not the same as a presence of right text — and the next reader
+should not have to re-derive it.
+
+⭐ **CONSEQUENCE, WORTH STATING: the demo's STRONGEST claim is unaffected by all of
+the above.** What the pilot cannot currently deliver is the **foresight layer** — a
+different and lesser claim than the one the leading question makes.
+
+### ⭐⭐ 7 · THE ALTERNATIVE CONSIDERED AND NOT TAKEN
+
+> **Pilot on the BUSINESS tier, and upgrade pilots to Prescience as it lands.**
+> **Same conversion mechanism. No dependency on the four unbuilt engines.**
+
+⭐⭐ **NOT ADOPTED.**
+
+⭐ **RECORDED SO IT IS NOT RE-DERIVED.** It is the obvious unblocking move, it will
+occur to the next reader within a minute, and **without this line they would spend
+that minute and then propose it as new.**
 
 ## ⭐⭐ §7j PRESCIENCE — THE UPGRADE PROMPT IS NOT AN ENTITLEMENT DECISION (31 Jul)
 
