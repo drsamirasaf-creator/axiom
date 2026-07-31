@@ -7591,6 +7591,93 @@ measurement it rests on.** ⭐ **A number invented in this lane would be exactly
 unverifiable claim the admissibility rule forbids** — and it would be quoted back
 by the first customer who reads it.
 
+## ⭐⭐ TWO CITED NUMBERS, MEASURED — AND NEITHER IS ADMISSIBLE (31 Jul)
+
+**Both had been cited in conversation and never measured.** Recorded with the
+METHOD so a future citation has a source rather than a recollection.
+
+### ⭐ 1 · LINES OF CODE — measured at `8e2dec8`
+
+**Exclusions, applied by rule and not by hand:** `node_modules`, `.git`,
+`__pycache__`, `.venv`, `dist`, `build`, `.output`, `.vite`, coverage and cache
+dirs · **lockfiles** (`bun.lock`, `package-lock.json`, …) · ⭐ **generated code
+(`routeTree.gen.ts`)** · binaries, images, fonts, minified and `.map` files ·
+**only files git TRACKS**. Documentation is counted separately and excluded from
+every code total.
+
+| | axiom (backend) | frontend | combined |
+|---|---|---|---|
+| application | 44,945 | 74,596 | 119,541 |
+| tests | 17,071 | ⭐ **0** | 17,071 |
+| scripts and guards | 7,543 | 3,161 | 10,704 |
+| **non-blank total** | **69,606** | **78,151** | **147,757** |
+| ⭐⭐ **EXECUTABLE lines** *(comments and docstrings removed by the Python tokenizer, not a regex)* | **50,127** | **72,999** | ⭐⭐ **123,126** |
+| commentary | 14,512 | 4,120 | 18,632 |
+
+⭐⭐ **THE DEFENSIBLE FIGURE IS 123,126 EXECUTABLE LINES, NOT 161,841 PHYSICAL.**
+The larger number counts blanks, comments and docstrings — and **this codebase is
+23% commentary on the backend**, which is a deliberate practice and not code.
+
+⭐ **INCIDENTAL FINDING: THE FRONTEND HAS ZERO TEST FILES.** Its CI runs typecheck,
+lint, a ratchet and a build — **no test suite.** Not this lane's business to fix;
+recorded because it was measured.
+
+### ⭐⭐ 2 · "CALCULATIONS PER REPORT" — THE DEFINITION IS THE DELIVERABLE
+
+**Two candidate units were rejected before one was chosen.**
+
+| candidate | ⭐ why rejected |
+|---|---|
+| **arithmetic operations executed** | ⭐⭐ **GAMEABLE BY LOOP COUNT.** A simulation at 10,000 paths instead of 1,000 multiplies it by ten **with no change to the product.** The first question a CFO asks is *"so if you iterate more, you have calculated more?"* — and the claim collapses. |
+| **engine invocations** | **No stable definition of "an engine".** The count moves with refactoring rather than with what the client receives. |
+
+⭐ **CHOSEN: DISTINCT COMPUTED QUANTITIES PUBLISHED IN THE REPORT.** ⭐⭐ **Because a
+prospect holding the artefact can count them and get the same answer** — the same
+admissibility test applied to a metric: implementation-independent, and it
+measures what the client actually gets rather than what the machine did.
+
+**Measured, one Meridian pack, end to end:**
+
+| artefact | sections | ⭐ numbers published |
+|---|---|---|
+| **the monthly PACK** (selective) | 11 (10 present, 1 declared absent) | ⭐ **1,022** |
+| **the full EXPORT** (exhaustive) | 21 (19 present, 2 declared absent) | ⭐ **1,881** |
+
+*(Every value-path is distinct; there are no repeats inflating either count.)*
+
+### ⭐⭐ AND THE CHOSEN UNIT STILL DOES NOT SUPPORT THE CLAIM
+
+⭐⭐ **1,022 IS THE COUNT OF NUMBERS ON THE PAGE — NOT OF CALCULATIONS.** It
+includes **the client's own figures echoed back**. The only place the codebase
+declares that boundary is `INPUT_CLASSES` vs `DERIVED_CLASSES`, and on the frozen
+snapshot it reads:
+
+    714 numeric values total
+      638  INPUT classes    — echoes of what the client supplied
+    ⭐ 59  DERIVED classes  — computed BY the pack
+        0  unclassified
+
+⭐⭐ **SO THE HONEST DERIVED COUNT IS 59, NOT 1,022 — AND A "CALCULATIONS PER
+REPORT" HEADLINE WOULD BE OFF BY A FACTOR OF SEVENTEEN** in the flattering
+direction. **The two numbers are not separable per-value without a per-quantity
+provenance the product does not record.**
+
+### ⭐⭐ 3 · ADMISSIBILITY — NEITHER SHIPS
+
+| number | verdict |
+|---|---|
+| **123,126 executable lines** | ⭐⭐ **INADMISSIBLE.** The standing rule strikes *"a code-volume claim"* by name. ⭐ **A prospect cannot verify it and would not care if they could** — it measures our effort, not their outcome, and it invites the comparison the brochure cannot win. |
+| **1,022 numbers per pack** | ⭐⭐ **INADMISSIBLE AS "CALCULATIONS".** The unit is defensible and the count is reproducible, **but the word is not**: it conflates computed with echoed, and the defensible derived figure is 59. ⭐ **A number a CFO can disassemble in one question is worse than no number.** |
+
+⭐ **WHAT IS ADMISSIBLE INSTEAD, AND ALREADY IS:** the seven verified disciplines,
+each checkable in the artefact. ⭐⭐ **"THE RESIDUAL IS SHOWN, NOT ABSORBED — HERE IT
+IS, −1,848.60 OF A −1,928.91 MOVEMENT" BEATS ANY COUNT OF ANYTHING**, because the
+prospect can check it and it is about their money rather than our labour.
+
+⭐ **RECORDED AS FACTS WITH A METHOD, NOT AS CLAIMS.** Both may be cited
+internally — for sizing, estimation or due diligence — and **neither belongs on a
+commercial surface.**
+
 ## ⭐⭐ THE LEADING QUESTION — RULED 31 Jul, AND THE TWO-LEVEL STRUCTURE
 
 ⭐⭐ **RECORDED AS A FIRST ENTRY, NOT A CORRECTION.** The dispatch instructed a
