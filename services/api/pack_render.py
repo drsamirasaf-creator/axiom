@@ -302,33 +302,52 @@ def c_what_to_do_next(src):
 def c_value_bridge(src):
     """7 · How those actions affect cash flow and equity value.
 
-    ⭐ THE VALUE BRIDGE CLOSES THE DOCUMENT, and §7s.5 IS NOT BUILT. Every other
-    section exists in some form elsewhere in the product; a bridge stating that a
-    named initiative slipped and that this is a specific quantity of equity value
-    does not. The section renders the equity-value endpoints it CAN — so the
-    reader sees the value, not a blank — and declares that the driver
-    decomposition and residual are not yet built.
+    ⭐ THE VALUE BRIDGE CLOSES THE DOCUMENT, and as of §7s.5 IT IS BUILT. Every
+    other section exists in some form elsewhere in the product; a bridge stating
+    that value moved by a specific amount, decomposed into attributed drivers with
+    the residual SHOWN, does not. The last thing the reader sees is the only claim
+    unavailable anywhere else.
+
+    ⭐ IT RENDERS THE FROZEN BRIDGE. The component never rebuilds it — that ran at
+    freeze time against the prior pack's snapshot.
     """
-    gap = ("§7s.5 is not built: the driver decomposition and its residual are "
-           "not computed, so this section states equity value without "
-           "attributing its movement to drivers")
+    block = src.klass("value_bridge")
     data = _payload(src)
-    if not data:
-        return _section("value_bridge", "How this affects cash flow and equity "
-                        "value", present=False, gap=gap,
-                        missing=src.klass("active_financial_dataset").get("reason"))
-    from .modules.valuation import engines as val
-    mode = "proforma" if (data.get("periods") or {}).get("forecast") else "auto_forecast"
-    try:
-        run = val.run(data, mode)
-    except Exception as exc:
-        return _section("value_bridge", "How this affects cash flow and equity "
-                        "value", present=False, gap=gap,
-                        missing=f"valuation could not be computed: {exc}")
-    return _section("value_bridge", "How this affects cash flow and equity value",
-                    present=True, gap=gap,
-                    body={"mode": mode, "valuation": run,
-                          "runs": src.klass("valuation_runs")})
+    body = {}
+    if data:
+        from .modules.valuation import engines as val
+        mode = "proforma" if (data.get("periods") or {}).get("forecast") \
+            else "auto_forecast"
+        try:
+            body["valuation"] = val.run(data, mode)
+        except Exception as exc:
+            body["valuation_missing"] = f"{type(exc).__name__}: {exc}"
+    body["runs"] = src.klass("valuation_runs")
+
+    if not block.get("present"):
+        # ⭐ THE FIRST PACK HAS NO BRIDGE AND SAYS SO. An empty bridge would show
+        # a movement of nothing against nothing, which reads as "value did not
+        # move" — a claim about the business rather than about the record.
+        body["bridge_absent"] = block.get("reason")
+        if not data:
+            return _section("value_bridge",
+                            "How this affects cash flow and equity value",
+                            present=False, missing=block.get("reason"))
+        return _section("value_bridge",
+                        "How this affects cash flow and equity value",
+                        present=True, body=body)
+
+    bridge = block.get("bridge") or {}
+    body["bridge"] = bridge
+    # ⭐ THE RESIDUAL IS LIFTED TO THE TOP OF THE SECTION, not left inside the
+    # payload for a renderer to choose. A bridge whose residual can be dropped by
+    # a rendering decision reconciles exactly on the page.
+    body["residual"] = bridge.get("residual")
+    body["residual_absent"] = bridge.get("residual_absent")
+    body["ownership_qualifications"] = bridge.get("ownership_qualifications")
+    return _section("value_bridge",
+                    "How this affects cash flow and equity value",
+                    present=True, body=body)
 
 
 # ── export-only components: exhaustive, not selective ───────────────────────

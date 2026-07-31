@@ -521,12 +521,77 @@ def freeze_inputs(db, cid):
             # NOT A SILENT SKIP. Absence publishes; a freeze that aborted would
             # convert a missing input into a non-event.
             classes[name] = _absent(f"capture failed: {type(exc).__name__}: {exc}")
-    return _jsonable({"schema": FREEZE_SCHEMA,
-                      "captured_at": datetime.now(timezone.utc).isoformat(),
-                      "cid": cid,
-                      "classes": classes,
-                      "versions": pinned_versions(db, cid)})
+    frozen = _jsonable({"schema": FREEZE_SCHEMA,
+                        "captured_at": datetime.now(timezone.utc).isoformat(),
+                        "cid": cid,
+                        "classes": classes,
+                        "versions": pinned_versions(db, cid)})
+    # ⭐ §7s.5 — THE BRIDGE IS COMPUTED AFTER THE CLASSES, FROM THE CLASSES.
+    #
+    # It was first written as an INPUT_CLASS calling `freeze_inputs` for "the
+    # current side". That re-entered this function, which re-ran every capture
+    # including the bridge, which froze again — the second pack for one company
+    # took 22 SECONDS and the cost grew with pack count. Nothing failed: the
+    # top-level result was correct and `present: True`, which is why it passed.
+    #
+    # ⭐ THE SHAPE IS THE ONE THIS ERA KEEPS RECORDING — a defect whose only
+    # symptom is a plausible-looking success. The bridge needs the classes that
+    # were just built, not a fresh freeze of them, and taking them as an argument
+    # makes the recursion impossible rather than merely absent.
+    # ⭐ ASSIGNED INTO `frozen`, NOT INTO `classes`. `_jsonable` returns a COPY,
+    # so mutating the source dict afterwards reaches nothing — the first version
+    # did exactly that and the key was simply absent from the snapshot.
+    for name, fn in DERIVED_CLASSES.items():
+        frozen["classes"][name] = _jsonable(fn(db, cid, frozen))
+    return frozen
 
+
+# ⭐ DERIVED CLASSES — computed FROM the captured input classes, not from a
+# store. They take the frozen set as an argument, which is what makes re-entering
+# `freeze_inputs` impossible rather than merely avoided.
+#
+# ⭐ THE DISTINCTION IS DECLARED, NOT IMPLICIT. Stage 1's contract test asserts
+# every class in the freeze is registered; when the bridge was written straight
+# into `frozen["classes"]` that test went red on an UNREGISTERED KEY — correctly.
+# A derived class is still a class, and the guard should be able to see it.
+DERIVED_CLASSES = {}
+
+
+def _bridge_class(db, cid, current_frozen):
+    """§7s.5 — the bridge from the anchor pack to the set just frozen.
+
+    ⭐ FROZEN AT CAPTURE, NOT REBUILT AT RENDER. A bridge re-derived at render
+    time would restate the prior pack every month and the movement would change
+    after the fact — the one thing a bridge cannot do.
+    """
+    # ⭐ THE WHOLE BODY IS INSIDE THE BOUNDARY, not just the build call.
+    #
+    # Moving the bridge out of the INPUT_CLASSES loop to kill the recursion also
+    # moved it OUT OF THAT LOOP'S try/except — and the first thing that found it
+    # was a company with no rows at all, where the prior-pack lookup itself
+    # raised and took the whole freeze down. A capture that can break a
+    # publication is worse than an absent one: publication is non-suppressible,
+    # and an exception here would suppress it by accident.
+    from .value_bridge import build
+    try:
+        prior = (db.query(Pack)
+                   .filter(Pack.cid == cid, Pack.status == PUBLISHED)
+                   .order_by(Pack.period_end.desc(), Pack.version.desc()).first())
+        if prior is None:
+            return _absent("this is the first pack for this company, so there is "
+                           "no prior pack to bridge from")
+        prior_frozen = frozen_inputs(db, prior)
+        if prior_frozen is None:
+            return _absent("the prior pack resolves to no frozen input set")
+        return _present(bridge=build(prior_frozen, current_frozen,
+                                     from_pack=prior))
+    except Exception as exc:
+        return _absent(f"the bridge could not be built: "
+                       f"{type(exc).__name__}: {exc}")
+
+
+
+DERIVED_CLASSES["value_bridge"] = _bridge_class
 
 def freeze_hash(frozen):
     """Stable hash of a frozen input set, EXCLUDING `captured_at`.
@@ -686,6 +751,10 @@ class PackSchedule(Base):
     monthly_day = Column(Integer, nullable=False, default=DEFAULT_MONTHLY_DAY)
     quarterly_lag_days = Column(Integer, nullable=False,
                                 default=DEFAULT_QUARTERLY_LAG_DAYS)
+    # ⭐ §7s.5 — the Value Bridge's anchor, as an OVERRIDE on this row rather
+    # than a second mechanism. NULL reads as "the prior published pack", which is
+    # the documented default and not a sentinel.
+    bridge_anchor_period_end = Column(String(10), nullable=True)
     monthly_enabled = Column(Integer, nullable=False, default=1)
     quarterly_enabled = Column(Integer, nullable=False, default=1)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

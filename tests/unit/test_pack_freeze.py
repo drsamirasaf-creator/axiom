@@ -271,8 +271,12 @@ def test_every_input_class_reports_present_or_absent_with_a_reason(published):
     because a reader infers from a missing section that it had nothing to
     report."""
     frozen, _ = _frozen(published)
-    assert set(frozen["classes"]) == set(P.INPUT_CLASSES), \
-        "every registered class must appear in the freeze"
+    # ⭐ INPUT classes are captured from a store; DERIVED classes are computed
+    # from the captured set. Both are classes, and both must be registered — an
+    # unregistered key in the freeze is exactly what this caught when §7s.5 first
+    # wrote the bridge in directly.
+    assert set(frozen["classes"]) == set(P.INPUT_CLASSES) | set(P.DERIVED_CLASSES), \
+        "every registered class must appear in the freeze, and no unregistered one"
     for name, block in frozen["classes"].items():
         assert "present" in block, f"{name} does not state presence"
         if not block["present"]:
@@ -468,7 +472,7 @@ def test_publication_still_happens_when_inputs_are_missing():
     assert pk.status == P.PUBLISHED
     assert frozen is not None
     absent = [k for k, v in frozen["classes"].items() if not v["present"]]
-    assert len(absent) == len(P.INPUT_CLASSES), \
+    assert len(absent) == len(P.INPUT_CLASSES) + len(P.DERIVED_CLASSES), \
         "a company with nothing must freeze every class as absent"
     for k in absent:
         assert frozen["classes"][k]["reason"]

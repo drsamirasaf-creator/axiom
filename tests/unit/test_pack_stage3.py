@@ -185,7 +185,12 @@ def test_a_declared_gap_travels_into_the_brief(cid):
     reader of the Brief must not infer the machinery exists."""
     br = _brief(_publish(cid, "2026-01-31"))
     gaps = {l["section_id"]: l.get("gap") for l in br["lines"] if l.get("gap")}
-    assert "why_ratios" in gaps and "value_bridge" in gaps
+    # ⭐ NARROWED 31 Jul, NOT DELETED: §7s.5 shipped, so `value_bridge` no longer
+    # declares a gap. A gap test that quietly loses a subject stops guarding the
+    # one that remains — `why_ratios` still waits on §7r.
+    assert "why_ratios" in gaps
+    assert "value_bridge" not in gaps, \
+        "the bridge still claims to be unbuilt in the Brief"
 
 
 def test_the_brief_reads_the_frozen_snapshot_never_live(cid):

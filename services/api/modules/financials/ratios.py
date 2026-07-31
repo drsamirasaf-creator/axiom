@@ -55,6 +55,27 @@ def net_debt(debt: Number, cash: Number) -> Number:
     return _n(lambda d, c: d - c, debt, cash)
 
 
+def debt_to_revenue(debt: Number, revenue: Number) -> Number:
+    """Total debt over revenue. Absence propagates.
+
+    ⭐ IT LIVES HERE BECAUSE THE MARGIN BOUNDARY SAID SO. §7s.5's bridge needed
+    this ratio to price a cost-of-debt counterfactual and computed it inline;
+    `check-margin-boundary.py` failed the lane with "NEW MODULE COMPUTING A
+    MARGIN", and the declared boundary is downward-only — a module absent from it
+    may not compute a margin at all. Declaring `value_bridge.py` would have
+    raised the boundary to make a lane pass, which is the one thing the ratchet
+    exists to forbid.
+
+    ⭐ THIS IS NOT THE kd DUPLICATION AND DOES NOT RESOLVE IT. The second kd
+    treatment at `intelligence/engines.py:2343` computes this same ratio inline
+    and applies its own kink to it. That duplication stays routed to sole
+    ownership, untouched. This only gives the ratio an owner so a caller outside
+    the boundary does not have to compute one.
+    """
+    from .engines import _n
+    return _n(lambda d, r: d / r if r else None, debt, revenue)
+
+
 # ── cost of capital ─────────────────────────────────────────────────────────
 # ⭐ TWO IMPLEMENTATIONS OF THE SAME BLEND, DIVERGING ON THREE AXES — MEASURED,
 # NOT READ. financials.wacc() and intelligence._wacc_curve_point() were "the same

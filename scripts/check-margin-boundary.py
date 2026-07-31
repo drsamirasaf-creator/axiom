@@ -173,6 +173,15 @@ def main():
         elif len(m) > cap:
             print(f"✗ RATCHET RAISED: {p} has {len(m)} margin sites, declared {cap}")
             fail = 1
+        elif p == OWNER:
+            # ⭐ THE OWNER HAS NO CEILING, AND UNTIL NOW THE CODE DID NOT SAY SO.
+            # `OWNER: 99` was declared "no ceiling" in a comment while the
+            # should-fall branch below treated any under-cap as a failure. The
+            # branch had never run because ratios.py held ZERO margin sites — the
+            # first margin to actually reach its intended destination failed the
+            # gate for arriving. A ratchet that fires when a quantity moves to
+            # its owner punishes the outcome it exists to produce.
+            print(f"  + {p} is the OWNER — {len(m)} site(s), no ceiling")
         elif len(m) < cap:
             print(f"⚠ RATCHET SHOULD FALL: {p} has {len(m)}, declared {cap} — lower it here")
             fail = 1

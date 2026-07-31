@@ -13002,6 +13002,9 @@ def _ensure_ax_columns(engine):
     _add("ax_changeset_snapshots", "owner_id", "owner_id INTEGER")
     _add("ax_changeset_snapshots", "retention",
          "retention VARCHAR(12) NOT NULL DEFAULT 'transient'")
+    # §7s.5 (migration 0020): the Value Bridge anchor override.
+    _add("ax_pack_schedules", "bridge_anchor_period_end",
+         "bridge_anchor_period_end VARCHAR(10)")
     # custody-14 §4s: department_id on objectives / kpis / initiatives (ax_departments
     # is a NEW table and rides create_all; only these existing tables need columns)
     _add("ax_objectives", "department_id", "department_id INTEGER")

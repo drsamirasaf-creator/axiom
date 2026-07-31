@@ -219,17 +219,27 @@ def test_a_section_is_never_omitted_only_declared_absent(published):
             f"{s['id']} must carry exactly one of body/missing"
 
 
-def test_the_two_unbuilt_sections_declare_a_gap_and_still_render(published):
+def test_an_unbuilt_section_declares_a_gap_and_still_renders(published):
     """⭐ RENDER FROM WHAT EXISTS AND DECLARE THE GAP. Stage 1's enumeration
-    found ratios and the value bridge have no computation entry point. Omitting
+    found ratios and the value bridge had no computation entry point. Omitting
     them would read as "this company has no ratios", which is a different and
-    false claim."""
+    false claim.
+
+    ⭐ NARROWED 31 Jul: §7s.5 SHIPPED, so `value_bridge` no longer declares a gap.
+    The assertion is narrowed to the section that is still unbuilt rather than
+    deleted — a gap test that quietly loses a subject stops guarding the one that
+    remains, and `why_ratios` is still waiting on §7r.
+    """
     doc = _render(published)
     by_id = {s["id"]: s for s in doc["sections"]}
     assert "why_ratios" in by_id and "value_bridge" in by_id
     assert "§7r ratio library is not built" in by_id["why_ratios"]["gap"]
-    assert "§7s.5 is not built" in by_id["value_bridge"]["gap"]
-    assert set(doc["declared_gaps"]) >= {"why_ratios", "value_bridge"}
+    assert "why_ratios" in doc["declared_gaps"]
+    # ⭐ AND THE BRIDGE MUST NO LONGER CLAIM TO BE UNBUILT. A stale gap string is
+    # the ledger defect one layer down: it would tell a reader the machinery is
+    # absent while it runs.
+    assert "not built" not in (by_id["value_bridge"].get("gap") or "")
+    assert "value_bridge" not in doc["declared_gaps"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
