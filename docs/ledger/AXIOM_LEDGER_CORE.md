@@ -6698,9 +6698,14 @@ Queue position within V1.0 is **unconstrained**, with **one hard dependency**:
 
 ⭐ **§7u PRECEDES §7s.1.** The Pack must pin an assumptions-registry version, and
 that registry does not exist as a versioned artefact until §7u. Building §7s.1
-first pins eight of nine classes and defers the ninth — **the exact shape that
-produced the dataset-versioning finding**: a mechanism designed complete, shipped
-partial, and the gap discovered later by its absence rather than by a failure.
+first would pin all but the registry class and defer that one — **the exact shape
+that produced the dataset-versioning finding**: a mechanism designed complete,
+shipped partial, and the gap discovered later by its absence rather than by a
+failure. **§7u shipped first; the dependency held.**
+
+⭐ **THE "NINE CLASSES" WERE WRONG IN BOTH DIRECTIONS — CORRECTED 31 Jul. See
+§7s.1 BUILT below.** They were derived by reading. Stage 1 derived the read set
+from the call graphs and found one class wrongly included and three missed.
 
 **Build ordering — correcting a prior advisor recommendation.** External
 recipients (item 3) were recommended first on cost-versus-lock-in grounds. **That
@@ -6784,14 +6789,178 @@ add an input class to the renderer and assert the guard goes red.**
   renders as an em dash and is never omitted** — a seven-line brief that silently
   becomes six lets the reader infer completeness from length.
 
-### OPEN — external recipient billing (NOT RULED)
+### ⭐ OPEN — external recipient billing (NOT RULED). **The only decision now
+blocking Cadence.** (measured 31 Jul)
 
 **Recommended:** unlimited, unbilled, read-only, pack-scoped, **no live workspace
 access**. Grounds: metering the board kills the mechanism that makes item 3 the
 strongest in the set.
 
-⭐ **This is NOT current behaviour.** Recorded explicitly so the seat code's
-existing treatment is **not adopted by default** by whoever builds item 3.
+⭐ **MEASURED, NOT DECIDED (Stage 3).** The earlier note said this is "NOT current
+behaviour". That was itself unmeasured. What is true:
+
+| gate | counts | counts a recipient? |
+|---|---|---|
+| `enforce_company_limit` | `FinancialDataset` (direct, no parent) vs `companies_allowed` | no |
+| `_slots_used` | `CompanyAccess` vs `company_slots` | no |
+| `viewer_count` | `Membership` role=viewer | ⭐ **reported, enforced NOWHERE** |
+
+**The subscription gates on COMPANIES, not people.** A `PackRecipient` is neither
+a `User` nor a `Membership`, so it touches none of the three.
+
+⭐ **SO A RECIPIENT IS UNBILLED AND UNLIMITED TODAY — BY DEFAULT RATHER THAN BY
+RULING, WHICH HAPPENS TO MATCH THE RECOMMENDATION BY ACCIDENT.** That is the
+hazard the original note was reaching for and named backwards: the risk was never
+that the seat code would meter the board, it was that **an unruled commercial term
+would be settled by whichever code path happened to exist.**
+
+`PackRecipient.billable` is **NULL, not False** — NULL reads as "not ruled", and
+False would be a silent ruling. **Either ruling is a configuration**: set
+`billable` and add the count to a gate. No model change is required for either
+outcome.
+
+## ⭐⭐ §7s.1 — BUILT, STAGES 1-3 (31 Jul)
+
+| stage | hash | what |
+|---|---|---|
+| 1 | `4648213` | pack object, polymorphic snapshot ownership, the input freeze |
+| 2 | `c3ed3af` | calendar, seven-section spine, shared component library |
+| 3 | `7e2e5e5` | the Brief, release, recipients, open-logging |
+
+**89 tests across three stages. 1036 passing. Fourteen gates green.** Nothing
+backfilled, no stored value corrected, **no showcase fast path in any module** —
+asserted in each. Reports: `docs/reports/7s1-stage{1,2,3}-*.md`.
+
+### ⭐ CORRECTED — the nine input classes were wrong in BOTH directions
+
+Stage 1 derived **18 models across 5 classes** from the sections' call graphs,
+against a nine-class list CORE had **derived by reading**.
+
+**WRONGLY INCLUDED — the ratio registry.** `axiom_ratio_registry.yaml` is loaded
+**only by `scripts/check-ratio-shapes.py`**, never by production code. It is
+pinned as **not-consumed**, not as a version: ⭐ **pinning a version for a formula
+set nothing renders asserts more than we know.**
+
+**MISSED — three classes:**
+
+1. ⭐ **The strategic move library.** And **the system already keys on it** —
+   viability and the frontier cache on
+   `(company_id, dataset_version, library_signature)`. The code had always
+   treated it as capable of changing an output; the list had not.
+2. ⭐ **Computed caches — the nine had NO cache class at all.** Viability, the
+   decision frontier, trajectory and policy surfaces are **stored computed state
+   the sections read**. Recomputed under a published pack, its figures move.
+3. **Six initiative models, not one.** The cockpit reads all six.
+
+## ⭐⭐ LAW — AN ABSENCE WITH A PLAUSIBLE REASON IS THE MOST EXPENSIVE KIND OF
+WRONG (ruled 31 Jul)
+
+**The sharpest form of silent-empty.** A crash is found. A null is found. **A
+stated, credible reason is believed** — and in a frozen artefact it is believed
+permanently.
+
+**Evidence, both from inside the instrument built to prevent this class:**
+
+- `_cap_documents` filtered `EnterpriseDocument` by **`enterprise_id`, a column
+  it does not have**. The capture raised, the freeze recorded
+  **"no documents for this company"**, and that would have frozen into every
+  pack. **Not a crash, not a null — a fact.**
+- Several captures used **`getattr(r, "guessed_name", None)`** against columns
+  that do not exist. Every value came back `None` and the block still reported
+  **`present: True`**.
+
+⭐ **THE FIX IS STRUCTURAL, NOT VIGILANCE.** Rows serialise from **the columns
+they actually have** (`_row`). Two tests enforce it: one fails any `present`
+block whose every value is null, one fails any capture that raised.
+
+## ⭐ A III.4 VIOLATION INSIDE III.4's OWN ENFORCEMENT (31 Jul)
+
+`_cap_cfo_overrides` **hand-picked ten fields and dropped `created_at`** — a
+hand-synced list **committed inside the module whose `_row` helper exists to
+prevent hand-synced lists**.
+
+**The consequence was not cosmetic: the §4x attribution line silently lost its
+DATE.** "Adjusted by whom, why" survived; "when" did not.
+
+Now whole-row serialised, **with the date asserted in the rendered line**. ⭐
+Recorded because the defect was not in a module that had forgotten the rule — it
+was in the module that *is* the rule.
+
+## ⭐⭐ STANDING RULING — THE GUARD DOES NOT LEARN TO SEE THROUGH INDIRECTION.
+THE INDIRECTION GOES. (ruled 31 Jul)
+
+**Three instances in three stages:**
+
+1. **An aliased import** — `RecommendationDisposition as RD` hid the model name
+   from the coverage guard. **The import was made plain.**
+2. **A function passed as an argument** — `_try(scenario, data)` left no call
+   node, so **ten genuinely carried surfaces read as uncarried**. `_try` now
+   takes a thunk; the call is real and visible.
+3. **Placeholder routes** returning 501 — removed, because a placeholder appears
+   in the route table, the OpenAPI schema and any coverage count **while doing
+   nothing**.
+
+⭐ **A guard taught to chase cleverness is a second parser, and a second parser
+is a second list** — which is III.4 with extra steps. Each time the choice
+appeared, the code changed and the guard did not.
+
+## ⭐ THE SWEEP ORDERING IS LOAD-BEARING (31 Jul)
+
+`_pack_calendar_sweep` folds into `_nightly_loop` **after** the recompute.
+
+**Because the freeze covers computed caches, publishing first would freeze
+yesterday's viability into today's pack.**
+
+⭐ **Invisible from the design.** Both orders satisfy "extend the existing
+scheduler"; only one is correct, and the wrong one **would have shipped as a
+silent one-day lag** — every pack subtly stale, nothing failing.
+
+## ⭐ TWO ABSENCES, NOT ONE — in the Brief (31 Jul)
+
+A line distinguishes:
+
+- **"the input is missing"** — the company owes data;
+- **"the section rendered but no single figure in it is traceable to a one-line
+  claim"** — the analysis exists and does not reduce to a sentence.
+
+⭐ **Opposite meanings to a reader.** Collapsing them into one em dash would tell
+a CFO their data was incomplete when the truth was that the finding was not
+summarisable.
+
+## ⭐ THE DISTRIBUTION SECURITY MODEL (31 Jul)
+
+- ⭐ **THE CAPABILITY NAMES ONE PACK, NOT ONE RECIPIENT.** A recipient-scoped
+  link grants **every future pack**, and a departed director keeps reading.
+- ⭐ **EXPIRY, ACTIVE WINDOW AND CROSS-COMPANY ARE THREE SEPARATE CHECKS**,
+  because they fail for different reasons. A signature says *"this was issued"*,
+  never *"this person still sits on the board"*.
+- ⭐ **NO IP COLUMN, DELIBERATELY.** Open-logging exists to tell a CEO **who is
+  reading**, not to **locate a director**. A column that exists will eventually
+  be populated.
+- The link carries **no auth dependency**, which is what lets it **survive
+  login** — a recipient who also holds an account reaches the same pack at the
+  same scope rather than falling through to workspace access.
+
+## ⭐ ENVIRONMENT — SQLite and Postgres do not agree on JSON numerics (31 Jul)
+
+**SQLite narrows `77.0` to `77` on a JSON round-trip. Postgres does not.**
+
+⭐ **The test suite therefore passes under JSON semantics production does not
+share.** Assertions **test values, never literal formatting** — an assertion
+looking for `"77.0"` fails on a formatting accident rather than on the contract,
+and one looking for `"77"` would pass in CI and mean nothing about production.
+
+## ⭐⭐ A SELF-CAUGHT ERROR BECOMES A CONTROL, NOT A LESSON (31 Jul)
+
+A Stage 2 test failed because it searched raw source and **matched the docstring
+explaining the rule it was testing**. In Stage 3 the same mistake was made again.
+
+⭐ **The repair was a docstring-stripping AST helper**, so the mistake **cannot
+recur**, rather than a note saying to be careful.
+
+⭐ **FIRST INSTANCE THIS ERA OF CONVERTING A RECORDED LESSON INTO A CONTROL.**
+Recorded as the preferred form: **a recorded lesson is not a control.** The ledger
+is full of laws that depend on someone remembering them; this one does not.
 
 ### ⭐ OPEN — export permission model (NOT RULED)
 
