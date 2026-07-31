@@ -7654,7 +7654,7 @@ reason to defer it**, because the window is the only one that will ever exist.
 | **G8** | No database standby or read replica. |
 | **G9** | Mail is a single provider with no fallback. |
 | **G10** | R2 writes swallow failures silently *(adjacent to the closed recoverability gaps)*. |
-| **G11** | No load testing, so the real concurrency ceiling is unknown. |
+| **G11** | ⭐⭐ **RECLASSED 31 Jul — LAUNCH, not post-launch.** No load testing, so the real concurrency ceiling is unknown; ⭐ **at the ruled target of a thousand mid-market firms the unattended monthly sweep IS that untested load.** See *the target market, ruled 31 Jul*. |
 | **G12** | No on-call or escalation path. |
 
 ### ⭐ WHAT CANNOT BE DETERMINED WITHOUT A LIVE TEST — reported, not assumed
@@ -9129,13 +9129,90 @@ respond to outbound, or search.
 **Appended 31 Jul — further design, NOT a ruling. This does not upgrade the
 locked line and does not close this open item.**
 
-### ⭐⭐ MOST CEOs SHOULD NOT BUY AXIOM
+### ⭐⭐ ~~MOST CEOs SHOULD NOT BUY AXIOM~~ — CORRECTED IN PLACE, RULED 31 Jul
 
-**And the pitch fails with the ones who should if that is not said.**
+⭐⭐ **THE RECORDED CLAIM CONFLATED VALUE WITH URGENCY, AND IT IS WRONG AS
+WRITTEN.**
 
-A **comfortable, profitable, adequately-run mid-market company** has working
-systems and no external pressure. ⭐ **AXIOM would be a better way of doing
-something already done acceptably** — which is not a sale.
+**What it said:** *"A comfortable, profitable, adequately-run mid-market company
+has working systems and no external pressure. AXIOM would be a better way of doing
+something already done acceptably — which is not a sale."*
+
+⭐ **KEPT ABOVE AS THE RECORD OF WHAT WAS ARGUED, AND STRUCK AS A CONCLUSION.**
+
+### ⭐⭐ WHAT IS TRUE — THE VALUE IS NOT TRANSACTION-DEPENDENT. THE SALES CYCLE IS.
+
+**The integration gap persists in a WELL-RUN company.** Financials in one place,
+stakeholder signals in another, initiatives in a third, ⭐ **and nothing joining
+them.** Running well does not join them; it only means each of the three is run
+well separately.
+
+⭐ **A healthy company ALSO lacks inspectable line of sight from objectives to key
+results to KPIs to initiatives, per department.** Being profitable does not
+produce that view — **nothing produces it by accident.**
+
+⭐⭐ **SO THE COMFORTABLE COMPANY BENEFITS. IT SIMPLY DOES NOT BUY THIS QUARTER,
+BECAUSE NOTHING FORCES A DATE.** It will agree with the case and still not sign.
+
+⭐⭐ **THE BEACHHEAD ARGUMENT IS ABOUT WHO CLOSES FIRST, NOT WHO BENEFITS** — and
+recording it the other way told the product it had nothing to offer a healthy
+company, which is false and would have shaped what got built.
+
+### ⭐⭐ RULED — THE TARGET MARKET
+
+> ⭐⭐ **ONE THOUSAND MID-MARKET FIRMS USING AXIOM CONSISTENTLY AND SATISFIED.**
+>
+> **Not 100,000. Not the Fortune 500.**
+
+⭐ **RECORDED AS THE GOVERNING COMMERCIAL GOAL BECAUSE IT SETTLES QUESTIONS THAT
+WOULD OTHERWISE BE RE-ARGUED EVERY QUARTER:**
+
+| ruled out | why the target settles it |
+|---|---|
+| **enterprise procurement motion** | a thousand firms is not reached through 18-month procurement cycles |
+| **self-serve long tail** | that is the 100,000 number, and it is not the goal |
+| **per-seat land-and-expand** | the buyer is the company, not a department budget |
+
+### ⭐⭐ WHAT THE TARGET IMPLIES — AND IT BINDS ENGINEERING AS MUCH AS SALES
+
+**A thousand companies means:**
+
+1. ⭐ **ONBOARDING THAT DOES NOT DEPEND ON THE FOUNDER.** A motion that requires
+   the founder in the room caps the business at the founder's calendar, whatever
+   the funnel does.
+2. ⭐ **A SUPPORT FUNCTION.** A thousand companies generate questions on a
+   schedule nobody chooses.
+3. ⭐⭐ **THE §8 RELIABILITY GATES BECOME PRODUCT RATHER THAN HYGIENE.**
+
+> ⭐⭐ **THE PACK MUST PUBLISH CORRECTLY FOR A THOUSAND COMPANIES ON THE 5th,
+> UNATTENDED.**
+
+⭐ **That sentence re-prices the open §8 gates, and the re-pricing is specific
+rather than rhetorical:**
+
+- ⭐⭐ **G11 — LOAD TESTING — MOVES FROM POST-LAUNCH TO LAUNCH.** It is currently
+  classed post-launch on the reasoning that the real concurrency ceiling is
+  merely *unknown*. ⭐ **At a thousand companies the unattended monthly sweep IS
+  the load nobody has tested**, and "unknown" stops being tolerable the moment the
+  number it is unknown about is a thousand.
+- **G6** (one process, a 15-connection pool, unbounded threads per upload) **is
+  already a launch gate** — ⭐ **this target is why it must not be relaxed into
+  one.** A sweep across a thousand companies on one process with fifteen
+  connections is the arithmetic that decides whether the 5th works.
+- ⭐ **G2 — a restore nobody has performed — stops being a diligence item and
+  becomes the thing a thousand customers are trusting.**
+
+### ⭐ THE BROAD-MARKET CASE, IN THE RULED FORM
+
+**The integrated view** — ⭐ **the go-to place for a CEO and the executive team,
+where documents and information go in at any time, and questions are answered
+against everything the company knows.**
+
+**Prioritising action to align the organisation, and eliminating non-value
+activity by eliminating management blind spots.**
+
+⭐ **TRUE OF A HEALTHY COMPANY, AND REQUIRING NO TRANSACTION.** This is the case
+the corrected text above makes available, and the old wording forbade.
 
 ### Three reasons a SPECIFIC CEO should, ranked by how well they survive scrutiny
 
@@ -9160,7 +9237,24 @@ known in the first week rather than the third* — **not precision.**
 
 ⭐ **MAGNITUDE BINDS ONLY AT THRESHOLDS WITH CONSEQUENCES ATTACHED:** covenant
 headroom, transaction price, whether a business is worth keeping. **That is the
-beachhead, and it is why the comfortable mid-market is not.**
+beachhead** — ⭐⭐ **and per the correction above, the beachhead is WHO CLOSES
+FIRST, not who benefits.** ~~and it is why the comfortable mid-market is not~~ —
+**struck 31 Jul: the comfortable mid-market benefits and simply has no date.**
+
+### ⭐⭐ TWO PHRASINGS STRUCK — RULED 31 Jul
+
+| struck | why |
+|---|---|
+| ⭐ **"the most advanced analytics available"** | **INADMISSIBLE and UNVERIFIABLE**, and ⭐ **it invites a comparison a brochure cannot settle.** The checkable substitute already exists: **the second-question section and its seven verified disciplines.** |
+| ⭐ **"decision-grade intelligence"** | ⭐⭐ **VENDOR REGISTER — the same family as "actionable intelligence", already struck.** Nothing in it is falsifiable, and a buyer has read it on every deck this year. |
+
+⭐ **RECORDED AS STRUCK PHRASINGS RATHER THAN AS ADVICE**, because a phrase left
+in the file as a suggestion is a phrase that reappears in the next draft.
+
+⭐⭐ **UNCHANGED BY THIS RULING:** the **leading question**, the **second
+question** and the **CXO appeal**. ⭐ **This corrects WHO THE CASE IS MADE TO, not
+HOW IT OPENS** — and a later reader must not take it as licence to reopen the
+opening.
 
 ### ⭐⭐ STANDING CONSEQUENCE — SOPHISTICATION IS THE THING YOU DO NOT SELL
 
