@@ -13443,22 +13443,24 @@ ARE NOW RULED — see §7j.2 immediately below.**
 Closes six of the seven questions §7j.1 raised. ⭐ **The seventh is recorded as
 unresolved, not inferred.**
 
-## ⭐⭐ 1 · THE MULTIVERSE ENGINE STAYS IN AXIOM BUSINESS
+## ⭐⭐ 1 · ~~THE MULTIVERSE ENGINE STAYS IN AXIOM BUSINESS~~ — SUPERSEDED 1 Aug
 
-`prescience_decision.py` is shipped and already renders on Enterprise
-Optimization. **It stays there.**
+> ⭐⭐ **SUPERSEDED. THE MULTIVERSE ENGINE MOVES TO AXIOM PRESCIENCE.**
+> `prescience_decision.py` and **its surfaces** are Prescience-only.
+> ⭐ **See §7j.6 for the withdrawal, its mechanism, and the ONE UNRESOLVED
+> SCOPE QUESTION — the pack reads this engine's cache and that part cannot
+> move without a ruling.**
 
-⭐⭐ **REMOVING A SHIPPED CAPABILITY FROM THE CHEAPER TIER TO JUSTIFY THE DEARER
-ONE IS A DOWNGRADE EVERY EXISTING PROSPECT WOULD HAVE TO BE TOLD ABOUT.**
+*(The withdrawn text, kept so the strike is legible rather than a silent
+deletion: "`prescience_decision.py` is shipped and already renders on Enterprise
+Optimization. It stays there. REMOVING A SHIPPED CAPABILITY FROM THE CHEAPER TIER
+TO JUSTIFY THE DEARER ONE IS A DOWNGRADE EVERY EXISTING PROSPECT WOULD HAVE TO BE
+TOLD ABOUT. AND IT MAKES THE TIER BOUNDARY ABOUT WITHHOLDING RATHER THAN ADDING.
+PRESCIENCE DIFFERENTIATES ON WHAT BUSINESS NEVER HAD — not on what was taken from
+it.")*
 
-⭐⭐ **AND IT MAKES THE TIER BOUNDARY ABOUT WITHHOLDING RATHER THAN ADDING.**
-⭐ **PRESCIENCE DIFFERENTIATES ON WHAT BUSINESS NEVER HAD** — not on what was
-taken from it.
-
-*(Recorded in full because the opposite move is the tempting one: the engine is
-expensive, it is the tier's namesake, and moving it would have made the price
-difference look self-evident. It would also have been the first time this
-product took something back.)*
+⭐⭐ **THE FIRST GROUND WAS FALSE. THE SECOND SURVIVES AND IS NOW THE WHOLE
+RULING** — see §7j.6.
 
 ## ⭐⭐ 2 · THE MULTIVERSE TAB IS THE SAME ENGINE ASKED A DIFFERENT QUESTION
 
@@ -14033,3 +14035,112 @@ why this was diagnosable at all.
 3. ⭐ **The dashboard effect cancels**, so a superseded request cannot set state.
 
 **No guard was placed around the symptom, and no id was coerced.**
+
+# ⭐⭐ §7j.6 · THE MULTIVERSE ENGINE MOVES TO PRESCIENCE. RULED 1 Aug
+
+**Supersedes §7j.2 ruling 1, corrected in place there.**
+⭐⭐ **`prescience_decision.py` AND ITS SURFACES ARE PRESCIENCE-ONLY** — subject
+to §5 below, which is **not** resolved.
+
+## ⭐⭐ 1 · WITHDRAWN ON A FALSE PREMISE, NOT REVERSED ON PREFERENCE
+
+Ruling 1 rested on: *the engine already renders on Enterprise Optimization, so
+moving it takes a shipped capability from Business buyers.*
+
+⭐⭐ **THAT PREMISE WAS FALSE.** Corrected at `34269e2`:
+
+| | |
+|---|---|
+| **Enterprise Optimization renders** | `intelligence.frontier` — a **capital-structure D/E sweep**, computed **live** from the dataset |
+| **`prescience_decision` rendered** | ⭐⭐ **NOWHERE** |
+
+⭐ **NO PROSPECT HAS EVER SEEN IT, SO NOTHING IS TAKEN AWAY.** The reasoning did
+not lose an argument; **it lost its subject.**
+
+### ⭐⭐ THE MECHANISM — THE NAME-COLLISION CLASS, INSIDE THE REPORT WRITTEN TO PREVENT IT
+
+⭐ **THE SCOPE REPORT MATCHED THE WORD "frontier" AND DID NOT CHECK WHICH ONE.**
+Two different objects — one sweeping capital structure, one searching strategic
+moves — share a noun, and a substring match cannot tell them apart.
+
+⭐⭐ **SAME SHAPE AS `check-model-columns` AND THE PERFORMANCE-MONITORING
+COLLISION** (§4l "Control Tower" reading as built because operational monitoring
+exists under the same words). ⭐ **A NAME MATCH IS NOT AN IDENTITY**, and the
+scoping lane is exactly where that error is most expensive, because everything
+downstream is sized from it.
+
+## ⭐ 2 · WHAT THE RULING NOW RESTS ON
+
+Only the second ground survives:
+
+> ⭐⭐ **PRESCIENCE DIFFERENTIATES ON WHAT BUSINESS NEVER HAD.**
+
+⭐ **With the first ground gone, keeping a 900-line Monte Carlo out of the tier
+named after it had no remaining justification.**
+
+## ⭐ 3 · THE TIERS AS THEY NOW STAND
+
+| tier | contents |
+|---|---|
+| **AXIOM Prescience** | ⭐ the **Multiverse engine and its tab** · **Resilience Field** · **Causal Map** · **Prescience Brief** · **Radar/Sentinel** |
+| **AXIOM Business** | **Ask AXIOM** · ⭐ **Enterprise Optimization's capital-structure frontier** · everything else |
+
+## ⭐ 4 · SURFACE AREA OF THE MOVE — MEASURED, NOT BUILT
+
+**Routes that become Prescience-gated (10):**
+
+`/companies/{id}/frontier` · `/frontier/policy-surface` · `/frontier/search` ·
+`/frontier/search/{job_id}` · `/companies/{id}/moves` · `/moves/entity` ·
+`/internal/frontier/recompute` · `/multiverse` · `/resilience-field` ·
+`/causal-map`
+
+**Cached tables:** `ax_strategic_moves` · `ax_decision_frontiers` ·
+`ax_trajectory_cache` · `ax_dp_policy_surfaces` (+ `ax_frontier_jobs`).
+
+**Components:** `Multiverse.tsx` · `ResilienceField.tsx` · `CausalMap.tsx`.
+
+⭐ **FRONTEND CALLERS IN BUSINESS SURFACES: ZERO.** Nothing outside the
+Prescience tab calls any of the ten routes — `ValueRiskFrontier` calls
+`/api/v1/intelligence/frontier`, which is the **other** frontier and stays.
+
+## ⭐⭐ 5 · THE BLOCKER — BUSINESS *DOES* READ THIS ENGINE, THROUGH THE PACK
+
+⭐⭐ **SURFACED RATHER THAN PROCEEDED WITH, per the dispatch's own condition.**
+
+`pack.py` reads **all four cached tables**:
+
+| pack input class | reads |
+|---|---|
+| `strategic_move_library` | `PD.StrategicMove` |
+| `computed_caches` | `PD.DecisionFrontier`, `PD.TrajectoryCache`, `PD.DPPolicySurface` |
+
+**And two RENDERED pack sections consume them:**
+
+| section | consumes |
+|---|---|
+| **"What is at risk"** (`c_what_is_at_risk`) | `computed_caches` → viability, **frontier**, policy surface, trajectory |
+| **"What to do next"** (`c_what_to_do_next`) | `strategic_move_library` |
+
+⭐⭐ **AND IT IS ACTUAL, NOT THEORETICAL.** Measured in Meridian's latest
+published pack: `computed_caches` **present=True** with a non-null **frontier**,
+policy surface, trajectory and viability; `strategic_move_library`
+**present=True** with its signature and moves.
+
+⭐⭐ **THE PACK IS THE BUSINESS DELIVERABLE** — §4z step 12, the artefact the CEO
+releases to the board and the lender. **Gating this engine's cache would empty
+two named sections of it, for every Business customer.**
+
+### ⭐ THE QUESTION THAT NEEDS A RULING
+
+**Does "its surfaces" include the pack's frozen inputs?**
+
+| reading | consequence |
+|---|---|
+| **(a) the ENGINE and its TABS are Prescience; the pack keeps reading the cache** | ⭐ no downgrade — Business loses nothing it has today |
+| **(b) the CACHE is Prescience-gated** | ⭐⭐ **two rendered pack sections lose content for every Business customer — a genuine downgrade, and exactly what the withdrawn ruling was written to prevent** |
+
+⭐ **NOT INFERRED.** Reading (a) is the natural one and preserves the ruling's own
+logic, but **the dispatch says "its surfaces" and the pack is a surface that reads
+it** — so the boundary is genuinely ambiguous and is the user's to draw.
+
+⭐⭐ **NOTHING IS GATED UNTIL THAT IS RULED.** No code changed in this lane.
