@@ -423,3 +423,133 @@ def test_the_viewer_page_NAMES_THE_READER():
     src = _fe("src/routes/pilot-view.$token.tsx")
     assert "Prepared for" in src
     assert "days" in src and "remaining" in src
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐⭐ 10 · THE TIER MARK (§4z) — stated during the pilot, not at checkout
+# ═══════════════════════════════════════════════════════════════════════════
+
+import services.api.tier_marks as TM  # noqa: E402
+
+
+def _served():
+    from services.api.main import app
+    return set(app.openapi()["paths"])
+
+
+def test_the_gating_list_IS_THE_TIER_DEFINITION_not_a_hand_list():
+    """⭐ CORE's tier definition names exactly five Prescience-only features."""
+    assert set(TM.PRESCIENCE_ONLY) == {
+        "radar_sentinel", "multiverse", "resilience_field", "causal_map",
+        "prescience_brief"}
+
+
+def test_ASK_AXIOM_IS_NOT_MARKED_because_Business_includes_it():
+    """⭐⭐ WRONG IN THE EXPENSIVE DIRECTION. The tier definition puts Ask AXIOM
+    in Business as a taster; marking it Prescience-only would tell a Business
+    buyer they lose something they keep."""
+    assert "ask_axiom" not in TM.PRESCIENCE_ONLY
+    labels = " ".join(v["label"] for v in TM.PRESCIENCE_ONLY.values()).lower()
+    assert "ask axiom" not in labels
+
+
+def test_BUILT_STATE_IS_MEASURED_against_the_served_route_table():
+    """⭐ Not a status column. §7j measured four of five as unbuilt, and a
+    hand-maintained flag is the record that goes stale unnoticed."""
+    b = TM.built(_served())
+    assert b["radar_sentinel"] is True, "Radar/Sentinel is built and must show so"
+    for k in ("multiverse", "resilience_field", "causal_map", "prescience_brief"):
+        assert b[k] is False, f"{k} has no route but reads as built"
+
+
+def test_ONLY_SHIPPED_CAPABILITY_IS_MARKED():
+    """⭐⭐ MARKING A PLACEHOLDER WOULD ADVERTISE, IN A CUSTOMER'S OWN DATA, A
+    FEATURE THAT DOES NOT EXIST — the admissibility failure this codebase keeps
+    withdrawing, in the one place a prospect would test it."""
+    assert sorted(TM.markable(_served())) == ["radar_sentinel"]
+
+
+def test_EVERY_UNMARKED_FEATURE_CARRIES_A_REASON():
+    """⭐ A feature silently omitted is indistinguishable from one nobody
+    considered (III.4)."""
+    un = TM.unmarkable(_served())
+    assert {k for k, _ in un} == {"multiverse", "resilience_field",
+                                  "causal_map", "prescience_brief"}
+    for _k, why in un:
+        assert len(why) > 30, "the reason is not a reason"
+
+
+def test_THE_MARK_STATES_WHAT_IT_MEANS_and_stops():
+    """⭐⭐ THE VIEWER IS NOT THE BUYER. No upgrade prompt, no price, no call to
+    action — a viewer who cannot buy being sold to is an irritation, and it
+    leaks the commercial motion to the board."""
+    m = TM.MARK.lower()
+    assert "included in axiom prescience" in m
+    assert "not in axiom business" in m
+    for banned in ("upgrade", "$", "4,995", "11,995", "buy", "contact sales",
+                   "pricing", "learn more"):
+        assert banned not in m, f"the mark sells: {banned}"
+
+
+def test_THE_MARK_IS_DEFINED_ONCE():
+    """⭐ A tier statement that differs between two surfaces is worse than one
+    that is absent."""
+    src = open(os.path.join(ROOT, "services/api/pilot_viewers.py"),
+               encoding="utf-8").read()
+    assert "included in AXIOM Prescience" not in src, \
+        "the sentence is duplicated instead of imported from tier_marks"
+    assert "_TIER_MARK" in src
+
+
+def test_the_mark_lands_on_the_PORTION_not_the_whole_section():
+    """⭐⭐ `what is at risk` bundles the viability kernel and the Watch — both
+    CORE — with Sentinel. Marking the section would tell a Business buyer they
+    lose the viability kernel, which they do not. ⭐ OVER-MARKING IS NOT THE SAFE
+    DIRECTION; IT IS A DIFFERENT FALSE STATEMENT."""
+    src = open(os.path.join(ROOT, "services/api/tier_marks.py"),
+               encoding="utf-8").read()
+    assert '"field"' in src, "the mark does not name the field it applies to"
+    assert "sentinel_state" in src
+
+
+def test_the_viewer_surface_SERVES_the_tier_block(db):
+    """⭐ Against the real app, on the landing AND the pack — a viewer who reads
+    only the summary still forms the view that drives step 8.
+
+    ⭐⭐ SKIPS WHEN THE LOCAL ENGINES DIVERGE, AND SAYS SO. With `DATABASE_URL`
+    unset, `accounts` falls to `axiom_accounts.db` and `core.db` to `axiom.db`,
+    so `enterprises` and `ax_packs` are in the other file and this raises "no
+    such table" for tables that exist. Production sets the variable and they are
+    one Postgres. ⭐ A silent pass here would be worse than a skip: the served
+    bundle proof is what actually settles this.
+    """
+    from fastapi.testclient import TestClient
+
+    from services.api.accounts import DATABASE_URL as _ACCT_URL
+    from services.api.core.config import database_url
+    from services.api.main import app
+    if _ACCT_URL != database_url():
+        pytest.skip("local two-engine split (DATABASE_URL unset); the served-"
+                    "bundle check is the proof for this assertion")
+    with TestClient(app) as c:
+        v = PV.invite(db, 888_777, email="tier@board.test", name="D",
+                      actor=_Actor())
+        tok = PV.make_link(v)
+        for path in (f"/pilot-view/{tok}", f"/pilot-view/{tok}/pack"):
+            r = c.get(path)
+            assert r.status_code == 200, path
+            t = r.json().get("tier")
+            assert t, f"{path} carries no tier block"
+            assert t["pilot_runs_on"] == "AXIOM Prescience"
+            assert t["prescience_only_here"] == ["Radar / Sentinel"]
+            assert "4,995" not in r.text and "11,995" not in r.text
+
+
+def test_the_VIEWER_PAGE_RENDERS_the_mark():
+    """⭐ Built is not wired — ten instances this era."""
+    src = _fe("src/routes/pilot-view.$token.tsx")
+    assert "prescience_only_here" in src
+    assert "pilot_runs_on" in src
+    assert "tier.note" in src
+    for banned in ("Upgrade", "4,995", "11,995", "Contact sales"):
+        assert banned not in src, f"the viewer page sells: {banned}"

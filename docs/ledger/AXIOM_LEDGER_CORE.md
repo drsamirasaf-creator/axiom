@@ -13008,3 +13008,95 @@ step it does not support yet is not written as though it did.
 ⭐⭐ **NOT BUILT IN THIS LANE — the dispatch is DO NOT BUILD.** Recorded as the
 obligation; the build is a separate named lane. **Surfaced rather than
 auto-resolved.**
+
+# ⭐⭐ §4z.1 · THE VIEWER'S TIER MARK — ONE OF §4z's THREE PLACES, CLOSED
+
+`services/api/tier_marks.py` · rendered on `/pilot-view/$token`. **The gap I
+self-reported at `66b457a`.** §4y marked nothing; ⭐ **the viewer is the surface
+where it matters most** — viewers never attend the results call, and they drive
+the step-8 decision.
+
+## ⭐⭐ 1 · DERIVED FROM THE TIER DEFINITION, MEASURED AGAINST THE ROUTE TABLE
+
+**The tier definition is the source:** Business includes ALL core product plus
+**Ask AXIOM only**; Prescience-only is **Multiverse, Resilience Field, Causal
+Map, Radar/Sentinel, Prescience Brief.**
+
+| feature | routes serve it? | marked |
+|---|---|---|
+| **Radar / Sentinel** | ⭐ **YES** — `/companies/{cid}/radar/events`, `/internal/sentinel/recompute`, 6 frontier endpoints | ⭐⭐ **MARKED** |
+| Multiverse | **no** | not marked |
+| Resilience Field | **no** | not marked |
+| Causal Map | **no** | not marked |
+| Prescience Brief | **no** | not marked |
+
+⭐⭐ **ONE MARK, AND IT RESTS ON SHIPPED CAPABILITY.** Confirms §7j
+independently: four of five have no route. ⭐ **MARKING A PLACEHOLDER WOULD
+ADVERTISE, IN A CUSTOMER'S OWN DATA, A FEATURE THAT DOES NOT EXIST** — the
+admissibility failure this codebase keeps withdrawing, in the one place a
+prospect would test it. **Every unmarked feature carries its reason**; a silent
+omission is indistinguishable from one nobody considered (III.4).
+
+⭐ **A NAME MATCH IS NOT THE FEATURE.** Searching `brief` returns
+`/initiatives/lead-briefing` and `/api/v1/intelligence/executive-brief` —
+**neither is the Prescience Brief**, so the marker is an unambiguous path
+fragment rather than a word.
+
+⭐ **ASK AXIOM IS DELIBERATELY ABSENT** from the list. Business includes it, so
+marking it would be **wrong in the expensive direction** — telling a Business
+buyer they lose something they keep.
+
+## ⭐⭐ 2 · WHERE THE MARK LANDS — THE PORTION, NOT THE SECTION
+
+Derived by AST over `pack_render.py`: ⭐ **exactly one component reads
+`sentinel_state`** — `c_what_is_at_risk`. But that section **bundles the
+viability kernel and the Watch, both CORE**, with Sentinel.
+
+⭐⭐ **MARKING THE WHOLE SECTION WOULD TELL A BUSINESS BUYER THEY LOSE THE
+VIABILITY KERNEL, WHICH THEY DO NOT. OVER-MARKING IS NOT THE SAFE DIRECTION —
+IT IS A DIFFERENT FALSE STATEMENT.** The mark names the field.
+
+## ⭐ 3 · WHAT THE MARK SAYS, AND WHAT IT REFUSES TO SAY
+
+> *This surface is included in AXIOM Prescience and not in AXIOM Business.*
+
+⭐⭐ **THE VIEWER IS NOT THE BUYER.** No upgrade prompt, no price, no call to
+action — asserted. A viewer who cannot buy being sold to is an irritation, **and
+it would leak the commercial motion to the board.** ⭐ Defined **once**; a tier
+statement that differs between two surfaces is worse than one that is absent.
+
+⭐ **IT APPEARS ON THE LANDING AND ON THE PACK, INCLUDING THE ABSENT BRANCH** — a
+viewer who arrives before the first pack must not be told less than one who
+arrives after.
+
+## ⭐⭐ 4 · A MEASUREMENT BUG THAT WOULD HAVE LOOKED LIKE SUCCESS
+
+The first `_served_paths` walked `app.routes` and got **44 paths with no
+`/radar/events` among them** — most routes hang off **included sub-routers**, and
+only the OpenAPI schema flattens them.
+
+⭐⭐ **IT REPORTED EVERY PRESCIENCE FEATURE AS UNBUILT, SO IT MARKED NOTHING —
+AND AN EMPTY MARK LIST LOOKS EXACTLY LIKE A CLEAN PASS.** The III.4 shape on a
+commercial surface: the guard would have been silent in precisely the case the
+lane exists to prevent.
+
+## ⭐ 5 · STILL OPEN FROM §4z
+
+Two of the three places remain: ⭐ **the results call** and ⭐ **the pricing
+page**. Neither is built.
+
+## ⭐⭐ 6 · A CONTRADICTION IN CORE, SURFACED NOT RESOLVED
+
+The tier definition states **"Seat limits (per company): Business — 10 full
+members / 50 assessment participants per cycle / **5 viewers**; Prescience — 25 /
+150 / **15**."**
+
+⭐⭐ **THIS CONTRADICTS §4y AND §4z.** §4y ruled pilot viewers **unlimited and
+unbilled** (31 Jul), and §4z rules step 9 a **flat company price with unlimited
+users**. **A 5-viewer cap and unlimited viewers cannot both be true.**
+
+⭐ **NOT RESOLVED HERE.** It may be that the tier caps govern *members of a paying
+workspace* while §4y governs *pilot viewers*, which would make both true of
+different populations — but **that distinction is not written anywhere**, and
+inferring it is exactly the "settled by whichever code path happened to exist"
+hazard CORE already records. **The user's ruling.**

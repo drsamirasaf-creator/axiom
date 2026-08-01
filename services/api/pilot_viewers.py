@@ -278,6 +278,9 @@ def _link_url(viewer):
 
 def include(app, get_db, require_company_admin, require_platform=None):
     from fastapi import APIRouter, Depends, Request
+
+    from .tier_marks import MARK as _TIER_MARK
+    from .tier_marks import markable as _markable
     from pydantic import BaseModel
 
     class InviteIn(BaseModel):
@@ -328,6 +331,29 @@ def include(app, get_db, require_company_admin, require_platform=None):
     # asserts the prefix contains no non-GET method.
     view = APIRouter(prefix="/pilot-view", tags=["pilot-view"])
 
+    _paths_cache = {}
+
+    def _served_paths(request):
+        """⭐ THE APP'S OWN SERVED SURFACE. A hand-kept "is it built" flag is
+        exactly the record that goes stale silently.
+
+        ⭐⭐ FROM `openapi()`, NOT `app.routes`. The first version walked
+        `app.routes` and got 44 paths with no `/radar/events` among them — most
+        routes hang off INCLUDED SUB-ROUTERS, and only the OpenAPI schema
+        flattens them. It reported every Prescience feature as unbuilt, so it
+        marked NOTHING — and an empty mark list looks exactly like success.
+
+        ⭐ Computed once. Building the schema per request would put a
+        multi-hundred-route walk on a reader's page load.
+        """
+        if not _paths_cache:
+            try:
+                _paths_cache.update(dict.fromkeys(request.app.openapi()["paths"]))
+            except Exception:
+                _paths_cache.update(dict.fromkeys(
+                    r.path for r in request.app.routes if hasattr(r, "path")))
+        return set(_paths_cache)
+
     def _open(db, token, surface, request):
         v, _c = resolve(db, token)
         log_open(db, v, surface, request.headers.get("user-agent"))
@@ -349,6 +375,14 @@ def include(app, get_db, require_company_admin, require_platform=None):
             "days_left": max(0, (v.expires_at - datetime.utcnow()).days),
             "read_only": True,
             "surfaces": ["pack", "bridge", "financials", "sentiment"],
+            # ⭐⭐ SAID ON THE LANDING TOO. A viewer who reads only the summary
+            # still forms the view that drives the internal decision, and the
+            # tier difference must not depend on which page they happened to
+            # open.
+            "tier": {"pilot_runs_on": "AXIOM Prescience",
+                     "note": _TIER_MARK,
+                     "prescience_only_here": sorted(
+                         v["label"] for v in _markable(_served_paths(request)).values())},
             "has_data": ent is not None,
         }
 
@@ -363,10 +397,32 @@ def include(app, get_db, require_company_admin, require_platform=None):
             # ⭐ ABSENCE DECLARES. An empty object would read as "the pilot
             # produced nothing"; this says no pack has been published yet.
             return {"pack": None, "has_data": False,
+                    # ⭐ THE TIER STATEMENT SURVIVES ABSENCE. A viewer who
+                    # arrives before the first pack must not be told less than
+                    # one who arrives after it.
+                    "tier": {"pilot_runs_on": "AXIOM Prescience",
+                             "note": _TIER_MARK,
+                             "prescience_only_here": sorted(
+                                 v["label"] for v in
+                                 _markable(_served_paths(request)).values())},
                     "absent": "no pack has been published for this company yet"}
+        # ⭐⭐ THE TIER MARK (§4z). The pilot runs on Prescience; a client
+        # buying Business loses these surfaces. Stated here, during the pilot,
+        # rather than at checkout — the same fact, and only the timing decides
+        # whether it reads as an upsell or a bait.
+        from .tier_marks import MARK, mark_pack, markable
+        frozen = mark_pack(frozen_inputs(db, pk), _served_paths(request))
         return {"pack": {"id": pk.id, "cid": pk.cid,
                          "created_at": getattr(pk, "created_at", None)},
-                "frozen": frozen_inputs(db, pk), "has_data": True}
+                "frozen": frozen,
+                "tier": {
+                    "pilot_runs_on": "AXIOM Prescience",
+                    "note": MARK,
+                    "prescience_only_here": sorted(
+                        v["label"] for v in
+                        markable(_served_paths(request)).values()),
+                },
+                "has_data": True}
 
     @view.get("/{token}/bridge")
     def bridge_view(token: str, request: Request, db=Depends(get_db)):
