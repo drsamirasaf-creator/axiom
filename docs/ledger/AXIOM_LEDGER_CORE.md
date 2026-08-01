@@ -12798,3 +12798,108 @@ did it right were clean before.
 
 **No stranded plant anywhere in `services/`**, before or after a full gate loop.
 The fifth nobody noticed does not exist.
+
+# ⭐⭐ §4y · PILOT VIEWER INVITATIONS — NAMED, VIEW-ONLY, 30 DAYS, UNMETERED
+
+**Ruled by the user 1 Aug.** A pilot's CEO or CFO invites named people as
+view-only readers so they can see the pilot's own results and form a view
+before purchase. `services/api/pilot_viewers.py` · `/pilot-viewers` ·
+`/pilot-view/$token`.
+
+## ⭐⭐ 1 · NAMED VIEWERS — THE RULING THE REST RESTS ON
+
+⭐⭐ **§4u-b's k-FLOOR ASSUMES READERS ARE KNOWN MEMBERS OF THE ORGANISATION.**
+An unauthenticated forwardable URL into a company's real financials and
+departmental sentiment **breaks that premise**, because ⭐ **RESPONDENTS
+ANSWERED BELIEVING THEIR WORDS STAY INSIDE THE COMPANY.**
+
+A named invitation preserves it, and **sentiment is therefore included IN FULL
+rather than gated.** ⭐ The floor still governs what any reader sees — this
+feature **relies on** §4u-b and does not widen it. Asserted: the module holds no
+`KFLOOR` of its own, and sentiment goes through `for_department`.
+
+## ⭐⭐ 2 · NOT A `Membership` — OR THE RULING WOULD METER ITSELF
+
+Per **31 Jul**, external read-only recipients are **unlimited and unbilled**.
+CORE names the three gates:
+
+| gate | counts | a pilot viewer? |
+|---|---|---|
+| `enforce_company_limit` | `FinancialDataset` | no |
+| `_slots_used` | `CompanyAccess` | no |
+| `viewer_count` | `Membership` role=viewer | ⭐⭐ **WOULD COUNT** |
+
+⭐⭐ **SO A PILOT VIEWER MAY NOT BE A MEMBERSHIP.** Modelling one as
+`role="viewer"` would silently meter the thing the ruling says is unmetered.
+⭐ CORE already records that the previous outcome **matched the recommendation by
+ACCIDENT** — which is why this is asserted, not assumed. Own table
+`ax_pilot_viewers`, exactly as `PackRecipient` is.
+
+⭐ **MEASURED BEFORE AND AFTER inviting five viewers: all counters unmoved.**
+
+### ⭐ A CORRECTION I MADE MID-LANE, RECORDED SO IT IS NOT RE-MADE
+
+Local runs raised *"no such table"* for `enterprises` and `ax_packs`, and I began
+routing those reads through a second session. ⭐⭐ **THAT WAS WRONG AND WAS
+REVERTED.** `accounts` and `core.db` read **the SAME `DATABASE_URL`** and differ
+only in their **SQLite FALLBACK DEFAULT** (`axiom_accounts.db` vs `axiom.db`).
+Production sets the variable, so they are **one Postgres**.
+
+⭐ **THE SPLIT IS A DEV ARTEFACT OF AN UNSET ENV VAR, NOT A PRODUCTION FACT** —
+and I was about to encode it as one. Verified instead the way production runs,
+with `DATABASE_URL` set to a single file. ⭐ **The `ax_` prefix does NOT indicate
+the base**: `ax_packs` falls to `core.db`, `ax_departments` to accounts.
+
+## ⭐ 3 · NO ACCOUNT · 4 · EXPIRY · REVOCATION
+
+- **No account creation.** A signed link that **names** the invitee. No password,
+  no registration. ⭐ Zero friction is the property that makes this work in a
+  management meeting.
+- ⭐⭐ **EXPIRY RUNS FROM INVITATION, NOT PILOT START** — stored, not derived. A
+  viewer added on day 25 gets **30 days, not five.** Re-inviting **renews**.
+- ⭐⭐ **REVOCATION IS IMMEDIATE and does not wait for the token.** Asserted with
+  a still-valid signature: **403 after revoke.** ⭐ **THE PERSON WHO FORWARDED A
+  LINK CANNOT UNFORWARD IT.**
+- ⭐ **REVOKED AND EXPIRED ARE DISTINGUISHABLE.** "Not active" collapses two
+  facts and the admin cannot explain which happened to the person who calls.
+
+## ⭐⭐ 5 · READ-ONLY BY CONSTRUCTION, NOT BY CHECK
+
+**Every route under `/pilot-view` is a GET.** There is no write endpoint to
+reach, so ⭐ **"no edit path" is a property of the surface**, not a rule someone
+remembered. **26th gate** `check-pilot-viewer-readonly.py` asserts it against the
+**real route table** — 5 routes, all GET — plus no metering and no IP column.
+
+⭐ **Its control accepts a DOCSTRING naming `Membership` to explain the rule.**
+
+## ⭐ 6 · OPEN LOGGING, PER PERSON, NO IP
+
+⭐⭐ **"The CFO opened the pack twice, two directors have not opened it"** — the
+pilot's strongest conversion signal, **sayable only because viewers are named.**
+⭐ **ZERO IS THE INTERESTING VALUE** and is representable. **No IP column**, per
+§7s.3: the log exists to tell a CEO **who is reading**, not to locate a person.
+
+## ⭐ 7 · TWO CLASSES REPEATED, BOTH CAUGHT
+
+1. ⭐⭐ **THE MODEL MUST BE IMPORTED BEFORE `create_all`** — the §4u-c defect
+   exactly. The comment §4u-c left in `main.py` is why this took minutes rather
+   than reaching production as "no such table".
+2. ⭐⭐ **§III.9, FIFTH INSTANCE — IN THIS LANE'S OWN TEST.** It banned the word
+   `Authorization` and **fired on the comment explaining why the page sends no
+   Authorization header.** Narrowed to code with comments stripped. **A guard
+   that bans a word punishes the writing that states the rule.**
+
+## ⭐ 7b · THE DECISION RECORD GUARD CAUGHT THE ATTRIBUTION
+
+`PilotViewer` carries an actor, so the standing §III.4 test refused it as
+**"attributed but neither carried nor excluded"**. Classified alongside `Invite`:
+⭐ **inviting a viewer is ACCESS ADMINISTRATION** — the decision is what the
+pilot's results lead the company to do, not who was given read access.
+
+## ⭐ 8 · COLLISION SURFACED — LOVABLE'S 38 COMMITS
+
+The frontend was **38 behind, 0 ahead** — ⭐ a **pure fast-forward, not a
+divergence**, so updating was not a resolution. ⭐ **The lint gate was RED ON
+ARRIVAL**: 6 prettier errors in Lovable's `ComparisonMatrix.tsx` rewrite,
+**present at `origin/main` without this lane's changes.** Normalised as
+formatting only — the diff is line-joining and blank lines, no semantic change.

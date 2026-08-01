@@ -489,6 +489,9 @@ NOT_A_DECISION = {
     "FinancialDataset": "an upload is data arriving; the DECISIONS about it are "
                         "the changeset items and overrides",
     "Invite": "an invitation is access administration",
+    "PilotViewer": "inviting a named pilot viewer is access administration — the "
+                   "DECISION is what the pilot's own results lead the company to "
+                   "do, not who was given read access to them",
     "AssessmentInvite": "an invitation is access administration",
     "InitiativeAssignment": "assignment follows the approval already carried",
     "StrategicMove": "a move in the library is an option, not a decision to take it",

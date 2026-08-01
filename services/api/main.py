@@ -276,6 +276,12 @@ app.include_router(intelligence_router)
 # the source as UNAVAILABLE rather than empty, which is a louder and more
 # misleading failure than a missing table.
 from . import voice_of_employee as _voe  # noqa: E402,F401
+# ⭐⭐ §4x pilot viewers — THE SAME REASON, AND THE SAME CLASS. A model imported
+# after create_all is a table that is never made, and the failure surfaces as
+# "no such table" at first use rather than at boot. This is the second time; the
+# comment above is why it was caught the second time in minutes rather than in
+# production.
+from . import pilot_viewers as _pilot_viewers  # noqa: E402,F401
 
 include_accounts(app)
 
@@ -285,6 +291,12 @@ include_accounts(app)
 from .accounts import get_db as _get_db, get_current_user as _current_user, require_company_member  # noqa: E402
 from . import pack_dist as _pack_dist  # noqa: E402
 _pack_dist.include(app, _get_db, _current_user)
+
+# ⭐ ROUTER BOUND HERE — the MODEL was imported above, before create_all. The
+# wiring is asserted: ten built-but-not-wired instances this era, one of them a
+# page unreachable by its own name.
+from .accounts import require_company_admin as _req_admin  # noqa: E402
+_pilot_viewers.include(app, _get_db, _req_admin)
 
 # B16 — in-app editable assumptions. ⭐ ADMIN-ONLY per §4x: write is bound to
 # `require_company_admin`, which demands Membership.role == "admin". A

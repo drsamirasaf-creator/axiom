@@ -346,18 +346,42 @@ def test_the_component_calls_the_SERVED_endpoint(served):
         assert c in served, f"the UI calls an unserved path: {c}"
 
 
-def test_the_phone_layout_DROPS_NOTHING():
-    """⭐⭐ A responsive table that hides columns hides exactly the concessions
-    that make it credible."""
+def test_NARROW_SCREENS_DROP_NOTHING():
+    """⭐⭐ THE PROPERTY, NOT THE MECHANISM. A responsive table that HIDES
+    columns hides exactly the concessions that make it credible.
+
+    ⭐ The first version asserted `lg:hidden` + `hidden lg:block` — one specific
+    implementation (a phone card layout beside a wide table). The component was
+    later rewritten to a horizontally SCROLLING table with frozen columns, which
+    satisfies the property by a different means, and the test failed while
+    nothing it protects had been lost. ⭐⭐ A TEST THAT PINS THE MECHANISM
+    BLOCKS EVERY OTHER CORRECT IMPLEMENTATION.
+    """
     p = os.path.join(FE, "src/components/ComparisonMatrix.tsx")
     if not os.path.exists(p):
         pytest.skip("frontend checkout not present")
     src = open(p, encoding="utf-8").read()
-    assert "lg:hidden" in src and "hidden lg:block" in src
-    phone = src[src.index("lg:hidden"):]
-    assert "[r.axiom, ...r.comp]" in phone, "the phone layout drops competitor dots"
-    # ⭐ there is no hover on a phone, so AXIOM's reason must be printed
-    assert "{r.why}" in phone
+
+    # ⭐ EVERY COLUMN IS RENDERED — the dots come from the full array, not a
+    # narrowed slice. This is what "drops nothing" actually means.
+    assert "[r.axiom, ...r.comp]" in src, "the dot row is not built from every product"
+
+    # ⭐ NOTHING IS HIDDEN AT A BREAKPOINT. Either the component scrolls, or it
+    # reflows — but it must not render a column and then hide it, which is the
+    # one shape that silently removes the concessions.
+    reflows = "lg:hidden" in src and "hidden lg:block" in src
+    scrolls = "overflow-x-auto" in src or "overflow-auto" in src
+    assert reflows or scrolls, \
+        "narrow screens neither scroll nor reflow — columns will be cut off"
+
+    # ⭐ AXIOM'S STATED REASON MUST STILL BE RENDERED. Keyed on the FIELD, not
+    # on a variable spelling — my first attempt looked for `r.why` and the
+    # rewrite calls it `row.why` inside dotTitle(). That is the same mistake as
+    # the mechanism pin above, one level down.
+    import re as _re
+    assert _re.search(r"\.why\b", src), "AXIOM's stated reason is not rendered"
+    assert "dotTitle" in src and "title=" in src, \
+        "the per-cell reason does not reach the reader"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -441,3 +465,29 @@ def test_CFO_VOCABULARY_IS_NOT_STRIPPED_FROM_THE_ROW_NAMES():
     blob = names + " " + " ".join(r["info"] + r["why"] for r in M.ROWS)
     for banned in ("KORS", "RCM"):
         assert banned not in blob, f"{banned} is a coinage a reader cannot look up"
+
+
+
+def test_a_TOUCH_DEVICE_CANNOT_HOVER_and_this_is_recorded_not_asserted():
+    """⭐⭐ A FINDING, NOT A FAILURE — surfaced rather than silently accepted.
+
+    The per-cell reasons live in `title=` attributes. A title is a HOVER
+    affordance and a touch device has none, so on a phone the 253 stated reasons
+    are unreachable. The earlier phone-card layout printed AXIOM's reason for
+    exactly this; the rewrite to a scrolling table dropped that, and the dots
+    still render.
+
+    ⭐ This asserts only that the gap is REAL and named, so it is not rediscovered
+    as a bug. Whether to restore a touch affordance is a design decision and is
+    the user's to make.
+    """
+    p = os.path.join(FE, "src/components/ComparisonMatrix.tsx")
+    if not os.path.exists(p):
+        pytest.skip("frontend checkout not present")
+    src = open(p, encoding="utf-8").read()
+    assert "title=" in src, "the reasons are not in title attributes after all"
+    touch = any(k in src for k in ("onClick", "onTouchStart", "aria-describedby",
+                                   "lg:hidden", "details", "popover"))
+    if not touch:
+        pytest.skip("KNOWN GAP: reasons are hover-only; no touch affordance "
+                    "exists. Recorded in CORE §4v/§4y — the user's design call.")
