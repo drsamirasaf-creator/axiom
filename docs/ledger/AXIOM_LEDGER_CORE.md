@@ -14253,3 +14253,95 @@ My equality-gate sweep matched a **line** and fired on `config.py`'s **docstring
 describing the rule.** ⭐ **Prose about a comparison is not a comparison.**
 Rewritten as an **AST Compare walk**. Eighth time a check has struck the writing
 that explains what it enforces.
+
+# ⭐⭐ §7j.8 · THE PRESCIENCE BRIEF — BUILT 1 Aug. THE ORDER IS COMPLETE.
+
+`services/api/prescience_brief.py` · `GET /companies/{id}/prescience-brief` ·
+`src/components/PrescienceBrief.tsx`. ⭐ **The fifth and last item of §7j.2's
+revised order.**
+
+## ⭐ 1 · THE LINE SET, AND EACH LINE'S SOURCE
+
+**Three lines, fixed order — the forward mirror of the Brief's seven.**
+
+| # | line | source | what it states |
+|---|---|---|---|
+| 1 | **What is likely** | Multiverse `spread` | ⭐ mean **and tail**, with the downside — **a range, never a point** |
+| 2 | **What is at risk** | Resilience Field `position` + `coverage` | the band, the nearest breach in plain language, ⭐ **and how many dimensions were censored** |
+| 3 | **What to decide** | Multiverse `search` | trajectories evaluated and the current strategy's percentile |
+
+## ⭐⭐ 2 · WHAT IT INHERITS — NOT REIMPLEMENTED
+
+⭐ **`EM_DASH` is IMPORTED from `brief.py`**, asserted to be the same object.
+Two copies of the absent marker drift, and the copy nobody checks is the one a
+reader sees.
+
+| inherited | |
+|---|---|
+| **fixed line count** | ⭐ **three always** — asserted across every input combination |
+| **em dash + stated reason** | an absent line renders, never disappears |
+| ⭐ **an absent line STILL LINKS** | a reader told a figure is missing must be able to go and see why |
+| **traceable-or-silent** | every line names its `source_surface` |
+| ⭐⭐ **TWO DISTINCT ABSENCES** | *input missing* vs *rendered but no single figure reduces* |
+
+⭐⭐ **THE TWO ABSENCES ARE OPPOSITE MEANINGS.** Collapsing them would tell a
+reader **"nothing here"** when the truth is **"too much here to say in one
+line"**. Asserted that the two reasons differ.
+
+## ⭐⭐ 3 · DISTRIBUTIONS, AND THE BASIS TRAVELS
+
+⭐ **A ONE-SIDED SPREAD DOES NOT BECOME A POINT.** Given a mean with no tail, the
+line goes **absent and says why** rather than printing the mean alone — a
+half-range silently rendered as a figure is the failure this surface exists to
+avoid.
+
+σ_RO's basis reaches the render with **`registry_version: 7u-pd.2`** and
+`declared_prior: true`. ⭐ **Taken from the Multiverse view where present**, so
+the two surfaces cannot explain the same number differently; from the registry
+otherwise, and **never restated in this module** (asserted).
+
+⭐⭐ **A DISTRIBUTION WHOSE UNCERTAINTY HAS NO STATED ORIGIN IS A CAVEAT, NOT A
+PRODUCT.**
+
+## ⭐ 4 · CENSORING TRAVELS INTO THE BRIEF
+
+The Resilience Field's finding reaches line 2: ⭐⭐ **"4 of 7 dimensions did not
+break within the tested range"** is stated **in the line**, so the region is
+never presented as fully measured. A fully measured field adds no such clause.
+⭐ *Computed-but-no-value* and *never-computed* stay distinguishable, asserted
+so a refactor cannot collapse them in transit.
+
+## ⭐⭐ 5 · GATED, AND NOT A PACK INPUT
+
+Prescience-gated per §7j.7. ⭐⭐ **IT ADDS NO PACK INPUT CLASS** — asserted
+against **both** `pack.py` and `pack_render.py`, and stated on the surface
+itself. **The pack is untouched.** It is a Prescience surface over Prescience
+surfaces.
+
+⭐ **No new computation** — asserted by AST: no `run`, `simulate`,
+`evaluate_trajectory`, `build_frontier`, `compute_viability` or `_nearest_t`.
+
+## ⭐⭐ 6 · MERIDIAN — ALL THREE LINES RENDER
+
+| # | state | text |
+|---|---|---|
+| 1 | ⭐ **RENDERED** | *"Mean enterprise value 55,308, tail 49,250 — a downside of 6,058 in the worst 5% of futures."* |
+| 2 | ⭐ **RENDERED** | *"STABLE. Nearest breach: a 32% revenue decline combined with a 6% margin compression. 4 of 7 dimensions did not break within the tested range."* |
+| 3 | ⭐ **RENDERED** | *"261 trajectories evaluated. The current strategy sits at the 1.1th percentile."* |
+
+⭐ **absent_lines: none.** Basis: σ 0.15, registry 7u-pd.2, declared prior.
+Every line links to its surface.
+
+## ⭐ 7 · §7j.2's ORDER IS NOW COMPLETE
+
+| # | lane | state |
+|---|---|---|
+| 1 | B22 — σ into the registry | ⭐ **done** `dff7da0` |
+| 2 | Resilience Field | ⭐ **done** `1db014f` |
+| 3 | Causal Map, attribution half | ⭐ **done** `a682e23` |
+| 4 | The Multiverse tab | ⭐ **done** `34269e2` |
+| 5 | The Prescience Brief | ⭐ **done, this lane** |
+
+⭐⭐ **AND NO NEW ENGINE WAS WRITTEN IN ANY OF THEM** — every item was rendering,
+relabelling or synthesis over computation that already existed, exactly as the
+scope predicted once the Multiverse premise was corrected.
