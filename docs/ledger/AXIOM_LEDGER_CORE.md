@@ -13373,3 +13373,66 @@ ceiling* — caught it, both times.
 failure reads as proof the refusal is gone. This is III.4 on an acceptance test
 rather than a scanner, and it is the reason the assertion was written that way
 before it was needed.
+
+# ⭐⭐ §7j.1 · PRESCIENCE SCOPED — REPORT ONLY, 1 Aug
+
+Full report: **`docs/reports/prescience-scope-2026-08-01.md`**. Recorded here as
+scope only; ⭐ **no design decisions were taken and none may be inferred from it.**
+
+## ⭐⭐ THE FINDING THAT CHANGES THE ESTIMATE
+
+**§7j records four features "NOT BUILT" and that is true of the four TABS. It is
+not true of the engines.** ARCHIVE records **7c-2 Multiverse kernel — SHIPPED**,
+and the code confirms it: `prescience_decision.py`, 900 lines, a real Monte Carlo
+with CVaR, VaR, RAEV and P(target), beam search, frontier, Pareto and DP policy
+surfaces.
+
+⭐⭐ **AND ITS OUTPUT IS ALREADY RENDERED — ON A PAGE TITLED "Enterprise
+Optimization · AXIOM Business."** The engine ruled **Prescience-only ships inside
+the Business tier today.** Moving it **takes a capability away from Business
+buyers** — ⭐ **a commercial ruling, not an engineering task, and the largest
+thing the estimate turns on.**
+
+## ⭐ DESIGNED VERSUS UNDESIGNED — THE DISTINCTION IS THE ESTIMATE
+
+⭐⭐ **THE REFERENCED `AXIOM_Prescience_AI_Build_Spec.md` IS NOT IN THE
+REPOSITORY.** CORE's fullest statement is **one clause per feature.**
+
+| feature | state |
+|---|---|
+| **Multiverse** | ⭐ **BUILT AND MISFILED** — relocation, not construction |
+| **Resilience Field** | partially specified; TV-DRO + breakeven radius exist. ⭐ **"Field" is undefined**, and reverse-stress appears nowhere by name |
+| **Causal Map** | most specified — names its edge taxonomy. ⭐⭐ **Attribution edges are a view over five existing link tables; causal-evidence (DiD/IV/Bayesian) has ZERO code** |
+| **Prescience Brief** | ⭐⭐ **UNDESIGNED** — the word *"synthesis"* plus two prohibitions. **No lane can be dispatched against it** |
+
+## ⭐⭐ THE PLAN TIER — TWO EQUALITY CHECKS ARE THE SHARP EDGE
+
+`PLANS = ("free", "business")`. Two gates test `!= "business"` and return **402**.
+⭐⭐ **ADDING A TIER ABOVE BUSINESS WOULD MAKE THE HIGHEST-PAYING CUSTOMER THE
+MOST RESTRICTED USER ON THE PLATFORM** — locked out of every write and of company
+creation. ⭐ The shape of the fix is **a tier ORDERING, not a string** — recorded
+as the shape, not as a decision.
+
+## ⭐ B22 BLOCKS THE CLAIM, NOT THE ENGINE
+
+`_calibrate_sigma` works. ⭐⭐ **ITS NAME ASSERTS A CALIBRATION IT DOES NOT
+PERFORM**, and Prescience's positioning is *"uncertainty is the product, not a
+caveat."* **B22 should precede any surface that renders a distribution** — which
+is all four.
+
+## ⭐ ADMISSIBILITY — MERIDIAN ALREADY CARRIES MULTIVERSE
+
+Measured in production: **1,565 trajectory-cache rows, 14 moves, 3 frontiers, 3
+policy surfaces.** ⭐⭐ **THE CAUSAL MAP IS THE ONE WITH AN ADMISSIBILITY
+PROBLEM** — a DiD estimate needs a comparison group and **Meridian is one
+company.** Either the demo shows only attribution and hypothesis edges, or the
+seed grows a comparison set. **That is a ruling.**
+
+## ⭐⭐ SEVEN RULINGS ARE NEEDED — FOUR OF THE NINE BUILD STEPS ARE NOT BUILDS
+
+Ordered by dependency, the first two steps are **rule Multiverse's tier** and
+**make the plan tier an ordering**; nothing tier-gated can even be tested until a
+Prescience account can exist. ⭐ **The critical path is SHORTER than "four unbuilt
+features" suggests** — the engine exists and already has Meridian data.
+
+**The seven rulings are listed at the end of the report.**
