@@ -214,16 +214,20 @@ that, because the engine already exists and already has Meridian data.
 
 ---
 
-# ⭐ RULINGS THIS REPORT NEEDS
+# ⭐ RULINGS THIS REPORT NEEDED — ⭐⭐ SIX RULED 1 Aug (CORE §7j.2)
 
-1. ⭐⭐ **Does the Multiverse engine leave the Business tier?** It ships inside
-   Business today.
-2. **What does the Multiverse TAB show** that Enterprise Optimization does not?
-3. **What is a Resilience "Field"** — and is `breakeven_radius` the reverse-stress
-   deliverable?
-4. **What promotes a Causal Map edge from hypothesis to causal-evidence?**
-5. **Does Meridian gain a comparison group**, or does the demo show only
-   attribution and hypothesis edges?
-6. ⭐⭐ **What IS the Prescience Brief?** One word and two prohibitions.
-7. **Is `AXIOM_Prescience_AI_Build_Spec.md` recoverable?** If it exists outside
-   the repository, several of these are already answered.
+⭐ **Corrected in place rather than left standing beside the answers.**
+
+| # | question | ruling |
+|---|---|---|
+| 1 | Does the Multiverse engine leave Business? | ⭐⭐ **NO — it stays.** Removing a shipped capability from the cheaper tier to justify the dearer one is a downgrade every prospect would have to be told about, and it makes the boundary about withholding rather than adding |
+| 2 | What does the Multiverse TAB add? | ⭐ **The same engine asked a different question** — Optimization asks *what should we do*, Multiverse asks *what might happen and how confident are we* |
+| 3 | What is a Resilience "Field"? | ⭐ **The region of parameter space in which the company remains viable** — `breakeven_radius` plus shocks over the viability kernel |
+| 4 | What promotes an edge to causal-evidence? | ⭐⭐ **A declared intervention precedes the movement AND the linkage is exclusive.** No DiD, IV or Bayesian nets in V1.0 |
+| 5 | Does Meridian gain a comparison group? | ⭐⭐ **NO.** Inventing one is fabrication of the kind the residual discipline prevents |
+| 6 | What IS the Prescience Brief? | ⭐ **The Brief's forward twin** — likely / at risk / to decide, distributions not points, traceable-or-silent, absence stated |
+| 7 | Is the build spec recoverable outside the repo? | ⭐⭐ **STILL OPEN.** If it exists it should be committed; if not, CORE's clauses plus these rulings are the specification |
+
+⭐ **THE REVISED ORDER:** B22 → Resilience Field → Causal Map (attribution half)
+→ the Multiverse tab → the Prescience Brief. ⭐⭐ **No new engine appears in it**,
+and the **plan-tier ordering remains a prerequisite to shipping the tier.**

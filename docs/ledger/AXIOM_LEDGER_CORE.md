@@ -13435,4 +13435,135 @@ Ordered by dependency, the first two steps are **rule Multiverse's tier** and
 Prescience account can exist. ⭐ **The critical path is SHORTER than "four unbuilt
 features" suggests** — the engine exists and already has Meridian data.
 
-**The seven rulings are listed at the end of the report.**
+**The seven rulings are listed at the end of the report.** ⭐ **SIX OF THE SEVEN
+ARE NOW RULED — see §7j.2 immediately below.**
+
+# ⭐⭐ §7j.2 · PRESCIENCE — SIX RULINGS. RULED 1 Aug
+
+Closes six of the seven questions §7j.1 raised. ⭐ **The seventh is recorded as
+unresolved, not inferred.**
+
+## ⭐⭐ 1 · THE MULTIVERSE ENGINE STAYS IN AXIOM BUSINESS
+
+`prescience_decision.py` is shipped and already renders on Enterprise
+Optimization. **It stays there.**
+
+⭐⭐ **REMOVING A SHIPPED CAPABILITY FROM THE CHEAPER TIER TO JUSTIFY THE DEARER
+ONE IS A DOWNGRADE EVERY EXISTING PROSPECT WOULD HAVE TO BE TOLD ABOUT.**
+
+⭐⭐ **AND IT MAKES THE TIER BOUNDARY ABOUT WITHHOLDING RATHER THAN ADDING.**
+⭐ **PRESCIENCE DIFFERENTIATES ON WHAT BUSINESS NEVER HAD** — not on what was
+taken from it.
+
+*(Recorded in full because the opposite move is the tempting one: the engine is
+expensive, it is the tier's namesake, and moving it would have made the price
+difference look self-evident. It would also have been the first time this
+product took something back.)*
+
+## ⭐⭐ 2 · THE MULTIVERSE TAB IS THE SAME ENGINE ASKED A DIFFERENT QUESTION
+
+| surface | asks | returns |
+|---|---|---|
+| **Enterprise Optimization** (Business) | ⭐ *what should we do?* | a **recommended action** |
+| **Multiverse** (Prescience) | ⭐ *what might happen, and how confident are we?* | the **distribution**, the scenario spread, **probability language** |
+
+⭐ **SAME ENGINE, FORWARD-FACING PRESENTATION.** No second computation, and no
+duplicated kernel — which also means the two surfaces can never disagree.
+
+## ⭐ 3 · RESILIENCE FIELD — DEFINED
+
+**`breakeven_radius` plus shocks, over the viability kernel.**
+
+⭐⭐ **THE "FIELD" IS THE REGION OF PARAMETER SPACE IN WHICH THE COMPANY REMAINS
+VIABLE — how far things can move before the band breaks.**
+
+⭐ **Largely RENDERING over existing computation, not a new engine.** TV-DRO
+worst-case EV, the breakeven radius and `/what-if/shocks` all exist today.
+
+## ⭐⭐ 4 · CAUSAL-EVIDENCE — THE THRESHOLD, DEFINED
+
+> ⭐⭐ **AN EDGE IS `causal-evidence` ONLY WHEN A DECLARED INTERVENTION PRECEDES
+> THE MOVEMENT AND THE LINKAGE IS EXCLUSIVE.**
+
+⭐ **The attribution rule applied to TIME.** Two conditions, both required:
+
+| condition | drawn from |
+|---|---|
+| a **declared** intervention (never inferred) | **B10** — the initiative→statement-line link, *declared, never inferred* |
+| **precedes** the movement | ⭐ new: the temporal ordering |
+| the linkage is **exclusive** | **B11** — *sole* attribution, with the over-crediting trap |
+
+⭐ **EVERYTHING ELSE IS `attribution`, LABELLED AS SUCH.**
+
+⭐⭐ **NO DiD, NO INSTRUMENTAL VARIABLES, NO BAYESIAN NETS IN V1.0.** They
+require a comparison group **AXIOM does not have**, and the Causal Map's
+attribution half is **a view over five existing link tables**.
+
+⭐ **NUMBERING CORRECTED IN PLACE:** the dispatch cited *"B10's attribution
+rule"*. CORE records **B10** as the initiative-to-statement-line link and **B11**
+as the attribution rule. ⭐ **The ruling draws on BOTH** — B10 supplies *declared,
+never inferred*, B11 supplies *exclusive* — so the substance stands and only the
+label was off by one.
+
+## ⭐⭐ 5 · MERIDIAN GAINS NO COMPARISON GROUP
+
+⭐⭐ **INVENTING ONE TO ENABLE A CAUSAL METHOD IS FABRICATION OF THE KIND THE
+RESIDUAL DISCIPLINE EXISTS TO PREVENT.**
+
+⭐ The demo shows **attribution and hypothesis edges only**, and that is the
+honest artefact — a causal claim the data cannot support is exactly what the
+"honesty crucible" was named against.
+
+## ⭐ 6 · THE PRESCIENCE BRIEF — DEFINED
+
+⭐⭐ **THE BRIEF'S FORWARD TWIN:** *what is likely · what is at risk · what to
+decide* — with **distributions rather than point estimates**.
+
+⭐ **It follows the Brief's discipline:**
+
+- **traceable-or-silent, line by line**
+- ⭐⭐ **an absent input renders as a STATED ABSENCE, never omitted**
+
+*(This resolves the "undesigned" finding. It is now specified by inheritance —
+the Brief's discipline is already built and asserted, so the forward twin has a
+working definition rather than a word.)*
+
+## ⭐ 7 · B22 PRECEDES ANY SURFACE RENDERING A DISTRIBUTION
+
+σ_RO into the §7u registry; `_calibrate_sigma` renamed.
+
+⭐⭐ **PRESCIENCE'S POSITIONING IS THAT UNCERTAINTY IS THE PRODUCT, NOT A
+CAVEAT — AND A FUNCTION WHOSE NAME ASSERTS A CALIBRATION IT DOES NOT PERFORM
+CANNOT SIT UNDER THAT CLAIM.**
+
+## ⭐⭐ 8 · UNRESOLVED — RECORDED, NOT INFERRED
+
+⭐ **Whether `AXIOM_Prescience_AI_Build_Spec.md` exists OUTSIDE the repository.**
+
+- **If it does — it should be committed.**
+- **If it does not — CORE's clauses plus these rulings ARE the specification.**
+
+⭐ Recorded as open because the two cases produce different specifications, and
+**assuming either would be inventing a design or discarding one.**
+
+## ⭐⭐ 9 · THE REVISED BUILD ORDER — FOUR RULING-STEPS NOW CLOSED
+
+§7j.1 derived nine dependency-ordered steps, **four of which were rulings**.
+Those are closed. **The remaining work, in order:**
+
+| # | lane | shape |
+|---|---|---|
+| **1** | ⭐ **B22** — σ_RO into the registry, `_calibrate_sigma` renamed | small; **blocks the other four on admissibility** |
+| **2** | **Resilience Field** | rendering over existing computation |
+| **3** | **Causal Map — the attribution half** | a view over five existing link tables |
+| **4** | **The Multiverse tab** | forward-facing presentation of a shipped engine |
+| **5** | **The Prescience Brief** | synthesis over 1–4, so it comes last |
+
+⭐⭐ **THE PLAN-TIER ORDERING IS STILL REQUIRED AND IS NOT IN THIS LIST.** §7j.1
+measured two gates testing `!= "business"`; ⭐ **until a Prescience plan can be
+held, none of the five can be tier-gated or tested as a Prescience customer would
+meet them.** It is a prerequisite to *shipping* the tier, not to *building* these
+surfaces — recorded so it is not lost between the two.
+
+⭐ **NO NEW ENGINE APPEARS IN THIS LIST.** Every remaining item is rendering,
+relabelling, or synthesis over computation that already exists.
