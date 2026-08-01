@@ -118,7 +118,8 @@ def test_every_attributed_model_is_either_a_source_or_named_not_a_decision():
     carried = {"MetricOverride", "DashboardSignoff", "RecommendationDisposition",
                "Initiative", "ChangesetItem", "DepartmentAuthority",
                "PackRelease", "WatchEvent", "AssumptionEdit",
-               "InitiativeLineLink", "InitiativeImpactDeclaration"}
+               "InitiativeLineLink", "InitiativeImpactDeclaration",
+               "AssignedFeedback"}
     unclassified = attributed - carried - set(DR.NOT_A_DECISION)
     assert unclassified == set(), \
         f"attributed but neither carried nor excluded: {sorted(unclassified)}"

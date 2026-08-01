@@ -10163,6 +10163,110 @@ call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
 
+## ⭐⭐ §4u-c · VOICE OF EMPLOYEE — BUILT (1 Aug)
+
+**A tab on each department page, immediately LEFT of Stakeholder Sentiment.**
+⭐ **The order is the argument:** the department's own people speak first, and the
+aggregate tone sits beside the words that produced it.
+
+### ⭐⭐ THE RULING — VERBATIM TEXT DOES NOT TRAVEL INTO AN ASSIGNMENT
+
+**A manager reads the words on the tab, under the floor. The words do not become
+a management object with a name attached, exported, forwarded or quoted.**
+
+⭐⭐ **WHY:** a comment under the floor is protected by **the context it is read
+in.** Copy it onto an initiative and it leaves that context — it acquires an
+owner, a due date, an export, and a thread of people who never saw the consent
+line. ⭐ **The floor cannot follow it there.**
+
+**An assignment carries CATEGORY and THEME only** — the theme being the manager's
+own words about what they intend to do, **not the employee's words about what is
+wrong.**
+
+**Enforced four ways, so no single rewrite defeats it:**
+
+| | |
+|---|---|
+| ⭐⭐ **structural** | `ax_assigned_feedback` **has no column for comment text.** A schema that cannot hold it cannot leak it, however the calling code is later rewritten. |
+| **at the writer** | `assign()` **RAISES** on any `comment`/`verbatim`/`text`/`quote`/`participant_ref` kwarg — ⭐ **it does not strip it.** Silently dropping it would let a caller believe the text travelled. |
+| **at the boundary** | the request model sets `extra: forbid`, so a client posting comment text is refused **before** the server sees it |
+| ⭐ **in the audit trail** | the Decision Record projection carries the **category**, never the words — ⭐⭐ **a record that quoted the comment would be the leak arriving by the one route nobody was watching.** |
+
+### ⭐ THE MACHINERY IS INHERITED, NOT REIMPLEMENTED
+
+A test **fails the module** if it defines its own `KFLOOR`, `suppression_block` or
+`suppression_reason`. From §4u-b: the floor counts **distinct participants**
+(five comments from one person is n=1), `participant_ref` is never emitted,
+comments are **shuffled**, and department/seniority never travel back on a
+comment — the last asserted **on the AST**, requiring the emitted dict to hold
+exactly `{comment, item_id}`.
+
+### ⭐ CATEGORIES ARE DERIVED FROM THE INSTRUMENT
+
+**13 categories**, read from the taxonomy file. ⭐ **The item→category map is the
+item's OWN L1 code** — `ax_assessment_items` is a tree, so `3.4` belongs to
+`3.0`. **A hand list would drift the moment a question moved**, and a category
+that fell out would keep rendering as an empty section — which reads as *nobody
+said anything about this.*
+
+### ⭐⭐ SUPPRESSED IS RENDERED, NEVER OMITTED — AND ABSENT IS A THIRD STATE
+
+| state | what the tab shows |
+|---|---|
+| **readable** | the comments, shuffled |
+| ⭐ **suppressed** | *"Withheld — N people commented"* **with the reason and the count**. ⭐⭐ **The count is published even though the words are not — it is what makes "withheld" credible rather than indistinguishable from silence.** |
+| **absent** | listed under *"No comments this cycle"* — ⭐ **a department reading a blank section concludes its people said nothing.** |
+
+### ⭐⭐ THE MERIDIAN DEMONSTRATION — BOTH CASES, ON REAL SEEDED DATA
+
+**Operations, cycle 37, n=6 participants — 13 categories rendered:**
+
+| | |
+|---|---|
+| ⭐ **readable** | **2** — *Strategy, Purpose & Governance* (n=4, 4 comments) and *Technology, Data & Innovation* (n=4, 4 comments) |
+| ⭐⭐ **SUPPRESSED** | **2** — categories `7.0` and `9.0`, both **n=1**, `below_anonymity_floor` |
+| **absent** | **9** |
+
+⭐ **A DEPARTMENT ABOVE THE FLOOR STILL HAS CATEGORIES BELOW IT.** Operations
+clears the floor at n=6 and two of its categories are still withheld — **the
+suppression is per-category, which is where the exposure actually is.**
+
+### ⭐⭐ A DATA-SHAPE FINDING — the cycle-37 department names do not match
+
+**Cycle 37's response `department` strings are `Finance`, `HR`, `Supply Chain`,
+`Technology`; the `Department` rows are `Finance and Accounting`, `Human
+Resources`, `Supply Chain and Logistics`, `Information Technology`.** ⭐ **Only
+`Operations` and `Sales & Marketing` match.**
+
+⭐⭐ **SO THE DEPARTMENT-LEVEL SUPPRESSED CASES — Supply Chain at n=2 and HR at
+n=3, the pair CORE cites as the proof — ARE NOT REACHABLE BY DEPARTMENT ID.** The
+join is correct; **the seed's legacy names are not.** ⭐ **Not corrected here:
+renaming responses would edit assessment data to make a demo tidier**, which is
+the wrong trade. **Recorded as measured.**
+
+⭐ **Also measured: only cycle 37 carries comments at all.** Cycles 48–52 have
+**zero**, so the dispatch's *"two cycles with real comments"* is **one**.
+
+### ⭐ NO INDIVIDUAL TRACKING (§4x)
+
+The assignment records **no pointer back to a respondent** — no `response_id`, no
+`comment_id`, no `participant_ref`. ⭐ **`actor_user_id` is the MANAGER**, named
+so it cannot be mistaken. **A comment id would survive after the tab stopped
+showing the text.**
+
+### ⭐ A REGISTRATION ORDER THAT BIT
+
+Mounting the router registered the model **after** `include_accounts` ran
+`create_all`, so `ax_assigned_feedback` was never created — and the Decision
+Record then reported the source **UNAVAILABLE** rather than empty. ⭐⭐ **A louder
+and more misleading failure than a missing table.** The model import now sits
+**before** `create_all`; only the router binds later.
+
+⭐ **AND THE GUARD-BANS-THE-WORD FALSE POSITIVE RECURRED TWICE MORE** — on
+`respondent` in explanatory copy, and on `comment` in the docstring that explains
+the ruling. ⭐⭐ **A guard that punishes stating the rule is worse than no guard.**
+Both narrowed to AST reads.
+
 ## ⭐⭐ HALCYON AND HELIOS — DELETED IN FULL (ruled 1 Aug)
 
 **CORE recorded them RETIRED and their rows stayed**, so the tenant carried three

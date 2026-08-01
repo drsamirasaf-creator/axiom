@@ -64,6 +64,11 @@ def init_db():
     from .. import pack as _pack                             # noqa: F401
     from .. import pack_dist as _pack_dist                    # noqa: F401
     from .. import watch as _watch                            # noqa: F401
+    # ⭐ §4u-c — ONE REGISTRATION POINT. Registering the model only where the
+    # router is mounted meant `create_all` never saw `ax_assigned_feedback` in
+    # contexts that import the models without the app, and the Decision Record's
+    # projection then reported the source as UNAVAILABLE rather than empty.
+    from .. import voice_of_employee as _voe                  # noqa: F401
     _pack.register()
     ensure_schema()
     from .seed import seed_showcase

@@ -13292,6 +13292,8 @@ def _ensure_ax_columns(engine):
     # ⭐ admin succession — NULLABLE, no default: an existing admin is UNRANKED,
     # and a default of 0 would silently make every one of them a primary.
     _add("ax_memberships", "admin_rank", "admin_rank INTEGER")
+    # ⭐ §4u-c — assigned feedback. ax_* uses the runtime bootstrap, not alembic.
+    _add("ax_assigned_feedback", "theme", "theme TEXT")
     _add("ax_accounts", "livemode", "livemode BOOLEAN")
     _add("ax_accounts", "livemode_source", "livemode_source VARCHAR(24)")
     # Project Execution Suite — CSF owner + demo provenance on projects

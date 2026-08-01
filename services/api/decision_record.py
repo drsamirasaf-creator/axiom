@@ -423,6 +423,41 @@ def src_impact_declarations(db, cid):
     return out
 
 
+def src_assigned_feedback(db, cid):
+    """⭐⭐ §4u-c — ASSIGNING EMPLOYEE FEEDBACK TO AN INITIATIVE IS A DECISION.
+    The III.4 guard claimed it the moment the model landed, and that is correct.
+
+    ⭐⭐ AND THE STATEMENT CARRIES THE CATEGORY, NEVER THE WORDS. The ruling is
+    that verbatim text does not travel into an assignment; a Decision Record that
+    quoted the comment would be the leak the ruling forbids, arriving by the one
+    route nobody was watching — the audit trail.
+    """
+    from .voice_of_employee import AssignedFeedback
+    out = []
+    for r in db.query(AssignedFeedback).filter_by(company_id=cid).all():
+        row = {c.name: getattr(r, c.name) for c in r.__table__.columns}
+        out.append(_d(
+            "assigned_feedback", r.id, cid=cid,
+            type_="employee_feedback_assigned",
+            decided_at=row.get("occurred_at"),
+            author=row.get("actor_label"),
+            statement=(f"feedback in category {row['source_category']} from "
+                       f"department {row['department_id']} assigned to "
+                       f"initiative {row.get('initiative_id')}"),
+            rationale=row.get("theme"),
+            linked={"department_id": row["department_id"],
+                    "initiative_id": row.get("initiative_id"),
+                    "category": row["source_category"]},
+            expected=None,
+            realised_absent=("the effect of acting on feedback is not "
+                             "attributable to the assignment alone"),
+            status=(WITHDRAWN if row.get("withdrawn_at") else TAKEN),
+            attribution=(f"{row.get('actor_label') or 'someone'} assigned this "
+                         f"feedback category"),
+        ))
+    return out
+
+
 SOURCES = {
     "override": src_overrides,
     "signoff": src_signoffs,
@@ -435,6 +470,7 @@ SOURCES = {
     "assumption_edit": src_assumption_edits,
     "line_link": src_line_links,
     "impact_declaration": src_impact_declarations,
+    "assigned_feedback": src_assigned_feedback,
 }
 
 # ⭐ ATTRIBUTED, BUT AUTHORSHIP RATHER THAN DECISION — named with the reason,

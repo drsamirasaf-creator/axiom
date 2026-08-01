@@ -270,12 +270,19 @@ app.include_router(twin_router)
 app.include_router(platform_router)
 app.include_router(intelligence_router)
 
+# ⭐⭐ §4u-c — THE MODEL IS IMPORTED BEFORE include_accounts, WHICH RUNS
+# create_all. Mounting the router afterwards registered the model too late and
+# `ax_assigned_feedback` was never created — the Decision Record then reported
+# the source as UNAVAILABLE rather than empty, which is a louder and more
+# misleading failure than a missing table.
+from . import voice_of_employee as _voe  # noqa: E402,F401
+
 include_accounts(app)
 
 # §7s.1 Stage 3 — Cadence distribution. Bound AFTER include_accounts so it can
 # take that module's own get_db and auth dependency rather than re-declaring
 # them, which is how two auth paths are born.
-from .accounts import get_db as _get_db, get_current_user as _current_user  # noqa: E402
+from .accounts import get_db as _get_db, get_current_user as _current_user, require_company_member  # noqa: E402
 from . import pack_dist as _pack_dist  # noqa: E402
 _pack_dist.include(app, _get_db, _current_user)
 
@@ -286,6 +293,13 @@ _pack_dist.include(app, _get_db, _current_user)
 from .accounts import require_company_admin as _require_admin  # noqa: E402
 from . import assumptions_api as _assumptions  # noqa: E402
 _assumptions.include(app, _get_db, _require_admin)
+
+# §4u-c — Voice of Employee. ⭐ THE MODEL was imported above, BEFORE
+# include_accounts ran create_all; only the ROUTER is bound here, where
+# `_get_db` exists. Splitting the two is the fix: registering the model at mount
+# time was too late for the table to be created.
+# ⭐ MEMBER-gated per §4u-b — the department's own manager is the reader.
+_voe.include(app, _get_db, require_company_member)
 
 # B12 — client-declared initiative impact. Admin-gated like B16: a declared
 # commitment is a company-level statement, not a departmental one.
