@@ -14421,3 +14421,39 @@ widening that call would tell a paying Business customer that **a section of
 their own pack is not included in what they bought.** ⭐ **The pack is unchanged
 by this lane** — asserted for `tier_notice`, `showcase_tier_notice` and
 `require_prescience`.
+
+
+## ⭐⭐ 7 · TWO DEFECTS MY OWN FIRST VERSION HAD — BOTH FOUND BY MEASURING
+
+### ⭐⭐ (a) EVERY SURFACE RETURNED 401 TO EXACTLY THE PROSPECT THE LANE EXISTS FOR
+
+The gate depended on `get_current_user`, which **raises 401 for an anonymous
+caller** — so FastAPI refused the request **before the exemption could run**.
+
+⭐ **Measured against the served backend:** all four surfaces returned **401**,
+not 402, to an anonymous reader on the showcase. ⭐⭐ **THE EXEMPTION WAS
+CORRECT AND UNREACHABLE**, and only a live probe showed it — every unit test
+passed.
+
+**Fixed twice over:** the surfaces now use **`require_report_read`** — the
+EXISTING anonymous-showcase carve-out the report endpoints already use, not a new
+mechanism — and the tier gate **checks the showcase flag before resolving any
+user.**
+
+### ⭐⭐ (b) THE GATE READ A `plan` COLUMN THAT DOES NOT EXIST
+
+⭐⭐ **`accounts.User` IS `ax_users` AND HAS NO `plan` COLUMN. `plan` LIVES ON
+`identity.User` (`users`).** My gate imported the accounts one, so
+`getattr(user, "plan", None)` was **always None** — ⭐ **it would have refused
+every caller, including a genuine Prescience customer, while looking like a
+working tier gate.**
+
+⭐ **CORE already records the two User tables. This is what that costs when a
+new gate is written against the wrong one.** Fixed to `identity.deps._session_user`,
+which **accepts BOTH auth systems (ADR-007)** and returns the user that carries
+the plan.
+
+⭐ **THE TOKEN PATH IS VERIFIED AGAINST THE DEPLOYED BACKEND, NOT BY FIXTURE.**
+A unit fixture minting a token cannot honestly stand in for the bridge between
+two auth systems, and a test that faked it would have re-created defect (b) in
+the assertion meant to catch it. **Recorded rather than faked.**

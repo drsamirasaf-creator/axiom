@@ -174,7 +174,12 @@ def include(app, get_db, require_company_member):
     """⭐ WIRED, and the chain is asserted link by link."""
     from fastapi import APIRouter, Depends
 
-    from .accounts import get_current_user
+    # ⭐⭐ `require_report_read`, NOT `require_company_member`. The showcase must
+    # be readable ANONYMOUSLY or the demonstration reaches nobody: a prospect is
+    # anonymous, and `require_company_member` raises 401 BEFORE the tier gate
+    # can exempt anything. This is the existing carve-out used by the report
+    # surfaces — showcase readable by anyone, every real company unchanged.
+    from .accounts import get_current_user, require_report_read
     from .modules.identity.plans import require_prescience
     _tier = require_prescience(get_current_user)
 
@@ -182,7 +187,7 @@ def include(app, get_db, require_company_member):
 
     @r.get("/companies/{company_id}/prescience-brief")
     def prescience_brief(company_id: int, db=Depends(get_db),
-                         _m=Depends(require_company_member),
+                         _m=Depends(require_report_read),
                          _t=Depends(_tier)):
         """⭐ Assembles from the two Prescience surfaces. No computation."""
         from .multiverse import build as mv_build

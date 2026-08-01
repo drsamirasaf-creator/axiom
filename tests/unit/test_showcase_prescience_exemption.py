@@ -61,67 +61,62 @@ def test_the_predicate_is_TENANT_KEYED():
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _dep():
-    """The gate, with a stub user resolver."""
-    return P.require_prescience(lambda: None)
+    """The gate. ⭐ It takes an Authorization HEADER, not a resolved user: the
+    exemption must run BEFORE any user lookup, or an anonymous prospect is
+    refused before it can apply."""
+    return P.require_prescience()
 
 
-def test_A_BUSINESS_ACCOUNT_ON_A_NON_SHOWCASE_COMPANY_STILL_GETS_402(monkeypatch):
-    """⭐⭐ THE ACCEPTANCE TEST FOR THE WHOLE LANE. An exemption that widens is a
-    tier that does not exist."""
-    from fastapi import HTTPException
-
-    import services.api.accounts as A
-    monkeypatch.setattr(A, "_is_showcase_company", lambda db, cid: False)
-    monkeypatch.setattr("services.api.core.config.require_plan", lambda: True)
-    dep = _dep()
-    with pytest.raises(HTTPException) as e:
-        dep(company_id=999, user=_User("business"))
-    assert e.value.status_code == 402
-    assert e.value.detail["error"] == "prescience_required"
-
-
-def test_a_FREE_account_on_a_non_showcase_company_also_gets_402(monkeypatch):
-    from fastapi import HTTPException
-
-    import services.api.accounts as A
-    monkeypatch.setattr(A, "_is_showcase_company", lambda db, cid: False)
-    monkeypatch.setattr("services.api.core.config.require_plan", lambda: True)
-    with pytest.raises(HTTPException):
-        _dep()(company_id=999, user=_User("free"))
-
-
-def test_a_PRESCIENCE_account_passes_on_any_company(monkeypatch):
-    import services.api.accounts as A
-    monkeypatch.setattr(A, "_is_showcase_company", lambda db, cid: False)
-    monkeypatch.setattr("services.api.core.config.require_plan", lambda: True)
-    u = _User("prescience")
-    assert _dep()(company_id=999, user=u) is u
-
-
-def test_ANY_account_passes_on_the_SHOWCASE(monkeypatch):
-    """⭐ Demonstration, not entitlement."""
+def test_THE_SHOWCASE_ADMITS_AN_ANONYMOUS_CALLER(monkeypatch):
+    """⭐⭐ THE DEFECT THIS LANE'S OWN FIRST VERSION HAD. The gate depended on
+    `get_current_user`, which raises 401 for an anonymous caller, so FastAPI
+    refused the request BEFORE the exemption could run — and all four surfaces
+    returned 401 to exactly the prospect the lane exists for. Measured against
+    the served backend, not assumed.
+    """
     import services.api.accounts as A
     monkeypatch.setattr(A, "_is_showcase_company", lambda db, cid: True)
     monkeypatch.setattr("services.api.core.config.require_plan", lambda: True)
-    for plan in ("free", "business", None):
-        u = _User(plan)
-        assert _dep()(company_id=20, user=u) is u
+    # ⭐ no Authorization header at all
+    assert _dep()(company_id=20, authorization=None) is None
+
+
+def test_A_NON_SHOWCASE_COMPANY_REFUSES_AN_ANONYMOUS_CALLER(monkeypatch):
+    """⭐⭐ THE ACCEPTANCE TEST: an exemption that widens is a tier that does not
+    exist."""
+    from fastapi import HTTPException
+
+    import services.api.accounts as A
+    monkeypatch.setattr(A, "_is_showcase_company", lambda db, cid: False)
+    monkeypatch.setattr("services.api.core.config.require_plan", lambda: True)
+    with pytest.raises(HTTPException) as e:
+        _dep()(company_id=999, authorization=None)
+    assert e.value.status_code == 401
 
 
 def test_EXEMPTING_THE_SHOWCASE_CHANGES_NOTHING_FOR_A_REAL_COMPANY(monkeypatch):
-    """⭐⭐ THE STOP CONDITION, ASSERTED. If exempting anything altered what a
-    non-showcase company receives, this lane had to stop."""
+    """⭐⭐ THE STOP CONDITION, ASSERTED — both branches of the same dependency."""
     from fastapi import HTTPException
 
     import services.api.accounts as A
     monkeypatch.setattr("services.api.core.config.require_plan", lambda: True)
-    for showcase in (True, False):
-        monkeypatch.setattr(A, "_is_showcase_company", lambda db, cid, s=showcase: s)
-        if showcase:
-            assert _dep()(company_id=20, user=_User("business"))
-        else:
-            with pytest.raises(HTTPException):
-                _dep()(company_id=999, user=_User("business"))
+    monkeypatch.setattr(A, "_is_showcase_company", lambda db, cid: True)
+    assert _dep()(company_id=20, authorization=None) is None
+    monkeypatch.setattr(A, "_is_showcase_company", lambda db, cid: False)
+    with pytest.raises(HTTPException):
+        _dep()(company_id=999, authorization=None)
+
+
+def test_THE_TIER_COMPARISON_IS_at_least_NOT_equality():
+    """⭐ The refusal branch itself. ⭐⭐ THE TOKEN PATH IS EXERCISED AGAINST THE
+    DEPLOYED BACKEND, not here: the four surfaces authenticate through
+    `accounts` (`ax_users`) while `plan` lives on `identity` (`users`), and a
+    unit fixture that mints one cannot honestly stand in for the bridge between
+    two auth systems. Recorded rather than faked.
+    """
+    assert P.at_least("prescience", "prescience")
+    assert not P.at_least("business", "prescience")
+    assert not P.at_least(None, "prescience")
 
 
 # ═══════════════════════════════════════════════════════════════════════════

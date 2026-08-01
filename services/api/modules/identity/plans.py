@@ -65,45 +65,53 @@ def highest(*plans):
 # ⭐ AND IT IS NOT A LEAK: Business gets the CONCLUSION, Prescience gets the
 # REASONING you can push on. Same engine, different question.
 
-def require_prescience(get_current_user):
+def require_prescience(get_current_user=None):
     """FastAPI dependency factory — refuses below Prescience with 402.
 
     ⭐ 402 (payment required), not 403: the caller is authenticated and
-    permitted, and the only thing missing is the tier. A 403 would tell them
-    they are not allowed, which is a different and wrong statement.
+    permitted, and the only thing missing is the tier.
 
-    ⭐⭐ THE SHOWCASE IS EXEMPT (ruled 1 Aug). Four Prescience features shipped
-    and NOBODY COULD SEE THEM: prospects are anonymous or Business, the gate is
-    on the ACCOUNT, so the tier's entire content was invisible on the surface
-    built to sell it. ⭐ Meridian is invented data whose job is demonstration.
+    ⭐⭐ THE SHOWCASE IS EXEMPT (ruled 1 Aug), and the exemption is checked
+    BEFORE any user is resolved. The first version depended on
+    `get_current_user`, which raises 401 for an anonymous caller — so FastAPI
+    refused the request before the exemption could run, and ⭐⭐ EVERY ONE OF
+    THE FOUR SURFACES RETURNED 401 TO EXACTLY THE PROSPECT THE LANE EXISTS FOR.
+    Measured against the served backend, not assumed.
 
-    ⭐⭐ SCOPED TO THE SHOWCASE FLAG, NEVER TO A COMPANY ID. `_is_showcase_company`
-    reads `tenant == 'showcase'`; an id list would be a hand-synced list, and
-    this era has found three of those incomplete.
+    ⭐⭐ SCOPED TO THE SHOWCASE FLAG, NEVER TO A COMPANY ID.
     """
-    from fastapi import Depends, HTTPException
+    from fastapi import Header, HTTPException
 
-    def dep(company_id: int, user=Depends(get_current_user), db=None):
-        from ...accounts import _is_showcase_company, get_db
+    def dep(company_id: int, authorization: str = Header(None)):
+        # ⭐⭐ core.db's session: BOTH `enterprises` (the showcase flag) and
+        # `users` (which carries `plan`) live there. My first version read
+        # `accounts.User` — that is `ax_users`, which HAS NO plan COLUMN, so the
+        # gate would have refused every caller including a genuine Prescience
+        # customer. CORE records the two User tables; this is what that costs.
+        from ....api.core.db import SessionLocal as CoreSession
+        from ...accounts import _is_showcase_company
         from ...core.config import require_plan
-        # ⭐ the db is resolved lazily so this factory keeps one signature for
-        # every route regardless of how each one names its session.
-        from ...accounts import SessionLocal
-        own = db is None
-        s = SessionLocal() if own else db
+        from .deps import _session_user
+        s = CoreSession()
         try:
             if _is_showcase_company(s, company_id):
-                return user            # ⭐ demonstration, not entitlement
+                return None            # ⭐ demonstration, not entitlement
+            if not require_plan():
+                return None
+            # ⭐ resolve the caller only once the exemption has not applied —
+            # `_session_user` accepts BOTH auth systems (ADR-007).
+            user, _sess = _session_user(s, authorization)
+            if user is None:
+                raise HTTPException(401, "Missing or invalid session token")
+            if not at_least(getattr(user, "plan", None), "prescience"):
+                raise HTTPException(
+                    402, detail={"error": "prescience_required",
+                                 "message": ("This surface is included in AXIOM "
+                                             "Prescience."),
+                                 "required_plan": "prescience"})
+            return user
         finally:
-            if own:
-                s.close()
-        if require_plan() and not at_least(getattr(user, "plan", None), "prescience"):
-            raise HTTPException(
-                402, detail={"error": "prescience_required",
-                             "message": ("This surface is included in AXIOM "
-                                         "Prescience."),
-                             "required_plan": "prescience"})
-        return user
+            s.close()
     return dep
 
 

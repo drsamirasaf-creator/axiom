@@ -155,7 +155,12 @@ def include(app, get_db, require_company_member):
 
     # ⭐⭐ PRESCIENCE-GATED (§7j.6, ruled 1 Aug). The TAB is gated; the pack's
     # inputs are not — see plans.require_prescience for why.
-    from .accounts import get_current_user
+    # ⭐⭐ `require_report_read`, NOT `require_company_member`. The showcase must
+    # be readable ANONYMOUSLY or the demonstration reaches nobody: a prospect is
+    # anonymous, and `require_company_member` raises 401 BEFORE the tier gate
+    # can exempt anything. This is the existing carve-out used by the report
+    # surfaces — showcase readable by anyone, every real company unchanged.
+    from .accounts import get_current_user, require_report_read
     from .modules.identity.plans import require_prescience
     _tier = require_prescience(get_current_user)
 
@@ -163,7 +168,7 @@ def include(app, get_db, require_company_member):
 
     @r.get("/companies/{company_id}/resilience-field")
     def resilience_field(company_id: int, db=Depends(get_db),
-                         _m=Depends(require_company_member),
+                         _m=Depends(require_report_read),
                    _t=Depends(_tier)):
         """⭐⭐ READS THE STORED VIABILITY ROW. It never recomputes: a surface
         that recomputes on read would drift from the pack that froze it, and the
