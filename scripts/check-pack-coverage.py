@@ -98,28 +98,27 @@ def control():
     that cannot.
     """
     rel = "services/api/sentinel.py"
-    src = os.path.join(ROOT, rel)
-    bak = tempfile.mktemp(suffix=".bak")
-    shutil.copy2(src, bak)
+    # ⭐⭐ PLANTED IN MEMORY. Nothing is copied, written or restored — see
+    # pack_input_scan.OVERRIDES for why the previous form could not be made safe.
+    import pack_input_scan as _pis
+    text = _pis._source(rel)
+    marker = "def compute_viability(db, company_id, use_cache=True):"
+    if marker not in text:
+        return None, "control anchor not found — the control is inert"
+    planted = text.replace(
+        marker,
+        marker + '\n    from .accounts import AssessmentWeight\n'
+                 '    _planted = db.query(AssessmentWeight).first()', 1)
+    _pis.OVERRIDES[rel] = planted
     try:
-        with open(src, encoding="utf-8") as fh:
-            text = fh.read()
-        marker = "def compute_viability(db, company_id, use_cache=True):"
-        if marker not in text:
-            return None, "control anchor not found — the control is inert"
-        planted = text.replace(
-            marker,
-            marker + '\n    from .accounts import AssessmentWeight\n'
-                     '    _planted = db.query(AssessmentWeight).first()', 1)
-        with open(src, "w", encoding="utf-8") as fh:
-            fh.write(planted)
         captured, _ = captured_models()
         read, _ = read_models()
         found = "AssessmentWeight" in gaps(read, captured)
         return found, None
     finally:
-        shutil.copy2(bak, src)
-        os.unlink(bak)
+        # ⭐ popping a dict entry is not a restore — if this never runs, the
+        # process is gone and the override died with it.
+        _pis.OVERRIDES.pop(rel, None)
 
 
 def main():

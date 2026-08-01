@@ -70,7 +70,17 @@ NOT_A_SURFACE = {
 }
 
 
+# ⭐⭐ IN-MEMORY SOURCE OVERRIDES. A control may plant ONLY here. Guards used to
+# copy production source aside, write a modified file and restore it in a
+# `finally` — and ⭐ A `finally` DOES NOT SURVIVE A KILL. Four times a timeout
+# landed between the write and the restore and stranded a live NameError in
+# production source. ⭐ FOUR OCCURRENCES IS A MECHANISM, NOT FOUR ACCIDENTS.
+_OVERRIDES = {}
+
+
 def _parse(rel):
+    if rel in _OVERRIDES:
+        return ast.parse(_OVERRIDES[rel])
     with open(os.path.join(ROOT, rel), encoding="utf-8") as fh:
         return ast.parse(fh.read())
 
@@ -207,36 +217,35 @@ def control():
     if not candidates:
         return None, "no uncarried engine function exists to plant"
     planted_name = sorted(candidates)[0]
-    bak = tempfile.mktemp(suffix=".bak")
-    shutil.copy2(src, bak)
+    with open(src, encoding="utf-8") as fh:
+        text = fh.read()
+    lines = text.splitlines(keepends=True)
+    # find the first router-decorated def and inject a call in its body
+    out, injected = [], False
+    for i, ln in enumerate(lines):
+        out.append(ln)
+        if (not injected and ln.lstrip().startswith("def ")
+                and i > 0 and "@router." in "".join(lines[max(0, i - 4):i])):
+            indent = " " * (len(ln) - len(ln.lstrip()) + 4)
+            # ⭐ A CALL, NOT A NAME REFERENCE. The first version of this control
+            # planted a bare `_planted = fn`; the walker collects ast.Call nodes,
+            # so the plant was invisible and the control reported the guard
+            # inert. The control was wrong, not the guard — and it said so.
+            out.append(f"{indent}_planted = {planted_name}()\n")
+            injected = True
+    if not injected:
+        return None, "no router handler found to plant into"
+    # ⭐⭐ THE PLANT NEVER REACHES DISK. This is the whole fix: the modified
+    # source exists only as a string in this process.
+    _OVERRIDES[rel] = "".join(out)
     try:
-        with open(src, encoding="utf-8") as fh:
-            text = fh.read()
-        lines = text.splitlines(keepends=True)
-        # find the first router-decorated def and inject a call in its body
-        out, injected = [], False
-        for i, ln in enumerate(lines):
-            out.append(ln)
-            if (not injected and ln.lstrip().startswith("def ")
-                    and i > 0 and "@router." in "".join(lines[max(0, i - 4):i])):
-                indent = " " * (len(ln) - len(ln.lstrip()) + 4)
-                # ⭐ A CALL, NOT A NAME REFERENCE. The first version of this
-                # control planted a bare `_planted = fn`; the walker collects
-                # ast.Call nodes, so the plant was invisible and the control
-                # reported the guard inert. The control was wrong, not the guard
-                # — and it said so rather than passing.
-                out.append(f"{indent}_planted = {planted_name}()\n")
-                injected = True
-        if not injected:
-            return None, "no router handler found to plant into"
-        with open(src, "w", encoding="utf-8") as fh:
-            fh.write("".join(out))
         found = planted_name in gaps(app_surfaces(), export_carries())
         return found, (None if found else
                        f"planted {planted_name} was not detected")
     finally:
-        shutil.copy2(bak, src)
-        os.unlink(bak)
+        # ⭐ popping is not a restore — if this never runs the process is gone
+        # and the override went with it. Nothing survives to be committed.
+        _OVERRIDES.pop(rel, None)
 
 
 def main():

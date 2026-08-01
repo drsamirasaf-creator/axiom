@@ -12706,3 +12706,95 @@ FROM COMMITTING THAT EDIT.** Reported after occurrences 1–3 and **not built**;
 this is the fourth. ⭐ **The remedy is not "be careful" — it is to plant in a
 copy**, as `check-comparison-matrix` and `check-prospect-routes` already do.
 **Still awaiting a named lane.**
+
+# ⭐⭐ §III.10 · A CONTROL MAY NOT WRITE TO THE FILESYSTEM — CLASS CLOSED
+
+## ⭐⭐ 1 · THE MECHANISM, NOT FOUR ACCIDENTS
+
+Guards planted a line into **production source** to exercise their own control,
+then removed it in a `finally`. ⭐⭐ **A `finally` DOES NOT SURVIVE A KILL.** Four
+times a 10-minute timeout landed between the write and the restore, stranding a
+live `NameError` in production source and reddening **unrelated** gates.
+
+| # | file left broken |
+|---|---|
+| 1–2 | `services/api/sentinel.py` |
+| 3–4 | `services/api/modules/benchmarks/router.py` — `_planted = allocation_sqrt()` |
+
+⭐ **EACH WAS FOUND BY AN UNRELATED TEST FAILING, NEVER BY LOOKING.** Reported
+after occurrences 1–3 and not built; the fourth forced it.
+
+⭐⭐ **THE REMEDY IS NOT "BE CAREFUL WITH CLEANUP" — IT IS TO NEVER CREATE THE
+THING THAT NEEDS CLEANING.**
+
+## ⭐ 2 · ENUMERATED FROM CODE, AND THE FIRST ENUMERATION WAS WRONG
+
+An AST sweep of all 25 guards returned **6** writers. ⭐ **Two were false
+positives** — `check-assumption-bounds` and `check-db-client` matched
+`str.replace`, not `os.replace`. **Read before believing a scanner, including
+your own.** True writers: **4.**
+
+| guard | wrote | severity |
+|---|---|---|
+| `check-export-coverage` | ⭐⭐ **production source** (copy2 → open(w) → restore) | the leak |
+| `check-pack-coverage` | ⭐⭐ **production source** | the leak |
+| `check-ratio-shapes` | temp dir | strands a directory |
+| `check-assumption-registry` | temp dir | strands a directory |
+
+## ⭐⭐ 3 · THE REQUIRED FORM — IN-MEMORY OVERRIDES
+
+Copied from `check-customer-counts`, which already did it: ⭐ **the core takes a
+SOURCE STRING**, so the control and the live run share one code path.
+
+```python
+OVERRIDES = {}                       # rel -> modified source
+
+def _parse(rel):
+    if rel in OVERRIDES:
+        return ast.parse(OVERRIDES[rel])
+    ...
+```
+
+⭐ **Popping the entry is not a restore.** If the `finally` never runs, the
+process is gone and the override went with it. **Nothing survives to be
+committed.**
+
+## ⭐⭐ 4 · MY OWN CONVERSION SILENTLY BROADENED A CONTROL
+
+`scan(shapes, roots=[], sources=...)` — and `scan` read `(roots or SCAN_ROOTS)`.
+⭐⭐ **AN EMPTY LIST IS FALSEY, so "scan no files" was read as "scan
+everything."** The control found **real occurrences instead of its own plant** —
+a control that cannot fail.
+
+⭐ **The before/after totals were IDENTICAL (14), so the number proved nothing.**
+Only asserting that a *non-matching* shape returns empty exposed it. Fixed to
+`SCAN_ROOTS if roots is None else roots`. ⭐ **A CONVERSION THAT SILENTLY
+DISABLES A CONTROL IS WORSE THAN THE LEAK IT FIXES — the leak was loud, an inert
+control is silent.**
+
+## ⭐ 5 · THE STRUCTURAL PROHIBITION
+
+`tests/unit/test_guard_controls_are_kill_safe.py` — parametrised over **all 25
+guards**, plus a ⭐ **standing orphan sweep** of `services/` on every suite run.
+
+⭐⭐ **KEYED ON BEHAVIOUR VIA AN AST READ, NOT ON THE TOKEN (§III.9).** It matches
+**call nodes whose callee mutates the filesystem** and reads `open()`'s **mode**.
+Its known positive includes the three false positives this era already produced:
+
+| case | must |
+|---|---|
+| copy2 → open(w) → restore | ⭐ **flag** (the exact four-occurrence shape) |
+| mkdtemp + open(w) | ⭐ **flag** |
+| `open(rel)` with no mode | ⭐ **pass** — reading source is how a static check works |
+| ⭐⭐ `urllib.request.urlopen(` | ⭐ **pass** — **this exact ban fired on it once** |
+| `str.replace(...)` | ⭐ **pass** |
+| the in-memory OVERRIDES pattern | ⭐ **pass** |
+
+⭐ **Proven against the REAL pre-conversion guards from git**, not only synthetic
+cases: all four flagged before, all four clean after, and the three that already
+did it right were clean before.
+
+## ⭐ 6 · ORPHAN SWEEP — CLEAN
+
+**No stranded plant anywhere in `services/`**, before or after a full gate loop.
+The fifth nobody noticed does not exist.

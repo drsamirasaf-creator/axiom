@@ -153,12 +153,13 @@ def load():
 
 
 # ── code side ───────────────────────────────────────────────────────────────
-def iter_expressions(path):
+def iter_expressions(path, _src=None):
     """Every arithmetic expression, with `_n(lambda ...)` unwrapped to its body —
     the library's own absence-propagating form must be comparable to a bare one,
     or the wrapped canonical version and an unwrapped duplicate look different."""
     try:
-        tree = ast.parse(open(path, encoding="utf-8").read())
+        tree = ast.parse(_src if _src is not None
+                         else open(path, encoding="utf-8").read())
     except SyntaxError:
         return
     # ⭐ ROOTS ONLY. Walking every BinOp yields SUB-EXPRESSIONS: `nn+dd-cc` is a
@@ -191,10 +192,23 @@ def iter_expressions(path):
             yield n, getattr(n, "lineno", 0)
 
 
-def scan(shapes, roots=None):
-    """shapes: {canonical_form: ratio_id} -> [(ratio_id, path, line)]"""
+def scan(shapes, roots=None, sources=None):
+    """shapes: {canonical_form: ratio_id} -> [(ratio_id, path, line)]
+
+    ⭐ `sources` = {label: source_text}, scanned through the SAME code path as a
+    file. The control passes sources so it never touches the filesystem.
+    """
     hits = []
-    for root in (roots or SCAN_ROOTS):
+    for label, src in (sources or {}).items():
+        for node, line in iter_expressions(label, _src=src):
+            sh = shape_of_expr(node)
+            if sh in shapes:
+                hits.append((shapes[sh], label, line))
+    # ⭐⭐ `roots is None` MEANS DEFAULT; `roots=[]` MEANS NONE. The previous
+    # `(roots or SCAN_ROOTS)` treated an empty list as "unset", so a control
+    # asking for sources-only silently scanned the entire codebase and found
+    # real occurrences instead of its own plant — a control that cannot fail.
+    for root in (SCAN_ROOTS if roots is None else roots):
         for dp, _, fs in os.walk(root):
             if "__pycache__" in dp:
                 continue
@@ -248,25 +262,23 @@ def end_to_end_control(shapes, by_id):
     duplicate is not found is excluded from coverage — a scanner that has never
     fired has not been tested, and its zero would be a floor of zero.
     """
-    import tempfile, shutil
-    d = tempfile.mkdtemp(prefix="ratioctl-")
-    try:
-        for i, (form, rid) in enumerate(shapes.items()):
-            f = " ".join(by_id[rid]["formula"].split())
-            ch = {}
-            f = RAT.sub(lambda m: f"ratio_lib.__chain__{ch.setdefault(m.group(0), len(ch))}()", f)
-            sl = {}
-            f = TOK.sub(lambda m: f"v{sl.setdefault(m.group(0), len(sl))}", f)
-            args = ", ".join(f"v{j}" for j in range(len(sl))) or "_"
-            src = ("import ratio_lib\n"
-                   f"def dup_{i}({args}):\n"
-                   f"    return {f}\n")
-            open(os.path.join(d, f"dup_{i}.py"), "w", encoding="utf-8").write(src)
-        found = {rid for rid, _, _ in scan(shapes, roots=[d])}
-        want = set(shapes.values())
-        return found & want, want - found
-    finally:
-        shutil.rmtree(d, ignore_errors=True)
+    # ⭐⭐ BUILT AS STRINGS, NEVER WRITTEN. The previous form wrote one module
+    # per shape into a temp dir; a kill left the directory behind. Nothing is
+    # written now, so nothing can be stranded.
+    sources = {}
+    for i, (form, rid) in enumerate(shapes.items()):
+        f = " ".join(by_id[rid]["formula"].split())
+        ch = {}
+        f = RAT.sub(lambda m: f"ratio_lib.__chain__{ch.setdefault(m.group(0), len(ch))}()", f)
+        sl = {}
+        f = TOK.sub(lambda m: f"v{sl.setdefault(m.group(0), len(sl))}", f)
+        args = ", ".join(f"v{j}" for j in range(len(sl))) or "_"
+        sources[f"<control-dup-{i}>"] = ("import ratio_lib\n"
+                                         f"def dup_{i}({args}):\n"
+                                         f"    return {f}\n")
+    found = {rid for rid, _, _ in scan(shapes, roots=[], sources=sources)}
+    want = set(shapes.values())
+    return found & want, want - found
 
 
 def main():

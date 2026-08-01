@@ -47,9 +47,34 @@ ENTRY_POINTS = [
 
 
 
+# ⭐⭐ IN-MEMORY SOURCE OVERRIDES — the ONLY way a control may plant.
+#
+# Guards used to plant by COPYING production source aside, WRITING a modified
+# file, and restoring it in a `finally`. ⭐ A `finally` DOES NOT SURVIVE A KILL.
+# Four times a timeout landed between the write and the restore, leaving a live
+# NameError in production source that reddened unrelated gates: sentinel.py
+# twice, benchmarks/router.py twice.
+#
+# ⭐⭐ FOUR OCCURRENCES IS A MECHANISM, NOT FOUR ACCIDENTS. A guard that edits
+# production source to test itself is one interruption away from committing that
+# edit. Nothing is written now, so there is nothing to restore and nothing a kill
+# can strand.
+OVERRIDES = {}
+
+
 def _parse(rel):
+    if rel in OVERRIDES:
+        return ast.parse(OVERRIDES[rel])
     with open(os.path.join(ROOT, rel), encoding="utf-8") as fh:
         return ast.parse(fh.read())
+
+
+def _source(rel):
+    """The text `_parse` would parse — override first, file otherwise."""
+    if rel in OVERRIDES:
+        return OVERRIDES[rel]
+    with open(os.path.join(ROOT, rel), encoding="utf-8") as fh:
+        return fh.read()
 
 
 def _index(rel):

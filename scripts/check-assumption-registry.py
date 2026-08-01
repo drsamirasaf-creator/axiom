@@ -44,10 +44,14 @@ IGNORE_SUFFIX = ("_ROW", "_COL", "_COLS", "_START", "_CAPACITY", "_MAX", "_MIN_L
 IGNORE_EXACT = {"FIRST_COL", "VERSION_MAJOR", "OPENING_COLS", "MAX_HISTORICAL_COLS"}
 
 
-def module_constants(path):
-    """Module-level numeric constants — the shape an assumption takes."""
+def module_constants(path, _src=None):
+    """Module-level numeric constants — the shape an assumption takes.
+
+    ⭐ `_src` lets a caller supply the text instead of a file, so the control
+    runs the SAME code path without writing anything."""
     try:
-        tree = ast.parse(open(os.path.join(ROOT, path), encoding="utf-8").read())
+        tree = ast.parse(_src if _src is not None
+                         else open(os.path.join(ROOT, path), encoding="utf-8").read())
     except (SyntaxError, FileNotFoundError):
         return []
     out = []
@@ -68,6 +72,20 @@ def module_constants(path):
                 isinstance(e, ast.Constant) and isinstance(e.value, (int, float))
                 for e in v.elts):
             out.append((name, tuple(e.value for e in v.elts), n.lineno))
+    return out
+
+
+def _unregistered_in(label, src):
+    """⭐ The same body as `unregistered`, over supplied TEXT. One predicate, two
+    sources — a control that exercises a different function has tested nothing."""
+    have = set()
+    for v in registered_values().values():
+        have.add(tuple(v) if isinstance(v, (list, tuple)) else v)
+    out = []
+    for name, val, ln in module_constants(label, _src=src):
+        key = tuple(val) if isinstance(val, (list, tuple)) else val
+        if key not in have:
+            out.append((ln, name, val))
     return out
 
 
@@ -93,21 +111,13 @@ def unregistered(paths):
 
 def control():
     """⭐ Plant an unregistered constant; the guard must find it."""
-    import tempfile, shutil
-    d = tempfile.mkdtemp(prefix="asmreg-")
-    try:
-        rel = os.path.join(d, "planted.py")
-        open(rel, "w", encoding="utf-8").write(
-            "SOME_NEW_TUNING_CONSTANT = 0.31415926535\n")
-        # scan it directly, same code path
-        saved, globals()["ROOT"] = ROOT, ""
-        try:
-            found = unregistered([rel])
-        finally:
-            globals()["ROOT"] = saved
-        return bool(found)
-    finally:
-        shutil.rmtree(d, ignore_errors=True)
+    # ⭐⭐ PLANTED IN MEMORY, NEVER ON DISK. The previous form wrote the planted
+    # module into a temp dir; a kill left it behind. Nothing is written now.
+    label = "<control-planted>"
+    src = "SOME_NEW_TUNING_CONSTANT = 0.31415926535\n"
+    found = [(label, ln, name, val)
+             for ln, name, val in _unregistered_in(label, src)]
+    return bool(found)
 
 
 def main():
