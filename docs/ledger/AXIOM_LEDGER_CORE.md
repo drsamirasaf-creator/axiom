@@ -854,11 +854,15 @@ zero backend files and `User.plan` cannot hold a Prescience value. ⭐ **This ar
 is BLOCKED, not merely unscheduled** — see *The Free Pilot is the Prescience
 version*. **It is the critical path to the conversion mechanism.**
 
--   Sales motion: super admin creates pilot company (no slot burn) →
-    uploads client data → invites exec participants → reports ready →
-    invites CFO as read-only viewer → Zoom walkthrough → CFO registers +
-    pays via Stripe → transfer consumes his slot → seller drops off
-    completely (no viewer access).
+-   ⭐⭐ **SALES MOTION — SUPERSEDED 1 Aug BY THE TWELVE-STEP JOURNEY (§4z).**
+    Do not read the arrow-chain below as current. It is retained only because
+    the operator lifecycle it names is still the mechanism; ⭐ **the JOURNEY it
+    described was incomplete in two load-bearing places** — it had no assessment
+    step and no first-pack step. **Read §4z.** *(Was: super admin creates pilot
+    company (no slot burn) → uploads client data → invites exec participants →
+    reports ready → invites CFO as read-only viewer → Zoom walkthrough → CFO
+    registers + pays via Stripe → transfer consumes his slot → seller drops off
+    completely (no viewer access).)*
 
 -   Buyer sees the shared showcase sample (Meridian) --- removable via
     existing hide/restore (SampleCompanySection). No per-account seeding
@@ -12903,3 +12907,104 @@ divergence**, so updating was not a resolution. ⭐ **The lint gate was RED ON
 ARRIVAL**: 6 prettier errors in Lovable's `ComparisonMatrix.tsx` rewrite,
 **present at `origin/main` without this lane's changes.** Normalised as
 formatting only — the diff is line-joining and blank lines, no semantic change.
+
+# ⭐⭐ §4z · THE CUSTOMER JOURNEY — TWELVE STEPS. RULED 1 Aug
+
+**This replaces every earlier version.** The prior "Sales motion" arrow-chain in
+the Free Pilot section is **superseded in place** and says so there.
+
+| # | step |
+|---|---|
+| **0** | **Arrive** — the leading question, the brochure, the comparison matrix, a referral |
+| **1** | **View the live demo** — ⭐ **public and unauthenticated** |
+| **2** | **Receive two templates** — financial data and organisational data, with a participant list at **3–5 per department** |
+| **3** | **Submit** the templates and the business planning documents |
+| **4** | ⭐⭐ **THE ASSESSMENT RUNS** — participants respond, the cycle closes |
+| **5** | **Scheduled call** — view results |
+| **6** | **Submit the viewer list** |
+| **7** | **Invited viewers explore their own data** — 30 days, read-only, ⭐ opens logged per person (§4y) |
+| **8** | **Discuss internally, decide** |
+| **9** | **Register and purchase** |
+| **10** | **Activation with support** — pilot data transfers |
+| **11** | **Walkthrough** of ongoing use |
+| **12** | ⭐⭐ **THE FIRST PACK PUBLISHES ON THE 5th** — the CEO releases it to the board and the lender |
+
+## ⭐⭐ 1 · WHY STEP 4 EXISTS — BOTH MISSING STEPS WERE LOAD-BEARING
+
+⭐⭐ **STEP 4'S ELAPSED TIME BELONGS TO THE CLIENT, AND THEIR OBLIGATION IS
+GETTING PEOPLE TO RESPOND.**
+
+Omitting it does two things, and the second is worse:
+
+1. ⭐ **It makes the journey look faster than it is.** Steps 3 → 5 read as
+   consecutive; in reality a cycle must open, run and close in between.
+2. ⭐⭐ **IT HIDES THE DEPENDENCY.** The step AXIOM cannot perform is the one
+   the client must. A journey that conceals which step is theirs sets up the
+   failure to be read as ours when responses do not arrive.
+
+## ⭐⭐ 2 · WHY STEP 12 EXISTS — WHERE AXIOM BECOMES DIFFICULT TO CANCEL
+
+⭐⭐ **NOT THROUGH CLEVERNESS. Because someone OUTSIDE the company now expects
+the pack.**
+
+This is the §7s.3 distribution lock stated as a journey step: **a recipient's
+expectation converts cancellation from an internal decision into a conversation
+the CEO must have with someone they answer to.** ⭐ **The journey ENDS at the
+first release, not at the purchase** — a journey that stops at step 9 describes
+a sale, not a customer.
+
+## ⭐ 3 · STEP 9 IS A FLAT COMPANY PRICE — NEVER "ONE SEAT"
+
+⭐⭐ **A FLAT PRICE PER COMPANY WITH UNLIMITED USERS.** "One seat" contradicts
+the ruled model and **the comparison matrix's strongest row** — the Users row
+sits above pricing precisely because unlimited users is the difference, not cost.
+
+⭐ **MEASURED, so the correction is not aimed at the wrong words:** CORE's
+earlier journey said *"transfer consumes his slot"* — a **company slot**, which
+is correct and is a different quantity from a seat. **The seat wording is
+therefore struck wherever it appears in drafts and commercial copy**, and CORE's
+existing line — *"Unlimited users, one company per workspace, no seat caps"* —
+stands as the model.
+
+## ⭐⭐ 4 · RULED — THE PILOT RUNS ON PRESCIENCE; EITHER TIER MAY BE BOUGHT
+
+| | |
+|---|---|
+| the pilot runs on | ⭐ **Prescience** |
+| the client may purchase | **Business \$4,995/mo** *or* **Prescience \$11,995/mo** |
+| expected outcome | ⭐ **Business** |
+
+## ⭐⭐ 5 · REQUIRED CONSEQUENCE — THE TIER DIFFERENCE IS STATED DURING THE PILOT
+
+⭐⭐ **A CLIENT BUYING BUSINESS LOSES FORWARD-ENGINE SURFACES THEY WERE SHOWN
+FOR 30 DAYS.**
+
+⭐⭐ **STATED UP FRONT THIS IS AN UPSELL; DISCOVERED AFTERWARDS IT IS A BAIT.**
+The same fact, and only the timing decides which. **Not at checkout** — by
+checkout the client has already formed the expectation.
+
+**Prescience-only surfaces must be identifiable AS SUCH in three places:**
+
+| where | why it is not optional |
+|---|---|
+| the **results call** (step 5) | the first time they see the surfaces |
+| the **viewer experience** (step 7) | ⭐ the viewers form the internal view that drives step 8, and they never attend the call |
+| the **pricing page** (step 9) | the moment the two tiers are compared |
+
+⭐ **THE VIEWER SURFACE IS THE ONE MOST EASILY MISSED** and is the one that most
+needs it — a director who spends 30 days in a forward engine the company will
+not be buying is exactly the person who feels the loss as a switch.
+
+⭐ **THIS IS A RECORDED OBLIGATION, NOT YET BUILT.** §4y's viewer surface does
+not currently mark Prescience-only content.
+
+## ⭐ 6 · THE JOURNEY MUST REACH THE BROCHURE AND THE WEBSITE
+
+Per the standing rule that **commercial surfaces are written from CORE**, the
+brochure and the website carry this journey. ⭐ **Every claim remains subject to
+admissibility** — the journey describes **steps the product supports**, and any
+step it does not support yet is not written as though it did.
+
+⭐⭐ **NOT BUILT IN THIS LANE — the dispatch is DO NOT BUILD.** Recorded as the
+obligation; the build is a separate named lane. **Surfaced rather than
+auto-resolved.**
