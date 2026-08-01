@@ -71,13 +71,32 @@ def require_prescience(get_current_user):
     ⭐ 402 (payment required), not 403: the caller is authenticated and
     permitted, and the only thing missing is the tier. A 403 would tell them
     they are not allowed, which is a different and wrong statement.
+
+    ⭐⭐ THE SHOWCASE IS EXEMPT (ruled 1 Aug). Four Prescience features shipped
+    and NOBODY COULD SEE THEM: prospects are anonymous or Business, the gate is
+    on the ACCOUNT, so the tier's entire content was invisible on the surface
+    built to sell it. ⭐ Meridian is invented data whose job is demonstration.
+
+    ⭐⭐ SCOPED TO THE SHOWCASE FLAG, NEVER TO A COMPANY ID. `_is_showcase_company`
+    reads `tenant == 'showcase'`; an id list would be a hand-synced list, and
+    this era has found three of those incomplete.
     """
     from fastapi import Depends, HTTPException
 
-    def dep(user=Depends(get_current_user)):
+    def dep(company_id: int, user=Depends(get_current_user), db=None):
+        from ...accounts import _is_showcase_company, get_db
         from ...core.config import require_plan
-        # ⭐ the same env switch the other plan gates honour, so a dev/sandbox
-        # environment does not become the one place tiering is untested.
+        # ⭐ the db is resolved lazily so this factory keeps one signature for
+        # every route regardless of how each one names its session.
+        from ...accounts import SessionLocal
+        own = db is None
+        s = SessionLocal() if own else db
+        try:
+            if _is_showcase_company(s, company_id):
+                return user            # ⭐ demonstration, not entitlement
+        finally:
+            if own:
+                s.close()
         if require_plan() and not at_least(getattr(user, "plan", None), "prescience"):
             raise HTTPException(
                 402, detail={"error": "prescience_required",
@@ -86,3 +105,18 @@ def require_prescience(get_current_user):
                              "required_plan": "prescience"})
         return user
     return dep
+
+
+def showcase_tier_notice(db, company_id):
+    """The marker an exempted surface carries, or None.
+
+    ⭐⭐ IT STATES THE TIER, NOT THE EXEMPTION. A reader told they are seeing
+    something "because it is a demo" is being told a trick was played; a reader
+    told WHICH TIER INCLUDES IT has learnt the product. ⭐ Same sentence as the
+    viewer surface's mark — defined once in `tier_marks`, never restated.
+    """
+    from ...accounts import _is_showcase_company
+    if not _is_showcase_company(db, company_id):
+        return None
+    from ...tier_marks import MARK
+    return {"note": MARK, "tier": "AXIOM Prescience"}

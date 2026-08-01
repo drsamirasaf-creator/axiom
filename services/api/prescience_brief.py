@@ -203,6 +203,9 @@ def include(app, get_db, require_company_member):
 
         mv = mv_build(fr, tc.metrics if tc else None) if (fr or tc) else None
         rf = from_viability_row(vrow, rays=RAYS) if vrow else None
-        return build(multiverse=mv, resilience=rf, company_id=company_id)
+        out = build(multiverse=mv, resilience=rf, company_id=company_id)
+        from .modules.identity.plans import showcase_tier_notice
+        out["tier_notice"] = showcase_tier_notice(db, company_id)
+        return out
 
     app.include_router(r)

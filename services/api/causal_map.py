@@ -238,6 +238,8 @@ def include(app, get_db, require_company_member):
     from .modules.identity.plans import require_prescience
     _tier = require_prescience(get_current_user)
 
+    from .modules.identity.plans import showcase_tier_notice as _notice
+
     r = APIRouter(tags=["prescience"])
 
     @r.get("/companies/{company_id}/causal-map")
@@ -253,8 +255,12 @@ def include(app, get_db, require_company_member):
                     "counts": {lab: 0 for lab in LABELS},
                     "absent": ("no relationships have been declared for this "
                                "company yet"),
-                    "methods_absent": METHODS_ABSENT}
-        return build(line_links=line_links, other_links=other,
-                     attribution=None, period_start=None)
+                    "methods_absent": METHODS_ABSENT,
+                    "tier_notice": _notice(db, company_id)}
+        out = build(line_links=line_links, other_links=other,
+                    attribution=None, period_start=None)
+        from .modules.identity.plans import showcase_tier_notice
+        out["tier_notice"] = showcase_tier_notice(db, company_id)
+        return out
 
     app.include_router(r)

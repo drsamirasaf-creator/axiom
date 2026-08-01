@@ -183,6 +183,8 @@ def include(app, get_db, require_company_member):
         out = from_viability_row(row, rays=RAYS)
         out["computed_at"] = row.computed_at.isoformat() if row.computed_at else None
         out["dataset_version"] = row.dataset_version
+        from .modules.identity.plans import showcase_tier_notice
+        out["tier_notice"] = showcase_tier_notice(db, company_id)
         return out
 
     app.include_router(r)

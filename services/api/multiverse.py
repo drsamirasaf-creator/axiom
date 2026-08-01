@@ -191,6 +191,10 @@ def include(app, get_db, require_company_member):
         out = build(fr, (tc.metrics if tc else None))
         out["tier"] = (tc.metrics or {}).get("tier") if tc else None
         out["built_at"] = fr.built_at.isoformat() if fr and fr.built_at else None
+        # ⭐ the marker travels with the payload, so it cannot be lost in a
+        # component that forgets to ask for it.
+        from .modules.identity.plans import showcase_tier_notice
+        out["tier_notice"] = showcase_tier_notice(db, company_id)
         return out
 
     app.include_router(r)

@@ -14345,3 +14345,79 @@ Every line links to its surface.
 ⭐⭐ **AND NO NEW ENGINE WAS WRITTEN IN ANY OF THEM** — every item was rendering,
 relabelling or synthesis over computation that already existed, exactly as the
 scope predicted once the Multiverse premise was corrected.
+
+# ⭐⭐ §7j.9 · THE SHOWCASE DEMONSTRATES PRESCIENCE, EXPLICITLY MARKED. 1 Aug
+
+## ⭐⭐ 1 · WHY — FOUR FEATURES SHIPPED AND NOBODY COULD SEE THEM
+
+⭐ **Prospects are anonymous or Business. The gate is on the ACCOUNT, not the
+company.** So the tier's entire content was **invisible on the surface built to
+sell it**, on the same day it shipped.
+
+⭐ **Meridian is invented data whose job is demonstration.**
+
+## ⭐ 2 · THE EXEMPTION — SCOPED TO THE FLAG, NEVER TO AN ID
+
+`_is_showcase_company` reads **`tenant == 'showcase'`**. ⭐⭐ **AN ID LIST WOULD
+BE A HAND-SYNCED LIST, AND THIS ERA HAS FOUND THREE OF THOSE INCOMPLETE.**
+Asserted by AST that the exemption compares `company_id` to no literal and to no
+collection.
+
+**Measured in production:** company **20 → exempt**; **25, 38, 39 → not**.
+⭐ Exactly one company, and a standing guard already asserts that.
+
+## ⭐⭐ 3 · IT DOES NOT LEAK — THE ACCEPTANCE TEST
+
+| caller | company | result |
+|---|---|---|
+| **Business** | **non-showcase** | ⭐⭐ **402 `prescience_required`** |
+| free | non-showcase | 402 |
+| **Prescience** | any | passes |
+| free / Business / no plan | **showcase** | ⭐ **passes — demonstration, not entitlement** |
+
+⭐⭐ **AN EXEMPTION THAT WIDENS IS A TIER THAT DOES NOT EXIST**, and a test drives
+both branches of the same dependency to prove exempting the showcase **changes
+nothing for a real company** — the lane's stop condition, asserted rather than
+assumed.
+
+## ⭐⭐ 4 · THE MARKER STATES THE TIER, NOT THE EXEMPTION
+
+> *"This surface is included in AXIOM Prescience and not in AXIOM Business."*
+
+⭐⭐ **A READER TOLD THEY ARE SEEING SOMETHING "BECAUSE IT IS A DEMO" IS BEING
+TOLD A TRICK WAS PLAYED. A READER TOLD WHICH TIER INCLUDES IT HAS LEARNT THE
+PRODUCT.** Asserted that the words *demo*, *showcase*, *sample*, *exempt* and
+*because* **never appear** in it.
+
+⭐ **No upgrade prompt, no price** — asserted on both the payload and the render.
+**A demo interrupted by sales copy reads as a pitch rather than a product.**
+
+⭐ **The same sentence as the viewer surface**, imported from `tier_marks`, never
+restated — two surfaces explaining the same tier differently is worse than one
+that is silent.
+
+## ⭐ 5 · COVERAGE — ALL FOUR, INCLUDING THE ABSENT BRANCH
+
+| surface | marked |
+|---|---|
+| Multiverse tab · Resilience Field · Causal Map · Prescience Brief | ⭐ **all four**, payload and render |
+
+⭐ **The marker travels IN THE PAYLOAD**, so a component that forgets to ask
+cannot lose it, and ⭐ **the absent branch carries it too** — otherwise the marker
+would appear and disappear with the data.
+
+⭐ **Every surface is still GATED as well as marked**: the exemption sits
+**inside** the gate, not instead of it.
+
+⭐ **Nothing renders unmarked.** `tier_marks.built()` still measures four of five
+and marks `radar_sentinel` alone for the *pack*; ⭐ **that is a different
+mechanism** — this lane marks the four Prescience SURFACES, which `built()` never
+covered.
+
+## ⭐⭐ 6 · `mark_pack` KEEPS ITS SINGLE CALL SITE
+
+Re-asserted this lane. ⭐ `sentinel_state` is a pack input **Business receives**;
+widening that call would tell a paying Business customer that **a section of
+their own pack is not included in what they bought.** ⭐ **The pack is unchanged
+by this lane** — asserted for `tier_notice`, `showcase_tier_notice` and
+`require_prescience`.
