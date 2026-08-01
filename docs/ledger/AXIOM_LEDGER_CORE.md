@@ -13946,3 +13946,90 @@ reached must not be stated as the limit. **Second surface, same trap.**
 ⭐ **Spread: downside 6,057.65.** Search: 261 trajectories at λ=0.5, current
 strategy at the **1.1st percentile**. ⭐ **Ambiguity: CENSORED** — the valuation
 did not break across the tested range. **0 absent.**
+
+# ⭐⭐ §7.15p · THE DASHBOARD 404 — THE BACKEND WAS RIGHT AND THE ERROR WAS WRONG
+
+**Observed 1 Aug, admin on Meridian:**
+`Request failed · /api/v1/metrics/dashboard/45 · 404 — .../dashboard/20`.
+⭐ **Two different ids in one error, neither labelled.**
+
+## ⭐⭐ 1 · THE MECHANISM
+
+| measured | |
+|---|---|
+| the endpoint takes | ⭐ **`{dataset_id}`** |
+| `/dashboard/45` in production | ⭐ **200, Meridian's real data** (revenue 1380.0) |
+| `/dashboard/20` in production | **404 — and correct: dataset 20 does not exist** |
+| **20 is** | ⭐ **Meridian's COMPANY id** |
+
+⭐⭐ **THE BACKEND IS CORRECT AND SO IS THE CALLER.** The URL has read
+`${datasetId}` since **14 July (`12eaebf`)**, **79 commits ago**.
+
+### ⭐⭐ HOW ONE MESSAGE SHOWED BOTH NUMBERS — THIS IS THE REAL DEFECT
+
+`ErrorCard` renders **two things**: a `url` PROP, then the error's message.
+
+- the **prop** is evaluated at **RENDER** time → the id the page has **since
+  settled on** (45)
+- the **message** was baked at **REQUEST** time → the id that **actually 404'd** (20)
+
+⭐⭐ **`ApiError` CARRIED THE FAILED URL ONLY INSIDE ITS MESSAGE STRING**, so
+every renderer had to supply its own — and a component that re-renders supplies
+the current one. **A self-contradicting error costs the diagnosis it exists to
+give**, and it cost this one.
+
+⭐ **AND THE EFFECT HAD NO CANCELLATION GUARD.** A fetch for an earlier id can
+404 **after** a later fetch succeeds, and its failure overwrites the good render —
+leaving a permanent error card on a page whose data loaded. ⭐ **The file's FIRST
+effect always had that guard; this one did not.**
+
+## ⭐ 2 · NOT A REGRESSION — BOTH SUSPECTS CLEARED
+
+⭐ **Measured, not assumed.** Neither the **is_active restore (`4443808`)** nor
+the **ownership reconciliation** introduced it. The caller predates both by
+weeks. ⭐ **Two hypotheses this week were wrong; this one was checked before
+being believed.**
+
+## ⭐⭐ 3 · WHY NOTHING CAUGHT IT — THE GATE EXISTS AND HAS NEVER RUN
+
+`auth-regression` **visits `/dashboard`**, records **every non-OK backend call**,
+and greps the body for **"404"**. ⭐ **It would have caught this.**
+
+⭐⭐ **IT HAS RUN EXACTLY ONCE, EVER — this morning, on schedule, and it FAILED
+IN 14 SECONDS.** `gh secret list` is **empty**: `AXIOM_CRAWL_BASE_URL`,
+`AXIOM_CRAWL_EMAIL` and `AXIOM_CRAWL_PASSWORD` were never configured, so it
+exited by design.
+
+⭐ **THE GUARD WAS CORRECT, WIRED, SCHEDULED — AND HAS NEVER CRAWLED ANYTHING.**
+A gate that has never executed is indistinguishable from one that does not exist,
+and this is the second time that sentence has been written about this crawler.
+
+## ⭐⭐ 4 · THE SWEEP — AND THE DANGEROUS CASE IS REAL
+
+**110 single-parameter id endpoints: 88 take `company_id`, 22 take
+`dataset_id`.** ⭐ The asymmetry is the hazard — a caller reaching for *"the id"*
+is usually right with a company id, so the dataset minority is what habit gets
+wrong.
+
+⭐⭐ **IDS THAT EXIST AS BOTH A DATASET AND AN ENTERPRISE, MEASURED TODAY:
+`[4, 5, 8, 38, 39]`.**
+
+⭐⭐ **A 404 IS THE LOUD CASE. FOR THOSE FIVE, THE SAME MISTAKE RETURNS ANOTHER
+COMPANY'S ROW WITH HTTP 200 AND NOTHING LOOKS WRONG.** ⭐ Meridian's company id
+20 is **not** a dataset id, which is the only reason this announced itself.
+
+⭐ **AND THE RECORDED LIST WAS ALREADY STALE.** `active-company.ts` documents the
+collision as *"4, 5, 8, 21 and 38"*; **21 is gone and 39 is new.** A hand-kept
+list of colliding ids drifts exactly as any other hand-kept list does.
+
+⭐ **Every endpoint names its kind** — no bare `{id}` survives, asserted. That is
+why this was diagnosable at all.
+
+## ⭐ 5 · THE FIX — AT THE MECHANISM
+
+1. ⭐ **`ApiError` carries `url`** — the request it actually made.
+2. ⭐⭐ **`ErrorCard` prefers the error's own URL over the prop.** The error knows
+   what it asked for; the prop is a fallback.
+3. ⭐ **The dashboard effect cancels**, so a superseded request cannot set state.
+
+**No guard was placed around the symptom, and no id was coerced.**
