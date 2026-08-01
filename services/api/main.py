@@ -301,6 +301,10 @@ _assumptions.include(app, _get_db, _require_admin)
 # ⭐ MEMBER-gated per §4u-b — the department's own manager is the reader.
 _voe.include(app, _get_db, require_company_member)
 
+# The comparison matrix — served so the page and the guard read ONE table.
+from . import comparison_matrix as _cmatrix  # noqa: E402
+_cmatrix.include(app)
+
 # B12 — client-declared initiative impact. Admin-gated like B16: a declared
 # commitment is a company-level statement, not a departmental one.
 from . import initiative_impact as _iimpact  # noqa: E402
