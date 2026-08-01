@@ -9452,26 +9452,18 @@ def _norm_seniority(v):
 # Base plan caps per cycle. There is NO stored plan/tier today (entitlements today are
 # ONLY Account.company_slots — company licenses); this maps price_id → assessor cap and
 # defaults to Business. Overage seats (Account.assessor_overage) add on top.
-ASSESSOR_PLAN_CAPS = {"business": 50, "prescience": 150}
-ASSESSOR_CAP_DEFAULT = 50               # Business, and the showcase/no-account fallback
-ASSESSOR_OVERAGE_BLOCK = 50             # seats per overage unit
-ASSESSOR_OVERAGE_PRICE = 495           # USD per block per cycle (§4d)
+# ⭐⭐ THE ASSESSOR CAP CONSTANTS ARE RETIRED (§5a, 1 Aug). Struck:
+#   ASSESSOR_PLAN_CAPS = {"business": 50, "prescience": 150}
+#   ASSESSOR_CAP_DEFAULT = 50 · ASSESSOR_OVERAGE_BLOCK = 50
+#   ASSESSOR_OVERAGE_PRICE = 495
+# ⭐ UNLIMITED USERS, BOTH TIERS. An overage price is a cap wearing a different
+# name, so the price goes with the cap rather than outliving it.
 
 
 def _company_account(db, company_id):
     """Resolve a company → its paying Account (via CompanyAccess), or None (showcase/demo)."""
     ca = db.query(CompanyAccess).filter_by(company_id=company_id).first()
     return db.get(Account, ca.account_id) if ca else None
-
-
-def _assessor_cap(db, company_id):
-    """Effective assessor cap for a company this cycle = base plan cap + purchased overage.
-    Read from the Account (default Business 50 when no account is attached)."""
-    acct = _company_account(db, company_id)
-    if acct is None:
-        return ASSESSOR_CAP_DEFAULT
-    base = acct.assessor_cap or ASSESSOR_CAP_DEFAULT
-    return base + (acct.assessor_overage or 0)
 
 
 def _assessor_seats_used(db, company_id, cycle_id):
@@ -9493,27 +9485,16 @@ def _assessor_seats_used(db, company_id, cycle_id):
     return len(emails)
 
 
-def _seat_status(db, company_id, cycle_id):
-    """{cap, used, remaining, at_cap, overage_price, overage_block} for the live counter."""
-    cap = _assessor_cap(db, company_id)
-    used = _assessor_seats_used(db, company_id, cycle_id)
-    remaining = max(0, cap - used)
-    return {"cap": cap, "used": used, "remaining": remaining, "at_cap": used >= cap,
-            "overage_block": ASSESSOR_OVERAGE_BLOCK, "overage_price": ASSESSOR_OVERAGE_PRICE}
-
-
-def _enforce_seat_cap(db, company_id, cycle_id):
-    """Block an assessor invite when the cycle is at cap. 402 (payment required) with a
-    human message + the overage terms so the client can open the 'Add assessors' door."""
-    st = _seat_status(db, company_id, cycle_id)
-    if st["at_cap"]:
-        raise HTTPException(402, detail={
-            "error": "assessor_cap_reached",
-            "message": (f"You've used all {st['cap']} assessor invitations for this cycle. "
-                        f"Add more assessors at ${ASSESSOR_OVERAGE_PRICE} per "
-                        f"{ASSESSOR_OVERAGE_BLOCK} assessors per cycle."),
-            **st})
-    return st
+# ⭐⭐ `_enforce_seat_cap` IS REMOVED — SEAT CAPS ARE STRUCK ENTIRELY (§5a, 1 Aug).
+#
+# It raised HTTP 402 `assessor_cap_reached` from the two assessor-invite paths
+# and was the live refusal the ruling ends. ⭐ UNLIMITED USERS, BOTH TIERS: no
+# cap on members, on assessment participants per cycle, or on viewers — and
+# therefore no overage, because AN OVERAGE PRICE IS A CAP WEARING A DIFFERENT
+# NAME.
+#
+# ⭐ Deleted rather than left behind a flag. A disabled gate is a gate someone
+# re-enables; `check-no-seat-caps.py` now fails the build if either shape returns.
 
 
 class ScoreIn(BaseModel):
@@ -11046,7 +11027,6 @@ def invite_participant(company_id: int, cid: int, body: AssessInviteIn,
              .filter_by(cycle_id=cid, email=email).first())
     if dup:
         raise HTTPException(409, "This person is already invited to this cycle.")
-    _enforce_seat_cap(db, company_id, cid)          # §4d assessor cap (per cycle)
     company_name = _company_name(db, company_id)
     dept = (body.department or "").strip() or None
     sen = _norm_seniority(body.seniority)
@@ -11065,8 +11045,7 @@ def invite_participant(company_id: int, cid: int, body: AssessInviteIn,
     sent = _send_assess_invite_all(inv, company_name, cyc.anonymity_mode, token=token)
     return {"ok": True, "cycle_id": cid, "invite_id": inv.id, "email": email,
             "email_sent": sent["primary"], "email_sent_alt": sent["alt"],
-            "anonymity_mode": cyc.anonymity_mode, "expires_in_days": 30,
-            "seats": _seat_status(db, company_id, cid)}
+            "anonymity_mode": cyc.anonymity_mode, "expires_in_days": 30}
 
 
 @router.post("/companies/{company_id}/assessment/invites", status_code=201)
@@ -11077,7 +11056,6 @@ def invite_assessor(company_id: int, body: AssessInviteIn,
     invite never orphans (lifecycle-gap fix). Otherwise identical to the
     cid-scoped invite. Reports whether a cycle was auto-opened."""
     cyc, opened = _ensure_open_cycle(db, company_id, user.id, depth=body.depth or "standard")
-    _enforce_seat_cap(db, company_id, cyc.id)       # §4d assessor cap (per cycle)
     email = str(body.email).strip().lower()
     name = (body.name or "").strip()
     dept = (body.department or "").strip() or None
@@ -11101,8 +11079,7 @@ def invite_assessor(company_id: int, body: AssessInviteIn,
     return {"ok": True, "cycle_id": cyc.id, "cycle_auto_opened": opened,
             "invite_id": inv.id, "email": email, "email_sent": sent["primary"],
             "email_sent_alt": sent["alt"],
-            "anonymity_mode": cyc.anonymity_mode, "expires_in_days": 30,
-            "seats": _seat_status(db, company_id, cyc.id)}
+            "anonymity_mode": cyc.anonymity_mode, "expires_in_days": 30}
 
 
 def _get_company_assess_invite(db, company_id, invite_id):
@@ -11359,10 +11336,6 @@ def company_roster(company_id: int, department: int | None = None,
     # Seat accounting: revoked invites do NOT consume a seat (excluded from cap counts).
     # §4d live counter is per-cycle — report against the current open cycle (the one an
     # assessor invite would land in / auto-open), else the newest cycle.
-    _open = _current_open_cycle(db, company_id)
-    _seat_cycle = _open or (max(cyc_by_id.values(), key=lambda c: c.id) if cyc_by_id else None)
-    seats = _seat_status(db, company_id, _seat_cycle.id if _seat_cycle else None)
-    seats["cycle_id"] = _seat_cycle.id if _seat_cycle else None
     # ?department=<id> filters ALIAS-AWARE. AssessmentInvite.department is the
     # department NAME as typed when the person was invited, so after a rename the
     # current name no longer equals its own assessors — Meridian's three Finance
@@ -11375,7 +11348,7 @@ def company_roster(company_id: int, department: int | None = None,
             raise HTTPException(404, "department not found")
         norms = _dept_variant_norms(db, company_id, dep)
         people = [p for p in people if _norm_dept_name(p.get("department") or "") in norms]
-    return {"company_id": company_id, "people": people, "seats": seats,
+    return {"company_id": company_id, "people": people,
             "counts": {"viewers": sum(1 for p in people if p["source"] == "viewer"),
                        "assessors": sum(1 for p in people
                                         if p["source"] == "assessor" and not p["revoked"]),
@@ -11384,55 +11357,12 @@ def company_roster(company_id: int, department: int | None = None,
                        "cycles": sorted({p["cycle_id"] for p in people if p["cycle_id"]})}}
 
 
-@router.get("/companies/{company_id}/assessment/seats")
-def assessment_seats(company_id: int, member=Depends(require_company_admin), db=Depends(get_db)):
-    """§4d live assessor-seat counter for the cycle an invite would land in (the open
-    cycle, else the newest). {cap, used, remaining, at_cap, overage_block, overage_price}.
-    ENTITLEMENT SOURCE: base cap from the company's Account (plan → 50 Business /
-    150 Prescience; no account → Business 50), plus Account.assessor_overage."""
-    open_cyc = _current_open_cycle(db, company_id)
-    if open_cyc is None:
-        # Seat counting asks "which cycle is current", not "which has results".
-        cyc = newest_cycle_regardless_of_results(db, company_id)
-    else:
-        cyc = open_cyc
-    st = _seat_status(db, company_id, cyc.id if cyc else None)
-    st["cycle_id"] = cyc.id if cyc else None
-    acct = _company_account(db, company_id)
-    st["has_account"] = acct is not None
-    return st
-
-
-class AssessorSeatQuoteIn(BaseModel):
-    additional: int = ASSESSOR_OVERAGE_BLOCK   # seats requested (rounded up to whole blocks)
-
-
-@router.post("/companies/{company_id}/assessment/seats/quote", status_code=201)
-def request_assessor_seats(company_id: int, body: AssessorSeatQuoteIn,
-                           member=Depends(require_company_admin),
-                           user: User = Depends(get_current_user), db=Depends(get_db)):
-    """§4d 'Add assessors' door — a CHECKOUT STUB, not a charge. Real Stripe billing
-    lands in Commercial Architecture; here we record the intent (audit) and return a
-    quote (blocks × $495/50/cycle) + the contact address so the client can render the
-    contact/quote dialog. Never mutates entitlement — seats are unchanged until a real
-    purchase settles."""
-    want = max(1, int(body.additional or ASSESSOR_OVERAGE_BLOCK))
-    blocks = -(-want // ASSESSOR_OVERAGE_BLOCK)                  # ceil to whole blocks
-    seats = blocks * ASSESSOR_OVERAGE_BLOCK
-    price = blocks * ASSESSOR_OVERAGE_PRICE
-    audit(db, user.id, "assessor_seats_quote_requested", "company", company_id,
-          detail=f"requested +{want} → {seats} seats ({blocks} block(s)), ${price}/cycle")
-    db.commit()
-    return {"ok": True, "stub": True, "requested": want, "blocks": blocks,
-            "additional_seats": seats, "price_usd": price, "period": "per cycle",
-            "unit": f"${ASSESSOR_OVERAGE_PRICE} per {ASSESSOR_OVERAGE_BLOCK} assessors per cycle",
-            "contact_email": SUPPORT,
-            "message": (f"Request received. Adding {seats} assessor seats is "
-                        f"${price} for this cycle. Our team will confirm and enable them — "
-                        f"in-app purchase is coming with billing. Questions? {SUPPORT}")}
-
-
-# ====================================================================
+# ⭐⭐ `GET /assessment/seats` AND `POST /assessment/seats/quote` ARE REMOVED
+# (§5a). The first served the cap counter; the second was the "Add assessors"
+# overage door — a checkout stub quoting $495 per 50 assessors per cycle.
+# ⭐ Both are cap surfaces. With no cap there is nothing to count against and
+# nothing to sell, and leaving the door would keep selling relief from a limit
+# that no longer exists.# ====================================================================
 # Participant List bulk upload — template · preview · commit · invite
 # ====================================================================
 def _company_department_names(db, company_id):
@@ -11596,9 +11526,7 @@ async def participant_commit(company_id: int, resolve: str = "keep",
     return {"ok": True, "created": created, "updated": updated, "kept": kept,
             "flagged_absent": flagged, "unresolved_collisions": unresolved,
             "skipped_error_rows": parsed.get("errors", []),
-            "counts": parsed.get("counts", {}),
-            "seats": _seat_status(db, company_id,
-                                  (lambda c: c.id if c else None)(_current_open_cycle(db, company_id)))}
+            "counts": parsed.get("counts", {})}
 
 
 @router.get("/companies/{company_id}/my-capabilities")
@@ -11705,8 +11633,7 @@ def invite_participants(company_id: int, body: ParticipantInviteIn,
           detail=f"{len(invited)} invited, {len(skipped)} skipped")
     db.commit()
     return {"ok": True, "invited": invited, "invited_count": len(invited),
-            "skipped": skipped,
-            "seats": _seat_status(db, company_id, cyc.id if cyc else None)}
+            "skipped": skipped}
 
 
 def _l1_maps(db, framework_id):
@@ -13048,10 +12975,17 @@ async def stripe_webhook(request: Request, db=Depends(get_db)):
             return {"ok": True, "ignored": "duplicate delivery"}
         meta = obj.get("metadata") or {}
         slots = int(meta.get("company_slots", 1))
-        # §4d assessor entitlement (forward-compatible): a plan-tier line sets the base
-        # cap (business 50 / prescience 150); an overage line adds seats (+50/$495/cycle).
-        plan_cap = ASSESSOR_PLAN_CAPS.get(str(meta.get("assessor_plan", "")).lower())
-        overage_seats = int(meta.get("assessor_overage", 0) or 0)
+        # ⭐⭐ THE PURCHASE FLOW NO LONGER PROVISIONS A CAP (§5a, 1 Aug). It used
+        # to read a plan-tier line into `assessor_cap` and add overage seats.
+        # ⭐ UNLIMITED USERS, BOTH TIERS — a purchase buys the tier's CAPABILITY,
+        # never a headcount, so there is no entitlement number to write.
+        #
+        # ⭐ `assessor_cap` and `assessor_overage` REMAIN AS COLUMNS and are left
+        # exactly as they stand. Measured 1 Aug: every account holds cap=50
+        # (the old default) and overage=0, so NOTHING WAS EVER CHARGED FOR
+        # OVERAGE and there is no provenance to destroy — but a column that
+        # records what a customer was provisioned is not dropped on the strength
+        # of today's rows being clean.
         customer = obj.get("customer")
         account = db.query(Account).filter_by(owner_user_id=int(user_id)).first()
         if account:  # additional license purchase on an existing account
@@ -13059,10 +12993,6 @@ async def stripe_webhook(request: Request, db=Depends(get_db)):
             account.stripe_subscription_id = obj.get("subscription") \
                 or account.stripe_subscription_id
             account.company_slots += slots
-            if plan_cap is not None:
-                account.assessor_cap = plan_cap
-            if overage_seats:
-                account.assessor_overage = (account.assessor_overage or 0) + overage_seats
             account.status = "active"
             if event.get("livemode") is not None:
                 account.livemode = bool(event["livemode"])
@@ -13071,9 +13001,10 @@ async def stripe_webhook(request: Request, db=Depends(get_db)):
             account = Account(owner_user_id=int(user_id),
                               stripe_customer_id=customer,
                               stripe_subscription_id=obj.get("subscription"),
-                              company_slots=slots, status="active",
-                              assessor_cap=(plan_cap or ASSESSOR_CAP_DEFAULT),
-                              assessor_overage=overage_seats)
+                              # ⭐ `company_slots` STANDS — one company per
+                              # workspace is still the model, and a company slot
+                              # is not a user seat. Only the ASSESSOR cap went.
+                              company_slots=slots, status="active")
             # ⭐⭐ G13 — the mode the EVENT carried. NULL stays NULL when absent.
             if event.get("livemode") is not None:
                 account.livemode = bool(event["livemode"])

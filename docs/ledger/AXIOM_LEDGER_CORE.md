@@ -13265,3 +13265,111 @@ concludes the dots were never justified. ⭐⭐ **AN ABSENCE THAT DECLARES ITSEL
 KEEPS THE TABLE HONEST AT THE SIZE IT CANNOT BE COMPLETE.**
 
 **Not built in this lane** — the dispatch is DO NOT BUILD.
+
+# ⭐⭐ §5a.1 · SEAT CAPS REMOVED — BUILT 1 Aug
+
+The §5a strike, executed. ⭐ **The caps were LIVE and refusing invites until this
+lane.**
+
+## ⭐⭐ 1 · THE ACCEPTANCE TEST — 53 INVITES, NO REFUSAL
+
+The old ceiling was **50 assessors per cycle**; the 51st raised **HTTP 402
+`assessor_cap_reached`**. Driven through the **real endpoint**, 53 invites now
+succeed. ⭐ The fixture leaves `assessor_cap = 50` on the account **on purpose** —
+if enforcement were reachable by any remaining path, that row would trip it.
+
+## ⭐ 2 · WHAT WAS REMOVED
+
+| | |
+|---|---|
+| `_enforce_seat_cap` | the 402, and **both** invite call sites |
+| `_seat_status`, `_assessor_cap` | the counter machinery |
+| 4 constants | `ASSESSOR_PLAN_CAPS`, `ASSESSOR_CAP_DEFAULT`, `ASSESSOR_OVERAGE_BLOCK`, `ASSESSOR_OVERAGE_PRICE` |
+| `GET /assessment/seats` | the counter route |
+| `POST /assessment/seats/quote` | ⭐⭐ **the overage door** — a checkout stub quoting **\$495 per 50 assessors per cycle** |
+| 5 `"seats"` payload keys | on invite, bulk-invite and roster responses |
+| the Stripe webhook branch | ⭐ **the purchase flow no longer provisions a cap** |
+
+⭐ **Deleted, not flagged off.** A disabled gate is a gate someone re-enables.
+
+## ⭐⭐ 3 · EXISTING ROWS AND REAL PAYMENT — MEASURED BEFORE TOUCHING
+
+**4 accounts in production:**
+
+| | |
+|---|---|
+| `assessor_cap` ≠ 50 (the old default) | ⭐ **0 rows** |
+| `assessor_overage` > 0 | ⭐⭐ **0 rows** |
+| `livemode = True` | ⭐ **0 accounts** |
+
+⭐⭐ **NOTHING WAS EVER CHARGED FOR OVERAGE.** No row carries provenance of a
+purchase beyond the default, so there is nothing to preserve and nothing was
+destroyed.
+
+### ⭐ THE COLUMNS ARE RETAINED — `assessor_cap`, `assessor_overage`
+
+⭐⭐ **A COLUMN RECORDING WHAT A CUSTOMER WAS PROVISIONED IS NOT DROPPED ON THE
+STRENGTH OF TODAY'S ROWS BEING CLEAN.** Dropping it destroys the ability to
+answer the question later, and the answer is cheap to keep. **Left exactly as
+they stand; nothing written, nothing backfilled.**
+
+### ⭐ A DISCREPANCY AGAINST G13's RECORDED BASELINE
+
+⭐⭐ **`livemode` IS `NULL` ON ALL FOUR ACCOUNTS, INCLUDING THREE THAT CARRY A
+STRIPE SUBSCRIPTION.** CORE's G13 entry records *"0 live-mode paying, 4
+test-mode, 0 unresolved."* **The column today holds four unresolved, not four
+test-mode.** ⭐ It does not change this lane's answer — overage is 0 everywhere
+regardless — but **the baseline and the column disagree** and that is recorded
+rather than smoothed over.
+
+## ⭐ 4 · THE CUSTOMER-FACING SURFACES
+
+Removed from `stakeholder-engagement.tsx`: the **"N of M remaining"** counter,
+the **at-cap message**, and the **"Add assessors" door** with its \$495 copy.
+`AboutBar.tsx` now reads *"a flat per-company subscription with unlimited
+users"*.
+
+⭐⭐ **THESE CONTRADICTED THE COMPARISON MATRIX'S STRONGEST ROW ON THE SAME
+PRODUCT** — one surface sold relief from a limit the other advertised not having.
+
+## ⭐⭐ 5 · THE GUARD — 27th GATE, AND IT CATCHES BOTH SHAPES
+
+`scripts/check-no-seat-caps.py`.
+
+⭐⭐ **AN OVERAGE PRICE IS A CAP WEARING A DIFFERENT NAME**, so watching only for
+refusals would miss the shape that **sells** the limit instead of enforcing it:
+
+| shape | what it catches |
+|---|---|
+| **enforcement** | a retired constant redefined · the enforcer returning · a cap written to `.assessor_cap`/`.assessor_overage` · an `Account` constructed with one |
+| **monetisation** | a price literal attached to a **head or block** — *"$495 per 50 assessors per cycle"*, *"$100/mo per additional member"* |
+
+⭐ **AST, not tokens (§III.9).** Its control asserts the three that must **NOT**
+fire: ⭐ **a docstring recording the strike**, `company_slots`, and ⭐ **the flat
+\$4,995 / company price — the ruled model, not a cap.**
+
+⭐ **Proven against the PRE-LANE file from git: 11 offences before, 0 after.**
+
+## ⭐⭐ 6 · `company_slots` STANDS — THE SWEEP IS NOT OVER-BROAD
+
+⭐ **One company per workspace is still the model, and a company slot is NOT a
+user seat.** Its own 402 remains. Asserted, and the guard **fails if
+`company_slots` or `_slots_used` disappears** — ⭐ **a sweep that removes an
+adjacent quantity because it shares a word is the substring error with a bigger
+blast radius.**
+
+## ⭐⭐ 7 · MY ACCEPTANCE TEST NEARLY PASSED WHILE PROVING NOTHING — TWICE
+
+1. It posted to `/assessment/invite`; the route is `/assessment/invites`. **All
+   53 returned 404.**
+2. Then it used `@nocap.test`; ⭐ **`.test` is a reserved TLD the email validator
+   422s.** All 53 refused again.
+
+⭐⭐ **BOTH TIMES "NO 402s" WAS TRUE AND THE CAP-REMOVAL CLAIM WOULD HAVE BEEN
+UNSUPPORTED.** Only the coverage assertion — *successes must exceed the old
+ceiling* — caught it, both times.
+
+⭐⭐ **A TEST THAT COUNTS REFUSALS MUST ALSO COUNT SUCCESSES**, or an unrelated
+failure reads as proof the refusal is gone. This is III.4 on an acceptance test
+rather than a scanner, and it is the reason the assertion was written that way
+before it was needed.
