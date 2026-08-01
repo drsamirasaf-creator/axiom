@@ -13861,3 +13861,88 @@ HAS NO SUCH DRIVER.** Isolated nodes are listed with a stated reason; a company
 with no declared links returns `has_data: false` and says so. **Coverage is on
 the surface** — *"0 causal-evidence in 82 edges"* and *"0 in 0"* print the same
 tick (III.4).
+
+# ⭐⭐ §7j.5 · THE MULTIVERSE TAB — BUILT 1 Aug. AND A PREMISE CORRECTED.
+
+`services/api/multiverse.py` · `GET /companies/{id}/multiverse` ·
+`src/components/Multiverse.tsx`. ⭐ Fourth item of §7j.2's revised order.
+
+## ⭐⭐ 1 · THE CORRECTION — TWO FRONTIERS, AND I CONFLATED THEM
+
+⭐⭐ **§7j.1's SCOPE REPORT SAID THE MULTIVERSE ENGINE IS "ALREADY RENDERED ON
+ENTERPRISE OPTIMIZATION." THAT IS FALSE, AND I WROTE IT.**
+
+| | renders | over | computed |
+|---|---|---|---|
+| **Enterprise Optimization** | `intelligence.frontier` | ⭐ a **CAPITAL-STRUCTURE D/E grid** | live, from the dataset |
+| **prescience_decision** | ⭐⭐ **NOTHING — RENDERED NOWHERE** | strategic **MOVES** | cached in `ax_decision_frontiers` |
+
+⭐ **I MATCHED THE WORD "frontier" AND DID NOT CHECK WHICH ONE** — the
+name-collision class, committed in a scoping report whose whole purpose was to
+prevent exactly that.
+
+### ⭐⭐ WHAT THIS DOES TO RULING 1 — THE USER'S CALL, NOT MINE
+
+Ruling 1 kept the engine in Business, reasoning that **removing a shipped
+capability is a downgrade every prospect would have to be told about.**
+
+⭐⭐ **THAT PREMISE DOES NOT HOLD: NO PROSPECT HAS EVER SEEN IT.** The engine runs
+nightly and its output reaches no surface. Nothing would be taken away.
+
+⭐ **THE RULING IS NOT RE-OPENED HERE.** It may still stand on its second
+ground — that Prescience differentiates on what Business never had — but that is
+a commercial judgement. **Surfaced, not resolved.**
+
+## ⭐ 2 · THE SPLIT — WHAT WAS ALREADY RENDERED, WHAT WAS NOT
+
+⭐⭐ **EVERYTHING `prescience_decision` COMPUTES WAS UNRENDERED**, so all of it is
+the tab's content: `mean_ev`, `cvar95`, `var95`, `raev`, `p_target`,
+`real_option_value`, `ev`, `equity_value`, the DRO reach, and the frontier's
+search statistics. ⭐ **No new computation — this is a rendering lane and stayed
+one.**
+
+## ⭐⭐ 3 · THE "CANNOT DISAGREE" GUARANTEE, CORRECTLY NARROWED
+
+The dispatch asked to assert the two surfaces cannot disagree **because they read
+the same cached computation.** ⭐ **THEY DO NOT.** The true guarantee is narrower
+and is asserted as such:
+
+- ⭐ **every surface reading the DECISION frontier resolves from the same cached
+  rows**, and nothing here recomputes (asserted by AST — no `build_frontier`,
+  `evaluate_trajectory`, `start_search`, `run` or `simulate`)
+- ⭐ **the view is a FUNCTION of the cache** — asserted by changing the cache and
+  seeing the render change, because **a surface that ignored its input would also
+  never disagree**
+- ⭐⭐ **the capital-structure frontier is a DIFFERENT QUANTITY**, stated on the
+  surface so a later reader who notices "two frontiers" does not reconcile them.
+  **Averaging a D/E sweep with a move search would be a new wrong number.**
+
+## ⭐⭐ 4 · THE BASIS TRAVELS — UNCERTAINTY IS THE PRODUCT
+
+σ_RO's basis is **read from the §7u registry**, never restated, and reaches the
+render with its **pinned version `7u-pd.2`** and `declared_prior: true`.
+
+⭐ **A DISTRIBUTION THAT CANNOT SAY WHERE ITS SPREAD CAME FROM IS NOT SHIPPABLE
+UNDER "uncertainty is the product, not a caveat."** Asserted that the sentence is
+**not duplicated** into this module — a basis repeated at a call site drifts, and
+then two surfaces explain the same number differently.
+
+## ⭐ 5 · ABSENCE, AND CENSORING AGAIN
+
+Each quantity renders **its value or a stated reason** — and ⭐ *"computed but
+returned no value"* is distinguished from *"never computed"*. ⭐ Every quantity
+carries **its MEANING**: a statistic rendered bare is read as whichever one the
+reader already knows, VaR taken for CVaR most often.
+
+⭐⭐ **THE RESILIENCE LANE'S CENSORING FINDING RECURS.**
+`dro_resilient_beyond` carries the reach when the valuation **never broke**, so it
+renders as **censored, never as the breakeven radius** — a limit that was never
+reached must not be stated as the limit. **Second surface, same trap.**
+
+## ⭐ 6 · MERIDIAN — MEASURED IN PRODUCTION
+
+**8 of 8 quantities present**: mean EV 55,308.04 · CVaR95 49,250.39 · VaR95
+4,871.74 · RAEV 52,279.21 · P(target) 0.4895 · real option value 24,370.60.
+⭐ **Spread: downside 6,057.65.** Search: 261 trajectories at λ=0.5, current
+strategy at the **1.1st percentile**. ⭐ **Ambiguity: CENSORED** — the valuation
+did not break across the tested range. **0 absent.**

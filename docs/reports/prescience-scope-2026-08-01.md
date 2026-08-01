@@ -14,12 +14,19 @@ TABS. It is not true of the engines beneath them.**
 Library + decision search (SHIPPED)**, and the code confirms it:
 `prescience_decision.py` is **900 lines** with a real Monte Carlo.
 
-⭐⭐ **AND ITS OUTPUT IS ALREADY RENDERED — ON A PAGE TITLED "Enterprise
-Optimization · AXIOM Business."**
+⭐⭐ **CORRECTED 1 Aug (CORE §7j.5): THIS NEXT CLAIM IS FALSE.** Enterprise
+Optimization renders `intelligence.frontier` — a **capital-structure D/E sweep**,
+a different object that shares the word "frontier". ⭐ **`prescience_decision`'s
+output is rendered NOWHERE.** I matched the word and did not check which one, in
+the report written to prevent exactly that.
 
-⭐⭐ **SO THE ENGINE RULED PRESCIENCE-ONLY IS SHIPPED, WIRED, AND SITTING INSIDE
-THE BUSINESS TIER TODAY.** Moving it is **taking a capability away from Business
-buyers**, which is a commercial ruling and not an engineering task. ⭐ **This is
+*(Was: "AND ITS OUTPUT IS ALREADY RENDERED — ON A PAGE TITLED Enterprise
+Optimization · AXIOM Business.")*
+
+⭐ **THE ENGINE RULED PRESCIENCE-ONLY IS SHIPPED AND RUNS NIGHTLY — but it is
+NOT wired to any surface.** ⭐⭐ **So "moving it" would take nothing away from
+Business buyers, because none has seen it.** Whether ruling 1 still stands on its
+other ground is the user's call. ⭐ **This is
 the single largest thing the estimate turns on, and no lane should start before
 it is ruled.**
 

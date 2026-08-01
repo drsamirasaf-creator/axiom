@@ -42,6 +42,8 @@ PRESCIENCE_ONLY = {
     },
     "multiverse": {
         "label": "Multiverse",
+        # ⭐ BUILT 1 Aug (§7j.5). `klass` stays None: the tab reads the decision
+        # frontier and trajectory cache, neither of which is a pack input class.
         "klass": None,
         "route_marker": "/multiverse",
     },

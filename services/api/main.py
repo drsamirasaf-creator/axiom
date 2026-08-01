@@ -306,6 +306,9 @@ _rfield.include(app, _get_db, require_company_member)
 from . import causal_map as _cmap  # noqa: E402
 _cmap.include(app, _get_db, require_company_member)
 
+from . import multiverse as _mv  # noqa: E402
+_mv.include(app, _get_db, require_company_member)
+
 # B16 — in-app editable assumptions. ⭐ ADMIN-ONLY per §4x: write is bound to
 # `require_company_admin`, which demands Membership.role == "admin". A
 # DepartmentAuthority grant is a separate table and confers nothing here, so a

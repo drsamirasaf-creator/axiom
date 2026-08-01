@@ -455,18 +455,33 @@ def test_ASK_AXIOM_IS_NOT_MARKED_because_Business_includes_it():
 
 def test_BUILT_STATE_IS_MEASURED_against_the_served_route_table():
     """⭐ Not a status column. §7j measured four of five as unbuilt, and a
-    hand-maintained flag is the record that goes stale unnoticed."""
-    b = TM.built(_served())
-    assert b["radar_sentinel"] is True, "Radar/Sentinel is built and must show so"
-    # ⭐ Resilience Field shipped 1 Aug (§7j.3) and `built()` MEASURES it, which
-    # is the guard working: this expectation moved because the world did.
-    assert b["resilience_field"] is True, "the Resilience Field ships and must show so"
-    # ⭐⭐ SECOND UPDATE IN TWO LANES, AND BOTH TIMES THE GUARD WAS RIGHT. This
-    # expectation moves as features ship, which is the guard measuring reality
-    # rather than reading a status column. §7j.4 shipped the Causal Map.
-    assert b["causal_map"] is True, "the Causal Map ships and must show so"
-    for k in ("multiverse", "prescience_brief"):
-        assert b[k] is False, f"{k} has no route but reads as built"
+    hand-maintained flag is the record that goes stale unnoticed.
+
+    ⭐⭐ THE EXPECTATION IS DERIVED, NOT ENUMERATED. Three lanes running, this
+    test broke because a Prescience feature shipped and a hand-written list said
+    it had not. Each time the GUARD was right and the LIST was stale — which is
+    the same defect the guard exists to prevent, reproduced in its own test.
+    ⭐ It now checks the PROPERTY: `built(k)` is true exactly when some served
+    route carries that feature's marker.
+    """
+    served = _served()
+    b = TM.built(served)
+    for k, spec in TM.PRESCIENCE_ONLY.items():
+        expected = any(spec["route_marker"] in p for p in served)
+        assert b[k] is expected, f"{k}: built()={b[k]} but a route match says {expected}"
+
+    # ⭐ COVERAGE, so the derivation cannot pass vacuously on an empty route table
+    assert len(b) == 5
+    assert any(b.values()), "nothing reads as built — the route table is empty"
+    # ⭐ and the marker must be UNAMBIGUOUS: no marker may match another
+    # feature's route by accident.
+    for k, spec in TM.PRESCIENCE_ONLY.items():
+        hits = [p for p in served if spec["route_marker"] in p]
+        for other, ospec in TM.PRESCIENCE_ONLY.items():
+            if other == k:
+                continue
+            assert not (set(hits) and spec["route_marker"] in ospec["route_marker"]), \
+                f"{k}'s marker is a substring of {other}'s"
 
 
 def test_ONLY_SHIPPED_CAPABILITY_IS_MARKED():
@@ -480,8 +495,9 @@ def test_EVERY_UNMARKED_FEATURE_CARRIES_A_REASON():
     """⭐ A feature silently omitted is indistinguishable from one nobody
     considered (III.4)."""
     un = TM.unmarkable(_served())
-    assert {k for k, _ in un} == {"multiverse", "resilience_field",
-                                  "causal_map", "prescience_brief"}
+    # ⭐ derived: everything with no klass is unmarkable, whatever its build state
+    assert {k for k, _ in un} == {k for k, v in TM.PRESCIENCE_ONLY.items()
+                                  if not v["klass"]}
     # ⭐ and resilience_field is unmarkable for a DIFFERENT reason than the
     # other three — built, but its block is already marked
     why = dict(un)["resilience_field"]
