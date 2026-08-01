@@ -128,8 +128,11 @@ def test_users_included_sits_ABOVE_pricing_and_says_why():
             "pricing is rendered above the users row"
 
 
-def test_row_23_carries_AXIOMs_green():
-    r = next(x for x in M.ROWS if x["n"] == 23)
+def test_the_AI_row_carries_AXIOMs_green_wherever_it_sits():
+    """⭐ Keyed on the FEATURE, not the row number. The first version pinned
+    n=23 and broke the moment the row was correctly re-placed — it was testing
+    the numbering, not the claim."""
+    r = next(x for x in M.ROWS if x["feature"].startswith("AI copilot"))
     assert r["axiom"] == M.G
     assert r["witness"]["path"].endswith("/prescience/ask")
 
@@ -172,20 +175,22 @@ def test_THE_RED_ROWS_STAY_RED():
     """⭐⭐ A matrix where the author sweeps is not read; one where they concede
     is. These concessions buy the credibility every green above them depends
     on."""
-    # ⭐ THE FOUR CONCESSIONS ARE ROWS 19-22, per the dispatch. Row 23 also sits
-    # under this heading and AXIOM is GREEN there — an oddity in the supplied
-    # data, kept because "do not adjust any dot" governs, and surfaced in CORE
-    # rather than silently re-blocked.
-    conceded = [r for r in M.ROWS if 19 <= r["n"] <= 22]
+    # ⭐⭐ THE WHOLE BLOCK, NOT AN ENUMERATED SUBSET. The first version asserted
+    # rows 19-22 by number because row 23 sat in this block while AXIOM was
+    # GREEN on it. An enumeration ABSORBS the defect: it passes whatever else
+    # the block contains. Ruled 1 Aug — the AI row moved to Execute, and the
+    # block is now asserted whole, so the next misplacement fails the build.
+    conceded = [r for r in M.ROWS if r["block"] == M.BLOCKS[3]]
     assert len(conceded) == 4
     assert all(r["axiom"] != M.G for r in conceded), \
-        "a concession row was upgraded to green"
+        "a GREEN sits under 'Where others are stronger' — the block's own claim " \
+        "is then false, and a reader counting concessions counts one too many"
     assert sum(1 for r in conceded if r["axiom"] == M.R) == 2, \
         "the two reds were softened"
     reds = {r["n"] for r in M.ROWS if r["axiom"] == M.R}
-    assert 20 in reds, "financial close & consolidation is no longer conceded"
-    assert 22 in reds, "the partner-ecosystem row is no longer conceded"
-    close = next(r for r in M.ROWS if r["n"] == 20)
+    assert 21 in reds, "financial close & consolidation is no longer conceded"
+    assert 23 in reds, "the partner-ecosystem row is no longer conceded"
+    close = next(r for r in M.ROWS if r["n"] == 21)
     assert "does not touch the ledger" in close["why"]
 
 
@@ -316,7 +321,7 @@ def test_an_UNLINKED_green_states_WHY():
     for r in unl:
         assert r.get("demo_absent"), f"row {r['n']} is unlinked with no reason"
         assert len(r["demo_absent"]) > 40, "the reason is not a reason"
-    assert {r["n"] for r in unl} == {6, 18, 23}
+    assert {r["n"] for r in unl} == {6, 18, 19}  # the AI row moved 23 -> 19
 
 
 def test_the_guard_checks_the_LIVE_demo_not_a_local_harness():
@@ -336,3 +341,35 @@ def test_the_guard_would_REJECT_a_green_linking_to_an_empty_surface():
     assert "has_data" in src and "empty or errors" in src
     # the predicate itself: an empty payload is not populated
     assert g.demo_populated(None, "/x", base="http://127.0.0.1:1")[0] is False
+
+
+def test_the_AI_ROW_SITS_IN_EXECUTE_AND_NOT_IN_THE_CONCESSIONS():
+    """⭐⭐ A GREEN UNDER "Where others are stronger" MAKES THE HEADING FALSE.
+
+    The block is an argument, not a bucket: it says these four are where AXIOM
+    is weaker. A fifth row that AXIOM is strong on does not merely sit oddly —
+    it contradicts the sentence above it.
+    """
+    ai = next(r for r in M.ROWS if r["feature"].startswith("AI copilot"))
+    assert ai["n"] == 19
+    assert ai["block"] == M.BLOCKS[2], "the AI row is back under the concessions"
+    assert ai["axiom"] == M.G
+
+
+def test_CFO_VOCABULARY_IS_NOT_STRIPPED_FROM_THE_ROW_NAMES():
+    """⭐⭐ THE ACRONYM RULE WAS OVER-BROAD AND IS WITHDRAWN (1 Aug).
+
+    It targeted KORS and RCM — coinages a reader cannot look up. OKR, KPI, ERP
+    and AI are ordinary CFO vocabulary, and expanding them would make the table
+    read as though it were explaining the trade to the trade.
+
+    ⭐ THIS TEST EXISTS SO A LATER LANE DOES NOT RE-APPLY THE WITHDRAWN RULE.
+    A withdrawn instruction with nothing holding it withdrawn comes back.
+    """
+    names = " ".join(r["feature"] for r in M.ROWS)
+    for keep in ("OKR", "KPI", "ERP", "AI"):
+        assert keep in names, f"{keep} was stripped — the acronym rule was withdrawn"
+    # ⭐ and the coinages it actually targeted stay gone
+    blob = names + " " + " ".join(r["info"] + r["why"] for r in M.ROWS)
+    for banned in ("KORS", "RCM"):
+        assert banned not in blob, f"{banned} is a coinage a reader cannot look up"

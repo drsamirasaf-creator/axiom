@@ -12515,3 +12515,71 @@ than the CAPABILITY punishes saying the right thing** — now **four** instances
    "every row in the block."
 
 **Both stand for the user's ruling.**
+
+# ⭐⭐ §4v.1 · CORRECTIONS TO §4v — BOTH COLLISIONS RULED, 1 Aug
+
+## ⭐ 1 · THE AI ROW WAS IN THE WRONG BLOCK — MOVED, NOT ANNOTATED
+
+`AI copilot & natural language interface` sat under **"Where others are
+stronger"** while **AXIOM is green on it.**
+
+⭐⭐ **THE BLOCK IS AN ARGUMENT, NOT A BUCKET.** Its heading asserts these rows
+are where AXIOM is weaker, so **a green inside it makes the heading false** — a
+reader counting concessions counts five and finds four.
+
+**Now:** row **19**, in **Execute**. The concession block renumbers to **20–23**.
+
+⭐⭐ **AND THE TEST NOW ASSERTS THE WHOLE BLOCK.** It previously enumerated rows
+19–22 *because* row 23 was misplaced. **AN ENUMERATION ABSORBS THE DEFECT IT WAS
+WRITTEN AROUND** — it passes whatever else the block later contains. Keyed on
+`block == BLOCKS[3]`, the next misplacement **fails the build** instead of being
+quietly accommodated. Two other assertions were keyed on `n == 23` and broke when
+the row was correctly re-placed: ⭐ **they were testing the numbering, not the
+claim.** Rekeyed on the feature.
+
+## ⭐ 2 · THE ACRONYM RULE WAS OVER-BROAD — WITHDRAWN, AND HELD WITHDRAWN
+
+"No acronyms anywhere" targeted **KORS** and **RCM** — coinages a reader cannot
+look up, already removed. **OKR, KPI, ERP and AI are ordinary CFO vocabulary**,
+and expanding them would read as explaining the trade to the trade.
+
+⭐ **A WITHDRAWN INSTRUCTION WITH NOTHING HOLDING IT WITHDRAWN COMES BACK.**
+`test_CFO_VOCABULARY_IS_NOT_STRIPPED_FROM_THE_ROW_NAMES` asserts the four are
+present **and** that KORS/RCM stay gone, so a later lane cannot re-apply the
+withdrawn half without failing.
+
+# ⭐⭐ §III.9 · A GUARD THAT MATCHES TEXT WILL PUNISH STATING ITS OWN RULE
+
+**A CLASS, with four instances.** Each time, a guard was written to forbid a
+**capability** and implemented as a search for a **word** — so it fired on the
+prose that *explains the very rule it enforces.*
+
+| # | banned token | what it actually struck |
+|---|---|---|
+| 1 | `credential` | ⭐ client-facing **reassurance** that credentials are never stored |
+| 2 | `comment` | ⭐ the **docstring explaining the ruling** that comment text must not be assigned |
+| 3 | `respondent` | ⭐ **explanatory copy** about protecting respondents |
+| 4 | `open(` | ⭐ **`urllib.request.urlopen(`** — a network read, the opposite of a file read |
+
+⭐⭐ **THE FAILURE IS ALWAYS IN THE SAME DIRECTION.** Text matching cannot
+distinguish **doing the thing** from **naming the thing**, and the clearest
+writing names it most. **The guard taxes honesty and leaves the capability
+reachable under any synonym** — it is both false-positive and false-negative.
+
+## ⭐⭐ THE DEFAULT FORM IS AN AST READ — NOT THE REMEDY
+
+The fix was the same all four times, so ⭐ **it is the form a guard starts in, not
+the repair applied after it misfires:**
+
+- read the **AST**, and match **what the code does** — an attribute access, a
+  call, a keyword argument, a column definition, an assignment target
+- ⭐ **prose, docstrings and string literals are never evidence of behaviour**;
+  exclude them structurally rather than by exception list
+- ⭐ **an exception list is the tell.** Adding an allowlist entry to stop a guard
+  firing on correct writing means the guard is measuring the wrong thing — the
+  next correct sentence will need another entry
+- keep a **known positive** that exercises the *behaviour*, so narrowing the
+  match cannot silently narrow it to nothing (III.4)
+
+⭐ **A regex over source is admissible only where the artefact IS text** — a
+committed manifest, a migration name — never where it stands in for behaviour.

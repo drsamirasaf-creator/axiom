@@ -27,6 +27,12 @@ DOCUMENTED_AS_OF = "2026-08-01"
 COMPETITORS = ["Anaplan", "Workday Adaptive", "OneStream", "Planful", "Pigment",
                "Prophix", "Vena", "Datarails", "Cubo", "Mosaic"]
 
+# ⭐⭐ "Where others are stronger" MEANS SOMETHING ONLY IF EVERY ROW IN IT IS A
+# CONCESSION. `AI copilot` sat in this block while AXIOM was GREEN on it, which
+# made the block's own claim false — a reader counting concessions would have
+# counted five and found four. Moved to Execute (1 Aug ruling); the guard now
+# asserts the WHOLE block rather than an enumerated subset, so the next
+# misplacement fails the build instead of being absorbed by the enumeration.
 BLOCKS = [
     "Analyze — what's true today",
     "Strategize — where to go next",
@@ -151,33 +157,33 @@ ROWS = [
          why="Written feedback is readable under a confidentiality floor, with a recorded sign-off.",
          demo=None, demo_absent="the departmental feedback surface is member-gated by §4u-b, deliberately — the words are readable under the floor, not in public",
          comp=[A, A, A, A, A, A, A, R, A, A]),
-    # ── Where others are stronger ───────────────────────────────────────────
-    dict(n=19, block=BLOCKS[3], feature="Native Excel & ERP ingest",
-         info="Reading directly from spreadsheets and from the systems that run the business.",
-         axiom=A,
-         why="A structured upload with the original file retained — not a live connection into the finance system.",
-         comp=[G, G, G, G, G, G, G, G, G, G]),
-    dict(n=20, block=BLOCKS[3], feature="Financial close & consolidation",
-         info="Closing the books, removing internal transactions between entities, and the audit trail for that work.",
-         axiom=R,
-         why="Not offered. AXIOM does not touch the ledger and does not close the books.",
-         comp=[G, G, G, A, A, G, A, A, A, A]),
-    dict(n=21, block=BLOCKS[3], feature="Workflow & governance tooling",
-         info="Configurable chains of approval and hierarchies of permission.",
-         axiom=A,
-         why="Administrator and viewer roles with departmental authority — not a configurable workflow engine.",
-         comp=[G, G, G, G, G, G, G, A, A, A]),
-    dict(n=22, block=BLOCKS[3], feature="Enterprise scale & partner ecosystem",
-         info="Implementation partners, certified consultants and a marketplace of extensions.",
-         axiom=R,
-         why="Not offered. There is no partner ecosystem.",
-         comp=[G, G, G, A, G, G, G, A, G, G]),
-    dict(n=23, block=BLOCKS[3], feature="AI copilot & natural language interface",
+    dict(n=19, block=BLOCKS[2], feature="AI copilot & natural language interface",
          info="Asking questions of the company's own numbers in ordinary language.",
          axiom=G, witness={"path": "/companies/{company_id}/prescience/ask"},
          why="Questions are answered against the company's own model, with the sources cited.",
          demo=None, demo_absent="Ask AXIOM answers a POST from a signed-in session; there is no anonymous destination to link to",
          comp=[G, G, G, G, G, G, G, R, G, G]),
+    # ── Where others are stronger ───────────────────────────────────────────
+    dict(n=20, block=BLOCKS[3], feature="Native Excel & ERP ingest",
+         info="Reading directly from spreadsheets and from the systems that run the business.",
+         axiom=A,
+         why="A structured upload with the original file retained — not a live connection into the finance system.",
+         comp=[G, G, G, G, G, G, G, G, G, G]),
+    dict(n=21, block=BLOCKS[3], feature="Financial close & consolidation",
+         info="Closing the books, removing internal transactions between entities, and the audit trail for that work.",
+         axiom=R,
+         why="Not offered. AXIOM does not touch the ledger and does not close the books.",
+         comp=[G, G, G, A, A, G, A, A, A, A]),
+    dict(n=22, block=BLOCKS[3], feature="Workflow & governance tooling",
+         info="Configurable chains of approval and hierarchies of permission.",
+         axiom=A,
+         why="Administrator and viewer roles with departmental authority — not a configurable workflow engine.",
+         comp=[G, G, G, G, G, G, G, A, A, A]),
+    dict(n=23, block=BLOCKS[3], feature="Enterprise scale & partner ecosystem",
+         info="Implementation partners, certified consultants and a marketplace of extensions.",
+         axiom=R,
+         why="Not offered. There is no partner ecosystem.",
+         comp=[G, G, G, A, G, G, G, A, G, G]),
 ]
 
 # ⭐ Monthly AND annual, so the comparison is like-for-like. Competitor figures
