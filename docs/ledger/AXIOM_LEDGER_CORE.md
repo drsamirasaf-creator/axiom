@@ -981,14 +981,28 @@ Multiverse, Resilience Field, Causal Map, Radar/Sentinel, Prescience
 Brief. **Positioning rule:** price on value, never on compute cost in
 customer-facing copy (true compute \~11s/company/night). /free-pilot
 keeps \"nothing watered down\" --- pilot tastes the full engine; tier
-choice happens at purchase (Zoom walkthrough = upsell moment). **Seat
-limits (per company):** Business --- 10 full members / 50 assessment
-participants PER CYCLE / 5 viewers. Prescience --- 25 / 150 per cycle /
-15. Participants cap is per-cycle (resets), killing the 300k-invite
-scenario; CEI is a leadership instrument by design. **Overage
-(locked):** +full member \$100/mo · +viewer \$50/mo · +50 participants
-\$495/cycle; beyond \~2x base caps -\> \"talk to us\" (HoldCo/consulting
-conversation). **Model:** monthly subscription both tiers (locked ---
+choice happens at purchase (Zoom walkthrough = upsell moment).
+
+⭐⭐ **SEAT CAPS ARE STRUCK ENTIRELY — RULED 1 Aug. UNLIMITED USERS, BOTH TIERS.
+THERE ARE NO CAPS OF ANY KIND**: not on full members, not on assessment
+participants per cycle, not on viewers. ⭐ **AND THEREFORE NO OVERAGE** — an
+overage price is a cap wearing a different name.
+
+*(Superseded, recorded so the strike is legible rather than a silent deletion:
+"Seat limits (per company): Business — 10 full members / 50 assessment
+participants PER CYCLE / 5 viewers. Prescience — 25 / 150 per cycle / 15.
+Overage (locked): +full member $100/mo · +viewer $50/mo · +50 participants
+$495/cycle; beyond ~2x base caps → talk to us.")*
+
+⭐ **THE RULE CHANGED AND THE DEFINITIONS DID NOT FOLLOW.** Unlimited users has
+been the commercial model for some time — it is the comparison matrix's strongest
+row — while this block still carried the caps it replaced.
+
+⭐ **CEI remains a leadership instrument by design.** That was the stated reason
+for the per-cycle participant cap, and it survives the cap: it is a property of
+**who is asked**, not of **how many may be**.
+
+**Model:** monthly subscription both tiers (locked ---
 ongoing engines justify recurring; lapse -\> tier-flag revocation). OPEN
 MECHANICAL Q for Entity Model phase: is current Stripe checkout
 one-time? (determines migration). **Implementation home:** Entity Model
@@ -13085,21 +13099,21 @@ lane exists to prevent.
 Two of the three places remain: ⭐ **the results call** and ⭐ **the pricing
 page**. Neither is built.
 
-## ⭐⭐ 6 · A CONTRADICTION IN CORE, SURFACED NOT RESOLVED
+## ⭐⭐ 6 · A CONTRADICTION IN CORE — ⭐ **RULED 1 Aug. SEE §5a.**
 
-The tier definition states **"Seat limits (per company): Business — 10 full
-members / 50 assessment participants per cycle / **5 viewers**; Prescience — 25 /
-150 / **15**."**
-
-⭐⭐ **THIS CONTRADICTS §4y AND §4z.** §4y ruled pilot viewers **unlimited and
-unbilled** (31 Jul), and §4z rules step 9 a **flat company price with unlimited
+The tier definition stated seat caps (Business 10 members / 50 participants per
+cycle / 5 viewers; Prescience 25 / 150 / 15) while §4y ruled pilot viewers
+**unlimited and unbilled** and §4z rules a **flat company price with unlimited
 users**. **A 5-viewer cap and unlimited viewers cannot both be true.**
 
-⭐ **NOT RESOLVED HERE.** It may be that the tier caps govern *members of a paying
-workspace* while §4y governs *pilot viewers*, which would make both true of
-different populations — but **that distinction is not written anywhere**, and
-inferring it is exactly the "settled by whichever code path happened to exist"
-hazard CORE already records. **The user's ruling.**
+⭐⭐ **RESOLVED: THE CAPS ARE STRUCK ENTIRELY.** Unlimited users, both tiers, no
+caps of any kind and no overage. The tier definition is corrected in place.
+
+⭐ **THIS LANE'S REFUSAL TO INFER WAS CORRECT.** It declined to read the caps as
+governing paying members while §4y governed pilot viewers — a reconciliation that
+would have made both true of different populations and **is written nowhere.**
+The ruling went the other way entirely. ⭐⭐ **HAD IT INFERRED, IT WOULD HAVE
+ENCODED A DISTINCTION THE USER NEVER MADE AND THE CAPS WOULD HAVE SURVIVED.**
 
 # ⭐⭐ §0 · `docs/ledger/ONBOARDING.md` EXISTS, AND MUST BE KEPT CURRENT
 
@@ -13140,3 +13154,114 @@ sentence that closes it.
 
 **The test it must keep passing:** *could a fresh advisor read it and write a
 correct dispatch tomorrow?*
+
+# ⭐⭐ §5a · SEAT CAPS ARE STRUCK ENTIRELY — RULED 1 Aug
+
+⭐⭐ **UNLIMITED USERS, BOTH TIERS. NO CAPS OF ANY KIND** — not on full members,
+not on assessment participants per cycle, not on viewers. ⭐ **AND THEREFORE NO
+OVERAGE**: an overage price is a cap wearing a different name.
+
+**The tier definition is corrected IN PLACE**, with the struck text quoted there
+so the strike is legible rather than a silent deletion.
+
+⭐ **THE RULE CHANGED AND THE DEFINITIONS DID NOT FOLLOW.** Unlimited users had
+been the commercial model for some time — it is the comparison matrix's strongest
+row — while the tier block still carried the caps it replaced.
+
+⭐ **CEI SURVIVES THE CAP IT JUSTIFIED.** The per-cycle participant cap was
+defended as keeping CEI a leadership instrument. That property is about **who is
+asked**, not **how many may be**, so it does not need a ceiling to hold.
+
+## ⭐⭐ 1 · A CORE-VERSUS-CORE CONTRADICTION — THE SECOND THIS ERA
+
+| # | the two entries |
+|---|---|
+| 1 | **the value-proposition diagram's closing bar** |
+| 2 | ⭐ **the tier caps vs unlimited users** (§4y, §4z, and the matrix) |
+
+⭐⭐ **BOTH ENTRIES WERE INDIVIDUALLY CORRECT AND MUTUALLY EXCLUSIVE.**
+
+⭐⭐ **NO MEASUREMENT AGAINST THE CODE COULD HAVE FOUND IT, BECAUSE BOTH WERE
+TRUE OF THE CODE.** `assessor_cap` is enforced *and* `viewer_count` is enforced
+nowhere; a scan confirms each entry and disproves neither.
+
+⭐ **IT SURFACED ONLY FROM INSIDE A LANE ATTEMPTING TO OBEY BOTH** — §4z.1, which
+had to state a tier difference to a viewer while §4y said viewers are unlimited
+and the tier block said five.
+
+### ⭐⭐ WHAT RESOLVED IT: A RULING, NOT A MEASUREMENT
+
+⭐ **THE LANE CORRECTLY REFUSED TO INFER** that tier caps govern paying members
+while §4y governs pilot viewers. That reading would have made both true of
+different populations — **and it is written nowhere.** Adopting it would have
+been the *"settled by whichever code path happened to exist"* hazard this ledger
+already names, in its purest form: a commercial term decided by whichever
+enforcement happened to be built.
+
+⭐⭐ **THE DISTINGUISHING TELL OF THIS CLASS: MEASUREMENT CONFIRMS BOTH SIDES.**
+When a scan returns "yes" to two entries that cannot both hold, the instrument is
+not broken and more scanning will not help. **Stop and ask for a ruling.**
+
+## ⭐ 2 · CONSEQUENCE SWEEP — SURFACE AREA, NOT CHANGED IN THIS LANE
+
+### ⭐⭐ ENFORCED TODAY — a live refusal
+
+| site | what it does |
+|---|---|
+| `_enforce_seat_cap` → **HTTP 402 `assessor_cap_reached`** | ⭐⭐ **THE PARTICIPANTS-PER-CYCLE CAP IS REAL AND BLOCKS INVITES.** Called from **two** assessor-invite paths (`accounts.py` 11049, 11080) |
+| `_assessor_cap` / `_seat_status` | computes cap, used, remaining, `at_cap`, overage price |
+| Stripe webhook (`accounts.py` ~13053) | ⭐ **writes `assessor_cap` from the plan line and adds `assessor_overage`** — the purchase flow provisions caps |
+
+### CONSTANTS AND COLUMNS
+
+`ASSESSOR_PLAN_CAPS = {"business": 50, "prescience": 150}` ·
+`ASSESSOR_CAP_DEFAULT = 50` · `ASSESSOR_OVERAGE_BLOCK = 50` ·
+`ASSESSOR_OVERAGE_PRICE = 495` · columns `Account.assessor_cap`,
+`Account.assessor_overage`.
+
+### ⭐ FRONTEND — the cap is RENDERED, and sells the overage
+
+`src/routes/stakeholder-engagement.tsx`: an **`AddAssessorsDoor`**, a
+*"N of M remaining"* counter, the at-cap message *"You've used all M assessor
+invitations for this cycle"*, and *"Add more at \$495 per 50 assessors per
+cycle."* ⭐ **This is the most visible consequence and it is customer-facing.**
+
+`src/components/AboutBar.tsx` — *"per-company subscription with **viewer seats
+included**"*, cap-adjacent language.
+
+### ⭐ NOT AFFECTED — measured, so the sweep is not over-broad
+
+| | |
+|---|---|
+| `company_slots` / `_slots_used` → 402 | ⭐ **ONE COMPANY PER WORKSPACE IS STILL THE MODEL.** A company slot is not a user seat; **not struck** |
+| `viewer_count` | reported, **enforced nowhere** — already recorded |
+| **the comparison matrix** | already correct: `users_included.AXIOM = "Unlimited users"` |
+| **the brochure** | ⭐ carries **no** cap language |
+| **guards** | ⭐ **none rests on a cap** |
+| **tests** | two use `company_slots=5` as fixture data, not as cap assertions |
+
+⭐ **NO CODE CHANGED IN THIS LANE.** The removal is a build, and it is
+customer-facing on a purchase path — it needs its own named lane.
+
+# ⭐⭐ §4v.2 · THE MATRIX ON A PHONE — REASONS NOT REQUIRED. RULED 1 Aug
+
+⭐ **The dots stay untappable.** A phone screen cannot carry 253 explanations, and
+attempting it would produce a worse artefact than omitting them.
+
+## ⭐⭐ THE CONSEQUENCE, RECORDED RATHER THAN LEFT IMPLICIT
+
+⭐⭐ **ON A PHONE THE MATRIX PRESENTS UNEXPLAINED DOTS — AND THE REASONS ARE WHAT
+MAKE IT CHECKABLE RATHER THAN ASSERTIVE.** A dot with a stated reason is
+evidence; the same dot alone is an assertion, and the table makes 253 of them.
+**The mobile reader gets the assertive version.** That is accepted, not denied.
+
+## ⭐ THE REQUIRED MITIGATION — ABSENCE DECLARES
+
+**The mobile view must state that the reasons are available on a larger screen.**
+
+⭐ Consistent with the standing law: **an absent explanation and an explanation
+that was never written are different facts**, and a reader who is not told
+concludes the dots were never justified. ⭐⭐ **AN ABSENCE THAT DECLARES ITSELF
+KEEPS THE TABLE HONEST AT THE SIZE IT CANNOT BE COMPLETE.**
+
+**Not built in this lane** — the dispatch is DO NOT BUILD.

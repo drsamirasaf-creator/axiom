@@ -293,6 +293,12 @@ finish everything that does not depend on the answer.
 ⭐ **UNDETERMINED IS A RESULT.** Where provenance was never recorded, effort does
 not produce the answer. Say "not recoverable" rather than inferring.
 
+⭐⭐ **AND WHEN MEASUREMENT CONFIRMS BOTH SIDES OF A CONTRADICTION, STOP AND ASK
+FOR A RULING.** If two ledger entries cannot both hold but a scan returns "yes"
+to each, **the instrument is not broken and more scanning will not help.**
+Inferring a reconciliation nobody wrote down is how a commercial term gets
+settled by whichever enforcement happened to be built.
+
 **Never in a dispatch:** correcting customer data, notifying customers, or
 resolving a commercial term. Those are the user's rulings.
 
@@ -445,6 +451,7 @@ pilot viewers are **named invitations, never an anonymous forwardable link.**
 | **Empty harness** | a `TestClient` over an empty DB — every destination 401s and the guard calls it a pass |
 | **Substring identity** | `brief` matching `lead-briefing`; SLA counted 17 times, actually 2 |
 | **Silent truncation** | a top-N cap with no log of what was dropped |
+| ⭐⭐ **CORE versus CORE** | ⭐ **measurement confirms BOTH sides.** Two ledger entries, each individually correct, mutually exclusive, and **both true of the code** — so no scan can find it. Surfaces only from inside a lane trying to obey both. **Two instances:** the diagram's closing bar; tier caps vs unlimited users |
 
 ⭐⭐ **THE UNIFYING TELL: AN EMPTY RESULT THAT LOOKS EXACTLY LIKE A CLEAN PASS.**
 A measurement bug in a recent lane walked `app.routes` (44 paths) instead of the
