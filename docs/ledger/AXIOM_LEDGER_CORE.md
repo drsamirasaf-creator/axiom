@@ -12411,3 +12411,107 @@ leaving a visible wrong number.
 fault set are **exactly identical** — `[8,9,10,11,12,13,14,15]`, verified by
 recomputation rather than accepted. Two independent faults on one customer's eight
 datasets created within ~2 hours, consistent with the ingest of a single workbook.
+
+# ⭐⭐ §4v · THE COMPARISON MATRIX — 253 DOTS, AND THE COLUMN THAT IS CHECKED
+
+`services/api/comparison_matrix.py` · `GET /brochure/comparison-matrix` ·
+`src/components/ComparisonMatrix.tsx`, rendered on `how-it-works.tsx:848`.
+**23 features × 11 products.** The dataset was supplied by the user and is
+**used exactly as given** — "Do not re-derive or adjust any dot."
+
+## ⭐ 1 · WHY THE SECOND HOVER LAYER IS THE SUBSTANCE
+
+Layer one is the feature. **Layer two is why that product has that colour.** A
+dot without a stated reason is an assertion, and **253 unexplained assertions
+read as marketing.** Per-cell attribution, not one footnote under the table.
+
+## ⭐⭐ 2 · THE TWO HALVES REST ON DIFFERENT EVIDENCE AND SAY SO
+
+| column | evidence | stated where |
+|---|---|---|
+| AXIOM | ⭐ **checked against the codebase by gate 24** | in every AXIOM hover |
+| the other ten | published documentation, as of 2026-08-01 | ⭐ in **every** competitor hover, with the date |
+
+**They must not read as equally verified.** The competitor hovers say *"not
+independently verified"* in those words.
+
+## ⭐⭐ 3 · GATE 24 — `scripts/check-comparison-matrix.py`
+
+**A green whose feature has been deleted is the exact shape of the claim this
+codebase keeps having to withdraw.** The gate refuses:
+
+- a green with **no witness at all**
+- a witness naming a **path that is not served** or a **symbol that does not exist**
+- ⭐ a **non-green that carries a witness** — a concession with evidence attached
+  is a green in disguise
+- ⭐ a green linking to a demo surface that **returns 200 and no data**
+
+⭐ **AMBER AND RED NEED NO WITNESS.** Demanding evidence for "we do not do this"
+would be demanding evidence of an absence.
+
+⭐ **COVERAGE IS PRINTED** — `23 rows, 16 green`. "0 broken witnesses in 0
+greens" and "0 in 16" print the same tick and mean opposite things (III.4).
+
+## ⭐⭐ 4 · THE LINK IS PART OF THE CLAIM
+
+Each green deep-links into **Meridian** so a prospect verifies in one click.
+**Only greens link.** Ambers and the four concession rows do not: **pointing a
+prospect at a partial capability invites them to test where you are weakest.**
+
+⭐⭐ **THE GUARD OPENS THE LINKS AGAINST THE LIVE HOST.** The first version used
+a `TestClient` over an empty SQLite database and **every destination 401'd** — it
+was **measuring an empty harness, not the demo a prospect opens.** The demo
+surface is a **production artefact and only production can answer for it**
+(`AXIOM_DEMO_BASE`, documented in `.env.example`).
+
+⭐ **HTTP 200 PROVES REACHABILITY, NEVER POPULATION** — the §7o class, where five
+Meridian surfaces rendered empty and every gate stayed green. The gate reads the
+payload and fails an empty one.
+
+**13 of 16 greens are linked and verified populated anonymously:** rows
+1,2,3,4,5,7,9,10,11,12,13,14,15.
+
+### ⭐⭐ THREE GREENS COULD NOT BE LINKED — A FINDING, NOT A BROKEN LINK
+
+| row | destination | measured anonymously | why |
+|---|---|---|---|
+| 6 | `/assessment/summary` | non-JSON | session-rendered |
+| 18 | `/departments/{id}/voice` | **401** | ⭐ member-gated **by design** (§4u-b) |
+| 23 | `/prescience/ask` | **405** | POST-only, from a signed-in session |
+
+⭐ **THEY ARE GATED, NOT EMPTY.** A prospect would meet a login wall rather than
+the capability. **Each states its reason in the page**; the guard refuses an
+unlinked green that gives no reason, so the finding cannot be lost by silently
+dropping a link.
+
+## ⭐ 5 · USERS SITS ABOVE PRICING
+
+⭐⭐ **ANNUALISED, AXIOM IS MID-BAND ON PRICE.** Both figures are shown
+(`$4,995 / company / month ($59,940 / yr)`). **Unlimited users is the difference,
+not cost** — leading with price would make the one claim **the numbers do not
+support.** The phone layout keeps the same order; a layout that reordered it
+would make a different argument.
+
+## ⭐ 6 · MOBILE KEEPS EVERY DOT
+
+12 columns become one card per feature. ⭐ **A responsive table that hides
+columns hides exactly the concessions that make it credible.** A phone has no
+hover, so **AXIOM's reason is printed** rather than lost.
+
+## ⭐⭐ 7 · FOURTH SUBSTRING FALSE POSITIVE
+
+This lane's own test banned the substring `open(` to keep the control in memory,
+and fired on **`urllib.request.urlopen(`**. Narrowed to file opening. Joins
+`credential` / `respondent` / `comment`: ⭐ **a guard that bans the WORD rather
+than the CAPABILITY punishes saying the right thing** — now **four** instances.
+
+## ⭐ 8 · TWO COLLISIONS IN THE SUPPLIED DATASET — NOT AUTO-RESOLVED
+
+1. ⭐ **"No acronyms anywhere"** — but the supplied row names contain **OKR, KPI,
+   ERP and AI**. The names are used **exactly as supplied**; the instruction was
+   not applied over the data.
+2. ⭐ **Row 23 sits under "Where others are stronger" while AXIOM is green.** Left
+   as supplied. The concession-block test therefore asserts rows **19–22**, not
+   "every row in the block."
+
+**Both stand for the user's ruling.**
