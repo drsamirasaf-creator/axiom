@@ -12583,3 +12583,126 @@ the repair applied after it misfires:**
 
 ⭐ **A regex over source is admissible only where the artefact IS text** — a
 committed manifest, a migration name — never where it stands in for behaviour.
+
+# ⭐⭐ §4w · "What is AXIOM?" 404'd FOR EVERY VISITOR — AND NOTHING WAS GATED
+
+**Ruled by the user 1 Aug: this page requires no sign-in.** It never did. ⭐⭐ **IT
+WAS UNREACHABLE BY ITS OWN NAME.**
+
+## ⭐⭐ 1 · THE DIAGNOSIS — MEASURED, NOT ASSUMED
+
+| question | answer |
+|---|---|
+| absent, gated, or elsewhere? | ⭐ **elsewhere.** Served at `/how-it-works` |
+| what does the sidebar target? | `to: "/how-it-works"`, ⭐ **labelled "What is AXIOM?"** |
+| does the matrix render there? | ⭐ **yes** — signed-in and signed-out alike |
+| is the route gated? | ⭐ **no.** No `beforeLoad`, no auth. `AppLayout` **never redirects** |
+| `/what-is-axiom` anonymously | ⭐⭐ **HTTP 404** |
+| `/how-it-works` anonymously | **HTTP 200**, 39,884 bytes |
+
+⭐ **A PAGE A PROSPECT CANNOT GUESS THE URL OF IS GATED BY SPELLING.** The label
+and the path were different words for the same page, and only one of them worked.
+
+## ⭐⭐ 2 · WHY THE LANE'S WIRING ASSERTION PASSED — THE MECHANISM
+
+```
+assert "What is AXIOM?" in src          # matched the page's own eyebrow text
+assert "<ComparisonMatrix />" in src
+assert "ComparisonMatrix" in src.split("export const Route")[0]
+```
+
+⭐⭐ **IT READ A FILE FROM DISK AND MATCHED SUBSTRINGS. IT NEVER MADE A REQUEST
+AND NEVER NAMED A URL.** It did **not** run against a signed-in route — it ran
+against **no route at all.**
+
+**It proved:** a file exists, contains the words, imports the component, places it.
+**It could not see:** whether any URL serves that file, *which* URL, or whether
+the URL a prospect would type resolves.
+
+⭐⭐ **THE ROUTE'S OWN PATH NEVER APPEARED IN THE ASSERTION**, so the page's NAME
+and the page's PATH were never compared — **and the gap between them was the
+entire defect.** Tenth built-but-not-wired instance, one level up: the component
+was wired to the page, and **the page was unreachable by its own name.**
+
+⭐ **It is §III.9 again** — matching text where behaviour was meant. Fifth instance.
+
+## ⭐⭐ 3 · HOLDING MODE IS REAL, IS ON, AND IS *NOT* THIS
+
+`src/lib/holding-mode.ts` → `HOLDING_MODE = true`.
+
+| | |
+|---|---|
+| **one route tree or two?** | ⭐ **ONE.** `routeTree.gen.ts`, one SPA, one server. Public and app routes are **not** separated |
+| **what holding mode covers** | ⭐ **exactly two routes: `/` and `/pricing`** |
+| **for whom** | anonymous only; ⭐ signed-in sessions pass through |
+| **what it returns** | ⭐⭐ **HTTP 200 and a different page** |
+
+⭐⭐ **A STATUS SWEEP CANNOT SEE THE SUPPRESSION.** `/` and `/pricing` answer
+**200** while rendering the holding page — the same law as the demo links: **a 200
+proves reachability, never content.** My own first sweep read them as healthy.
+
+### ⭐⭐ THE TWO DEFECTS ARE DISTINCT, AND MEASURED APART
+
+Rendered text, anonymous, on production:
+
+| page | first words | chars |
+|---|---|---|
+| **not-found shell** (`/what-is-axiom`) | `AXIOM · Dynamic Corporate Transformation · NOT AVAILABLE` | **303** |
+| **holding page** (`/`, `/pricing`) | `AXIOM Dynamics · A strategy-execution platform…` | **273** |
+
+⭐ **`/what-is-axiom` served the NOT-FOUND SHELL.** A route the app **does not
+recognise** and a route **deliberately suppressed** are different defects with
+different fixes, and the fix here was the first.
+
+## ⭐ 4 · EVERY PROSPECT SURFACE, MEASURED ANONYMOUSLY
+
+| route | renders |
+|---|---|
+| `/about` (founder) · `/advisory` · `/free-pilot` · `/legal/eula` · `/login` · `/register` · `/how-it-works` | ⭐ **the real page** |
+| `/` · `/pricing` | ⭐ **holding page — deliberate** |
+| `/what-is-axiom` | ⭐⭐ **404 — the defect** |
+
+**All 53 routes in the tree were swept; nothing else 404s.** The brochure has no
+route of its own — the matrix is served from `GET /brochure/comparison-matrix`,
+**200 anonymously**. `/access/showcase-companies` and `/participants/sample-template`
+are **200 anonymously**.
+
+## ⭐⭐ 5 · WHY THE THREE-MODE CRAWL REPORTED PASS
+
+```python
+if authed:  routes.update(sidebar_links)      # the whole nav
+else:       routes.update(EXTRA_ROUTES_ANON)  # ["/", "/login", "/pricing"]
+```
+
+⭐⭐ **ROUTES ARE DISCOVERED FROM THE SIDEBAR, AND THE SIDEBAR ONLY EXISTS ONCE
+YOU ARE SIGNED IN.** So the authed modes crawled everything and the anonymous mode
+fell back to **three hard-coded routes**, none of them this page.
+
+⭐⭐ **DISCOVERY THAT DEPENDS ON BEING SIGNED IN CANNOT COVER THE SIGNED-OUT
+CASE.** The mode with the most to prove had the smallest route list — and
+`/what-is-axiom` was in neither list, so **it was never requested in any mode.**
+
+## ⭐ 6 · THE FIX
+
+- `/what-is-axiom` is the canonical path; ⭐ **`/how-it-works` redirects** —
+  removing a path that has been public is indistinguishable, to anyone holding
+  the link, from **taking the page down**
+- `EXTRA_ROUTES_ANON` replaced by ⭐ **`PROSPECT_ROUTES`, named** (10), with
+  `HOLDING_ROUTES` declaring the two that are dark **on purpose**
+- **25th gate** `scripts/check-prospect-routes.py` — reads the crawler's own list
+  (⭐ two copies of a route list drift) and reproduces the defect: run against the
+  deployed app it printed **`✗ /what-is-axiom -> 404`**
+- ⭐ the matrix now **states a load failure** instead of returning `null`:
+  **A SILENT NULL IS INDISTINGUISHABLE FROM A GATE**
+
+## ⭐⭐ 7 · FOURTH PLANTED-LINE LEAK — THE SAME CAUSE, THE FOURTH TIME
+
+`_planted = allocation_sqrt()` was again left in `benchmarks/router.py` when a
+**10-minute timeout killed the gate loop mid-control.** `check-export-coverage`
+and `check-pack-coverage` **plant into production source.**
+
+⭐⭐ **A GUARD THAT EDITS PRODUCTION SOURCE TO TEST ITSELF IS ONE INTERRUPTION
+FROM COMMITTING THAT EDIT.** Reported after occurrences 1–3 and **not built**;
+this is the fourth. ⭐ **The remedy is not "be careful" — it is to plant in a
+copy**, as `check-comparison-matrix` and `check-prospect-routes` already do.
+**Still awaiting a named lane.**

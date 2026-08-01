@@ -252,8 +252,11 @@ def test_the_matrix_is_SERVED_not_duplicated_in_the_frontend(served):
 FE = "/Users/samirasaf/dev/optimization-anchor"
 
 
+PAGE = "src/routes/what-is-axiom.tsx"
+
+
 def _page():
-    p = os.path.join(FE, "src/routes/how-it-works.tsx")
+    p = os.path.join(FE, PAGE)
     if not os.path.exists(p):
         pytest.skip("frontend checkout not present")
     return open(p, encoding="utf-8").read()
@@ -265,6 +268,71 @@ def test_the_matrix_renders_on_the_WHAT_IS_AXIOM_page():
     assert "<ComparisonMatrix />" in src
     assert "ComparisonMatrix" in src.split("export const Route")[0], \
         "the component is not imported"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐⭐ WHAT THE ABOVE ASSERTION CANNOT SEE — and the assertions that can
+# ═══════════════════════════════════════════════════════════════════════════
+# The test above reads a FILE and matches SUBSTRINGS. It proved a file exists,
+# contains the words "What is AXIOM?", imports the component and places it.
+#
+# ⭐⭐ IT NEVER MADE A REQUEST AND NEVER NAMED A URL. The route's own path does
+# not appear in it, so the page's NAME and the page's PATH were never compared —
+# and the gap between them WAS the defect: the sidebar said "What is AXIOM?"
+# while the only URL was /how-it-works, so a prospect typing the label's own
+# words got a 404. Nine built-but-not-wired instances, and this is the shape one
+# level up: the component was wired to a page, and the PAGE was unreachable by
+# its own name.
+#
+# ⭐ It is also the §III.9 class again — matching text where behaviour was meant.
+
+
+def test_the_PAGE_PATH_MATCHES_THE_NAME_THE_SIDEBAR_GIVES_IT():
+    """⭐⭐ A page a prospect cannot guess the URL of is gated by spelling."""
+    src = _page()
+    m = re.search(r'createFileRoute\("([^"]+)"\)', src)
+    assert m, "no route declared"
+    path = m.group(1)
+    assert path == "/what-is-axiom", f"the page is served at {path}"
+
+    layout = open(os.path.join(FE, "src/components/AppLayout.tsx"), encoding="utf-8").read()
+    i = layout.index('label: "What is AXIOM?"')
+    nav = layout[max(0, i - 200):i]
+    assert f'to: "{path}"' in nav, \
+        "the sidebar's 'What is AXIOM?' link does not target the page's own path"
+
+
+def test_the_OLD_PATH_STILL_RESOLVES():
+    """⭐ Removing a path that has been public is indistinguishable, to anyone
+    holding the link, from taking the page down."""
+    old = open(os.path.join(FE, "src/routes/how-it-works.tsx"), encoding="utf-8").read()
+    assert "redirect" in old and '"/what-is-axiom"' in old
+
+
+def test_the_ROUTE_IS_REGISTERED_IN_THE_ROUTE_TREE():
+    """⭐ A route file the tree does not import is a 404 with a component behind
+    it. The file existing is not the route existing."""
+    tree = open(os.path.join(FE, "src/routeTree.gen.ts"), encoding="utf-8").read()
+    assert "'/what-is-axiom'" in tree
+    assert "./routes/what-is-axiom" in tree
+
+
+def test_the_matrix_STATES_a_load_failure_rather_than_VANISHING():
+    """⭐⭐ A SILENT NULL IS INDISTINGUISHABLE FROM A GATE. The first version
+    swallowed the error and rendered nothing, so a prospect whose fetch failed
+    saw exactly what a censored page would show."""
+    c = open(os.path.join(FE, "src/components/ComparisonMatrix.tsx"), encoding="utf-8").read()
+    assert ".catch(() => {})" not in c, "the fetch error is swallowed"
+    assert "could not be loaded" in c and "not restricted" in c
+
+
+def test_the_page_requires_NO_AUTHENTICATION():
+    """⭐ Ruled 1 Aug: this page requires no sign-in. A beforeLoad that redirects
+    an anonymous reader would gate it without ever saying so."""
+    src = _page()
+    head = src.split("component:")[0]
+    for banned in ("requireAuth", "redirect({", "getToken(", "isAuthenticated"):
+        assert banned not in head, f"the route gates on {banned}"
 
 
 def test_the_component_calls_the_SERVED_endpoint(served):

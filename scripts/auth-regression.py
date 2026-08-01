@@ -175,8 +175,46 @@ def _safe_goto(page, url, timeout=30000, settle=0):
     raise RuntimeError(f"connection-class, {GOTO_RETRIES} retries exhausted :: {str(last)[:90]}")
 
 
-# non-sidebar routes to also crawl (anonymous-reachable + utility). UPDATE with nav.
-EXTRA_ROUTES_ANON = ["/", "/login", "/pricing"]
+# ⭐⭐ THE ANONYMOUS MODE COULD NOT SEE A PROSPECT-FACING 404, AND HERE IS WHY.
+# ROUTES are DISCOVERED FROM THE SIDEBAR — and the sidebar only exists once you
+# are signed in. So the anonymous mode fell back to this list, three routes long,
+# while the authed modes crawled the whole nav. `/what-is-axiom` 404'd for every
+# visitor and rendered for every operator, and the crawl reported PASS.
+#
+# ⭐ DISCOVERY THAT DEPENDS ON BEING SIGNED IN CANNOT COVER THE SIGNED-OUT CASE.
+# The signed-out visitor is the one who has no sidebar to discover from, so the
+# mode with the most to prove had the smallest route list.
+#
+# ⭐ THESE ARE THE PROSPECT-FACING SURFACES, NAMED. A prospect reaches them
+# before they have an account, so a 404 here is lost revenue, not a broken link.
+PROSPECT_ROUTES = [
+    "/",                 # landing
+    "/what-is-axiom",    # ⭐ the comparison matrix — 404'd anonymously until 1 Aug
+    "/how-it-works",     # ⭐ the former path; must still resolve
+    "/pricing",
+    "/about",            # founder
+    "/advisory",
+    "/free-pilot",
+    "/legal/eula",
+    "/login",
+    "/register",
+]
+# ⭐⭐ DELIBERATELY DARK, AND THAT IS NOT THE SAME AS BROKEN. `HOLDING_MODE` in
+# src/lib/holding-mode.ts is TRUE, and covers EXACTLY these two routes: anonymous
+# visitors get the holding page, signed-in sessions pass through. Ruled by the
+# user: the app returns to public availability only when every feature is built.
+#
+# ⭐ THEY RETURN HTTP 200 AND RENDER A DIFFERENT PAGE, so a status-code sweep
+# cannot see the suppression at all — the same law as the demo links: a 200
+# proves reachability, never content.
+#
+# ⭐⭐ HOLDING MODE IS NOT WHAT 404'd /what-is-axiom. Measured 1 Aug: the holding
+# page and the not-found shell are textually distinct, and /what-is-axiom served
+# the NOT-FOUND shell. A route the app does not recognise and a route deliberately
+# suppressed are different defects with different fixes.
+HOLDING_ROUTES = {"/", "/pricing"}
+
+EXTRA_ROUTES_ANON = list(PROSPECT_ROUTES)
 
 # authed identity call the app makes on boot (for the hard sanity gate). The gate
 # accepts ANY backend 2xx that carried Authorization if this exact path isn't seen.
