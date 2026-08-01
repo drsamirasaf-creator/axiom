@@ -13100,3 +13100,43 @@ workspace* while §4y governs *pilot viewers*, which would make both true of
 different populations — but **that distinction is not written anywhere**, and
 inferring it is exactly the "settled by whichever code path happened to exist"
 hazard CORE already records. **The user's ruling.**
+
+# ⭐⭐ §0 · `docs/ledger/ONBOARDING.md` EXISTS, AND MUST BE KEPT CURRENT
+
+**Written 1 Aug.** ⭐ **CORE records WHAT WAS RULED. ONBOARDING records HOW THE
+WORK IS DONE.** Nothing recorded the second, so a fresh advisor with no
+conversation history could read every ruling and still not know how to write a
+dispatch.
+
+**It covers:** what AXIOM is (product, the thousand mid-market firms, the two
+tiers, the leading question, the twelve-step journey) · the **two-lane custody
+model** and why mixing the lanes makes two parties fight over one file · how a
+dispatch is written, with the standing practices as **instructions rather than
+history** · the standing laws **in practice** · the defect classes **and their
+tells** · current state, both queues, the launch condition, the reliability
+gates · how to re-establish access.
+
+## ⭐⭐ IT IS SUBJECT TO THE SAME LAW AS THIS FILE
+
+⭐⭐ **A RECOVERY DOCUMENT THAT GOES STALE IS WORSE THAN NONE, BECAUSE IT WILL BE
+TRUSTED.** *A stale line does not merely misinform, it issues instructions* — and
+a recovery document is read by exactly the person with no context to catch it.
+
+**Update it IN THE SAME LANE, not afterwards, when:** a defect class gains an
+instance (⭐ **and the instance COUNT changes**) · a queue item is ruled or built
+· a reliability gate closes · a standing practice is added · custody or routing
+is corrected · a host, repo, plan or secret location changes.
+
+⭐ **ITS COUNTS ARE CLAIMS AND ITS LAST SECTION SAYS SO** — "ten instances",
+"26 gates", "1047 warnings", "65 variables" are each measurable, and each is
+wrong the moment it is not maintained.
+
+⭐ **Verified on writing:** 26 gates, 65 documented env variables, ratchet at
+1047, `HOLDING_MODE = true`, both hosts answering 200. ⭐⭐ **AND ONE COUNT I GOT
+WRONG AND CORRECTED BEFORE COMMITTING** — I wrote *eleven* built-but-not-wired
+instances; CORE's highest is **TENTH**. **The document about not trusting counts
+had a wrong count in it**, which is the strongest possible argument for the
+sentence that closes it.
+
+**The test it must keep passing:** *could a fresh advisor read it and write a
+correct dispatch tomorrow?*
