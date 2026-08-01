@@ -133,10 +133,15 @@ def _backfill_showcase_names(db):
 # (direct-dataset name prefix, clean name, short mark, bg, fg) — shared by the
 # company seeder and the logo backfill so the two can never disagree on which
 # companies exist or what they are called.
+# ⭐⭐ ONE SHOWCASE COMPANY. Ruled 1 Aug: Halcyon and Helios are DELETED IN FULL.
+#
+# They were recorded RETIRED in CORE and their rows stayed, so the tenant carried
+# three demo companies against a sole-showcase ruling. ⭐ THE SEED IS CLOSED FIRST,
+# BEFORE THE DATA IS REMOVED — a seed that still names them would recreate both on
+# the next boot, which is precisely the regression this programme just spent two
+# lanes undoing.
 SHOWCASE_SPECS = [
     ("Meridian Industries", "Meridian Industries, Inc.", "MERIDIAN", "#12233A", "#EAF2FB"),
-    ("Halcyon Components", "Halcyon Components GmbH", "HALCYON", "#16302A", "#E7F3EA"),
-    ("Helios", "Helios, Inc.", "HELIOS", "#2A1E12", "#FBEFE2"),
 ]
 
 
@@ -263,9 +268,22 @@ def _backfill_showcase_logos(db):
 
 
 def _backfill_showcase_helios(db):
-    """Idempotent: seed the Helios (stressed public) reference company if it's
-    absent. Production was first seeded before Helios was added, so its showcase
-    roster is missing it. Creates the dataset + its proforma valuation run."""
+    """⭐⭐ RETIRED 1 Aug — HELIOS IS DELETED AND MUST NOT RETURN.
+
+    This function CREATED the Helios dataset whenever none was found, so the
+    deletion would have been undone by the next boot: it is a creator guarded by
+    an existence check, and deleting the row satisfies the check.
+
+    ⭐ IT IS DISABLED HERE RATHER THAN REMOVED, so a reader who wonders why the
+    showcase has one company finds the answer at the place that used to add the
+    third. Removing it silently would leave the next reader to rediscover the
+    ruling from the absence.
+    """
+    return
+
+
+def _backfill_showcase_helios_RETIRED(db):
+    """Historical body, unreachable. See the ruling above."""
     from ..modules.financials import models as fin_models
     from ..modules.valuation import models as val_models
     from ..modules.valuation import engines as val

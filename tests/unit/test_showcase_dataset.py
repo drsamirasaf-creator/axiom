@@ -154,3 +154,50 @@ def test_the_demo_rot_predicate_asserts_POPULATION_not_reachability():
     src = open("scripts/auth-regression.py", encoding="utf-8").read()
     assert 'lambda d: bool(d.get("has_data"))' in src
     assert "EMPTY — demo surface not populated" in src
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐⭐ THE SOLE-SHOWCASE INVARIANT (ruled 1 Aug)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_the_seed_names_exactly_ONE_showcase_company():
+    """⭐⭐ Halcyon and Helios were recorded RETIRED in CORE and their rows
+    stayed, so the tenant carried three demo companies against a sole-showcase
+    ruling."""
+    from services.api.core import seed
+    assert len(seed.SHOWCASE_SPECS) == 1
+    assert "Meridian" in seed.SHOWCASE_SPECS[0][1]
+
+
+def test_the_HELIOS_CREATOR_is_closed_or_it_returns_on_the_next_boot():
+    """⭐⭐ `_backfill_showcase_helios` CREATED the dataset whenever none was
+    found — a creator guarded by an existence check, so DELETING THE ROW
+    SATISFIES THE CHECK. Closing the seed before deleting the data is the lesson
+    from the two preceding lanes."""
+    import inspect
+
+    from services.api.core import seed
+    src = inspect.getsource(seed._backfill_showcase_helios)
+    assert "RETIRED" in src
+    # ⭐ it must not reach the creating body
+    assert "FinancialDataset(" not in src, "the backfill can still create Helios"
+    body = [l for l in src.splitlines()
+            if l.strip() and not l.strip().startswith(('"', "#"))]
+    assert body[-1].strip() == "return", "the function does not return immediately"
+
+
+def test_the_retired_body_is_DISABLED_not_deleted():
+    """⭐ A reader who wonders why the showcase has one company should find the
+    answer where the third used to be added."""
+    src = open("services/api/core/seed.py", encoding="utf-8").read()
+    assert "_backfill_showcase_helios_RETIRED" in src
+    assert "ONE SHOWCASE COMPANY" in src
+
+
+def test_the_showcase_guard_now_examines_one_company_not_three():
+    """⭐ The guard printed 'checked 3 showcase company(ies)' before the ruling;
+    a silent drop to 1 with no assertion would be indistinguishable from a
+    broken selector."""
+    src = open("scripts/check-showcase-dataset.py", encoding="utf-8").read()
+    assert "checked {len(rows)} showcase" in src
+    assert "broken selector" in src

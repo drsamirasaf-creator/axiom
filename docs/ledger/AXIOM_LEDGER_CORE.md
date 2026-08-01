@@ -10163,6 +10163,101 @@ call site and misleading about the claim.**
 
 **This belongs to the sole-ownership programme, not to config versioning.**
 
+## ⭐⭐ HALCYON AND HELIOS — DELETED IN FULL (ruled 1 Aug)
+
+**CORE recorded them RETIRED and their rows stayed**, so the tenant carried three
+demo companies against a sole-showcase ruling. **1,148 rows removed.**
+
+### ⭐ 1 · THE BLAST RADIUS, MEASURED BEFORE ANYTHING WAS TOUCHED
+
+| class | rows |
+|---|---|
+| `ax_trajectory_cache` | **998** |
+| ⭐ **`valuation_runs`** (keyed by **`dataset_id`**) | ⭐⭐ **87** |
+| `ax_strategic_moves` | 28 |
+| `ax_watch_state` | 14 |
+| `ax_report_issues` | 6 |
+| **`ax_packs`** | **4** |
+| `financial_datasets` (ids 6, 7, 21) | 3 |
+| `ax_decision_frontiers` · `ax_dp_policy_surfaces` · `ax_viability` | 2 each |
+| `enterprises` | 2 |
+| **TOTAL** | ⭐ **1,148** |
+
+⭐ **EXPLICIT ZEROS, because absence must be stated:** objectives **0** · key
+results **0** · KPI plans **0** · initiatives **0** · departments **0** · watch
+events **0**. Halcyon and Helios were thin: datasets, derived caches and packs.
+
+⭐⭐ **THE 87 VALUATION RUNS ARE THE POINT.** They key on `dataset_id`, **not
+`company_id`** — a company-keyed hand list would have left every one of them
+orphaned. *"A hand list is how 'valuation runs alone' happened."*
+
+### ⭐⭐ 2 · THE PACK-DELETION EXCEPTION — STATED, NOT A SIDE EFFECT
+
+**Four published packs were deleted: 1 and 2 (Helios), 19 and 20 (Halcyon).**
+
+⭐⭐ **PACKS ARE IMMUTABLE AND CORRECTIONS NEVER EDIT.** Deleting a published pack
+contradicts that discipline, and it is recorded here as a **stated exception**
+rather than allowed to happen quietly as a consequence of deleting a company.
+
+⭐ **THE GROUND FOR THE EXCEPTION:** these are **retired demonstration companies
+with no customer behind them.** No recipient ever received these packs, no
+brochure figure cites them, and nothing outside the two companies references them.
+**The discipline exists to protect a reader who was given a number; there is no
+such reader here.**
+
+⭐ **It does not generalise.** A pack belonging to any company with a customer
+behind it is not deletable on this reasoning.
+
+### ⭐ 3 · THE SHARED-DEPENDENCY CHECK — CLEAN, AND IT WAS THE STOP CONDITION
+
+| probe | result |
+|---|---|
+| datasets outside 21/22 with a parent in the doomed set | ⭐ **none** — ds 7's parent is ds 6, **both doomed** |
+| valuation runs on doomed datasets owned by another tenant | none — all `showcase` |
+| **shared R2 keys** | ⭐ **none** |
+| ⭐⭐ **packs outside 21/22 freezing a doomed dataset** | ⭐⭐ **ZERO** — every pack's frozen `dataset_id` was read, not assumed |
+| Meridian's datasets | **6, disjoint** from {6, 7, 21} |
+
+### ⭐ 4 · THE CASCADE — DERIVED, NOT HAND-WRITTEN
+
+**Driven from `information_schema`**: every column named `dataset_id`,
+`company_id` or `cid`, in that order — ⭐ **dataset-derived children first, then
+company-keyed rows, then the datasets, then the companies.** One transaction.
+
+⭐ **The enumeration and the deletion used the SAME scan**, so nothing could be
+counted and then missed.
+
+### ⭐⭐ 5 · THE SEED WAS CLOSED FIRST — and one creator nearly undid the lane
+
+`SHOWCASE_SPECS` reduced to Meridian alone.
+
+⭐⭐ **AND `_backfill_showcase_helios` WOULD HAVE RECREATED HELIOS ON THE NEXT
+BOOT.** It creates the dataset **whenever none is found** — ⭐ **a creator guarded
+by an existence check, so deleting the row SATISFIES the check.** Reducing the
+specs list alone would have left Helios returning within a deploy.
+
+⭐ **It is DISABLED, NOT DELETED**, with the historical body kept as
+`_backfill_showcase_helios_RETIRED`: a reader who wonders why the showcase has one
+company finds the answer **at the place that used to add the third.**
+
+⭐ **This is the third consecutive lane in which a seed re-creating state was the
+real defect.** Closing the writer before touching the data is now the settled
+order.
+
+### ⭐ 6 · ASSERTED AFTER
+
+| | |
+|---|---|
+| Meridian active dataset | **45** |
+| equity / DLOM / post-DLOM / WACC | ⭐ **3,436.211694 · 0.2 · 2,748.969356 · 0.130458 — byte-identical** |
+| surviving packs | ⭐ **16, all present, all hashes identical** |
+| ⭐⭐ **showcase companies** | ⭐⭐ **1 — Meridian** |
+| companies overall | 10 → **8**; nothing outside the showcase tenant touched |
+
+**The guard now reports "checked 1 showcase company(ies)" where it reported 3** —
+⭐ **and its coverage line is why that drop is visible rather than
+indistinguishable from a broken selector.**
+
 ## ⭐⭐ MERIDIAN RESTORED — THE SEED RULE, AND THE GUARD CARDINALITY COULD NOT GIVE (1 Aug)
 
 ### ⭐ 1 · THE WRITER FIRST, THEN THE DATA
