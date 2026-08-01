@@ -13766,3 +13766,98 @@ The no-recomputation check banned `".data"` and **fired on
 the COMPONENT.** Rewritten to assert the chain link by link: the page mounts the
 component, the component calls the route, and the censoring and coverage survive
 into the render. ⭐ **Asserting one file cannot prove a chain.**
+
+# ⭐⭐ §7j.4 · THE CAUSAL MAP, ATTRIBUTION HALF — BUILT 1 Aug
+
+`services/api/causal_map.py` · `GET /companies/{id}/causal-map` ·
+`src/components/CausalMap.tsx`, on the **Causal Map** tab.
+⭐ **Third item of §7j.2's revised order.**
+
+## ⭐ 1 · PRE-BUILD MEASUREMENT — THE FIVE TABLES, NAMED
+
+The scope report said the attribution half is a view over five existing link
+tables. ⭐ **Verified against code, and it is:**
+
+| table | carries |
+|---|---|
+| `ax_initiative_line_links` (B10) | ⭐ `weight`, `declared_by`, **`declared_at`**, `revoked_at` |
+| `ax_kpi_objective_links` | `source`, `flagged_absent`, `created_by` |
+| `ax_kpi_initiative_links` | " |
+| `ax_goal_initiative_links` | " |
+| `ax_kr_initiative_links` | " |
+
+⭐⭐ **B11's ATTRIBUTION RULE IS ALSO ALREADY BUILT** — `SOLE` / `PROPORTIONAL` /
+`UNATTRIBUTED`, declared weights, and **a residual**.
+
+⭐ **WHAT GENUINELY NEEDED WRITING: THE EDGE VIEW.** No edge builder existed —
+zero occurrences. Everything beneath it did.
+
+## ⭐⭐ 2 · THE EDGE VOCABULARY — THE LABEL IS THE PRODUCT
+
+| label | meaning |
+|---|---|
+| **hypothesis** | ⭐ **THE DEFAULT.** Nobody asserted it |
+| **attribution** | a human declared the relationship |
+| **causal-evidence** | declared **+ exclusive + preceding + no unexplained remainder** |
+
+⭐⭐ **AN UNLABELLED EDGE ASSERTS CAUSATION BY OMISSION**, which is the failure
+the three-way vocabulary exists to prevent. **Every edge carries its label AND
+its basis** — ⭐ a label with no basis is the same assertion-by-omission one step
+later, and a demotion that does not say why reads as an oversight.
+
+## ⭐⭐ 3 · THE THRESHOLD AS IMPLEMENTED — AND THE FOURTH CONDITION
+
+The ruling gives **exclusivity + precedence**. ⭐⭐ **IMPLEMENTING IT LITERALLY
+WOULD HAVE PROMOTED THE CASE THE RULING WARNS ABOUT.**
+
+> *"Exclusivity of linkage is not exclusivity of cause — a line with one linked
+> initiative and three real drivers must not promote."*
+
+⭐ **`mode == SOLE` MEANS EXACTLY ONE INITIATIVE DECLARES THE LINE. It says
+nothing about how many things MOVED it.** ⭐⭐ **B11 ALREADY MEASURES THAT GAP —
+IT IS THE RESIDUAL**, so `causal-evidence` additionally requires the declared
+share to leave **no unexplained remainder**.
+
+**Without that condition, `SOLE` would promote every lonely link on a line nobody
+else bothered to declare** — which is precisely the three-real-drivers case.
+
+⭐ **`None` residual blocks promotion too.** *"Not computable"* is not *"zero"*.
+
+⭐ **The four non-line tables cannot reach causal-evidence at all**: they carry
+no movement and no weight, so no residual exists and exclusivity of cause cannot
+be tested. **Attribution is their ceiling, and the edge says so.**
+
+## ⭐ 4 · NO INFERENCE — ASSERTED BY AST
+
+No call to `corr`, `regress`, `fit`, `infer`, `predict`, `lstsq`; **no import of
+numpy, scipy, sklearn, statsmodels or pandas.** ⭐ Keyed on behaviour (§III.9,
+which has fired **seven** times on tests banning a token) so the module's own
+docstring saying *"infers nothing"* does not fail it.
+
+⭐ **The absent methods are stated ON THE SURFACE**, not only here: a reader who
+knows what a causal map usually contains must be told this one runs no DiD, no
+IV and no Bayesian networks, **and why** — no comparison group, and inventing one
+would be fabrication (ruling 5).
+
+## ⭐⭐ 5 · MERIDIAN — MEASURED IN PRODUCTION
+
+| | |
+|---|---|
+| edges | **82** across **75 nodes** |
+| ⭐ **attribution** | **82** |
+| ⭐⭐ **causal-evidence** | **0** |
+| hypothesis | 0 |
+| isolated | 0 |
+
+**Exactly per ruling 5.** ⭐ **And the reason is structural, not a threshold
+tuned to produce it: Meridian holds ZERO statement-line links**, so B10's table —
+the only one that can reach causal-evidence — is empty for the showcase. The
+promotion path is exercised by test, not by the demo.
+
+## ⭐ 6 · ABSENCE DECLARES
+
+⭐⭐ **A MAP THAT SILENTLY OMITS AN UNCONNECTED NODE TELLS A READER THE COMPANY
+HAS NO SUCH DRIVER.** Isolated nodes are listed with a stated reason; a company
+with no declared links returns `has_data: false` and says so. **Coverage is on
+the surface** — *"0 causal-evidence in 82 edges"* and *"0 in 0"* print the same
+tick (III.4).

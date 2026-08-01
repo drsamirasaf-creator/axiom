@@ -461,7 +461,11 @@ def test_BUILT_STATE_IS_MEASURED_against_the_served_route_table():
     # ⭐ Resilience Field shipped 1 Aug (§7j.3) and `built()` MEASURES it, which
     # is the guard working: this expectation moved because the world did.
     assert b["resilience_field"] is True, "the Resilience Field ships and must show so"
-    for k in ("multiverse", "causal_map", "prescience_brief"):
+    # ⭐⭐ SECOND UPDATE IN TWO LANES, AND BOTH TIMES THE GUARD WAS RIGHT. This
+    # expectation moves as features ship, which is the guard measuring reality
+    # rather than reading a status column. §7j.4 shipped the Causal Map.
+    assert b["causal_map"] is True, "the Causal Map ships and must show so"
+    for k in ("multiverse", "prescience_brief"):
         assert b[k] is False, f"{k} has no route but reads as built"
 
 
@@ -482,6 +486,9 @@ def test_EVERY_UNMARKED_FEATURE_CARRIES_A_REASON():
     # other three — built, but its block is already marked
     why = dict(un)["resilience_field"]
     assert "already marked" in why, why
+    # ⭐ the Causal Map is unmarkable for a THIRD reason: it feeds no pack block
+    assert "no pack block" in dict(un)["causal_map"] or \
+        "pack block" in dict(un)["causal_map"]
     for _k, why in un:
         assert len(why) > 30, "the reason is not a reason"
 

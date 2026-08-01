@@ -60,6 +60,9 @@ PRESCIENCE_ONLY = {
     },
     "causal_map": {
         "label": "Causal Map",
+        # ⭐ BUILT 1 Aug (§7j.4), attribution half. `klass` stays None: the map
+        # reads the five declared LINK tables, none of which is a pack input
+        # class, so there is no pack block for a mark to land on.
         "klass": None,
         "route_marker": "/causal",
     },
