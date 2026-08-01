@@ -317,7 +317,11 @@ def enforce_write(allow: dict):
     flipped; that remains a separate product decision.
     """
     if allow["authenticated"]:
-        if require_plan() and allow["plan"] != "business":
+        # ⭐⭐ AT LEAST, NOT EQUALS. `!= "business"` locked a Prescience
+        # account out of every write — the tier above Business failed a
+        # gate that meant "at least Business".
+        from .plans import at_least
+        if require_plan() and not at_least(allow["plan"], "business"):
             raise HTTPException(status_code=402, detail=WRITE_402)
         return
     raise HTTPException(status_code=401, detail=WRITE_401)
@@ -338,7 +342,8 @@ def enforce_company_limit(db, user, *, creating_new: bool = True):
     from ...core.config import require_plan
     if not require_plan():
         return
-    if not user or (user.plan != "business"):
+    from .plans import at_least
+    if not user or not at_least(user.plan, "business"):
         raise HTTPException(status_code=402, detail=WRITE_402)
     if not creating_new:
         return

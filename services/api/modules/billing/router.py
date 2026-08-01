@@ -14,6 +14,9 @@ from . import engine
 router = APIRouter(prefix="/api/v1/billing", tags=["billing"])
 
 
+from ..identity.plans import at_least as _at_least  # noqa: E402
+
+
 def _current_user(authorization: str | None, db: Session):
     user, _ = _session_user(db, authorization)
     if not user:
@@ -67,7 +70,9 @@ def billing_status(authorization: str | None = Header(default=None),
             "companies_used": used,
             "companies_remaining": max(allowed - used, 0),
             "subscription_status": user.subscription_status,
-            "can_add_company": (user.plan == "business" and used < allowed)}
+            # ⭐ at-least: a Prescience account may add companies too.
+            "can_add_company": (_at_least(user.plan, "business")
+                                and used < allowed)}
 
 
 @router.post("/checkout")

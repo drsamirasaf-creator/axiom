@@ -41,13 +41,19 @@ def apply_subscription_state(user, *, status: str | None, quantity: int,
                              customer_id: str | None = None,
                              subscription_id: str | None = None,
                              livemode: bool | None = None,
-                             livemode_source: str | None = None) -> dict:
+                             livemode_source: str | None = None,
+                             plan: str | None = None) -> dict:
     """Apply a subscription's state to a user's entitlements. Pure w.r.t.
     Stripe — takes the already-extracted fields, so it is unit-testable with
     mocked events. Returns a summary of what changed.
 
     Rules:
-      - status active/trialing  -> plan=business, companies_allowed=quantity
+      - status active/trialing  -> plan=`plan` (default business), companies=quantity
+
+    ⭐⭐ `plan` IS A PARAMETER BECAUSE THE TIER IS NOW ORDERED. It defaulted to
+    the literal "business" when Business was the only paid tier; a Prescience
+    purchase must be able to say so. ⭐ Absent, it still means Business — an
+    existing webhook that names no tier keeps its current behaviour exactly.
       - status past_due         -> keep access (grace), mark status
       - status canceled/unpaid  -> plan=free, companies_allowed=0
     """
@@ -75,12 +81,17 @@ def apply_subscription_state(user, *, status: str | None, quantity: int,
         user.subscription_livemode = bool(livemode)
         user.livemode_source = livemode_source or "webhook"
 
+    from ..identity.plans import DEFAULT_PLAN, is_known
+    # ⭐ an unrecognised tier falls back to Business rather than granting more —
+    # a typo in Stripe metadata must never buy a customer the higher tier.
+    paid = plan if (plan and is_known(plan) and plan != DEFAULT_PLAN) else "business"
+
     if status in ACTIVE:
-        user.plan = "business"
+        user.plan = paid
         user.companies_allowed = max(int(quantity or 1), 1)
     elif status in GRACE:
         # keep whatever access they had; billing will retry
-        user.plan = "business"
+        user.plan = paid
         user.companies_allowed = max(user.companies_allowed, int(quantity or 1))
     elif status in DEAD:
         user.plan = "free"

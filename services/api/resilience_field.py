@@ -153,11 +153,18 @@ def include(app, get_db, require_company_member):
     """⭐ WIRED, and the wiring is asserted. Ten built-but-not-wired instances."""
     from fastapi import APIRouter, Depends
 
+    # ⭐⭐ PRESCIENCE-GATED (§7j.6, ruled 1 Aug). The TAB is gated; the pack's
+    # inputs are not — see plans.require_prescience for why.
+    from .accounts import get_current_user
+    from .modules.identity.plans import require_prescience
+    _tier = require_prescience(get_current_user)
+
     r = APIRouter(tags=["prescience"])
 
     @r.get("/companies/{company_id}/resilience-field")
     def resilience_field(company_id: int, db=Depends(get_db),
-                         _m=Depends(require_company_member)):
+                         _m=Depends(require_company_member),
+                   _t=Depends(_tier)):
         """⭐⭐ READS THE STORED VIABILITY ROW. It never recomputes: a surface
         that recomputes on read would drift from the pack that froze it, and the
         whole point of the Field is that a reader can hold it against a number

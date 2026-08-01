@@ -31,9 +31,13 @@ def allowed_origins() -> list[str]:
 def ai_rate_limit_per_hour() -> int:
     return int(os.environ.get("AXIOM_AI_RATE_LIMIT", "10"))
 def require_plan() -> bool:
-    """ADR-011: when true, Business writes require plan == 'business'
+    """ADR-011: when true, Business writes require AT LEAST the Business tier
     (server-side entitlement — the paywall enforced at the API). Flip on
-    Railway once payments are live."""
+    Railway once payments are live.
+
+    ⭐ Said as AT LEAST, not as equality: since §7j.6 the tier is an ORDERING and
+    a Prescience account passes every Business gate. The old wording described
+    an equality the code no longer performs."""
     return os.environ.get("AXIOM_REQUIRE_PLAN", "").strip().lower() in (
         "1", "true", "yes", "on")
 def admin_token() -> str | None:

@@ -39,6 +39,13 @@ from .modules.intelligence import engines as intel
 
 decision_router = APIRouter(tags=["prescience-decision"])
 
+# ⭐⭐ PRESCIENCE-GATED (§7j.6, ruled 1 Aug — option (a)). Every MEMBER-facing
+# route on this engine requires the tier. ⭐ `/internal/frontier/recompute` is
+# deliberately NOT gated: it is the nightly daemon's own entrypoint and carries
+# no user, and gating it would stop computing the cache the BUSINESS pack reads.
+from .modules.identity.plans import require_prescience as _rp  # noqa: E402
+_tier = _rp(get_current_user)
+
 # ---- config (recon-approved bounds, env-overridable) -----------------------
 def _cfg_int(k, d): return int(os.environ.get(k, str(d)))
 def _cfg_float(k, d): return float(os.environ.get(k, str(d)))
@@ -575,7 +582,8 @@ class EntityIntakeIn(BaseModel):
 
 
 @decision_router.get("/companies/{company_id}/moves")
-def list_moves(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+def list_moves(company_id: int, member=Depends(require_company_member), db=Depends(get_db),
+                 _t=Depends(_tier)):
     _ensure_seeded(db, company_id)
     rows = db.query(StrategicMove).filter_by(company_id=company_id).order_by(StrategicMove.id).all()
     return {"moves": [_move_to_dict(m) for m in rows], "atom_types": list(ATOM_TYPES)}
@@ -583,7 +591,8 @@ def list_moves(company_id: int, member=Depends(require_company_member), db=Depen
 
 @decision_router.post("/companies/{company_id}/moves", status_code=201)
 def create_move(company_id: int, body: MoveIn, member=Depends(require_company_admin),
-                user=Depends(get_current_user), db=Depends(get_db)):
+                user=Depends(get_current_user), db=Depends(get_db),
+                _t=Depends(_tier)):
     if body.atom_type not in ATOM_TYPES:
         raise HTTPException(422, f"atom_type must be one of {list(ATOM_TYPES)}")
     m = StrategicMove(company_id=company_id, atom_type=body.atom_type,
@@ -597,7 +606,8 @@ def create_move(company_id: int, body: MoveIn, member=Depends(require_company_ad
 
 @decision_router.put("/companies/{company_id}/moves/{move_id}")
 def update_move(company_id: int, move_id: int, body: MoveIn,
-                member=Depends(require_company_admin), user=Depends(get_current_user), db=Depends(get_db)):
+                member=Depends(require_company_admin), user=Depends(get_current_user),
+                db=Depends(get_db), _t=Depends(_tier)):
     m = db.get(StrategicMove, move_id)
     if not m or m.company_id != company_id:
         raise HTTPException(404, "Move not found")
@@ -610,7 +620,8 @@ def update_move(company_id: int, move_id: int, body: MoveIn,
 
 @decision_router.delete("/companies/{company_id}/moves/{move_id}")
 def delete_move(company_id: int, move_id: int, member=Depends(require_company_admin),
-                user=Depends(get_current_user), db=Depends(get_db)):
+                user=Depends(get_current_user), db=Depends(get_db),
+                _t=Depends(_tier)):
     m = db.get(StrategicMove, move_id)
     if not m or m.company_id != company_id:
         raise HTTPException(404, "Move not found")
@@ -621,7 +632,8 @@ def delete_move(company_id: int, move_id: int, member=Depends(require_company_ad
 
 @decision_router.post("/companies/{company_id}/moves/entity", status_code=201)
 def entity_intake(company_id: int, body: EntityIntakeIn, member=Depends(require_company_admin),
-                  user=Depends(get_current_user), db=Depends(get_db)):
+                  user=Depends(get_current_user), db=Depends(get_db),
+                  _t=Depends(_tier)):
     """Compile an acquisition/divestiture mini-intake into a lattice-consumable
     entity move (additive per-year cell deltas across post-close forecast years)."""
     if body.kind not in ("acquisition", "divestiture"):
@@ -665,7 +677,8 @@ def entity_intake(company_id: int, body: EntityIntakeIn, member=Depends(require_
 
 
 @decision_router.get("/companies/{company_id}/frontier")
-def get_frontier(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+def get_frontier(company_id: int, member=Depends(require_company_member), db=Depends(get_db),
+                 _t=Depends(_tier)):
     """Instant, cached latest frontier. 404 if not computed yet (nightly or POST search)."""
     _ensure_seeded(db, company_id)
     ds = _active_company_dataset(db, company_id)
@@ -684,7 +697,8 @@ def get_frontier(company_id: int, member=Depends(require_company_member), db=Dep
 
 
 @decision_router.get("/companies/{company_id}/frontier/policy-surface")
-def get_policy_surface(company_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+def get_policy_surface(company_id: int, member=Depends(require_company_member), db=Depends(get_db),
+                 _t=Depends(_tier)):
     ds = _active_company_dataset(db, company_id)
     if not ds:
         raise HTTPException(409, "No active dataset for this company.")
@@ -716,6 +730,7 @@ def _run_job(job_id, company_id):
 
 @decision_router.post("/companies/{company_id}/frontier/search", status_code=202)
 def start_search(company_id: int, member=Depends(require_company_member),
+                 _t=Depends(_tier),
                  user=Depends(get_current_user), db=Depends(get_db)):
     """Bounded re-search (30-90s). Returns a job to poll. Any member may trigger."""
     _ensure_seeded(db, company_id)
@@ -727,7 +742,8 @@ def start_search(company_id: int, member=Depends(require_company_member),
 
 
 @decision_router.get("/companies/{company_id}/frontier/search/{job_id}")
-def poll_search(company_id: int, job_id: int, member=Depends(require_company_member), db=Depends(get_db)):
+def poll_search(company_id: int, job_id: int, member=Depends(require_company_member), db=Depends(get_db),
+                 _t=Depends(_tier)):
     job = db.get(FrontierJob, job_id)
     if not job or job.company_id != company_id:
         raise HTTPException(404, "Job not found")

@@ -108,7 +108,8 @@ def me(user: models.User = Depends(deps.current_user), db: Session = Depends(get
 from fastapi import Header
 from ...core.config import admin_token
 
-PLANS = ("free", "business")
+# ⭐ DERIVED FROM THE RANK — one owner of tier order (see plans.py).
+from .plans import PLANS, at_least  # noqa: E402
 
 
 class GrantIn(BaseModel):
@@ -143,7 +144,7 @@ def grant_plan(body: GrantIn,
     # keep entitlements coherent: granting business gives at least one company
     # seat (the manual bridge mirrors what a paid subscription would set);
     # revoking to free clears seats.
-    if body.plan == "business" and (user.companies_allowed or 0) < 1:
+    if at_least(body.plan, "business") and (user.companies_allowed or 0) < 1:
         user.companies_allowed = 1
     elif body.plan == "free":
         user.companies_allowed = 0

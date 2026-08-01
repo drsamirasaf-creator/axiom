@@ -14144,3 +14144,112 @@ logic, but **the dispatch says "its surfaces" and the pack is a surface that rea
 it** — so the boundary is genuinely ambiguous and is the user's to draw.
 
 ⭐⭐ **NOTHING IS GATED UNTIL THAT IS RULED.** No code changed in this lane.
+
+# ⭐⭐ §7j.7 · PRESCIENCE GATED, THE PACK EXEMPT. RULED AND BUILT 1 Aug
+
+**§7j.6's open question is ruled: OPTION (a).** ⭐ **The engine and its tabs are
+Prescience-gated; the pack keeps its inputs.**
+
+## ⭐⭐ 1 · THE REASONING, RECORDED
+
+⭐ **The pack is the Business deliverable** — the subject of §7s and **step 12 of
+the journey**. Gating the cache would empty **"What is at risk"** and **"What to
+do next"** for every Business customer: ⭐⭐ **the downgrade the withdrawn ruling
+existed to avoid. The premise changed; the principle did not.**
+
+⭐⭐ **AND IT IS NOT A LEAK.** Business gets the **CONCLUSION**; Prescience gets
+the **REASONING you can push on** — the same engine asked a different question
+(ruling 2).
+
+⭐⭐ **THIRD GROUND: a gated cache would render those sections as PERMANENTLY
+ABSENT in an artefact sent to a client's LENDER** — which is **a worse claim
+about the client than about the tier.**
+
+## ⭐⭐ 2 · THE TIER IS NOW AN ORDERING
+
+`services/api/modules/identity/plans.py` — `free(0) < business(1) <
+prescience(2)`, and **`PLANS` is derived from the rank** so the two cannot drift.
+
+⭐⭐ **EQUALITY CANNOT EXPRESS "AT LEAST".** Two gates tested `!= "business"` and
+returned **402**, so the tier ABOVE Business would have **locked the
+highest-paying customer out of every write and out of company creation.**
+
+⭐ **Asserted: a Prescience account passes every Business gate**, and the
+ordering is not merely reflexive. ⭐ **An unknown plan ranks BELOW free** — a
+typo must never grant entitlement; the failure direction matters more than the
+value.
+
+## ⭐ 3 · TOUCH SITES — DERIVED INDEPENDENTLY, AND THE SUPPLIED LIST WAS SHORT
+
+The scope report named **six**. ⭐⭐ **DERIVED: TWELVE**, and the miss was
+customer-facing.
+
+| site | became |
+|---|---|
+| `identity/plans.py` | ⭐ **NEW — the single owner of tier order** |
+| `identity/router.py` PLANS | derived from the rank |
+| `identity/router.py` `== "business"` branch | `at_least` |
+| `identity/deps.py:320` | ⭐ `!= "business"` → **`not at_least(..., "business")`** |
+| `identity/deps.py:341` | ⭐ same |
+| `billing/router.py` `can_add_company` | `at_least` |
+| `billing/engine.py` | ⭐ **`plan` is now a PARAMETER** — it hardcoded `"business"`, so a Prescience purchase could not be recorded. An unknown tier falls back to Business, **never up** |
+| `core/config.py` docstring | ⭐ said *"require plan == 'business'"* — **prose describing an equality the code no longer performs**; corrected |
+| `identity/models.py` comment | `# free \| business` |
+| `financials/router.py`, `twin/router.py` | plain reads, safe |
+| ⭐⭐ **`src/lib/gate.ts:48`** | **`plan === "business"` — A FRONTEND EQUALITY GATE THE SCOPE REPORT NEVER NAMED** |
+
+⭐ **THIRD TIME THIS ERA A SUPPLIED LIST HAS BEEN INCOMPLETE**, and the one it
+missed was the only site a user can see.
+
+## ⭐ 4 · THE GATE — 10 ROUTES, AND THE TWO THAT MUST NOT BE GATED
+
+**Gated:** `/frontier` · `/frontier/policy-surface` · `/frontier/search` ·
+`/frontier/search/{job_id}` · `/moves` · `/moves/{move_id}` · `/moves/entity` ·
+`/multiverse` · `/resilience-field` · `/causal-map`. **402
+`prescience_required`** — ⭐ payment required, not forbidden: the caller is
+authenticated and permitted, and only the tier is missing.
+
+| NOT gated | why |
+|---|---|
+| ⭐ `/api/v1/intelligence/frontier/{dataset_id}` | **the CAPITAL-STRUCTURE frontier — Business.** Gating it would be the exact confusion that produced the withdrawn ruling |
+| ⭐⭐ `/internal/frontier/recompute` | **the nightly daemon.** It carries no user, and gating it would **stop computing the cache the BUSINESS PACK READS — emptying the pack by the back door** |
+
+⭐ **ZERO Business frontend surfaces call any gated route** — verified after
+gating, across every `.ts`/`.tsx` outside the three Prescience components.
+
+## ⭐⭐ 5 · THE PACK IS UNTOUCHED — PROVEN BY CONTENT
+
+Against the **live published pack** (Meridian, pack **18**, content hash
+`fd0764c2…`):
+
+| | |
+|---|---|
+| `strategic_move_library` | ⭐ **present** |
+| `computed_caches` | ⭐ **present** — frontier, policy surface, trajectory and viability **all non-null** |
+| `sentinel_state` | present |
+| **section "What is at risk"** | ⭐⭐ **renders** |
+| **section "What to do next"** | ⭐⭐ **renders** |
+
+⭐ **`pack.py` carries no tier gate**, asserted, and both capture functions still
+read all four tables.
+
+## ⭐⭐ 6 · THE MARKING AUDIT — A NARROW ESCAPE, NOW PINNED
+
+`built()` now measures **four of five** Prescience features as shipped.
+**Markable: `radar_sentinel` alone**, marking `sentinel_state`.
+
+⭐⭐ **AND `sentinel_state` IS A PACK INPUT THE BUSINESS PACK RECEIVES.** That is
+**not** a contradiction only because `mark_pack` has **exactly one caller — the
+pilot-viewer surface** — and **the pilot runs on Prescience**, so the mark is
+true where it is applied.
+
+⭐ **A test now pins that single call site.** Widening `mark_pack` to the
+Business pack path would tell a paying customer that a section they are reading
+**is not included in what they bought.**
+
+## ⭐ 7 · §III.9, EIGHTH INSTANCE
+
+My equality-gate sweep matched a **line** and fired on `config.py`'s **docstring
+describing the rule.** ⭐ **Prose about a comparison is not a comparison.**
+Rewritten as an **AST Compare walk**. Eighth time a check has struck the writing
+that explains what it enforces.
