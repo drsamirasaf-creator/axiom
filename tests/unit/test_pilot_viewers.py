@@ -458,7 +458,10 @@ def test_BUILT_STATE_IS_MEASURED_against_the_served_route_table():
     hand-maintained flag is the record that goes stale unnoticed."""
     b = TM.built(_served())
     assert b["radar_sentinel"] is True, "Radar/Sentinel is built and must show so"
-    for k in ("multiverse", "resilience_field", "causal_map", "prescience_brief"):
+    # ⭐ Resilience Field shipped 1 Aug (§7j.3) and `built()` MEASURES it, which
+    # is the guard working: this expectation moved because the world did.
+    assert b["resilience_field"] is True, "the Resilience Field ships and must show so"
+    for k in ("multiverse", "causal_map", "prescience_brief"):
         assert b[k] is False, f"{k} has no route but reads as built"
 
 
@@ -475,6 +478,10 @@ def test_EVERY_UNMARKED_FEATURE_CARRIES_A_REASON():
     un = TM.unmarkable(_served())
     assert {k for k, _ in un} == {"multiverse", "resilience_field",
                                   "causal_map", "prescience_brief"}
+    # ⭐ and resilience_field is unmarkable for a DIFFERENT reason than the
+    # other three — built, but its block is already marked
+    why = dict(un)["resilience_field"]
+    assert "already marked" in why, why
     for _k, why in un:
         assert len(why) > 30, "the reason is not a reason"
 

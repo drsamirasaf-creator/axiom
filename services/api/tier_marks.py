@@ -47,6 +47,14 @@ PRESCIENCE_ONLY = {
     },
     "resilience_field": {
         "label": "Resilience Field",
+        # ⭐⭐ BUILT 1 Aug (§7j.3) — `built()` now measures it True from the
+        # route table, as it should.
+        #
+        # ⭐ `klass` STAYS None DELIBERATELY. The Field renders from
+        # `sentinel_state`, which is ALREADY marked under Radar/Sentinel. Naming
+        # the same input class twice would collide in `mark_pack` — one label
+        # would silently overwrite the other — and would tell a reader the block
+        # is Prescience-only twice rather than once.
         "klass": None,
         "route_marker": "/resilience",
     },
@@ -110,7 +118,9 @@ def unmarkable(served_paths):
                            "surface to mark and marking it would advertise a "
                            "feature that does not exist"))
         elif not v["klass"]:
-            out.append((k, "built, but feeds no pack block a viewer opens"))
+            out.append((k, "built, but the pack block it renders from is already "
+                           "marked under another feature — marking it twice would "
+                           "collide, not clarify"))
     return out
 
 

@@ -282,6 +282,8 @@ from . import voice_of_employee as _voe  # noqa: E402,F401
 # comment above is why it was caught the second time in minutes rather than in
 # production.
 from . import pilot_viewers as _pilot_viewers  # noqa: E402,F401
+# ⭐ §7j.2 ruling 3 — the Resilience Field. Model-free (it reads sentinel's own
+# table), so it is imported for its ROUTER only, after include_accounts.
 
 include_accounts(app)
 
@@ -297,6 +299,9 @@ _pack_dist.include(app, _get_db, _current_user)
 # page unreachable by its own name.
 from .accounts import require_company_admin as _req_admin  # noqa: E402
 _pilot_viewers.include(app, _get_db, _req_admin)
+
+from . import resilience_field as _rfield  # noqa: E402
+_rfield.include(app, _get_db, require_company_member)
 
 # B16 — in-app editable assumptions. ⭐ ADMIN-ONLY per §4x: write is bound to
 # `require_company_admin`, which demands Membership.role == "admin". A

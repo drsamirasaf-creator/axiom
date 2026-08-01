@@ -490,11 +490,35 @@ def c_provenance(src):
 
 
 # ⭐ THE COMPONENT LIBRARY. One entry per section; both documents draw from here.
+def c_resilience_field(src):
+    """Resilience Field — the region in which the company remains viable.
+
+    ⭐⭐ RENDERS FROM `FrozenSource`, so a published pack shows the field as it
+    stood at publication. Every input moving underneath it changes nothing here.
+    ⭐ No recomputation: the distances were bisected by the kernel and frozen with
+    the rest of the inputs.
+    """
+    from .resilience_field import field
+    from .sentinel import RAYS
+    blk = src.klass("sentinel_state")
+    if not blk.get("present"):
+        return _section("resilience_field", "How much room there is",
+                        present=False, missing=blk.get("reason"))
+    # ⭐ the viability payload as frozen — never today's row
+    payload = (blk.get("payload") or blk.get("viability")
+               or (blk.get("rows") or [{}])[0] if isinstance(blk.get("rows"), list)
+               else blk.get("payload"))
+    return _section("resilience_field", "How much room there is", present=True,
+                    body=field(payload if isinstance(payload, dict) else None,
+                               rays=RAYS))
+
+
 COMPONENTS = {
     "what_changed": c_what_changed,
     "why_ratios": c_why_ratios,
     "what_is_likely": c_what_is_likely,
     "what_is_at_risk": c_what_is_at_risk,
+    "resilience_field": c_resilience_field,
     "initiatives": c_initiatives,
     "what_to_do_next": c_what_to_do_next,
     "value_bridge": c_value_bridge,

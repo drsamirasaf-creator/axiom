@@ -13673,3 +13673,96 @@ the entry is removed **and** that the value-keyed form would not.
 than the one it names. Fixed to sd 0.267, inside the estimate band.
 
 **No value changed. Nothing backfilled.**
+
+# ⭐⭐ §7j.3 · THE RESILIENCE FIELD — BUILT 1 Aug
+
+`services/api/resilience_field.py` · `GET /companies/{id}/resilience-field` ·
+`src/components/ResilienceField.tsx`, on the **Resilience** tab.
+⭐ **The second item of §7j.2's revised order, and the first Prescience surface.**
+
+## ⭐⭐ 1 · THE RULING HELD — MEASURED BEFORE BUILDING
+
+§7j.2 ruled the Field *"rendering over existing computation, not a new engine"*,
+and said to **stop and report** if a new engine proved necessary. ⭐ **It did
+not.**
+
+⭐⭐ **`sentinel._nearest_t` ALREADY BISECTS ALONG EACH SHOCK RAY TO THE FAILURE
+SURFACE**, and all seven distances are persisted in
+`ax_viability.payload["distances"]` with `shock_reference`, `thresholds` and
+`nearest_breach`. **The Field is a pure read.**
+
+| foundation | state |
+|---|---|
+| per-ray distances (4 axes + 3 combos) | ⭐ **persisted** |
+| natural-unit reference | ⭐ **persisted in the payload** |
+| band + thresholds + nearest breach | ⭐ **persisted** |
+| `breakeven_radius` | ⭐ **exists, but is a DIFFERENT AXIS** — TV-ambiguity, per dataset, not per parameter. Not in the viability payload |
+
+## ⭐⭐ 2 · THE FINDING THE LANE EXISTS TO GET RIGHT — CENSORING
+
+⭐⭐ **`_nearest_t` RETURNS `T_MAX` WHEN A RAY DOES NOT FAIL.** So a distance of
+exactly 1.0 means **"did not break within the tested range"**, NOT "breaks here".
+
+⭐ **RENDERING THAT AS A BOUNDARY WOULD TELL A CEO THEIR MARGIN CAN COMPRESS
+EXACTLY 10pp WHEN THE TRUTH IS IT WAS NEVER MADE TO FAIL.** ⭐⭐ **FOUR OF
+MERIDIAN'S SEVEN RAYS ARE CENSORED — the common case, not an edge.**
+
+Censored dimensions read **"survives at least"**, carry no `boundary` key, and
+are **counted separately** from measured ones.
+
+## ⭐ 3 · WHAT THE FIELD RENDERS
+
+Per dimension: the ray, whether it is an **axis or a combination**, and one of
+four states — **measured** (a boundary in natural units), **censored**,
+**breached**, or **absent**. ⭐ Plus **where the company sits inside the region**
+(`nearest_breach`, in plain language) and ⭐ **coverage on the surface itself**:
+*"3 of 7 dimensions have a measured boundary."*
+
+⭐ **ABSENCE DECLARES, PER PARAMETER.** A ray with no recorded composition, or a
+missing shock reference, states why — never zero, never omitted. **A field with a
+silently missing dimension misstates how much room the company has**, and that is
+the expensive direction.
+
+## ⭐ 4 · MERIDIAN — THE DEMONSTRATION
+
+Rendered from the production row (company 20, band **STABLE**, overall 0.6367):
+
+| | |
+|---|---|
+| **measured** | ⭐ `revenue` breaks at a **47.3% decline** · `recession` at 31.8% revenue + 6.4pp margin · `stagflation` at 46.5% + 4.65pp |
+| **censored** | `margin`, `rate`, `working_capital`, `credit_crunch` — survive the full tested range |
+| **absent** | ⭐ **none** |
+| position | *"a 32% revenue decline combined with a 6% margin compression"* |
+
+⭐ **Coverage: 3 measured, 4 censored, 0 absent.**
+
+## ⭐⭐ 5 · REVERSE-STRESS — MEASURED ABSENT, NOT BUILT
+
+⭐ **Nothing computes it**, verified against the code rather than inherited from
+the scope report. The kernel bisects **forward** from today to the nearest
+failure surface.
+
+⭐⭐ **`_prescribe` IS ADJACENT BUT IS NOT IT.** It reverse-searches the lever
+library for the minimum intervention that **restores** stability — *what fixes a
+breach*, not *what magnitude of adverse move would cause one from a stated loss.*
+**The surface states the absence in those terms.**
+
+## ⭐ 6 · NO RECOMPUTATION — ASSERTED
+
+The module never calls a detector, never opens a dataset, and is **pure over its
+input** (asserted by AST: no `run`, `simulate`, `_nearest_t`, `_detect`, and no
+attribute access named `data`). ⭐ **A surface that recomputes on read would
+drift from the pack that froze it** — and the point of the Field is that a reader
+can hold it against a number someone else quoted. The pack component
+`c_resilience_field` reads **`FrozenSource`** and reaches no live state.
+
+## ⭐ 7 · §III.9, SEVENTH INSTANCE — IN THIS LANE'S OWN TEST
+
+The no-recomputation check banned `".data"` and **fired on
+`Viability.dataset_version`.** Narrowed to an AST attribute named exactly `data`.
+⭐ **Two lanes running, two instances** — B22's was the sixth.
+
+⭐ **And the wiring assertion looked for the fetch in the PAGE when it lives in
+the COMPONENT.** Rewritten to assert the chain link by link: the page mounts the
+component, the component calls the route, and the censoring and coverage survive
+into the render. ⭐ **Asserting one file cannot prove a chain.**
