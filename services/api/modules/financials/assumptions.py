@@ -27,7 +27,9 @@ first place. Every entry states what it governs. See DIVERGENT below.
 # Values a client could reasonably set differently, but cannot today.
 # Changes when we deploy. Global.
 # ═══════════════════════════════════════════════════════════════════════════
-PLATFORM_DEFAULTS_VERSION = "7u-pd.1"
+# ⭐ BUMPED for σ_RO (B22). The pack pins this string, so the version is
+# how a reader knows WHICH registry a stored result was frozen against.
+PLATFORM_DEFAULTS_VERSION = "7u-pd.2"
 
 PLATFORM_DEFAULTS = {
     "terminal_growth": {
@@ -50,6 +52,43 @@ PLATFORM_DEFAULTS = {
         "governs": "coefficient of variation above which forecast methods are "
                    "flagged as diverging",
         "consumed_by": "forecast_studio.py",
+    },
+    # ⭐⭐ σ_RO — REAL-OPTION VOLATILITY. Ruled 31 Jul: σ_RO is ENTERPRISE-VALUE
+    # volatility, and the floor is a DECLARED PRIOR — not a clamp on an estimate.
+    # ⭐ Registered so the pack PINS it and a CFO asking where it came from gets
+    # "it is our house prior, and here is why" rather than a function name.
+    "sigma_ro_floor": {
+        "value": 0.15,
+        "governs": "real-option volatility when a company's own revenue history "
+                   "is too smooth to estimate EV volatility from — a HOUSE PRIOR, "
+                   "not a fitted value",
+        "basis": "A 5-year statement understates true enterprise volatility: it "
+                 "is annual, smoothed by accrual accounting, and describes "
+                 "REVENUE while the option is written on ENTERPRISE VALUE. The "
+                 "corpus median revenue-growth sd is 0.0050, which no lattice "
+                 "can price — below sigma ~= 0.03 the tree collapses. 0.15 is "
+                 "the low end of observed equity volatility for mid-market "
+                 "industrials and is adopted as the platform's declared prior.",
+        "consumed_by": "valuation/engines.py::_resolve_sigma",
+    },
+    "sigma_ro_cap": {
+        "value": 0.60,
+        "governs": "upper bound on real-option volatility",
+        "basis": "Above 60% the lattice prices optionality that exceeds any "
+                 "mid-market observation; the cap bounds the claim rather than "
+                 "the company.",
+        "consumed_by": "valuation/engines.py::_resolve_sigma",
+    },
+    "sigma_ro_no_history": {
+        "value": 0.22,
+        "governs": "real-option volatility when there is insufficient history to "
+                   "attempt an estimate at all",
+        "basis": "Distinct from the floor by design: the floor means 'we looked "
+                 "and the history was too smooth', this means 'there was not "
+                 "enough history to look'. ⭐ Two different absences must not "
+                 "return the same number, or the basis string cannot be true of "
+                 "both.",
+        "consumed_by": "valuation/engines.py::_resolve_sigma",
     },
     "sigma_g": {
         "value": 0.02,

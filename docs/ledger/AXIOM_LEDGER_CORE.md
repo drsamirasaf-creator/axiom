@@ -13567,3 +13567,109 @@ surfaces — recorded so it is not lost between the two.
 
 ⭐ **NO NEW ENGINE APPEARS IN THIS LIST.** Every remaining item is rendering,
 relabelling, or synthesis over computation that already exists.
+
+# ⭐⭐ §7u.1 · B22 BUILT — σ_RO REGISTERED, `_calibrate_sigma` RENAMED
+
+⭐ **§7j.2 item 7's dependency is DISCHARGED.** Every Prescience surface that
+renders a distribution may now proceed.
+
+## ⭐ 1 · THE REGISTRY ENTRY — THREE CONSTANTS, EACH WITH A BASIS
+
+Added to `PLATFORM_DEFAULTS`; version bumped **`7u-pd.1` → `7u-pd.2`**, so the
+pack pins which registry a stored result was frozen against.
+
+| key | value | what it means |
+|---|---|---|
+| `sigma_ro_floor` | **0.15** | ⭐ the **house prior** — *"we looked and the history was too smooth"* |
+| `sigma_ro_cap` | **0.60** | bounds the claim rather than the company |
+| `sigma_ro_no_history` | **0.22** | ⭐ *"there was not enough history to look"* |
+
+⭐⭐ **THE TWO ABSENCES CARRY DIFFERENT VALUES, DELIBERATELY.** A single number
+for both would make one basis string false of one of them.
+
+**The floor's recorded basis:** a 5-year statement is annual, smoothed by
+accrual accounting, and describes **revenue** while the option is written on
+**enterprise value**. ⭐ Corpus median revenue-growth sd is **0.0050**, which no
+lattice can price. 0.15 is the low end of observed mid-market equity volatility
+and is **adopted as a declared prior.**
+
+## ⭐⭐ 2 · THE RENAME — `_calibrate_sigma` → `_resolve_sigma`
+
+⭐ **A FUNCTION WHOSE NAME MISDESCRIBES IT IS A CLAIM IN THE CODE.** The new name
+asserts **selection**, which is what it does.
+
+⭐⭐ **AND A SECOND CLAIM WAS FOUND IN THE SAME FUNCTION: THE DOCSTRING NAMED A
+FLOOR THE CODE DOES NOT USE** — a percentage below the actual constant. **Found
+by reading, not by any gate.** Corrected, and ⭐ **the wrong figure is
+deliberately not reproduced in the correction** — a reader skimming a docstring
+takes the number it contains, whichever sentence surrounds it.
+
+## ⭐⭐ 3 · THE EMPTY DIFF — MEASURED ON THE LIVE CORPUS
+
+⭐ **33 datasets, the PRE-LANE function loaded from git and run beside the new
+one: ZERO differences** in either sigma or basis.
+
+| sigma returned | datasets |
+|---|---|
+| **0.15** (the declared prior) | **25** |
+| **0.22** (no history) | **7** |
+| 0.3553 (a genuine estimate) | ⭐⭐ **1** |
+
+⭐⭐ **32 OF 33 RETURN A CONSTANT.** CORE previously recorded *"12 of 13"*; the
+corpus has grown and **the proportion is now starker, not milder** — which is the
+strongest available argument that the name asserted something untrue.
+
+### ⭐⭐ AND THE FLOOR CANNOT MOVE A RENDERED FIGURE — MEASURED
+
+On a live dataset: **flexibility value is IDENTICAL across σ ∈ [0.03, 0.15]**
+(13,328.19 at every point), first moves at σ = 0.20, and ⭐ **σ = 0.02 RAISES**
+`risk-neutral probability outside (0,1)`.
+
+⭐ **SO THE CHOICE OF FLOOR WITHIN THE BAND CHANGES NOTHING THAT IS RENDERED** —
+which is precisely what "declared prior" means, and why no figure moved.
+
+## ⭐ 4 · THE FOUR BASIS STRINGS — VERIFIED, NOT TRUSTED
+
+CORE records the *"estimated of a clamp"* defect as fixed. ⭐ **Verified rather
+than trusted; the record has been wrong twelve times.** It is genuinely fixed:
+
+| outcome | basis | honest? |
+|---|---|---|
+| floor | *"floor (0.15) — too smooth to estimate volatility from"* | ⭐ **yes** — names the floor AND says it could not estimate |
+| cap | *"cap (0.60) — estimated volatility exceeded the modelled maximum"* | ⭐ **yes** — the estimate *did* exceed; the returned value is named as the cap |
+| estimate | *"historical revenue log-growth"* | ⭐ **yes** — returned only when the value really is that |
+| no history | *"default (insufficient history for estimation)"* | ⭐ **yes** |
+
+## ⭐⭐ 5 · COVERAGE — AND A COLLISION THE VALUE-KEYED GUARD CANNOT SEE
+
+§7u's guard matches **by value**, because a name-keyed check would call `sigma`
+covered on the strength of a *different* sigma.
+
+⭐⭐ **BUT `divergence_cv` IS ALREADY 0.15 — THE SAME VALUE AS THE σ_RO FLOOR.**
+So the value-keyed guard reports 0.15 as covered **whether or not σ_RO is
+registered, and cannot go red on its removal.**
+
+⭐ **THIS IS A CLASS, NOT A COINCIDENCE.** Five values are already registered
+under two names each: `5` (horizon / cei_neutral_min / risk_gbm_years_t), `0.5`,
+`8.0`, `3` (kfloor / opt_payoff_coefficient_a), `0.9`.
+
+⭐⭐ **THE VALUE-KEYED CHOICE IS STILL RIGHT** — it catches the unregistered
+constant, which is the failure the registry exists for. **But it cannot prove a
+NAMED entry is present**, and those are different questions. Coverage for σ_RO is
+therefore asserted **by name**, with a control proving the assertion goes red when
+the entry is removed **and** that the value-keyed form would not.
+
+## ⭐ 6 · THREE DEFECTS IN MY OWN TESTS, ALL THE SAME SHAPE
+
+1. A `grep` matched a **stale `.pyc`** and reported compiled bytecode as a live
+   caller.
+2. ⭐⭐ **§III.9, SIXTH INSTANCE** — my docstring check banned the token and
+   fired on **my own sentence recording that the docstring used to say it**, in
+   the test written to catch prose asserting what code does not do.
+3. My "volatile history" fixture had sd **1.10** and hit the **cap**, so it
+   exercised the wrong branch **while looking like it tested the estimate.**
+
+⭐ **The third is the vacuous-test class:** a case that passes for a reason other
+than the one it names. Fixed to sd 0.267, inside the estimate band.
+
+**No value changed. Nothing backfilled.**

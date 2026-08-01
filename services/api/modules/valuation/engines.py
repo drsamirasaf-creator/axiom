@@ -659,11 +659,30 @@ def multiples(data: dict, sector: str | None = None,
 # American exercise (check early exercise at every node) by backward
 # induction. Every step is published; the certificate lists u, d, p*.
 
-def _calibrate_sigma(data: dict) -> tuple[float, str]:
-    """Annualized volatility of the enterprise from its own history:
-    the standard deviation of historical revenue log-growth. Floored at
-    12% (a smooth 5-year statement understates true business volatility)
-    and capped at 60%."""
+def _resolve_sigma(data: dict) -> tuple[float, str]:
+    """Select the real-option volatility, and say where it came from.
+
+    ⭐⭐ RENAMED FROM `_calibrate_sigma` (B22). ⭐ A FUNCTION WHOSE NAME
+    MISDESCRIBES IT IS A CLAIM IN THE CODE, and this one asserted a calibration
+    it does not perform: on live data the clamp binds for 12 of 13 datasets, so
+    the returned value is a CONSTANT, not a fit. ⭐ The new name asserts
+    SELECTION, which is what it does — it resolves to one of four values and
+    returns the basis alongside it.
+
+    ⭐⭐ THE FLOOR IS A DECLARED PRIOR, NOT A CLAMP ON AN ESTIMATE (ruled
+    31 Jul). Registered as `sigma_ro_floor` in the §7u platform defaults with
+    its basis, so the pack pins it and a CFO can inspect it.
+
+    ⭐ THIS DOCSTRING PREVIOUSLY NAMED A FLOOR THE CODE DOES NOT USE — it stated
+    a percentage lower than the constant below. Corrected here, and the wrong
+    figure is deliberately NOT reproduced: a reader skimming a docstring takes
+    the number it contains, whichever sentence surrounds it. Same class as the
+    function name — prose in the code asserting what the code does not do.
+
+    Returns (sigma, basis). Four outcomes: the estimate, the floor, the cap, and
+    no-history — ⭐ and the last two are DIFFERENT ABSENCES with different
+    values, so a single basis string could not be true of both.
+    """
     import math as _math
     rev = [data["income_statement"]["revenue"][str(y)]
            for y in data["periods"]["historical"]]
@@ -709,7 +728,7 @@ def real_option(data: dict, option: str, *, expiry_years: float = 3.0,
     s0 = base["deterministic"]["enterprise_value"]
     r = float(data["company"]["risk_free_rate"])
     sigma, sigma_basis = ((sigma_override, "caller override")
-                          if sigma_override else _calibrate_sigma(data))
+                          if sigma_override else _resolve_sigma(data))
 
     dt = expiry_years / steps
     u = _math.exp(sigma * _math.sqrt(dt))
