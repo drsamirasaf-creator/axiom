@@ -21,6 +21,9 @@ import importlib
 import os
 import sys
 
+FRONTEND = os.environ.get(
+    "AXIOM_FRONTEND", "/Users/samirasaf/dev/optimization-anchor")
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
@@ -130,6 +133,35 @@ def main():
     # ⭐ COVERAGE PRINTED. "0 broken witnesses in 0 greens" and "0 in 18" print
     # the same tick and mean opposite things.
     print(f"  matrix: {len(ROWS)} rows, {len(greens)} green in AXIOM's column")
+
+    # ⭐⭐ EVERY DEMO DEEP LINK MUST BE A REAL ROUTE. Measured 2 Aug: TWO were
+    # not — "/scenarios" (the route is /scenario-analysis) and "/organization"
+    # (it is /org-structure). Both sat on a prospect-facing matrix pointing at
+    # 404s, and nothing checked them: the guard asserted the WITNESS existed and
+    # never that the link a reader clicks resolves.
+    #
+    # ⭐ A GREEN WITH A LIVE CAPABILITY AND A DEAD LINK is still a broken claim
+    # to the person who clicks it.
+    import re as _re
+    tree_p = os.path.join(FRONTEND, "src", "routeTree.gen.ts")
+    if os.path.exists(tree_p):
+        tree = open(tree_p, encoding="utf-8").read()
+        dead = []
+        for r in ROWS:
+            d = (r.get("demo") or {}).get("route")
+            if d and f"'{d}'" not in tree:
+                dead.append((r["n"], r["feature"], d))
+        if dead:
+            for n, f, d in dead:
+                print(f"      ✗ row {n} ({f}) links to {d} — not in routeTree")
+            rc = 1
+        else:
+            n_links = sum(1 for r in ROWS if (r.get("demo") or {}).get("route"))
+            print(f"  ✓ all {n_links} demo deep links resolve to real routes")
+    else:
+        print(f"      ✗ routeTree not found at {tree_p} — deep links unverified, "
+              f"which is a refusal rather than a pass")
+        rc = 1
     if not greens:
         print("✗ zero greens examined — a broken selector, not a clean matrix")
         return 1

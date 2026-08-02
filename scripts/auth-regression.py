@@ -48,7 +48,16 @@ NAV_SEL = "nav a, aside a, [role='navigation'] a, [class*='sidebar'] a"
 #    "SWOT & Risk Analysis"; "Valuation" -> "Enterprise Valuation"; "Executive Brief"
 #    folded into "Dashboard & Reports"; "Initiative Management" -> "Initiatives & Projects".
 EXPECTED_SIDEBAR_LINKS = [
-    "Dashboard & Reports", "Stakeholder Engagement", "SWOT & Risk Analysis",
+    # ⭐⭐ "SWOT & Risk Analysis" LEFT THIS LIST 2 Aug — it is now a DASHBOARD &
+    # REPORTS TAB, not a top-level entry (same ruling and same precedent as
+    # pilot viewers and Data Input: the flat route is unchanged, so every
+    # inbound link and the comparison matrix's deep link still resolve, and only
+    # the nav entry moved). "Scenario Analysis" and "Dynamics & Simulation"
+    # were never in this list and are now Enterprise Optimization tabs.
+    #
+    # ⭐ THE GUARD FAILING ON THE RENAME IS THE GUARD WORKING. It is updated in
+    # the same commit as the move, never ahead of it.
+    "Dashboard & Reports", "Stakeholder Engagement",
     "Enterprise Valuation", "Business Planning & Forecasting",
     "Enterprise Optimization", "Prescience AI",
     "Initiatives & Projects", "Performance Monitoring",

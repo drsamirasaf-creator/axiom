@@ -385,7 +385,7 @@ def test_the_invite_page_RENDERS_FROM_THE_ROUTE_AN_ADMIN_TAKES():
     can an admin REACH the page from inside the app, by its own path. What
     changed is which surface carries the link.
     """
-    tabs = _fe("src/components/RouteTabs.tsx")
+    tabs = _fe("src/components/route-tabs-config.ts")
     i = tabs.index("export const MY_AXIOM_TABS")
     block = tabs[i:tabs.index("];", i)]
     assert 'to: "/pilot-viewers"' in block, \

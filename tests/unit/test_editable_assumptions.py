@@ -478,7 +478,7 @@ def test_the_four_edit_surfaces_are_GATHERED_into_my_axiom():
     """⭐⭐ A SURFACE REACHABLE ONLY BY TYPING A URL IS UNSHIPPED. Measured at
     ad39e20: My AXIOM linked to none of the four."""
     import os
-    p = "/Users/samirasaf/dev/optimization-anchor/src/components/RouteTabs.tsx"
+    p = "/Users/samirasaf/dev/optimization-anchor/src/components/route-tabs-config.ts"
     if not os.path.exists(p):
         import pytest
         pytest.skip("frontend checkout not present")
