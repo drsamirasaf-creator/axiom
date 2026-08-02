@@ -15735,3 +15735,126 @@ they restore is unknown.**
 ⭐ **This is a platform-side blocker, and the next step is Railway support** —
 not another attempt from this side. Ten identical failures is the evidence to
 open that with.
+
+# ⭐⭐ §4z.2 · THE RENAME — NINE LABELS, NINE TITLES, AND ONE NAME PER THING (2 Aug)
+
+Ruled and built 2 Aug. Frontend `66c6d04` → this lane; backend `8a89286`.
+
+Structure · Dashboard · Feedback | Valuation · Planning · Optimization ·
+Prescience AI | Projects · Monitoring. Sidebar label and page title moved in the
+SAME commit, because a half-applied rename leaves the crawler red and the
+product answering to two names.
+
+## ⭐⭐ 1 · THE ASSERTION READS THE EXPECTED VALUE FROM THE PRODUCT
+
+`check_nav_titles` asserts the rendered `<h1>` **is the sidebar's own label** for
+that page. Nothing in it is typed. A hardcoded route→title table would only ever
+prove the table was edited: rename the sidebar, forget the page, and the table
+still matches the page it was written against.
+
+⭐ **Matched by CONTENT, not by route.** The route is only how we get there.
+
+**On its first run it went red on four pages and one was a real defect** — the
+navigation called a page *What is AXIOM?* while the page called itself *How
+AXIOM works*, with "What is AXIOM?" already sitting above it as a kicker. The
+two strings were swapped; both kept. **A natural known positive is stronger than
+a planted one** — written, run, failed on something nobody had reported, green on
+the fix, same code.
+
+## ⭐⭐ 2 · A NORMALISATION THAT COVERS HALF ITS CASES IS WORSE THAN NONE
+
+Three of the four reds were **plan badges** (`PRO`, `BUSINESS`) rendered inside
+the same element on both surfaces. A badge is not part of a name, so it is
+stripped from **both** sides, never one.
+
+⭐ **And it is not always space-separated.** `inner_text` returned
+`OptimizationBUSINESS` as ONE token — the badge span sits immediately after the
+name with no whitespace node between. Token removal alone missed it silently.
+The remaining half would have read as a product defect forever.
+
+## ⭐⭐ 3 · THE RENAME CREATED A COLLISION — SURFACED, NOT RESOLVED
+
+`glossary.ts` **already had an `Optimization` entry**: the DCT course's Rational
+Optimization lab. Renaming "Enterprise Optimization" → "Optimization" produced
+two keys with one name; TypeScript caught it as a duplicate property.
+
+**The glossary was reverted in full.** It is a definition index keyed by term
+(`InfoTip term="…"` looks up by that key), not a label surface, and collapsing
+the two would silently pick one meaning of a word the product now uses for two
+things. **"Optimization" is ambiguous in the product vocabulary** — a naming
+ruling, not an engineering one.
+
+## ⭐ 4 · COMMENTS KEEP THE OLD NAMES ON PURPOSE
+
+The 27-file copy sweep skips any line beginning `//`, `*` or `/*`. Those lines
+record when a thing was ruled and why; rewriting them would make the record
+describe a past that did not happen.
+
+**Backend prose was left alone too.** It uses the long names to describe the
+CAPABILITY ("Enterprise Optimization answers what to do"), not to direct a
+reader to a page. A search for navigation-shaped copy — `head to`, `go to`,
+`open`, `visit` followed by a renamed destination — returned ONE backend hit,
+and it is a code comment.
+
+## ⭐⭐ 5 · VIEWER TREATMENT IS NOT THE SAME AS AN EMPTY STATE
+
+Of the three tabs the consolidation added, `/swot` already had it. `/simulation`
+had a bare line; **`/scenario-analysis` had no resolved-and-empty branch at all**
+— a reader with no dataset got the full tab strip over six panels of nothing.
+
+⭐ A demo or anonymous visitor **cannot create a dataset**, so telling them to go
+and create one sends them to a door that will not open. They are told what they
+are looking at instead.
+
+⭐⭐ **It renders only when the list has RESOLVED and is empty, never on `null`.**
+`null` is "not loaded yet"; empty is "loaded, and there are none". Rendering on
+`null` would state an absence that has not been established. Absence propagates;
+it is not synthesised.
+
+## ⭐⭐ 6 · FOURTEEN SURFACES NAME A DESTINATION THE READER CANNOT FIND
+
+Fourteen places tell the reader to go to **"Data Input"**. The tab that leads
+there is labelled **"KPIs"**; the page's own `<h1>` still says "Data Input".
+
+Same class as §4z.2/1, one level down — and **created by the 31 Jul gathering,
+not by this rename**. Fixing it means ruling that the tab label wins over the
+page title, on a page whose name is also custody-10's upload door in the crawler
+assertion. **Surfaced, not resolved.** New copy written in this lane names the
+destination as the reader will SEE it — "Open My AXIOM → KPIs".
+
+## ⚠️ 7 · A 200 IS NOT A PAGE
+
+One three-mode run in this lane reported **every route in every mode as `0 chars
+— SILENTLY BLANK`**, including `/login` and `/pricing`. Not a product defect:
+`bun run build` had replaced `.output` underneath the running preview server.
+
+⭐ **The harness's preflight checks that the app answers on `:3000` — it did,
+with an empty document.** Preflight cannot currently tell a served shell from a
+served page, and the failure mode looks exactly like a total product outage.
+
+## ⚠️ 8 · THE CRAWLER'S EXPECTATION LEADS THE DEPLOY
+
+`EXPECTED_SIDEBAR_LINKS` now reads Dashboard · Feedback · Valuation · Planning ·
+Optimization · Prescience AI · Projects · Monitoring · Structure · Course
+Workspace · What is AXIOM? · My AXIOM. It runs against the DEPLOYED frontend, so
+it is **red in the window between this commit and the frontend deploy**.
+custody-10's `"My AXIOM"` entry is untouched.
+
+## ⚠️ 9 · THE CONTROLS HARNESS OWNS THE SERVER — DO NOT RUN A SECOND ONE
+
+`browser-verify-controls.py` reported **`BASELINE IS ALREADY RED` twice on a tree
+that was green**, naming the Prescience and Multiverse sentinels — the shipped
+defect's exact signature. Cause: a second detached preview server contending for
+`:3000` while the script pkilled and restarted the one it owns, so the gate read
+a server that was not the one just built.
+
+⭐ **Established by elimination, not assumed.** The exact baseline command
+(`--mode member --routes /prescience-ai`) passed standalone, passed on a cold
+server, and passed after a manual build→restart→verify replay; the tree was
+confirmed free of planted markers throughout. With the stray server gone, all
+three controls reproduced their defects and the tree restored clean.
+
+⭐⭐ **The script's own comment already warns that a stale server makes the gate
+BLIND. The inverse makes it LIE in the other direction** — and the message it
+prints accuses the source tree, which is the most expensive possible place to
+send someone looking.

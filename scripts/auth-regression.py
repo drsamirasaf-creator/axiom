@@ -57,10 +57,16 @@ EXPECTED_SIDEBAR_LINKS = [
     #
     # ⭐ THE GUARD FAILING ON THE RENAME IS THE GUARD WORKING. It is updated in
     # the same commit as the move, never ahead of it.
-    "Dashboard & Reports", "Stakeholder Engagement",
-    "Enterprise Valuation", "Business Planning & Forecasting",
-    "Enterprise Optimization", "Prescience AI",
-    "Initiatives & Projects", "Performance Monitoring",
+    # ⭐⭐ SIDEBAR NAMES SHORTENED 2 Aug (ruled). The crawler asserted the OLD
+    # names and failed the moment they changed — that is the guard working, and
+    # it is updated in the SAME commit as the rename, never ahead of it.
+    #
+    # ⭐ PATHS DID NOT MOVE. This list is about LABELS; every route and inbound
+    # link resolves exactly as before.
+    "Dashboard", "Feedback",
+    "Valuation", "Planning",
+    "Optimization", "Prescience AI",
+    "Projects", "Monitoring", "Structure",
     "Course Workspace", "What is AXIOM?",
     # ⭐⭐ custody-10, AMENDED 2 Aug — THE MECHANISM MOVED, THE INTENT DID NOT.
     # The rule was: the data-upload door must have a PERMANENT, app-controlled
