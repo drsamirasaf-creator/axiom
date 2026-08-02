@@ -14940,6 +14940,99 @@ company — and the id is now read from **`useActiveCompany().id`**, the store's
 own accessor. ⭐ **Both are needed**: dropping the resolver would leave the store
 empty and produce the same symptom by the opposite route, which a test now pins.
 
+# ⭐⭐ §7j.12 · THE FOURTH GENERATION: A BROWSER ASSERTS THE RENDERED FIGURE
+
+Frontend `0d033bd`. **The frontend had zero test files.** CI ran typecheck,
+lint, ratchet and build — and **a hook-order violation passes all four**: it is
+valid TypeScript, lints clean, builds, and fails only when React runs it.
+
+**Three generations failed identically, each one link further along:**
+file-and-substring · imports-and-mounts · prop-source. Every one was TRUE while
+the customer saw an empty tab. `scripts/browser-verify.py` asserts **rendered
+text**, which is the only link left.
+
+⭐ **NOT HTTP STATUS, NOT PAYLOAD.** The Prescience tabs returned 200 on every
+route while rendering explainer cards, and their endpoints returned correct JSON
+to a page that never asked for it.
+
+**Coverage: 51 of 59 routes, DERIVED from `routeTree.gen.ts`.** Eight excluded,
+each with a stated reason, and preflight fails if an exclusion names a route
+that no longer exists. **Three auth modes over the SAME route list** — the
+crawler's blind spot was discovering routes from the sidebar, which exists only
+when signed in, so the mode with the most to prove had the smallest list.
+161 page checks, **154s**, plus 76s of controls.
+
+## ⭐⭐ THE HARNESS MANUFACTURED THE DEFECT IT WAS LOOKING FOR, TWICE
+
+Both times the instrument was wrong and the app was right, and both were found
+by measuring rather than reading.
+
+**1 · The wrong field name.** `/access/my-companies` returns `company_id`, not
+`id` (`company-allowlist.ts:95`). The first fixture used `id`, no company was
+seated, and **all four Prescience tabs received `companyId = null` and rendered
+their explainer with no request** — the shipped defect's exact signature,
+reproduced out of a typo in the stub. Fixture shapes are read off the consumer
+now, not guessed.
+
+**2 · The tab is local state, not a URL param.** `useState<Tab>("multiverse")`,
+so `?tab=causal` shows Multiverse. Driving the app by URL reported all four tabs
+broken while three were fine. They are **clicked, by visible label**.
+
+⭐ A third: the first blank-page threshold called SEVEN correct pages defective —
+`/forgot` is a form whose content is its inputs, and four token-consuming routes
+were **correctly refusing**. "Blank" now means almost no text **and** no controls
+**and** no stated reason. A gate that calls an honest refusal a failure is muted
+within a week.
+
+## ⭐ WHAT IT FOUND, PINNED RATHER THAN HIDDEN
+
+Seven real findings, in a **shrink-only ratchet** printed on every run; an entry
+that starts passing **fails the build**.
+
+- **Five hydration mismatches** (React #418), **signed-in only** — the
+  both-directions check caught that immediately by failing five over-pinned
+  anonymous entries. Session-dependent, which is itself a clue to the cause.
+- **`/assumptions` and `/initiative-impact` render a heading and nothing else to
+  an OPERATOR.** In member mode both correctly say "read-only for your role";
+  an operator has edit rights, so that notice is suppressed and **nothing
+  replaces it when the data is absent**. That is precisely the defect class this
+  gate exists for, found on its first full run.
+
+## ⭐⭐ THE KNOWN POSITIVES, AND THE ONE THAT WAS WRONG
+
+Three real defects planted in real source, rebuilt, each must go RED:
+**hook order · null prop · payload-unread**. All three fire.
+
+⭐ **THE FIRST HOOK-ORDER CONTROL WAS KEYED ON `companyId`** — truthy on every
+render, so the hook COUNT never changed, no violation occurred, and the gate
+correctly stayed green. **The control was wrong, not the gate.** Keyed on state
+that ARRIVES (`d`, null until the fetch resolves), React throws and the gate
+catches it. A control that does not reproduce the defect proves nothing about
+the instrument.
+
+⭐ **A BUILD FAILURE IS NOT A PASS**: a planted defect the compiler rejects
+proves the compiler works, which is the one thing already covered.
+
+## ⭐ IT REFUSES TO RUN RATHER THAN RUN EMPTY
+
+The demo-rot crawler exits by design without its secrets and has run **once
+ever**. This exits **2** on: no server, drifted failure markers, a stale
+exclusion, or fewer than 20 parsed routes. Both refusals verified.
+**It needs no secrets** — the API is stubbed, so there is nothing to be missing.
+
+## ⭐ WIRED, AND THE PARSER FIXED RATHER THAN DODGED
+
+Tenth-plus built-but-not-wired risk, so it is in `.github/workflows/ci.yml` with
+the **controls first** — a blind gate running the main pass first would report
+green before its own known positives.
+
+`ci-steps.py` exited 2 on `run: |` saying *"fix the parser rather than letting
+the step go unchecked"*. **The parser learned block scalars.** CI-only steps are
+announced with their reason, never silently dropped — and the **pre-push hook no
+longer counts those notes as steps**, which had inflated it to "9/9 reproduced
+locally" while running five: a coverage number inflated by its own commentary,
+inside the file written to end exactly that.
+
 # ⭐⭐ §7j.11 · THE CAUSAL MAP RENDERED IDS WHERE NAMES BELONG
 
 **Observed 2 Aug on Meridian:** every edge read `kpi 4f75d535… → goal f0f60946…`.
