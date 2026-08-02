@@ -358,15 +358,33 @@ def test_the_three_registry_versions_and_the_other_pinned_classes(published):
     assert v["banding_constants"]["cei_good_min"] is not None
 
 
-def test_the_ratio_registry_is_pinned_as_not_consumed_not_as_a_version(published):
-    """⭐ MEASURED, NOT ASSUMED. CORE's nine classes name "ratio registry
-    version", but the §7r ratio LIBRARY is not built: the yaml is loaded only by
-    scripts/check-ratio-shapes.py and never by production code. Pinning a version
-    string for a formula set nothing renders would assert more than we know."""
+def test_the_ratio_registry_pin_separates_executing_from_rendering(published):
+    """⭐⭐ THE PIN CARRIES TWO FACTS BECAUSE EITHER ONE ALONE MISLEADS.
+
+    This test used to assert `consumed_by_production is False`, with the reason
+    naming scripts/check-ratio-shapes.py. Under R7 (2 Aug) that became untrue:
+    `modules/financials/ratio_registry.py` evaluates all 77 formulas at compute
+    time and is held against the engine at 2,916 comparisons.
+
+    But nothing in the SERVING path reads it. A single boolean would tell a
+    reader either that the registry is inert (false) or that the numbers in
+    their pack came from it (also false) — so the pin states both, and this test
+    asserts the pair rather than either half.
+
+    ⭐ THE VERSION IS PINNED ONLY BECAUSE ONE NOW EXISTS TO PIN. The original
+    reasoning — "a version string for a formula set nothing renders asserts more
+    than we know" — is why `renders_any_figure` sits beside it.
+    """
     frozen, _ = _frozen(published)
     rr = frozen["versions"]["ratio_registry"]
-    assert rr["consumed_by_production"] is False
-    assert "check-ratio-shapes" in rr["reason"]
+    assert rr["consumed_by_production"] is True
+    assert rr["executed"] is True
+    assert rr["renders_any_figure"] is False, (
+        "a served figure now comes from the registry — this pin, the pack's "
+        "gap text and §7r-S3a all say the engine is the only rendering path")
+    # read from the registry, never typed: three prose copies of the ratio COUNT
+    # went stale inside one week
+    assert rr["version"] and rr["version"].startswith("7r.")
 
 
 def test_the_freeze_hash_ignores_the_capture_timestamp():

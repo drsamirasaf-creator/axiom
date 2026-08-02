@@ -32,7 +32,7 @@
 # in place. Do not proceed to formula evaluation until the vocabulary is real.
 
 schema_version: 1
-registry_version: "7r.9"   # 2 Aug stage 2: R1 nwc + fcff, R2 delegation, R3 removals   # Segment B: debt-as-argument   # founder rulings 31 Jul; headline set = 14
+registry_version: "7r.10"  # 2 Aug stage 3: R7 — the registry executes; the five delegate   # Segment B: debt-as-argument   # founder rulings 31 Jul; headline set = 14
 # 7r.5 — CHAINING RULE RELOCATED, NOT RELAXED. Founder ruling. The
 #   no-ratio-of-ratios prohibition applied to everything and was written in
 #   evaluation.forbidden; it now lives in client_extension.no_ratio_of_ratios,
@@ -86,6 +86,42 @@ evaluation:
         would be a second implementation of the quantity this registry itself
         declares single-owner. Used by axiom.wacc."
       argument: "actual_leverage — see policy_and_assumptions."
+    # ⭐⭐ R7 (2 Aug) — THE FIVE THAT USED TO RESTATE. Each was arithmetic
+    # written out in this file for a quantity the codebase declares
+    # single-owner; each is now a CALL. They are declared here for the same
+    # reason wacc_at is: a formula naming one is a deliberate delegation, and
+    # `forbidden` prohibits any identifier this file does not declare.
+    net_debt:
+      signature: "net_debt(debt, cash) -> currency"
+      owner: "services/api/modules/financials/ratios.py::net_debt"
+      why: "§7r-O. Four hand-written copies agreed on every stored dataset and
+        THREE OF THE FOUR RAISED where the fourth propagated absence — they were
+        never equivalent, only untested on the path that differed."
+    total_debt:
+      signature: "total_debt(short_term_debt, long_term_debt) -> currency"
+      owner: "services/api/modules/financials/ratios.py::total_debt"
+      why: "Total debt is COUNTED rather than consolidated — 17 callers may
+        legitimately form the term. What may not happen is the SPECIFICATION
+        restating it: that is not a caller forming a term, it is an eighteenth
+        implementation in a file the sole-owner guard reads as code."
+    invested_capital:
+      signature: "invested_capital(debt, equity, preferred, minority, cash) -> currency"
+      owner: "services/api/modules/financials/ratios.py::invested_capital"
+      why: "ROIC's denominator. Sole ownership of ROIC is hollow while its
+        denominator has copies."
+    roic:
+      signature: "roic(nopat, invested_capital) -> fraction"
+      owner: "services/api/modules/financials/ratios.py::roic"
+      absence: "A ZERO invested capital yields absence, not 0% and not a
+        division error. The guard is part of the definition and moved with it."
+      note: "NOPAT is passed in. It is not a guarded quantity and has no owner,
+        so the formula forms it inline; what had to delegate is the DIVISION."
+    eva:
+      signature: "eva(nopat, wacc, invested_capital) -> currency"
+      owner: "services/api/modules/financials/ratios.py::eva"
+      note: "⭐ WACC IS AN ARGUMENT, NOT A LOOKUP. The original closed over the
+        caller's wacc dict; a library function reaching for it would silently
+        un-shock any caller that scaled its cost of capital."
     cagr:
       signature: "cagr(line) -> percent"
       owner: "services/api/modules/financials/engines.py::_cagr"
@@ -448,7 +484,9 @@ vocabulary:
     bs.total_debt:
       source: derived
       collected: true
-      expr: "bs.short_term_debt + bs.long_term_debt"
+      # R2/R7: DELEGATES. Restating the sum here would be an eighteenth
+      # implementation, in a file the sole-owner guard reads as code.
+      expr: "total_debt(bs.short_term_debt, bs.long_term_debt)"
       at: "⭐ DERIVED, NOT STORED. A token resolving to an EXPRESSION changes the arithmetic shape the scan must look for."
     bs.secured_debt:
       source: absent
@@ -780,7 +818,7 @@ ratios:
     category: Returns
     tier: core
     headline: false
-    formula: "bs.total_debt + bs.equity + bs.preferred + bs.minority_interest - bs.cash"
+    formula: "invested_capital(bs.total_debt, bs.equity, bs.preferred, bs.minority_interest, bs.cash)"
     unit: currency
     polarity: context
     basis: point_in_time
@@ -822,7 +860,7 @@ ratios:
     # field says percent, and axiom.eva computes (roic - wacc) / 100, a scale
     # that is only correct if both operands ALREADY arrive as percent. eva was
     # right; roic was under-specified.
-    formula: "is.ebit * (1 - po.tax_rate_policy) / axiom.invested_capital * 100"
+    formula: "roic(is.ebit * (1 - po.tax_rate_policy), axiom.invested_capital) * 100"
     unit: percent
     polarity: higher_better
     basis: point_in_time
@@ -884,7 +922,7 @@ ratios:
     category: Value Creation
     tier: core
     headline: false   # not in the locked 13
-    formula: "(axiom.roic - axiom.wacc) / 100 * avg(axiom.invested_capital)"
+    formula: "eva(is.ebit * (1 - po.tax_rate_policy), axiom.wacc, axiom.invested_capital)"
     unit: currency
     polarity: higher_better
     basis: average
@@ -960,7 +998,7 @@ ratios:
     category: Solvency
     tier: core
     headline: false   # not in the locked 13
-    formula: "bs.short_term_debt + bs.long_term_debt - bs.cash"
+    formula: "net_debt(bs.total_debt, bs.cash)"
     unit: currency
     polarity: lower_better
     basis: point_in_time

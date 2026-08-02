@@ -190,13 +190,13 @@ ENGINES = "services/api/modules/financials/engines.py"
 # decoration.
 PEERS = "services/api/modules/benchmarks/engines.py"
 ALLOWLIST = {"net_debt": [LIBRARY],
-             "roic": [ENGINES, PEERS],  # -> LIBRARY in Segment E (after IC)
-             "eva": [ENGINES],         # -> LIBRARY in Segment E
+             "roic": [LIBRARY, PEERS],   # extracted to the library 2 Aug (R7)
+             "eva": [LIBRARY],          # extracted to the library 2 Aug (R7)
              "wacc": [LIBRARY],        # consolidated in D-1
              # total_debt is COUNTED, not consolidated — see
              # _total_debt_shape. Its allowlist is the set of
              # callers legitimately forming the base term.
-             "total_debt": TOTAL_DEBT_SITES,
+             "total_debt": TOTAL_DEBT_SITES + [LIBRARY],
              "invested_capital": IC_SITES + [PEERS]}
 EXPECTED = {"net_debt": 1, "roic": 2, "eva": 1, "wacc": 1,
             "total_debt": 17, "invested_capital": 2}
@@ -380,7 +380,15 @@ def _n_call_shape(node):
 
 
 _NOPAT_KEYS = {"nopat", "n_"}
-_IC_KEYS = {"ic", "invested_capital"}
+# ⭐ `invested_capital_` AND `w_` — TRAILING UNDERSCORES FORCED BY A NAME
+# COLLISION, NOT BY STYLE. ratios.py has a MODULE-LEVEL `invested_capital`
+# function, so `roic`'s parameter cannot share the name; the same for `eva`'s
+# wacc argument. When roic and eva were extracted into the library on 2 Aug the
+# counts fell 1 -> 0 and 2 -> 1: the sites had MOVED to their proper owner and
+# the recogniser stopped seeing them, reporting a consolidation as a deletion.
+# Third instance of the standing law in this file. The spellings are added
+# because they mean the same operand.
+_IC_KEYS = {"ic", "invested_capital", "invested_capital_"}
 _EBIT_KEYS = {"ebit", "e", "operating_profit"}
 _TAX_KEYS = {"tax_rate", "tax_rate_policy", "t", "T", "tax"}
 
@@ -436,7 +444,7 @@ def _eva_shape(node):
         r = b.right
         return (isinstance(r, ast.BinOp) and isinstance(r.op, ast.Mult)
                 and _key_of(b.left) in ("nopat", "n_")
-                and _key_of(r.left) in ("wacc", "w") or False)
+                and _key_of(r.left) in ("wacc", "w", "w_") or False)
     if _sub_mult(node):
         return True
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
@@ -905,6 +913,61 @@ def label_control():
             if missing else [])
 
 
+# ⭐⭐ R7 — THE FIVE MUST NOW DELEGATE, AND DELEGATION IS ASSERTED POSITIVELY.
+#
+# Stage 1's registry check was "does any formula still restate a guarded
+# quantity", with a zero treated as a parse failure because four of them always
+# did. That reading expired the moment the restatements were converted: zero
+# matches became the CORRECT state, and the guard failed on the fix.
+#
+# A shape scan can only ever say "no copy found", which is the same output as
+# "the scan broke" and as "the formula was deleted". So each of the five is now
+# checked for what it MUST contain — a call to its owner — rather than for the
+# absence of what it must not. Reverting one to arithmetic fails the shape scan;
+# deleting one fails this.
+REGISTRY_DELEGATIONS = {
+    "bs.total_debt": "total_debt",
+    "axiom.net_debt": "net_debt",
+    "axiom.invested_capital": "invested_capital",
+    "axiom.roic": "roic",
+    "axiom.eva": "eva",
+}
+
+
+def registry_delegations():
+    """-> (ok_list, failures). Each of the five must CALL its owner."""
+    ok, bad = [], []
+    try:
+        import yaml
+        doc = yaml.safe_load(open(os.path.join(ROOT, REGISTRY), encoding="utf-8"))
+    except Exception as e:
+        return ok, [f"registry unreadable: {type(e).__name__}: {e}"]
+
+    exprs = {r["id"]: r["formula"] for r in (doc.get("ratios") or [])}
+    for grp in (doc.get("vocabulary") or {}).values():
+        for tok, meta in (grp or {}).items():
+            if isinstance(meta, dict) and isinstance(meta.get("expr"), str):
+                exprs[tok] = meta["expr"]
+
+    for owner_of, fname in sorted(REGISTRY_DELEGATIONS.items()):
+        f = exprs.get(owner_of)
+        if f is None:
+            bad.append(f"{owner_of}: no longer present in the registry")
+            continue
+        try:
+            tree = ast.parse(_parseable(f), mode="eval")
+        except SyntaxError:
+            bad.append(f"{owner_of}: formula does not parse")
+            continue
+        calls = {n.func.id for n in ast.walk(tree)
+                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+        if fname in calls:
+            ok.append(f"{owner_of} -> {fname}()")
+        else:
+            bad.append(f"{owner_of}: does not call {fname}() — {f[:56]}")
+    return ok, bad
+
+
 def main():
     found = {k: [] for k in SHAPES}
     for d in SCAN_DIRS:
@@ -1031,31 +1094,22 @@ def main():
     print(f"    runtime readers under services/: "
           f"{readers if readers else 'NONE — the registry is inert'}")
     total = sum(len(v) for v in reg.values())
-    if total == 0:
-        # ⭐ A ZERO HERE IS THE FAILURE MODE, NOT THE GOAL. The whole point is
-        # that four formulas DO restate guarded quantities; reporting none means
-        # the parser stopped working, not that the registry became clean.
-        print("    ✗ ZERO formulas matched any shape. The capability control "
-              "passed,\n      so this is a corpus or parse failure, not a "
-              "clean registry.")
+    # ⭐ THE FIVE, ASSERTED POSITIVELY. See REGISTRY_DELEGATIONS.
+    deleg_ok, deleg_bad = registry_delegations()
+    for line in deleg_ok:
+        print(f"    DELEGATES        {line}")
+    for line in deleg_bad:
+        print(f"    ✗ {line}")
         rc = 1
+    if total:
+        print(f"    {total} formula(s) still RESTATE a guarded quantity:")
     for kind in ("net_debt", "total_debt", "invested_capital", "roic", "eva", "wacc"):
         for rid, formula in reg[kind]:
-            expected_id = REGISTRY_SPEC_SITES.get(kind)
             state = "specification" if readers == [] else "EXECUTING"
-            flag = "  ✗" if readers else ""
-            print(f"    {kind.upper():<17} {rid:<26} [{state}]{flag}")
-            if rid != expected_id and expected_id is not None:
-                print(f"      ✗ UNEXPECTED registry site — {expected_id!r} was "
-                      f"the known duplicate, this is a NEW one")
-                rc = 1
-            if readers:
-                print(f"      ✗ THE REGISTRY IS READ AT RUNTIME AND STILL "
-                      f"RESTATES A GUARDED QUANTITY.\n"
-                      f"        R2 rules delegation the pattern: this formula "
-                      f"must call the owner,\n        as axiom.wacc already "
-                      f"does. Until it does, two definitions ship.")
-                rc = 1
+            print(f"    {kind.upper():<17} {rid:<26} [{state}]  ✗")
+            print(f"      ✗ RESTATES rather than delegates. R2: this formula must\n"
+                  f"        call its owner, as axiom.wacc already does.")
+            rc = 1
     print()
 
     print("  ✓ sole ownership holds." if rc == 0 else

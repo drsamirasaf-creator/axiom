@@ -485,8 +485,8 @@ def derive_series(data: dict) -> dict:
         cash = BS["cash"].get(ys)
         oca = BS["other_current_assets"].get(ys)
         assets = _n(lambda a, b, c: a + b + c, cash, oca, BS["noncurrent_assets"].get(ys))
-        debt = _n(lambda a, b: a + b,
-                  BS["short_term_debt"].get(ys), BS["long_term_debt"].get(ys))
+        debt = ratio_lib.total_debt(BS["short_term_debt"].get(ys),
+                                    BS["long_term_debt"].get(ys))
         equity = BS["total_equity"].get(ys)
         cl = _n(lambda a, b: a + b,
                 BS["current_liabilities_ex_debt"].get(ys), BS["short_term_debt"].get(ys))
@@ -501,7 +501,7 @@ def derive_series(data: dict) -> dict:
             "net_income": _r(ni[i]),
             "roa": _r(_n(lambda a, b: a / b, ni[i], assets) if assets else None),
             "roe": _r(_n(lambda a, b: a / b, ni[i], equity) if equity else None),
-            "roic": _r(_n(lambda a, b: a / b, nopat, ic) if ic else None),
+            "roic": _r(ratio_lib.roic(nopat, ic)),
             "current_ratio": _r(_n(lambda a, b, c: (a + b) / c, cash, oca, cl)
                                 if cl else None),
             "debt_to_equity": _r(_n(lambda a, b: a / b, debt, equity) if equity else None),
@@ -879,8 +879,7 @@ def dashboard_metrics(data: dict, valuation_result: dict | None = None) -> dict:
     rev_h = derived["revenue"][:hist_n]
     cagr = (_n(lambda a, b: _cagr(a, b, hist_n - 1), rev_h[0], rev_h[-1])
             if hist_n > 1 else 0.0)
-    _eva = lambda nopat_, ic_: _n(                                   # noqa: E731
-        lambda n_, i_: n_ - w["wacc"] * i_, nopat_, ic_)
+    _eva = lambda nopat_, ic_: ratio_lib.eva(nopat_, w["wacc"], ic_)  # noqa: E731
     eva_cur = _eva(cur["nopat"], cur["invested_capital"])
     eva_prev = _eva(prev["nopat"], prev["invested_capital"])
 

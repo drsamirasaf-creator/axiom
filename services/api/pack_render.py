@@ -227,12 +227,24 @@ def c_what_changed(src):
 def c_why_ratios(src):
     """2 · Why — the ratio library.
 
-    ⭐ A DECLARED STRUCTURAL GAP. Stage 1's enumeration found §7r's ratio LIBRARY
-    is not built: `axiom_ratio_registry.yaml` is loaded only by
-    `scripts/check-ratio-shapes.py`, never by production code. Per the dispatch
-    this renders from what EXISTS — the dashboard's computed ratios — and DECLARES
-    the gap rather than omitting the section. Omitting it would let the reader
-    infer the company has no ratios to report.
+    ⭐ A DECLARED STRUCTURAL GAP, NARROWED ON 2 Aug AND NOT YET CLOSED.
+    The original wording — "`axiom_ratio_registry.yaml` is loaded only by
+    `scripts/check-ratio-shapes.py`, never by production code" — became false
+    under R7: `modules/financials/ratio_registry.py` now evaluates all 77
+    formulas at compute time, and they are held against the engine at 2,916
+    comparisons with zero divergences.
+
+    ⭐⭐ THE GAP TEXT STILL STANDS, BECAUSE THE GAP IS ABOUT WHAT RENDERS. These
+    figures still come from `financials/engines.py`. A reader told the numbers
+    are "registry-versioned" would be told something untrue about the path their
+    own pack took. The claim is narrowed to the honest one — the registry runs,
+    and nothing here reads it — rather than deleted because a version now exists
+    to quote.
+
+    ⭐ THIS DOCSTRING ALSO BROKE A GUARD ONCE. `registry_readers()` was written
+    as a substring search and matched THIS TEXT, reporting pack_render.py as a
+    runtime reader of the registry — §III.9, a check keyed on text firing on the
+    sentence describing its own subject. It is an AST read now.
     """
     from .modules.financials import engines as fin
     gap = ("the §7r ratio library is not built; these are the dashboard's "

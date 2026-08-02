@@ -517,18 +517,44 @@ def pinned_versions(db, cid):
         "template_version": (getattr(ds, "template_version", None) if ds else None),
         "banding_constants": _banding_constants(),
         "forecast_method_set": _forecast_method_set(),
-        # ⭐ THE RATIO REGISTRY IS PINNED AS NOT-CONSUMED, NOT AS A VERSION.
-        # The §7r ratio LIBRARY is not built: the registry yaml is read only by a
-        # CI guard, never by production code. Pinning a version string for a
-        # formula set nothing renders would be a pin that asserts more than it
-        # knows. When §7r ships, this becomes a real version and the coverage
-        # guard is what will force it.
-        "ratio_registry": {"consumed_by_production": False,
-                           "reason": "the §7r ratio library is not built; the "
-                                     "registry yaml is loaded only by "
-                                     "scripts/check-ratio-shapes.py"},
+        # ⭐⭐ THE REGISTRY NOW EXECUTES, AND IT STILL RENDERS NOTHING. Those are
+        # two different facts and the pin has to carry both, because either one
+        # alone is misleading.
+        #
+        # `ratio_registry.py` (R7, 2 Aug) reads this yaml at compute time and
+        # evaluates all 77 formulas, so "loaded only by a CI guard" is no longer
+        # true. But nothing in the SERVING path calls it: the KPI strip, the
+        # ratio panel and the pack all still take their figures from
+        # `financials/engines.py`. Pinning a version here would tell a reader
+        # that the numbers in their pack came from formula set X, and they did
+        # not.
+        #
+        # ⭐ THE DISTINCTION IS THE POINT OF THE FIELD. `executed` says the
+        # formulas run and are held against the engine — 2,916 comparisons, zero
+        # divergences, over every stored dataset. `renders_any_figure` says
+        # which path a reader's number actually came from. When a surface is
+        # switched over, THAT is when the version becomes real.
+        "ratio_registry": {"consumed_by_production": True,
+                           "executed": True,
+                           "renders_any_figure": False,
+                           "version": _registry_version(),
+                           "reason": "R7: services/api/modules/financials/"
+                                     "ratio_registry.py evaluates the registry "
+                                     "and is verified against the engine, but "
+                                     "no served figure is taken from it — the "
+                                     "engine remains the single rendering path"},
     }
     return out
+
+
+def _registry_version():
+    """The registry's own version string, read rather than restated.
+
+    ⭐ NOT A LITERAL. Three prose copies of the ratio COUNT went stale inside one
+    week; a version string pinned by hand would go the same way, and this one
+    ships to customers inside the pack."""
+    from .modules.financials import ratio_registry
+    return (ratio_registry.load() or {}).get("registry_version")
 
 
 def _banding_constants():

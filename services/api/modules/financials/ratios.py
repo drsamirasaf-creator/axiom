@@ -216,3 +216,56 @@ def operating_cash_flow(pat: Number, dep_amort: Number,
     from .engines import _n
     return _n(lambda p, d, w, wp: p + d - (w - wp),
               pat, dep_amort, nwc, nwc_prior)
+
+
+def total_debt(short_term_debt: Number, long_term_debt: Number) -> Number:
+    """Short-term plus long-term borrowing. Absence propagates.
+
+    ⭐ AN OWNER SO THE REGISTRY HAS SOMETHING TO CALL, NOT A CONSOLIDATION OF
+    THE SEVENTEEN. Total debt is a legitimate term for many callers to form and
+    `check-sole-owner.py` COUNTS it rather than requiring one site. What R7
+    needs is different: an executing registry that spells out
+    `short_term_debt + long_term_debt` is an eighteenth implementation living in
+    a YAML file, and that one is not a caller forming a term — it is the
+    specification restating arithmetic that has an owner.
+
+    ⭐ THE COUNT DOES NOT RISE. financials/engines.py:488 was rewritten to call
+    this, so the site MOVED rather than multiplied. A ratchet raised to
+    accommodate a new owner would be a guard loosened to admit the thing it
+    watches for.
+    """
+    from .engines import _n
+    return _n(lambda a, b: a + b, short_term_debt, long_term_debt)
+
+
+def roic(nopat: Number, invested_capital_: Number) -> Number:
+    """Return on invested capital. Absence propagates.
+
+    ⭐ THE ZERO-DENOMINATOR GUARD IS PART OF THE DEFINITION AND MOVES WITH IT.
+    financials/engines.py:504 read `_n(...) if ic else None` — a zero invested
+    capital yields ABSENCE, not a division error and not an infinity. Extracting
+    the division while leaving that test at the call site would have put half
+    the definition in each place, which is the shape this library exists to end.
+
+    ⭐ AND `if ic else None` IS DELIBERATELY NOT `if ic is not None`. It also
+    catches ic == 0. A company whose invested capital nets to exactly zero has
+    no meaningful return ON it, and 0.0 would render as "0% return" — a number
+    where absence belongs.
+    """
+    from .engines import _n
+    if not invested_capital_:
+        return None
+    return _n(lambda a, b: a / b, nopat, invested_capital_)
+
+
+def eva(nopat: Number, wacc: Number, invested_capital_: Number) -> Number:
+    """Economic value added: NOPAT less the charge for the capital employed.
+
+    ⭐ WACC IS AN ARGUMENT, NOT A LOOKUP. financials/engines.py:882 closed over
+    `w["wacc"]` from its enclosing scope. A library function reaching for the
+    caller's WACC dict would tie this arithmetic to one caller's data shape and
+    silently un-shock any caller that scaled its cost of capital — the same
+    reason `net_debt` takes debt as an argument (see the module docstring).
+    """
+    from .engines import _n
+    return _n(lambda n_, w_, i_: n_ - w_ * i_, nopat, wacc, invested_capital_)

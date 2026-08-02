@@ -42,9 +42,15 @@ def _exprs(reg):
                 yield tok, meta["expr"]
 
 
-# The evaluator's own function list, plus the two the registry uses and has not
-# declared (R2 — `wacc_at` delegates to the owner, `cagr` awaits its horizon).
-FUNCS = {"avg", "prior", "abs", "min", "max", "wacc_at", "cagr"}
+# ⭐ READ FROM THE REGISTRY, NOT RESTATED HERE. Written first as a literal set,
+# it went stale the moment R7 added five delegating functions — the test then
+# reported `net_debt(...)` as an undeclared identifier, which is the file's own
+# defect class committed inside the test that polices it. The evaluator's
+# operators plus whatever `engine_functions` declares.
+def _funcs(reg):
+    return ({"avg", "prior", "abs", "min", "max"}
+            | set(reg["evaluation"].get("functions") or {})
+            | set(reg["evaluation"].get("engine_functions") or {}))
 # Any identifier at all, so a BARE name is visible — see the test below.
 ANY_NAME = re.compile(r"\b[A-Za-z_][A-Za-z0-9_.]*\b")
 
@@ -97,13 +103,14 @@ def test_every_referenced_token_is_declared(reg, vocab):
     spelling check.
     """
     ratio_ids = {r["id"] for r in reg["ratios"]}
+    funcs = _funcs(reg)
     bad = {}
     for owner, expr in _exprs(reg):
         if "<" in expr or owner in PROSE_EXPRS:
             continue
         missing = set()
         for name in ANY_NAME.findall(expr):
-            if name in vocab or name in ratio_ids or name in FUNCS:
+            if name in vocab or name in ratio_ids or name in funcs:
                 continue
             if name.replace(".", "").isdigit():
                 continue
@@ -244,7 +251,13 @@ def test_r2_engine_functions_are_declared_with_owners(reg):
     its own `forbidden` list prohibited.
     """
     ef = reg["evaluation"].get("engine_functions") or {}
-    assert set(ef) == {"wacc_at", "cagr"}, f"declared engine functions: {sorted(ef)}"
+    # ⭐ THE SET GREW FROM TWO TO SEVEN UNDER R7 AND THE ASSERTION HAD TO BE
+    # REWRITTEN, NOT RELAXED. Pinning the exact membership is what makes a
+    # SIXTH delegation appearing without an owner fail here; loosening it to
+    # "at least these" would let an undeclared one in silently.
+    assert set(ef) == {"wacc_at", "cagr", "net_debt", "total_debt",
+                       "invested_capital", "roic", "eva"}, \
+        f"declared engine functions: {sorted(ef)}"
     for name, meta in ef.items():
         assert meta.get("owner"), f"{name} names no owner"
         assert "::" in meta["owner"], f"{name}'s owner is not a symbol: {meta['owner']}"

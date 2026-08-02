@@ -7062,6 +7062,77 @@ stage 1 moved nothing. No Python changed this lane beyond tests.
 there and pass at 7r.9. The bar exists because stage 1's first draft went green
 on the regression it was written for.
 
+## §7r-S3a — R7: THE REGISTRY EXECUTES (2 Aug, registry 7r.10)
+
+`services/api/modules/financials/ratio_registry.py` is the **first runtime
+reader** of the registry. It evaluates all 77 formulas with absence
+propagating, and performs `+ - * /` and nothing else — every quantity with an
+owner is a **call**, not arithmetic repeated here.
+
+### The guard fired at exactly the moment it was built for
+
+`registry_readers()` detected the new module and failed the build while five
+formulas still restated guarded quantities. **They were converted, not
+allowlisted.** Three owners did not exist and were extracted into `ratios.py`:
+
+| quantity | before | after |
+|---|---|---|
+| `total_debt` | inline at 17 sites | `ratios.total_debt` — engines.py:488 repointed, **count stays 17** |
+| `roic` | inline, `engines.py:504` | `ratios.roic` — the `if ic else None` guard moved WITH the definition |
+| `eva` | inline, `engines.py:882` | `ratios.eva` — WACC is an **argument**, not a closure lookup |
+
+⭐ **THE EXTRACTION READ AS A DELETION, FOR THE THIRD TIME IN THIS FILE.** Counts
+fell ROIC 2→1 and EVA 1→0 the moment the sites moved to their proper owner:
+`ratios.py` already has a module-level `invested_capital`, so `roic`'s parameter
+must be `invested_capital_`, and the recogniser did not know that spelling. A
+counter that falls when code improves reports a fix as a removal. Spellings
+added; counts restored.
+
+### The zero-guard expired on the fix
+
+Stage 1 asserted "zero matched shapes means the parser broke", because four
+formulas always restated. **The moment they delegated, zero became correct and
+the guard failed on the fix.** A shape scan can only ever say *no copy found* —
+indistinguishable from *the scan broke* and from *the formula was deleted*. Each
+of the five is now asserted **positively**: it must CALL its owner. Reverting one
+to arithmetic fails the shape scan; deleting one fails the new check.
+
+### 2,916 comparisons, zero divergences
+
+Nine quantities the engine already computes, every period, all 33 stored
+datasets. **Every one identical**, compared at the engine's own precision — the
+engine stores `_r(x)` and the registry computes unrounded, so the first run's
+apparent differences were all ~1e-7, a 6-decimal artefact.
+
+⭐⭐ **AND 14 OF THE 15 NEW TESTS PASS AGAINST THE OLD, RESTATING REGISTRY.**
+The restatements were never arithmetically wrong — they were duplicates that
+agreed. **Two implementations that agree today are the dangerous kind**, and
+this is the proof that sole ownership needs a STRUCTURAL guard: a value
+comparison cannot see the defect at all. Only
+`test_the_five_delegate_rather_than_restate` discriminates.
+
+### What renders from where — the answer is "the engine, and only the engine"
+
+Nothing in the serving path calls the evaluator. The KPI strip's fourteen
+labels, the ratio panel and the pack all still take figures from
+`financials/engines.py`. **Two paths exist; one serves.** Wiring a surface over
+is a separate decision, because two paths to one number is the defect this
+programme exists to end.
+
+⭐ **TWO RECORDS WENT STALE THE MOMENT THIS SHIPPED, AND BOTH WERE CORRECTED IN
+PLACE.** `pack.py` pinned `ratio_registry: {consumed_by_production: false}` and
+`pack_render.py`'s docstring said the yaml is "loaded only by
+`scripts/check-ratio-shapes.py`, never by production code". Both are now false.
+The pin carries **two fields, because either alone misleads**: `executed: true`
+and `renders_any_figure: false`, with the version **read** from the registry
+rather than typed. The gap text in the pack stands — the gap was always about
+what renders.
+
+## §7r-S3b — R6: THE TEMPLATE SPLIT (2 Aug)
+
+*(recorded below, following the same version discipline as v8's non-current
+split and v9's monthly frequency)*
+
 ## §7r-H — HEADLINE SET: FOURTEEN, LOCKED (founder ruling)
 
 Also absent from the ledger until 30 Jul. The ledger's five prior uses of the
