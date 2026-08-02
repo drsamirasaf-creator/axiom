@@ -6958,6 +6958,110 @@ The four remaining unresolved references are named per-owner in a **shrink-only
 PENDING list**, never a blanket skip — a blanket skip would also hide a sixth
 appearing tomorrow, which is the whole subject of the file.
 
+## §7r-S2 — STAGE 2: THE RULINGS APPLIED (2 Aug, registry 7r.9)
+
+Stage 1 (`ba5011f`) fixed the defects and taught the guard to see the registry.
+This applies R1, R2 and R3. **R7 execution remains stage 3 — the registry still
+does not execute, and `runtime readers: NONE` still measures that.**
+
+| | 7r.7 | 7r.8 | **7r.9** |
+|---|---|---|---|
+| ratios | 79 | 80 | **77** |
+| withdrawn | — | — | **3** |
+| computable | 41 | 45 | **52** |
+| **unresolved tokens** | 4 | 4 | **0** |
+| headline computable | 14 | 14 | **14 / 14** |
+
+⭐ **THE REGISTRY IS NOW FULLY INTERNALLY RESOLVABLE.** Every token in every
+formula resolves to a declared vocabulary entry, a ratio id, or a declared
+function. That was the precondition R7 needed and it is now met.
+
+### R1 — `bs.nwc`, and the third disagreement closed
+
+Declaring it was never clerical. **Two candidates differing on TWO terms**, both
+standard, and they are different quantities:
+
+```
+axiom.working_capital   bs.current_assets - bs.current_liabilities
+                        -> INCLUDES cash, INCLUDES short-term debt
+bs.nwc                  bs.other_current_assets - bs.other_current_liabilities
+                        -> excludes both.  engines.py:455
+```
+
+`bs.other_current_liabilities` maps to the stored field
+`current_liabilities_ex_debt`, so this is the engine's expression **token for
+token**, not an approximation of it. `axiom.working_capital` is untouched.
+
+**And `axiom.fcff` moved off the inclusive basis** — the third live
+registry-versus-engine disagreement, alongside the ROIC basis and the peer
+ROIC, and the one that mattered most because FCFF feeds the DCF and renders in
+the KPI strip. A bridge whose working capital includes cash double-counts the
+cash it is explaining; one including short-term debt mixes a financing movement
+into an operating one.
+
+### R2 — delegation declared, and the horizon measured
+
+`evaluation.engine_functions` now declares **`wacc_at`** and **`cagr`** with
+their owners. Both were in use and neither was declared, so **the registry was
+calling functions its own `forbidden` list prohibited.**
+
+⭐ **`cagr`'s HORIZON IS A RULE, NOT A CONSTANT — AND IT HAD TO BE MEASURED.**
+The dispatch made this a stop condition: declare the engine's horizon or stop
+and report that none exists. The engine does state one, consistently at all
+three call sites (`engines.py:880`, `engines.py:687`,
+`forecast_studio.py:133`): **the full historical window, endpoint to endpoint,
+exponent n = hist_n − 1.** Measured across the 33 stored datasets, `hist_n`
+runs 2, 3, 5, 6 and 12 — so n runs 1 to 11, and **a registry declaring "5-year
+CAGR" would have been wrong on 17 of 33 datasets.**
+
+⭐ **ONE OPEN DISAGREEMENT RECORDED RATHER THAN FIXED.** `_cagr` returns **0.0**
+when n ≤ 0 or either endpoint ≤ 0 (`engines.py:615`). That is the `or 0` shape
+this codebase removes everywhere else — a zero standing for "cannot be
+computed". Changing it would move a rendered figure, which this lane forbids.
+**Routed, not fixed.**
+
+`po.actual_leverage` declared as **`source: caller_resolved`**, because it is
+mode-dependent and flattening that would be the defect: public is market equity
+vs book debt (`engines.py:566`), private is the `target_debt_to_equity` policy
+input (`engines.py:579`). One `expr` would assert an identity the code lacks.
+
+### R3 — removed from the arithmetic, kept on the record
+
+`axiom.common_size_is`, `axiom.common_size_bs`, `axiom.ohlson_o` left `ratios:`
+for a new `withdrawn:` stanza. **A silently vanished ratio is indistinguishable
+from one nobody thought of**, and the next reader of a registry with no
+common-size ratios must be able to find out why without re-deriving the ruling.
+
+⭐ **THE COMMON-SIZE PAIR ALREADY KNEW.** Both carried `surface: full_statement`
+and one carried a note reading *"A full-statement view, NOT a row in the ratio
+panel."* They described themselves correctly and were filed in the wrong list.
+
+`ohlson_o` is withdrawn **as unspecified, with no source assumed to exist** —
+the ruling was explicit and this lane did not go looking for `ohlson.md` in
+order to keep the entry alive. Its own `build_note` said a half-specified
+nine-term model is worse than an honest placeholder; that is the reasoning that
+withdraws it. Reinstatement conditions are recorded, including that its fitted
+population is **US public firms, 1970–76**.
+
+With the three placeholders gone, the sole-owner scan's unparseable count fell
+**5 → 2** — only the two prose exprs remain, and their disposition is a ruling.
+
+### The PENDING list closed by its own ratchet
+
+Stage 1 left two entries. Declaring both tokens made them **stale**, and the
+both-directions assertion **failed the build demanding the list be updated** —
+the shrink-only mechanism working rather than the list being edited by hand. It
+stays as an empty set, never deleted, so a sixth undeclared token appearing
+tomorrow lands in `unexpected` and fails.
+
+⭐ **NO FIGURE MOVED.** 28,455 leaf values and 2,798 peer numbers, identical
+digests against `ba5011f` — and identical to stage 1's, which also re-confirms
+stage 1 moved nothing. No Python changed this lane beyond tests.
+
+⭐ **EVERY NEW TEST PROVEN RED AT `383b9e0`.** All seven stage-2 tests fail
+there and pass at 7r.9. The bar exists because stage 1's first draft went green
+on the regression it was written for.
+
 ## §7r-H — HEADLINE SET: FOURTEEN, LOCKED (founder ruling)
 
 Also absent from the ledger until 30 Jul. The ledger's five prior uses of the

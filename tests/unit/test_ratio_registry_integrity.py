@@ -57,17 +57,28 @@ ANY_NAME = re.compile(r"\b[A-Za-z_][A-Za-z0-9_.]*\b")
 # a finding about the scanner. Their disposition is a ruling, not a fix.
 PROSE_EXPRS = {"po.cost_of_equity", "po.days_in_period"}
 
-# ⭐⭐ RULED ON 2 Aug, NOT YET BUILT — named individually, never waved through.
-# Each is a token whose MEANING is settled and whose DECLARATION is stage 2:
-#   axiom.wacc / actual_leverage  R2 — delegation is the pattern; wacc_at's
-#                                 argument needs a policy token
-#   cf.operating_cash_flow / nwc  R1 — operating working capital, ex-cash and
-#                                 ex-debt. Blocks 5 ratios including the
-#                                 headline cash_conversion_quality.
-# A blanket skip would also hide a SIXTH undeclared token appearing tomorrow,
-# which is the defect this whole file exists for. So the list is per-owner and
-# asserted in both directions below.
-PENDING = {"axiom.wacc", "cf.operating_cash_flow"}
+# ⭐⭐ EMPTY, AND THAT IS THE POINT OF IT HAVING BEEN A LIST.
+#
+# Stage 1 left two entries, each a token whose MEANING was ruled and whose
+# DECLARATION was stage 2's work:
+#
+#   axiom.wacc / actual_leverage   R2 — declared as po.actual_leverage,
+#                                  `source: caller_resolved`, because it is
+#                                  mode-dependent (market D/E for public, the
+#                                  target-D/E policy input for private) and one
+#                                  expr would assert an identity the code lacks.
+#   cf.operating_cash_flow / nwc   R1 — declared as bs.nwc on the OPERATING
+#                                  basis, ex-cash and ex-debt.
+#
+# ⭐ THE RATCHET FIRED RATHER THAN THE LIST BEING EDITED BY HAND. Declaring both
+# tokens made the two entries STALE, and the both-directions assertion below
+# failed the build demanding the list be updated. That is the shrink-only
+# mechanism doing its job: an entry cannot quietly outlive its reason, and this
+# list could not silently keep two names that no longer needed excusing.
+#
+# It stays as an empty set, not deleted: a sixth undeclared token appearing
+# tomorrow must land in `unexpected` and fail, never be absorbed.
+PENDING = set()
 
 
 def test_every_referenced_token_is_declared(reg, vocab):
@@ -182,3 +193,111 @@ def test_percent_ratios_scale_to_percent(reg):
         if "* 100" not in f and "*100" not in f:
             bad.append((r["id"], f))
     assert bad == [], f"declared percent but not scaled to percent: {bad}"
+
+
+# ── stage 2: the rulings ────────────────────────────────────────────────────
+# ⭐ EVERY TEST BELOW WAS RUN AGAINST 383b9e0 BEFORE IT WAS BELIEVED. Stage 1's
+# first draft went green on the regression it was written for, so "red on the
+# old artefact, green on the new" is the standing bar, not a nicety.
+
+def test_r1_nwc_is_the_operating_basis_and_distinct(reg, vocab):
+    """R1 — bs.nwc excludes cash and short-term debt; working capital includes
+    both. Two quantities, two names, and the test asserts they DIFFER.
+
+    ⭐ ASSERTING bs.nwc MERELY EXISTS WOULD PASS ON A TOKEN DEFINED THE WRONG
+    WAY. The ruling is about WHICH definition, so the operands are what is
+    checked: an expr naming cash or short-term debt would be the inclusive
+    basis wearing the operating name.
+    """
+    assert "bs.nwc" in vocab, "R1's token is not declared"
+    expr = next(g["bs.nwc"]["expr"] for g in reg["vocabulary"].values()
+                if "bs.nwc" in g)
+    operands = set(TOK.findall(expr))
+    assert operands == {"bs.other_current_assets", "bs.other_current_liabilities"}, \
+        f"bs.nwc is not the engine's operating basis: {expr}"
+    # and it must NOT reach cash or short-term debt through its operands
+    assert "bs.cash" not in operands and "bs.short_term_debt" not in operands
+
+    wc = next(r["formula"] for r in reg["ratios"]
+              if r["id"] == "axiom.working_capital")
+    assert wc != expr, "the two working-capital measures have collapsed into one"
+    assert set(TOK.findall(wc)) == {"bs.current_assets", "bs.current_liabilities"}
+
+
+def test_r1_fcff_uses_the_operating_basis(reg):
+    """R1 — the third live registry-versus-engine disagreement.
+
+    FCFF feeds the DCF and renders in the KPI strip. The registry used the
+    inclusive basis; the engine (engines.py:462) has always used the operating
+    one. RED at 383b9e0, where the formula still carries bs.current_assets.
+    """
+    f = next(r["formula"] for r in reg["ratios"] if r["id"] == "axiom.fcff")
+    assert "bs.nwc" in f, f"axiom.fcff does not use the operating basis: {f}"
+    assert "bs.current_assets" not in f and "bs.current_liabilities" not in f, \
+        f"axiom.fcff still carries the inclusive working-capital term: {f}"
+
+
+def test_r2_engine_functions_are_declared_with_owners(reg):
+    """R2 — delegation is the pattern, so a delegating call is DECLARED.
+
+    Both were in use and neither was declared, so the registry called functions
+    its own `forbidden` list prohibited.
+    """
+    ef = reg["evaluation"].get("engine_functions") or {}
+    assert set(ef) == {"wacc_at", "cagr"}, f"declared engine functions: {sorted(ef)}"
+    for name, meta in ef.items():
+        assert meta.get("owner"), f"{name} names no owner"
+        assert "::" in meta["owner"], f"{name}'s owner is not a symbol: {meta['owner']}"
+
+
+def test_r2_cagr_states_a_horizon(reg):
+    """⭐ A CAGR WITHOUT A WINDOW IS NOT A NUMBER. `cagr(is.revenue)` was
+    ambiguous as written and the dispatch made this a stop condition: declare
+    the engine's horizon, or stop and report that none exists.
+
+    The engine states one at all three call sites — the full historical window,
+    endpoint to endpoint, exponent n = hist_n - 1. It is window-RELATIVE, not a
+    fixed number of years: measured across the 33 stored datasets hist_n runs
+    2, 3, 5, 6 and 12, so a declared "5-year CAGR" would be wrong on 17 of 33.
+    """
+    cagr = reg["evaluation"]["engine_functions"]["cagr"]
+    h = cagr.get("horizon", "")
+    assert h, "cagr declares no horizon"
+    assert "historical" in h, f"the horizon does not name its window: {h}"
+    assert "- 1" in h or "-1" in h, f"the horizon does not state its exponent: {h}"
+    # the forecast-window CAGR is a DIFFERENT quantity sharing the name
+    assert "plan_cagr" in cagr.get("distinct_from", "")
+
+
+def test_r3_removals_are_recorded_not_deleted(reg):
+    """R3 — out of the arithmetic, still on the record.
+
+    ⭐ A SILENTLY VANISHED RATIO IS INDISTINGUISHABLE FROM ONE NOBODY THOUGHT
+    OF. The next reader of a registry with no common-size ratios must be able to
+    find out why without re-deriving the ruling.
+    """
+    ids = {r["id"] for r in reg["ratios"]}
+    gone = {"axiom.common_size_is", "axiom.common_size_bs", "axiom.ohlson_o"}
+    assert not (ids & gone), f"still in the arithmetic: {sorted(ids & gone)}"
+    withdrawn = {w["id"] for w in reg.get("withdrawn") or []}
+    assert withdrawn == gone, f"withdrawal record incomplete: {sorted(withdrawn)}"
+    for w in reg["withdrawn"]:
+        assert w.get("ruling"), f"{w['id']} was removed with no reason recorded"
+        assert w.get("was"), f"{w['id']} does not record what it was"
+
+
+def test_no_placeholder_formulas_remain(reg):
+    """The three placeholders were the only unparseable FORMULAS. With R3 done,
+    every remaining formula is a formula. RED at 383b9e0 on all three."""
+    bad = [r["id"] for r in reg["ratios"] if "<" in r["formula"]]
+    assert bad == [], f"placeholder formulas remaining: {bad}"
+
+
+def test_recorded_counts_match_the_file(reg):
+    """⭐ THE COUNT IS READ FROM ONE PLACE AND CHECKED AGAINST THE CORPUS.
+    It lived in prose in three paragraphs as '79' and went stale the moment
+    stage 1 made it 80. A count repeated in prose disagrees with itself."""
+    g = reg["enumeration_guard"]
+    assert g["ratio_count"] == len(reg["ratios"])
+    assert g["withdrawn_count"] == len(reg["withdrawn"])
+    assert g["headline_count"] == sum(1 for r in reg["ratios"] if r.get("headline"))

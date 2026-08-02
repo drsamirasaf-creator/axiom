@@ -32,7 +32,7 @@
 # in place. Do not proceed to formula evaluation until the vocabulary is real.
 
 schema_version: 1
-registry_version: "7r.8"   # 2 Aug: five defects fixed; R4 point-in-time; guard scans this file   # Segment B: debt-as-argument   # founder rulings 31 Jul; headline set = 14
+registry_version: "7r.9"   # 2 Aug stage 2: R1 nwc + fcff, R2 delegation, R3 removals   # Segment B: debt-as-argument   # founder rulings 31 Jul; headline set = 14
 # 7r.5 — CHAINING RULE RELOCATED, NOT RELAXED. Founder ruling. The
 #   no-ratio-of-ratios prohibition applied to everything and was written in
 #   evaluation.forbidden; it now lives in client_extension.no_ratio_of_ratios,
@@ -69,10 +69,54 @@ evaluation:
     abs:    "abs(x)"
     min:    "min(x, y, ...)"
     max:    "max(x, y, ...)"
+  # ⭐⭐ R2 (FOUNDER RULING, 2 Aug) — DELEGATION IS THE PATTERN. These are NOT
+  # arithmetic the evaluator performs. They are calls into the code that already
+  # owns the quantity, and they are declared here so that a formula naming one
+  # is a deliberate delegation rather than an undeclared token.
+  #
+  # Both were in use and neither was declared, so the registry called functions
+  # its own `forbidden` list prohibited. axiom.wacc has ALWAYS been written this
+  # way — the registry solved sole ownership for the hardest of its five
+  # duplicated quantities by calling the owner, and never wrote down that it had.
+  engine_functions:
+    wacc_at:
+      signature: "wacc_at(leverage) -> percent"
+      owner: "services/api/modules/financials/ratios.py::wacc_at"
+      why: "WACC has one owner (§7r-O). A registry formula restating the blend
+        would be a second implementation of the quantity this registry itself
+        declares single-owner. Used by axiom.wacc."
+      argument: "actual_leverage — see policy_and_assumptions."
+    cagr:
+      signature: "cagr(line) -> percent"
+      owner: "services/api/modules/financials/engines.py::_cagr"
+      # ⭐⭐ THE HORIZON IS A RULE, NOT A CONSTANT — AND IT HAD TO BE MEASURED
+      # BEFORE IT COULD BE DECLARED. `axiom.revenue_cagr` was `cagr(is.revenue)`
+      # with no horizon anywhere in the registry, which made it ambiguous as
+      # written: a CAGR without a window is not a number.
+      #
+      # The engine does state one, consistently, at all three call sites
+      # (engines.py:880, engines.py:687, forecast_studio.py:133): the FULL
+      # HISTORICAL WINDOW, endpoint to endpoint, with exponent n = hist_n - 1.
+      # It is window-relative rather than a fixed number of years — measured
+      # across the 33 stored datasets, hist_n runs 2, 3, 5, 6 and 12, so n runs
+      # 1 to 11. A registry declaring "5-year CAGR" would be wrong on 17 of 33.
+      horizon: "full historical window, endpoint to endpoint; exponent
+        n = (count of historical periods) - 1. Forecast periods are EXCLUDED —
+        the KPI strip labels this 'Revenue CAGR (hist)'."
+      absence: "n <= 0, or either endpoint <= 0, yields 0.0 at engines.py:615.
+        ⭐ RECORDED AS AN OPEN DISAGREEMENT WITH THE ABSENCE RULE, NOT RESOLVED
+        HERE: a zero returned for 'cannot be computed' is the `or 0` shape this
+        codebase removes everywhere else. Changing it would move a rendered
+        figure, which this lane forbids. Routed, not fixed."
+      distinct_from: "proforma.py:224's plan_cagr, which runs over the FORECAST
+        window (fyears) and is a different quantity with the same name."
   forbidden:
     - free-text formula entry
     - literal numbers other than 1, 2, 100, 365, 366, 12, 4
     - any token not present in `vocabulary`
+    # ⭐ `functions` and `engine_functions` both satisfy this. The rule was
+    # written when the only callables were the five above; it was silently
+    # false for wacc_at and cagr from the day each was first used.
     # NOTE: "no ratio-of-ratios" lived here and applied to everything. It now
     # lives under client_extension.no_ratio_of_ratios, because it was never a
     # statement about arithmetic — see canonical_chaining below.
@@ -84,7 +128,7 @@ evaluation:
       different risks into one sentence. An arbitrary CLIENT chain is unbounded
       and unauditable — anyone may compose anything, to any depth, and provenance
       genuinely becomes unresolvable. A CANONICAL chain is a fixed, hand-audited
-      graph of 79 formulas in one reviewed file. Same syntax, different risk."
+      graph of 77 formulas in one reviewed file. Same syntax, different risk."
     ⭐_why_not_inlined: "Inlining the ten chained formulas would recreate exactly
       the duplication five segments were spent removing. `axiom.roic` referencing
       `axiom.invested_capital` IS what single ownership means: one definition of
@@ -355,6 +399,35 @@ vocabulary:
       field: other_noncurrent_liabilities
       optional: true
       at: "engines.py:62 (BS_OPTIONAL_KEYS)"
+    # ⭐⭐ R1 (FOUNDER RULING, 2 Aug) — OPERATING WORKING CAPITAL, EX-CASH AND
+    # EX-DEBT. This token was referenced by cf.operating_cash_flow and declared
+    # nowhere, and declaring it was never clerical: there were two candidates
+    # differing on TWO terms, both standard, and they are different quantities.
+    #
+    #   axiom.working_capital   bs.current_assets - bs.current_liabilities
+    #                           -> INCLUDES cash, INCLUDES short-term debt
+    #   bs.nwc (this token)     bs.other_current_assets
+    #                             - bs.other_current_liabilities
+    #                           -> excludes both. The engine's basis,
+    #                              engines.py:455.
+    #
+    # RULED: a cash-flow bridge that includes cash DOUBLE-COUNTS IT. Operating
+    # NWC excludes cash and debt for exactly that reason. axiom.working_capital
+    # is untouched and remains the separate all-current measure — two names for
+    # two quantities, rather than one name quietly meaning either.
+    #
+    # ⭐ THE STORED FIELD BEHIND bs.other_current_liabilities IS THE WHOLE
+    # EX-DEBT AGGREGATE (`current_liabilities_ex_debt`), not an "other"
+    # residual — see its own note. So this expression is the engine's
+    # `other_current_assets - current_liabilities_ex_debt` token for token, not
+    # an approximation of it.
+    bs.nwc:
+      source: derived
+      collected: true
+      expr: "bs.other_current_assets - bs.other_current_liabilities"
+      at: "engines.py:455"
+      basis: operating
+      distinct_from: "axiom.working_capital — see above. Not interchangeable."
     bs.total_liabilities:
       source: derived
       collected: true
@@ -398,7 +471,8 @@ vocabulary:
     cf.operating_cash_flow:
       source: derived
       collected: true
-      expr: "is.pat + is.dep_amort - (nwc - prior(nwc))"
+      # R1: `nwc` was a bare undeclared name. Now bs.nwc — the OPERATING basis.
+      expr: "is.pat + is.dep_amort - (bs.nwc - prior(bs.nwc))"
       at: "ratios.py::operating_cash_flow — extracted from proforma.py:147, which already computed this arithmetic for FORECAST years only and without absence propagation. The registry said 'no owner'; there was one, for half the periods."
     cf.capex:
       source: stored
@@ -481,6 +555,28 @@ vocabulary:
       collected: true
       expr: "365 | 366 | 90 by period basis"
       at: "a convention, not an input"
+    # ⭐⭐ R2 — wacc_at's ARGUMENT, declared so axiom.wacc resolves. It was a
+    # bare `actual_leverage` in that formula and in no namespace.
+    #
+    # ⭐ IT IS MODE-DEPENDENT, AND FLATTENING THAT WOULD BE THE DEFECT. There is
+    # no single expression for it (engines.py:566, :579):
+    #
+    #   public   D/E = _debt_book / market equity value
+    #            — a MARKET-derived ratio; the caller must supply the debt basis
+    #              (see ratios.net_debt) and a default of 0.0 once priced a
+    #              company as debt-free
+    #   private  D/E = company.target_debt_to_equity
+    #            — a POLICY input, not an observation
+    #
+    # Declaring it `derived` with one expr would assert an identity the code
+    # does not have. It is what the caller resolves and hands to wacc_at.
+    po.actual_leverage:
+      source: caller_resolved
+      collected: true
+      at: "engines.py:566 (public), engines.py:579 (private)"
+      note: "D/E at the company's actual capital structure. Public: market
+        equity vs book debt. Private: the target D/E policy input. Passed to
+        wacc_at; never re-derived inside a formula."
 
   human_capital:
     hc.headcount:
@@ -742,7 +838,7 @@ ratios:
     category: Returns
     tier: core
     headline: false
-    formula: "wacc_at(actual_leverage)"
+    formula: "wacc_at(po.actual_leverage)"
     exposed_not_headline: true   # a rate, not a ratio; exposed to anchor the spread
     parameterised: true
     parameterised_form: "wacc_at(x) where x = D/E:
@@ -1161,9 +1257,26 @@ ratios:
     category: Cash Flow
     tier: core
     headline: false   # not in the locked 13
+    # ⭐⭐ R1, THE THIRD LIVE DISAGREEMENT — CORRECTED 2 Aug. This used
+    # `(bs.current_assets - bs.current_liabilities)`, the INCLUSIVE basis, while
+    # the engine at engines.py:462 has always used the operating one:
+    #
+    #     d_nwc = nwc[i] - nwc[i-1]
+    #     f     = ebit*(1-T) + dep_amort - capex - d_nwc
+    #     nwc   = other_current_assets - current_liabilities_ex_debt
+    #
+    # It sat alongside the ROIC basis and the peer ROIC as one of three
+    # registry-versus-engine disagreements, and it is the one that matters most:
+    # FCFF feeds the DCF and renders in the KPI strip. A bridge whose working
+    # capital includes cash double-counts the cash it is trying to explain, and
+    # one that includes short-term debt mixes a financing movement into an
+    # operating one.
+    #
+    # ⭐ THE FIRST PERIOD IS ABSENT, NOT ZERO — `prior(bs.nwc)` does not exist
+    # for it, and the engine appends None rather than treating "no prior" as
+    # "no change". Same rule as R4's first-period ruling, reached independently.
     formula: "is.ebit * (1 - po.tax_rate_policy) + is.dep_amort - cf.capex -
-              ((bs.current_assets - bs.current_liabilities) -
-               prior(bs.current_assets - bs.current_liabilities))"
+              (bs.nwc - prior(bs.nwc))"
     unit: currency
     polarity: higher_better
     basis: point_in_time
@@ -1321,32 +1434,6 @@ ratios:
     definition: "Percentage change in EBIT per percentage change in revenue."
 
   # --- 11. COMMON-SIZE (separate surface, not a ratio table) ---------------
-  - id: axiom.common_size_is
-    name: Common-Size Income Statement
-    category: Common-Size
-    tier: core
-    headline: false
-    surface: full_statement
-    formula: "<every IS line> / is.revenue * 100"
-    unit: percent
-    polarity: context
-    basis: point_in_time
-    definition: "Every income statement line as a percentage of revenue."
-    note: "A full-statement view, NOT a row in the ratio panel. Separate tab
-      section per founder's both-surfaces requirement."
-
-  - id: axiom.common_size_bs
-    name: Common-Size Balance Sheet
-    category: Common-Size
-    tier: core
-    headline: false
-    surface: full_statement
-    formula: "<every BS line> / bs.total_assets * 100"
-    unit: percent
-    polarity: context
-    basis: point_in_time
-    definition: "Every balance sheet line as a percentage of total assets."
-
   # --- 12. DUPONT -----------------------------------------------------------
   - id: axiom.dupont_three_step
     name: DuPont Decomposition (3-step)
@@ -1455,25 +1542,6 @@ ratios:
     fitted_population: "US public firms, 1972-78"
     definition: "Zmijewski probit distress screen. Lower is safer — note the
       inverted polarity relative to Altman."
-
-  - id: axiom.ohlson_o
-    name: Ohlson O-Score
-    category: Distress Screens
-    tier: advanced
-    headline: false
-    formula: "<nine-term specification — see ohlson.md>"
-    unit: score
-    polarity: lower_better
-    basis: point_in_time
-    availability: requires_data
-    requires: ["GNP price index deflator", "two prior periods of net income"]
-    is_screen: true
-    fitted_population: "US public firms, 1970-76"
-    definition: "Ohlson nine-variable logit screen."
-    build_note: "Formula deliberately not expanded here. It needs a macro
-      deflator that the industry-context layer does not yet supply, and a
-      half-specified nine-term model in the registry is worse than an
-      honest placeholder."
 
   # --- 14. HUMAN CAPITAL ---------------------------------------------------
   - id: axiom.revenue_per_employee
@@ -1784,6 +1852,48 @@ ratios:
 #
 # This is the mechanism. It is a first-class part of §7r, not an add-on.
 
+# ⭐⭐ R3 (FOUNDER RULING, 2 Aug) — REMOVED FROM THE ARITHMETIC, KEPT ON THE
+# RECORD. These three left `ratios:` and are therefore out of the count, out of
+# the computability tally and out of every guard that walks formulas.
+#
+# They are recorded here rather than deleted because a silently vanished ratio
+# is indistinguishable from one nobody thought of, and the next reader would
+# have to re-derive why a registry with a Common-Size CATEGORY contains no
+# common-size ratios.
+withdrawn:
+  - id: axiom.common_size_is
+    was: "<every IS line> / is.revenue * 100"
+    category: Common-Size
+    ruling: "R3 — a RENDERING MODE of the statements, not a ratio family. The
+      registry has no representation for a per-line family: `<every IS line>`
+      is not a formula, it is a loop over a statement, and the placeholder was
+      never parseable. ⭐ THE ENTRY ALREADY KNEW THIS — it carried
+      `surface: full_statement` and a note reading 'A full-statement view, NOT
+      a row in the ratio panel'. It described itself correctly and was filed in
+      the wrong list."
+    capability_unaffected: "Common-sizing is a presentation of statements that
+      already exist. Nothing that renders today stops rendering."
+  - id: axiom.common_size_bs
+    was: "<every BS line> / bs.total_assets * 100"
+    category: Common-Size
+    ruling: "R3 — as above. Same shape, same reason."
+    capability_unaffected: "As above."
+  - id: axiom.ohlson_o
+    was: "<nine-term specification — see ohlson.md>"
+    category: Distress Screens
+    ruling: "R3 — REMOVED AS UNSPECIFIED. ⭐ NO SOURCE IS ASSUMED TO EXIST. The
+      formula referenced `ohlson.md`; the ruling is explicit that its existence
+      must not be assumed, and this lane did not go looking for it in order to
+      keep the entry alive. A registry entry whose specification is a filename
+      nobody has read is a claim, not a definition."
+    to_reinstate: "Requires the nine-term specification written out, plus the
+      macro deflator the industry-context layer does not supply and two prior
+      periods of net income. Its own build_note said a half-specified nine-term
+      model is worse than an honest placeholder — that reasoning is why it is
+      withdrawn rather than half-written."
+    fitted_population: "US public firms, 1970-76 — recorded because a screen
+      fitted on that population is not silently applicable to this one."
+
 client_extension:
 
   scope:
@@ -1813,7 +1923,7 @@ client_extension:
       everything. ⭐ THE TWO CASES ARE NOT THE SAME RISK. An arbitrary client
       chain is unbounded and unauditable: any EID may compose any ratio on any
       other, to any depth, and nobody has read the resulting graph. A canonical
-      chain is a fixed graph of 79 formulas in one hand-audited file. The syntax
+      chain is a fixed graph of 77 formulas in one hand-audited file. The syntax
       is identical; the auditability is not, and the rule follows the
       auditability."
     consequence: "A client wanting ROIC − WACC states it in tokens, or asks for
@@ -1931,6 +2041,13 @@ enumeration_guard:
       Inverted: the collision site must still exist and must not be wired to
       the library. Control: repointing it at ratios.net_debt fires
       COLLISION SITE GONE; restoring clears it."
+  # ⭐ THE CORPUS SIZE, IN ONE PLACE AND ASSERTED BY TEST. It was written into
+  # prose in three separate paragraphs as "79" and went stale the moment stage 1
+  # made it 80. A count repeated in prose is a count that will disagree with
+  # itself; `test_coverage_floor` now reads this field.
+  ratio_count: 77          # 79 -> 80 (stage 1, +ebit_growth_yoy) -> 77 (R3, -3)
+  withdrawn_count: 3       # see the `withdrawn:` stanza — removed, not deleted
+  headline_count: 14       # locked, §7r-H — unchanged by either stage
   expected_counts:
     axiom.net_debt: 1
     axiom.roic: 2      # see peer_roic below
@@ -2018,7 +2135,7 @@ unresolved:
   - id: nineteen_categories
     status: RESOLVED
     ruling: "FOUNDER RULING 31 Jul — the reconstruction is ACCEPTED as the
-      canonical taxonomy. The registry's 19 categories and 79 ratios are now
+      canonical taxonomy. The registry's categories and 77 ratios are now
       the reference library. The earlier chat-log specification is superseded
       and is no longer a source."
   - id: payable_days_denominator
