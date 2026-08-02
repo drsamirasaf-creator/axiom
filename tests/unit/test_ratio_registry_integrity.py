@@ -86,6 +86,9 @@ PROSE_EXPRS = {"po.cost_of_equity", "po.days_in_period"}
 # tomorrow must land in `unexpected` and fail, never be absorbed.
 PENDING = set()
 
+# Formulas that ARE a raw percentage from the source, not a quotient to scale.
+RAW_PERCENT_TOKENS = {"sa.nrr"}
+
 
 def test_every_referenced_token_is_declared(reg, vocab):
     """⭐⭐ EVERY REFERENCE, INCLUDING BARE ONES — AND THE FIRST DRAFT MISSED
@@ -192,10 +195,31 @@ def test_percent_ratios_scale_to_percent(reg):
         f = r["formula"]
         if "<" in f:                      # placeholder, not a formula
             continue
+        # ⭐ ANY percent operand carries the scale, not ALL of them.
+        # `axiom.dupont_three_step` is net_margin (percent) x asset_turnover
+        # (times) x financial_leverage (times) — a percent multiplied by two
+        # dimensionless ratios is still a percent, and demanding `* 100` there
+        # would double it. Requiring ALL chained ratios to be percent failed
+        # dupont and rule_of_40, both of which are correct.
         chained = RAT.findall(f)
-        if chained and all(unit_of.get(c) == "percent" for c in chained):
-            continue                      # genuinely a percent-over-percent form
-        if "/" not in f:                  # not a quotient
+        if chained and any(unit_of.get(c) == "percent" for c in chained):
+            continue
+        # ⭐⭐ THE HOLE THAT LET WACC THROUGH. This skipped any formula without
+        # a "/", so `wacc_at(po.actual_leverage)` — a DELEGATING call tagged
+        # `unit: percent` returning a FRACTION — was never examined. It rendered
+        # 0.1% on a customer's ratio tab for a 13.6% cost of capital.
+        #
+        # ⭐ AND THE ONE IT HID WAS WORSE. axiom.roic_wacc_spread is
+        # `axiom.roic - axiom.wacc`: a percent minus a fraction, which printed
+        # 40.4% where the true spread is 26.9%. WACC announced itself because
+        # 0.1% is impossible; the spread looked entirely believable.
+        #
+        # A percent-tagged formula must carry its scale, whatever its shape.
+        # ⭐ A RAW TOKEN THAT IS A PERCENTAGE BY NATURE. `sa.nrr` is net revenue
+        # retention as collected — a percentage in the source, not a quotient
+        # this file scales. Named individually so a SECOND such token cannot
+        # arrive unexamined.
+        if f.strip() in RAW_PERCENT_TOKENS:
             continue
         if "* 100" not in f and "*100" not in f:
             bad.append((r["id"], f))

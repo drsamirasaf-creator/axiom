@@ -103,3 +103,54 @@ def test_provenance_names_the_statement_line():
     toks = {i["token"]: i for i in e["inputs"]}
     assert "is.revenue" in toks
     assert toks["is.revenue"]["field"] == "revenue", toks["is.revenue"]
+
+
+def test_wacc_renders_as_a_percent_pinned_to_the_engine(monkeypatch):
+    """⭐⭐ PINNED TO THE ENGINE'S VALUE, NEVER TO A LITERAL. A literal would pass
+    while the delegation broke — the whole point of R2 is that this number comes
+    from ratios.wacc_at and nowhere else.
+
+    Observed 2 Aug: WACC read 0.1% in every period. `wacc_at` returns a FRACTION;
+    the registry tagged the ratio `unit: percent`; the surface formats by the
+    tag and appended "%" to 0.136011.
+    """
+    from services.api.modules.financials import ratios as lib
+    yrs = [2023]
+    data = {"company": {}, "periods": {"historical": yrs, "forecast": []},
+            "income_statement": {}, "balance_sheet": {}, "cash_flow": {}}
+    fraction = lib.wacc_at(leverage=0.5, ke=0.11, kd_base=0.06,
+                           tax_rate=0.25, kd_treatment=lib.KD_FLAT)
+    v = rr.evaluate_period(data, yrs, 0, "axiom.wacc",
+                           supplied={"wacc_at": fraction})
+    assert not isinstance(v, rr.Absent), v
+    # the registry's unit is percent, so the value must BE a percent
+    assert rr.unit_of("axiom.wacc") == "percent"
+    assert v == pytest.approx(fraction * 100), (v, fraction)
+    assert 1.0 < v < 100.0, f"{v} is not on a percent scale"
+
+
+def test_the_roic_wacc_spread_does_not_mix_scales():
+    """⭐ THE ONE THAT LOOKED BELIEVABLE. `roic - wacc` with roic in percent and
+    wacc in fractions printed 40.4% where the true spread was 26.9%. Nobody
+    would have questioned it."""
+    yrs = [2023]
+    data = {"company": {"tax_rate": 0.25},
+            "periods": {"historical": yrs, "forecast": []},
+            "income_statement": {"revenue": {"2023": 1000.0}, "cogs": {"2023": 400.0},
+                                 "opex": {"2023": 200.0},
+                                 "depreciation_amortization": {"2023": 50.0},
+                                 "interest_expense": {"2023": 10.0}},
+            "balance_sheet": {"cash": {"2023": 100.0},
+                              "other_current_assets": {"2023": 200.0},
+                              "short_term_debt": {"2023": 50.0},
+                              "long_term_debt": {"2023": 150.0},
+                              "total_equity": {"2023": 500.0},
+                              "preferred_equity": {"2023": 0.0},
+                              "minority_interest": {"2023": 0.0}},
+            "cash_flow": {}}
+    sup = {"wacc_at": 0.12}
+    roic = rr.evaluate_period(data, yrs, 0, "axiom.roic", supplied=sup)
+    wacc = rr.evaluate_period(data, yrs, 0, "axiom.wacc", supplied=sup)
+    spread = rr.evaluate_period(data, yrs, 0, "axiom.roic_wacc_spread", supplied=sup)
+    assert wacc == pytest.approx(12.0), wacc
+    assert spread == pytest.approx(roic - wacc), (spread, roic, wacc)

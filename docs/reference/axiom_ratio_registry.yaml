@@ -914,7 +914,17 @@ ratios:
     category: Returns
     tier: core
     headline: false
-    formula: "wacc_at(po.actual_leverage)"
+    # ⭐⭐ SCALED TO PERCENT, 2 Aug — IT RENDERED 0.1% ON MERIDIAN'S RATIO TAB.
+    # `ratios.wacc_at` returns a FRACTION (0.136011). The registry tagged this
+    # `unit: percent`, and the surface formats by the unit tag — so it appended
+    # "%" to a fraction and printed 0.1% for a 13.6% cost of capital.
+    #
+    # ⭐ THE DELEGATION WAS NEVER THE DEFECT. R2 holds: wacc_at is the sole
+    # owner and returns what it has always returned. What was wrong was the
+    # SCALE THIS FILE DECLARED against the value it received — the same shape as
+    # axiom.roic before stage 1 added its `* 100`, and now consistent with
+    # roa / roe / roic, which all carry an explicit scale.
+    formula: "wacc_at(po.actual_leverage) * 100"
     exposed_not_headline: true   # a rate, not a ratio; exposed to anchor the spread
     parameterised: true
     parameterised_form: "wacc_at(x) where x = D/E:
@@ -960,7 +970,11 @@ ratios:
     category: Value Creation
     tier: core
     headline: false   # not in the locked 13
-    formula: "eva(is.ebit * (1 - po.tax_rate_policy), axiom.wacc, axiom.invested_capital)"
+    # ⭐ `/ 100` BECAUSE axiom.wacc IS NOW A PERCENT. ratios.eva charges
+    # capital at a FRACTION — `nopat - wacc * ic` — so the conversion happens
+    # here, at the one call site that needs it, rather than by keeping the whole
+    # registry on a scale that renders wrong.
+    formula: "eva(is.ebit * (1 - po.tax_rate_policy), axiom.wacc / 100, axiom.invested_capital)"
     unit: currency
     polarity: higher_better
     basis: average
@@ -1490,7 +1504,11 @@ ratios:
     category: Growth
     tier: core
     headline: false   # not in the locked 13
-    formula: "cagr(is.revenue)"
+    # ⭐ THIRD INSTANCE OF THE WACC DEFECT, FOUND BY THE TIGHTENED TEST RATHER
+    # THAN BY A READER. `engines._cagr` returns a FRACTION; this was tagged
+    # `unit: percent` and would have rendered 0.2% for 15% growth the moment it
+    # computed. It was absent on the datasets checked, so nobody had seen it.
+    formula: "cagr(is.revenue) * 100"
     unit: percent
     polarity: higher_better
     basis: point_in_time
