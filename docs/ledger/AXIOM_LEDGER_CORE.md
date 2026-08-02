@@ -14457,3 +14457,82 @@ the plan.
 A unit fixture minting a token cannot honestly stand in for the bridge between
 two auth systems, and a test that faked it would have re-created defect (b) in
 the assertion meant to catch it. **Recorded rather than faked.**
+
+# ⭐⭐ §7j.10 · THE PRESCIENCE TABS RENDERED THEIR EXPLAINER AND NOTHING ELSE
+
+**Observed 2 Aug, admin on Meridian:** four tabs render, Multiverse shows its
+explainer card and **no figures, no marker, and no request to `/multiverse`
+among 91.**
+
+## ⭐ 1 · BUNDLE CURRENCY — CURRENT, AND MY FIRST TWO MEASUREMENTS WERE WRONG
+
+⭐⭐ **THE DEPLOYED BUNDLE IS CURRENT.** The components are served, in
+`prescience-ai-CYvg5wkB.js`.
+
+⭐ **I reported "in NONE of the 49 served chunks" TWICE before that.** Both were
+measurement artefacts — chunk bodies fetched outside the browser came back
+unusable, and the tell was that **`companies/` — a string in dozens of
+components — also showed zero.** ⭐⭐ **AN IMPOSSIBLE RESULT INDICTS THE
+INSTRUMENT**, and a stale-deploy conclusion was exactly what the dispatch warned
+against.
+
+## ⭐⭐ 2 · THE MECHANISM — A HOOK THAT RETURNS NOTHING
+
+```
+const companyId = useAutoResolveCompany();   // ⭐ returns undefined
+<Multiverse companyId={companyId ?? null} /> // → null
+```
+
+⭐⭐ **`useAutoResolveCompany()` IS A SIDE-EFFECTING HOOK.** It SEATS the active
+company in the store; **every `return` inside it is an early-return from an
+effect**, and the function itself returns nothing.
+
+So all four tabs received `companyId = null` →
+`useEffect(() => { if (!companyId) return; … })` never fetched →
+`if (!d) return null` rendered nothing — ⭐ **while the explainer Card ABOVE the
+component still rendered, because that markup lives in the PAGE.**
+
+⭐ **That is precisely the reported symptom**: tabs present, explainer shown, no
+network request.
+
+## ⭐⭐ 3 · WHY THE CHAIN-WISE ASSERTION PASSED — ITS TRUE SCOPE
+
+It asserted: the page **imports** the component · the page **mounts** it · the
+component **contains** the route string.
+
+⭐⭐ **ALL THREE WERE TRUE. NONE OF THEM TOUCHED WHETHER THE PROP WAS A VALUE.**
+
+⭐ **A CHAIN OF TRUE FACTS IS NOT A CHAIN IF ONE LINK IS CONNECTED TO NOTHING.**
+Mounting a component with a null prop is wiring **in shape only** — and the
+chain-wise form was itself written to fix the matrix lane's file-and-substring
+assertion. ⭐⭐ **THE SECOND GENERATION OF A WIRING TEST FAILED THE SAME WAY AT A
+DEEPER LEVEL.**
+
+### ⭐ THE CORRECTED SHAPE
+
+`test_THE_PAGE_PASSES_A_REAL_COMPANY_ID_TO_ALL_FOUR_TABS` asserts the id comes
+from a hook that **returns** one, refuses the assignment form that returns
+`undefined`, and checks all four tabs receive it. ⭐ **Proven RED against the
+shipped file and GREEN against the fix.**
+
+⭐ It also records that **the components' own guard is correct** — the defect was
+the PROP, not the guard — so nobody "fixes" the component instead.
+
+## ⭐ 4 · ALL FOUR TABS, AND THE MARKER
+
+⭐ **The same single cause.** All four take `companyId` from the same expression,
+so all four fetched nothing and rendered nothing.
+
+⭐⭐ **THE MARKER'S ABSENCE IS DOWNSTREAM, NOT A SECOND DEFECT.** `db43433`
+verified **MARKED on all four surfaces against the served BACKEND**, and that
+remains true — the backend marks correctly. The frontend renders
+`d.tier_notice` only once `d` exists, and `d` never arrived. ⭐ **A correct
+backend assertion and a correct frontend renderer, joined by a wire carrying
+nothing.**
+
+## ⭐ 5 · THE FIX
+
+`useAutoResolveCompany()` is still **called for its side effect** — it seats the
+company — and the id is now read from **`useActiveCompany().id`**, the store's
+own accessor. ⭐ **Both are needed**: dropping the resolver would leave the store
+empty and produce the same symptom by the opposite route, which a test now pins.

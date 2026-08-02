@@ -251,3 +251,58 @@ def test_the_rendered_marker_carries_NO_SALES_COPY():
         block = src[src.index("tier_notice &&"):][:400]
         for banned in ("Upgrade", "pricing", "/pricing", "Contact", "Buy"):
             assert banned not in block, f"{c}'s marker sells: {banned}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐⭐ 7 · THE WIRE MUST CARRY CURRENT, NOT MERELY BE CONNECTED
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_THE_PAGE_PASSES_A_REAL_COMPANY_ID_TO_ALL_FOUR_TABS():
+    """⭐⭐ THE ASSERTION MY CHAIN-WISE TEST DID NOT MAKE, and the whole reason
+    four surfaces shipped rendering nothing.
+
+    The old test asserted: the page IMPORTS the component, the page MOUNTS it,
+    the component CONTAINS the route string. ⭐ All three were true. What none
+    of them touched is whether the PROP IS A VALUE — and it was `undefined`,
+    because `useAutoResolveCompany()` returns nothing.
+
+    ⭐⭐ A CHAIN OF TRUE FACTS IS NOT A CHAIN IF ONE LINK IS CONNECTED TO
+    NOTHING. Mounting a component with a null prop is wiring in shape only.
+    """
+    if not os.path.exists(FE):
+        pytest.skip("frontend checkout not present")
+    page = open(os.path.join(FE, "src/routes/prescience-ai.tsx"),
+                encoding="utf-8").read()
+
+    # ⭐ the id must come from a hook that RETURNS one
+    assert "useActiveCompany().id" in page, \
+        "the company id does not come from a hook that returns a value"
+    assert "const companyId = useAutoResolveCompany()" not in page, \
+        "companyId is assigned from a hook that returns undefined"
+
+    # ⭐ and all four tabs must receive it
+    for c in COMPONENTS:
+        assert f"<{c} companyId={{companyId" in page, f"{c} gets no company id"
+
+
+def test_the_resolver_is_STILL_CALLED_for_its_side_effect():
+    """⭐ It seats the active company in the store. Dropping it would leave the
+    store empty and the new read would return null — the same symptom by the
+    opposite route."""
+    if not os.path.exists(FE):
+        pytest.skip("frontend checkout not present")
+    page = open(os.path.join(FE, "src/routes/prescience-ai.tsx"),
+                encoding="utf-8").read()
+    assert "useAutoResolveCompany();" in page
+
+
+def test_a_component_with_no_company_FETCHES_NOTHING_by_design():
+    """⭐ The guard itself is correct — this records that the defect was the
+    PROP, not the guard, so nobody 'fixes' the component instead."""
+    if not os.path.exists(FE):
+        pytest.skip("frontend checkout not present")
+    for c in COMPONENTS:
+        src = open(os.path.join(FE, f"src/components/{c}.tsx"),
+                   encoding="utf-8").read()
+        assert "if (!companyId) return;" in src, \
+            f"{c} would fetch with a null company id"
