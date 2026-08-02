@@ -147,7 +147,7 @@ stochastic engine is no longer blocked on a false premise.**)
 | ~~G13~~ | ⭐⭐ **BUILT — Stripe `livemode` persisted, backfilled and guarded** | Both surfaces carry the flag, taken from the signed EVENT and never derived from the key. ⭐⭐ **BASELINE: 0 live-mode paying, 4 test-mode, 7 never subscribed, 0 unresolved** — every prior count reported 4. |
 | B22 | ⭐ **Encode the σ ruling** | Move σ_RO into the §7u registry as a platform default with a stated basis, so the pack PINS it and it is inspectable; and RENAME `_calibrate_sigma` so the name does not assert a calibration that is not performed. ⭐ **A function whose name misdescribes it is a claim in the code.** |
 | ~~B23~~ | ~~Register the B16 route~~ | ⭐ **RETIRED UNBUILT 31 Jul — it was never needed.** Queued on a false measurement ("no JS runtime"); `bun` was present and merely off the measuring shell's PATH. The route was registered in the same lane. |
-| B21 | ⭐ **Widen the B16 gate to ADMIN AND CFO** | Ruled 31 Jul; the code shipped at `1ba395c` is **admin-only and refuses a CFO**. Attribution already covers the act whichever way the §4x tension resolves. |
+| B21 | ⭐ **Widen the B16 gate to ADMIN AND CFO** | Ruled 31 Jul; the code shipped at `1ba395c` is **admin-only and refuses a CFO**. Attribution already covers the act whichever way the §4x tension resolves. ⭐ **§4y.1 (2 Aug) adds PILOT VIEWERS as a dependent**: described as being for the client admin *and the CEO*, and there is no CEO role — `Membership.role` is `admin`(6) / `viewer`(2) live. It ships admin-gated and widens when B21's resolver does. |
 | B20 | ⭐ **Encode the A1 ruling** | `billable` default `False` + backfill existing rows, `billing_policy()` to `ruled: True`, and the docstrings that still explain the question as open. ⭐ **The one backfill this programme should perform** — the rows predate a ruling that now covers them. |
 | B16 | ~~In-app editable assumptions~~ | ⭐ **BUILT** — 12 fields editable, bounds flag-not-refuse on write, admin-only per §4x, every write attributed. **A2 now has a remediation path.** |
 | B17 | ⭐ **§4l Control Tower** (product Performance Monitoring) | **NO CODE.** Operational monitoring (Sentry, `/health`) exists and is a DIFFERENT THING — the name collision is why this reads as built. |
@@ -14939,6 +14939,152 @@ nothing.**
 company — and the id is now read from **`useActiveCompany().id`**, the store's
 own accessor. ⭐ **Both are needed**: dropping the resolver would leave the store
 empty and produce the same symptom by the opposite route, which a test now pins.
+
+# ⭐⭐ §4y.2 · THE MY AXIOM TABS NAVIGATED AWAY (2 Aug)
+
+Frontend `42b967d`. Clicking **KPIs** landed on Data Input and **Objectives &
+KRs** on Business Planning, the tab strip replaced by the destination page.
+
+## ⭐ THE MECHANISM — THE COLLISION IS THE DISCRIMINATOR
+
+| tab | route | left-nav entry of its own | strip survived |
+|---|---|---|---|
+| My AXIOM, Team, Assumptions, Declared Impact, Pilot viewers | — | **0** | ✓ |
+| **Objectives & KRs** | `/target-state` | **1** (Business Planning) | ✗ |
+| **KPIs** | `/data-input` | **1** (Data Input) | ✗ |
+
+⭐ **The two that broke are exactly the two with a competing home.** The
+gathering worked for surfaces that had nowhere else to live. `/target-state`
+additionally renders its own `BUSINESS_PLANNING_TABS`, so it has two strips.
+
+All four were broken at `dacd90f` — the original report was right — and Lovable's
+`dfb7ff2` fixed Assumptions and Declared Impact only.
+
+**SHIPPED:** both routes now render the strip, so no tab loses it.
+**NOT RESOLVED:** which home owns these surfaces. Options and costs are in the
+lane report; it is a ruling, not a refactor.
+
+## ⭐⭐ THE GUARD'S FILE LIST WAS HAND-WRITTEN — FOURTH INSTANCE THIS ERA
+
+`check-routetabs-hoisted.py` named **ten files**, and **four of the seven My
+AXIOM targets were absent**. It examined 15 components, printed a clean bill of
+health, and was not looking at any of them. Now **derived** from every route
+rendering `<RouteTabs` — 19 components, 28 returns — with a floor so a short
+list cannot report coverage of a subset as coverage.
+
+⭐ **AND team.tsx's `isDemo` EXIT SHIPPED A BARE DemoGate** with no AppLayout and
+no strip — the one exit the 31 Jul hoisting missed, in the file whose own
+comment reads *"RouteTabs renders in the DEGRADED states too."* The guard had
+been printing it as the class's only real member ever since. Found here by
+asserting the strip **in the browser for a member**, whose showcase company makes
+`isDemo` true; every route-level check saw `/team` render fine.
+
+## ⭐ WIDENING THE INPUTS SURFACED AN INSTRUMENT DEFECT, AND THE FIX WAS WRONG
+
+Returns inside `useMemo` callbacks read as component exits, accusing two correct
+files. **The obvious narrowing broke the coverage fixture** — 6 returns where 5
+are pinned — and was reverted rather than shipped. ⭐ **The fixture is why a
+wrong tightening did not become a silent under-count.** Both are recorded as
+verified non-exits, listed rather than suppressed, because a reader must see
+that the guard reports them and that they were checked.
+
+## ⭐ THE RATCHET REMOVED ITS OWN ENTRIES
+
+`operator /assumptions` and `operator /initiative-impact` were pinned as
+"renders a heading only". `dfb7ff2` healed both, and the both-directions check
+**failed the build on them as stale** — the mechanism catching its own
+exemptions rather than a human remembering.
+
+# ⭐⭐ §4y.1 · PILOT VIEWERS IS A MY AXIOM TAB, NOT A UTILITY (2 Aug)
+
+Ruled 2 Aug. It is an **account action**, not a utility, and My AXIOM is where
+the admin surfaces were gathered on 31 Jul. Frontend `dacd90f`.
+
+## ⭐ THE PATH DOES NOT MOVE, SO NOTHING NEEDED A REDIRECT
+
+Every My AXIOM tab is a **real flat route** — `/team`, `/assumptions`,
+`/data-input` — and the RouteTabs comment says why: *"Each tab stays a real
+route, so deep links hold."* `/pilot-viewers` was already that shape.
+
+⭐ **What made it a "Utility page" was the NAV ENTRY, not the path.** Removing
+the entry and adding the tab is the whole move. Moving the path would have
+broken every link already issued and then required a redirect to undo the
+breakage — the redirect requirement protects held links, and not moving the path
+protects them with nothing to get wrong.
+
+## ⭐⭐ THE ADMIN-ONLY CLAIM WAS NEVER IMPLEMENTED
+
+`MY_AXIOM_TABS` has carried this since 31 Jul:
+
+> *"The Team tab is admin-only — callers pass a filtered list for non-admins."*
+
+**MEASURED 2 Aug: all seven call sites pass the FULL list. Nothing filtered
+anything.** A stated mechanism nobody implements — the §III.9 shape one level
+up, where the rule reads as enforcement and enforces nothing.
+
+`adminOnly` is now a flag honoured **inside RouteTabs, once**, rather than at
+seven call sites, because a rule restated per caller drifts at the eighth.
+⭐ **Applied to Pilot viewers only.** Team's behaviour is deliberately unchanged
+— making its long-standing claim true is a visibility change to another surface
+and belongs in its own lane — and the claim is recorded here rather than left
+standing.
+
+## ⭐ WHAT A VIEWER SEES
+
+- **The tab does not render** for a non-admin.
+- **The page, reached by URL, states whose action it is** — not an empty form,
+  and not the raw 403 string it used to render into an error slot. A blank
+  surface and a refused one are different facts.
+- **The backend gate is untouched.** `require_company_admin` still guards all
+  three endpoints; the client check is a courtesy, never a boundary.
+
+## ⚠️ THE ROLE POSITION — A B21 DEPENDENCY, NOT AN INFERENCE
+
+The surface was described as being for the client admin **and the CEO**.
+Measured on the live corpus:
+
+| | |
+|---|---|
+| `Membership.role` values | `admin` **6**, `viewer` **2** |
+| `ax_department_authority` | **0 rows** |
+| pilot viewers issued | 0 |
+
+⭐ **THERE IS NO CEO ROLE.** `Membership.role` is `admin | viewer` and
+`String(16)` — a CEO value could be stored and nothing would consume it. So this
+ships **admin-gated as built**, and the gap is recorded as a **B21 dependency**
+rather than resolved by inferring a role that does not exist.
+
+B21 already needs a role vocabulary, a grant surface (B6, unbuilt), and a
+resolver ~30 write endpoints share. **Pilot viewers now joins that list**: when
+B21 widens `require_company_admin`, this surface widens with it and needs no
+second decision.
+
+## ⭐⭐ THE BROWSER GATE WAS MASKING A DEFECT, AND ITS RATCHET WAS HALF-BLIND
+
+Two findings about the gate itself, both from running this lane through it.
+
+**1 · State leaked between routes.** One browser context per mode meant every
+route inherited what earlier routes left. An **operator cold-visiting
+`/prescience-ai` sees the explainer card and nothing below it** — 898 chars
+against a member's 1,506, and no endpoint called. After `/dashboard` first, the
+same page renders fully.
+
+⭐ That is **§7j.10's exact signature alive in a role the fix was never exercised
+against**: `companyId` null, every fetch early-returning, each component
+rendering null while the explainer above it renders because that markup lives in
+the page. **Pre-existing — confirmed red at `38c49e3`.** Pinned, not fixed:
+company resolution for platform operators is a behaviour change and belongs in
+its own lane.
+
+The tab check now opens a **fresh session**, because deep links and bookmarks
+ARE cold entries and the state it was inheriting is state a real reader arriving
+from an email does not have.
+
+**2 · The stale half of the ratchet could not see the tab pins.** Scope was
+computed from route **paths**, so a pin keyed `"/prescience-ai [Multiverse]"`
+was never checked for staleness — it suppressed correctly and **could never
+expire**. Caught by adding four pins and watching the count stay at 12. Scope is
+now the routes actually checked: **16/16**.
 
 # ⭐⭐ §7j.13 · MULTIVERSE — THE RIGHT TRAJECTORY, AND TWO DISTRIBUTIONS
 

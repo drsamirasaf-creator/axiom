@@ -483,11 +483,21 @@ def test_the_four_edit_surfaces_are_GATHERED_into_my_axiom():
         import pytest
         pytest.skip("frontend checkout not present")
     src = open(p, encoding="utf-8").read()
-    i = src.index("MY_AXIOM_TABS")
+    # ⭐ ANCHOR ON THE DECLARATION, NOT THE NAME. `src.index("MY_AXIOM_TABS")`
+    # found the first MENTION, and on 2 Aug that became a comment ABOVE the
+    # declaration explaining the adminOnly flag — so `block` was the type
+    # definition and every route read as missing. §III.9 once more: a check
+    # keyed on text, broken by prose that names its own subject.
+    i = src.index("export const MY_AXIOM_TABS")
     block = src[i:src.index("];", i)]
     for route in ("/target-state", "/data-input", "/assumptions",
                   "/initiative-impact"):
         assert route in block, f"My AXIOM does not reach {route}"
+    # ⭐ AND PILOT VIEWERS JOINED THEM (§4y.1, 2 Aug) — an ACCOUNT ACTION, not a
+    # Utility. It is admin-only, which the tab itself must declare.
+    assert "/pilot-viewers" in block, "My AXIOM does not reach /pilot-viewers"
+    assert "adminOnly" in block, \
+        "the pilot-viewers tab is not marked admin-only, so a viewer would see it"
 
 
 def test_the_UI_shows_the_inert_reason_and_the_stale_count():

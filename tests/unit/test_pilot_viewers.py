@@ -377,12 +377,27 @@ def test_the_invite_page_EXISTS_and_declares_its_route():
 def test_the_invite_page_RENDERS_FROM_THE_ROUTE_AN_ADMIN_TAKES():
     """⭐⭐ The matrix lane's assertion read a file and never named a URL, and
     the page turned out to be unreachable by its own name. This one compares the
-    page's declared PATH against the nav entry that points at it."""
+    page's declared PATH against the entry that points at it.
+
+    ⭐ THE ENTRY MOVED, THE ASSERTION DID NOT. Ruled 2 Aug (§4y.1): Pilot viewers
+    is a MY AXIOM TAB, not a left-nav Utility — an account action, not a utility.
+    The question this test asks is unchanged and is the only one that matters:
+    can an admin REACH the page from inside the app, by its own path. What
+    changed is which surface carries the link.
+    """
+    tabs = _fe("src/components/RouteTabs.tsx")
+    i = tabs.index("export const MY_AXIOM_TABS")
+    block = tabs[i:tabs.index("];", i)]
+    assert 'to: "/pilot-viewers"' in block, \
+        "the My AXIOM tab does not target the page's own path"
+    assert "adminOnly" in block, \
+        "the tab is not admin-only, so a viewer would be shown an action that " \
+        "require_company_admin will refuse"
+    # ⭐ AND IT IS GONE FROM THE LEFT NAV, which is the half of the ruling that
+    # a tab-only assertion would not notice.
     layout = _fe("src/components/AppLayout.tsx")
-    i = layout.index('label: "Pilot viewers"')
-    nav = layout[max(0, i - 300):i]
-    assert 'to: "/pilot-viewers"' in nav, \
-        "the sidebar entry does not target the page's own path"
+    assert 'label: "Pilot viewers"' not in layout, \
+        "the Utility nav entry is still present — it was ruled removed"
 
 
 def test_BOTH_ROUTES_ARE_REGISTERED_IN_THE_ROUTE_TREE():
