@@ -87,7 +87,7 @@ def test_template_carries_column_I_and_still_accepts_older_versions(_app):
     # a side effect. Updating it here is the acknowledgement. What must NEVER
     # come back is the accept-LIST below: the stamp is forensic metadata and
     # version is never a precondition for upload (CORE §7.37).
-    assert ingest.TEMPLATE_VERSION == "7M-v9.0"   # v8 -> v9: monthly (31 Jul)
+    assert ingest.TEMPLATE_VERSION == "7M-v10.0"  # v9 -> v10: working-capital split (2 Aug)
     # ⭐ NO VERSION GATE EXISTS. The old assertion checked membership of
     # ACCEPTED_TEMPLATE_VERSIONS, which nothing ever read. The guarantee it was
     # reaching for — an older workbook still uploads — is now absolute rather

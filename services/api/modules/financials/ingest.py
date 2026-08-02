@@ -287,7 +287,19 @@ def build_sample_data(ownership: str, standard: str, frequency: str) -> dict:
         # wrong thing on first contact. PP&E carries the operating bulk;
         # goodwill and intangibles are deliberately non-zero so the
         # operating-vs-financing delta is visible rather than degenerate.
+        # ⭐⭐ v10 SPLITS THE CURRENT ACCOUNTS, AND THE SAMPLE MUST SIT INSIDE
+        # ITS OWN AGGREGATE. Unlike the v8 non-current split these parts do NOT
+        # foot to the total — they are components of it, and other current
+        # assets legitimately also holds prepayments and accrued income. So the
+        # sample shows receivables + inventory at 80% of the aggregate, leaving
+        # a visible residual: a sample where the two parts summed exactly to the
+        # whole would teach a customer that the aggregate IS receivables plus
+        # inventory, and the validation warning would then read as a false
+        # alarm the first time it fired correctly.
         "balance_sheet": {"cash": ser(cash), "other_current_assets": ser(oca),
+                          "receivables": ser([round(v * 0.50, 4) for v in oca]),
+                          "inventory": ser([round(v * 0.30, 4) for v in oca]),
+                          "payables": ser([round(v * 0.55, 4) for v in cle]),
                           "noncurrent_assets": ser(nca),
                           "property_plant_equipment_net": ser([round(v * 0.70, 4) for v in nca]),
                           "goodwill": ser([round(v * 0.12, 4) for v in nca]),

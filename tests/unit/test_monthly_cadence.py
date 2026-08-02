@@ -485,11 +485,14 @@ def test_monthly_parses_as_ABSENT_for_a_prior_version_not_as_an_error():
             assert all(len(str(p)) != 6 for p in hist)
 
 
-def test_the_current_template_stamps_v9_and_offers_monthly():
+def test_the_current_template_stamps_the_current_version_and_offers_monthly():
     from services.api.modules.financials import ingest
     from services.api.modules.financials import template_policy as policy
-    assert policy.VERSION_MAJOR == 9
-    assert ingest.TEMPLATE_VERSION == "7M-v9.0"
+    # ⭐ 9 -> 10 ON 2 Aug (R6, the working-capital split). Asserted as an
+    # EXACT value rather than ">= 9": a version that can drift upward without
+    # anyone updating this line is a version nobody is checking.
+    assert policy.VERSION_MAJOR == 10
+    assert ingest.TEMPLATE_VERSION == "7M-v10.0"
     assert "monthly" in ingest.HISTORY_COLS and "monthly" in ingest.FORECAST_COLS
 
 

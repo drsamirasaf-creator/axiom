@@ -59,10 +59,41 @@ BS_NONCURRENT_COMPONENTS = ["property_plant_equipment_net", "goodwill",
 # a legitimate state rather than a validation failure. `noncurrent_assets` is NOT
 # in this set — it remains required, because it is derived from the components
 # when they are present and carried verbatim when they are not.
-BS_OPTIONAL_KEYS = set(BS_NONCURRENT_COMPONENTS) | {"other_noncurrent_liabilities"}
-BS_KEYS = (["cash", "other_current_assets", "noncurrent_assets"]
+# ⭐⭐ v10 (R6, 2 Aug) — WORKING-CAPITAL DETAIL, AND IT IS DETAIL RATHER THAN A
+# RE-PARTITION. v8 split the non-current AGGREGATE and derived the total back
+# from its five components. This split is deliberately NOT that shape.
+#
+# `receivables` and `inventory` are COMPONENTS OF `other_current_assets`, and
+# `payables` a component of `current_liabilities_ex_debt` — the aggregates stay
+# exactly as entered and stay the source of truth for every total. The generic
+# template's own label has always read "Other Current Assets (Receivables,
+# Inventory, etc.)", so these are the parts it was already naming.
+#
+# ⭐ WHY NOT DERIVE THE AGGREGATE FROM THE PARTS, AS v8 DOES. There is no third
+# component to carry the residual, and inventing one ("other current assets
+# excluding receivables and inventory") would ask the customer for a figure no
+# ledger produces. Deriving the aggregate from two parts would silently DROP
+# prepayments, accrued income and everything else that lives in it — a total
+# that shrinks because we asked for more detail. Every stored figure is
+# unchanged by this split, which is the property the lane required.
+#
+# What the parts must not do is EXCEED the whole; see validate_dataset.
+BS_CURRENT_ASSET_COMPONENTS = ["receivables", "inventory"]
+BS_CURRENT_LIABILITY_COMPONENTS = ["payables"]
+# The v10 additions are OPTIONAL for the same reason the v8 ones are: every
+# dataset uploaded before them lacks the rows, and absence is a fact about the
+# file rather than a failure of it.
+BS_OPTIONAL_KEYS = (set(BS_NONCURRENT_COMPONENTS)
+                    | {"other_noncurrent_liabilities"}
+                    | set(BS_CURRENT_ASSET_COMPONENTS)
+                    | set(BS_CURRENT_LIABILITY_COMPONENTS))
+BS_KEYS = (["cash", "other_current_assets"]
+           + BS_CURRENT_ASSET_COMPONENTS
+           + ["noncurrent_assets"]
            + BS_NONCURRENT_COMPONENTS
-           + ["current_liabilities_ex_debt", "other_noncurrent_liabilities",
+           + ["current_liabilities_ex_debt"]
+           + BS_CURRENT_LIABILITY_COMPONENTS
+           + ["other_noncurrent_liabilities",
               "short_term_debt", "long_term_debt", "preferred_equity",
               "minority_interest", "total_equity"])
 CF_KEYS = ["capex", "net_borrowing", "dividends"]
@@ -373,6 +404,32 @@ def validate_dataset(data: dict) -> dict:
             if assets and abs(assets - le) > 0.005 * abs(assets):
                 warnings.append(f"balance sheet does not balance in {y}: "
                                 f"assets {assets:.2f} vs L+E {le:.2f}")
+        # ⭐⭐ v10 (R6) — THE PARTS MAY NOT EXCEED THE WHOLE. Receivables and
+        # inventory sit INSIDE other_current_assets; payables inside
+        # current_liabilities_ex_debt. A file where they sum past their
+        # aggregate has been mis-mapped — almost always a column pointed at a
+        # total rather than a line — and every efficiency ratio built on it
+        # would be silently wrong in the same direction.
+        #
+        # ⭐ A WARNING, NOT AN ERROR, PER THE FLAG-AND-STORE LAW. Refusing costs
+        # the customer their whole upload for one bad column, and a mapping
+        # fault is undiagnosable from a rejection. It sits beside the
+        # does-not-balance warning, which is the same class of finding.
+        for whole, parts in (("other_current_assets", BS_CURRENT_ASSET_COMPONENTS),
+                             ("current_liabilities_ex_debt",
+                              BS_CURRENT_LIABILITY_COMPONENTS)):
+            for y in years:
+                ys = str(y)
+                supplied = [bs[p][ys] for p in parts
+                            if bs.get(p) and bs[p].get(ys) is not None]
+                if not supplied:
+                    continue        # absent is a legitimate state, not a fault
+                agg = bs[whole][ys]
+                if agg is not None and sum(supplied) > agg + 0.005 * abs(agg or 1):
+                    warnings.append(
+                        f"{'+'.join(parts)} sum to {sum(supplied):.2f} in {y}, "
+                        f"which exceeds {whole} of {agg:.2f} — they are "
+                        f"components of it, so a column may be mis-mapped")
         sector = company.get("sector")
         if sector:
             from ..benchmarks import data as _bmk

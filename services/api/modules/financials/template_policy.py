@@ -52,7 +52,17 @@ COMPANY_FAMILY = "AXIOM-COMPANY-TEMPLATE"  # _AXIOM!A1 on the per-company book
 # The parser accepts prior versions unchanged, and monthly PARSES AS ABSENT for
 # them — a v8 file has no monthly columns to read, which is a fact about the file
 # rather than a failure of it.
-VERSION_MAJOR = 9
+# ⭐⭐ 9 -> 10 ON 2 Aug (R6): the working-capital split — receivables and
+# inventory as components of other current assets, payables of current
+# liabilities. Same discipline, third time: the parser accepts v1..v9 unchanged
+# and the three new rows PARSE AS ABSENT for them. A v9 file has no such rows to
+# read, which is a fact about the file.
+#
+# ⭐ AND THE ROWS ARE DETAIL, NOT A RE-PARTITION — the aggregates are untouched
+# and remain the source of truth for every total, so no stored figure moves.
+# See BS_CURRENT_ASSET_COMPONENTS in engines.py for why deriving the aggregate
+# from the parts would have silently dropped prepayments and accrued income.
+VERSION_MAJOR = 10
 GENERIC_VERSION = f"v{VERSION_MAJOR}"
 COMPANY_VERSION = f"7M-v{VERSION_MAJOR}.0"
 USER_FACING_VERSION = f"v{VERSION_MAJOR}"

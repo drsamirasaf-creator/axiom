@@ -32,7 +32,7 @@
 # in place. Do not proceed to formula evaluation until the vocabulary is real.
 
 schema_version: 1
-registry_version: "7r.10"  # 2 Aug stage 3: R7 — the registry executes; the five delegate   # Segment B: debt-as-argument   # founder rulings 31 Jul; headline set = 14
+registry_version: "7r.11"  # 2 Aug stage 3: R6 — template v10 working-capital split   # Segment B: debt-as-argument   # founder rulings 31 Jul; headline set = 14
 # 7r.5 — CHAINING RULE RELOCATED, NOT RELAXED. Founder ruling. The
 #   no-ratio-of-ratios prohibition applied to everything and was written in
 #   evaluation.forbidden; it now lives in client_extension.no_ratio_of_ratios,
@@ -347,13 +347,39 @@ vocabulary:
       collected: true
       field: cash
     bs.receivables:
-      source: absent
-      collected: false
-      requires: "template v9 — other_current_assets split"
+      source: stored
+      collected: true
+      field: receivables
+      optional: true
+      component_of: bs.other_current_assets
+      # ⭐⭐ R6 (2 Aug) — COLLECTED FROM TEMPLATE v10. It is a COMPONENT of its
+      # aggregate, not a re-partition of it: other_current_assets stays exactly as
+      # entered and remains the source of truth for every total. Deriving the
+      # aggregate from the parts would have silently dropped everything else
+      # living in it.
+      #
+      # ⭐ OPTIONAL, AND ABSENT ON EVERY DATASET UPLOADED BEFORE v10. A ratio
+      # needing it renders ABSENCE, stated per ratio — never zero, and never
+      # inferred from the unsplit total. A cash conversion cycle computed from
+      # a guessed receivables figure is fabrication.
+
     bs.inventory:
-      source: absent
-      collected: false
-      requires: "template v9 — other_current_assets split"
+      source: stored
+      collected: true
+      field: inventory
+      optional: true
+      component_of: bs.other_current_assets
+      # ⭐⭐ R6 (2 Aug) — COLLECTED FROM TEMPLATE v10. It is a COMPONENT of its
+      # aggregate, not a re-partition of it: other_current_assets stays exactly as
+      # entered and remains the source of truth for every total. Deriving the
+      # aggregate from the parts would have silently dropped everything else
+      # living in it.
+      #
+      # ⭐ OPTIONAL, AND ABSENT ON EVERY DATASET UPLOADED BEFORE v10. A ratio
+      # needing it renders ABSENCE, stated per ratio — never zero, and never
+      # inferred from the unsplit total. A cash conversion cycle computed from
+      # a guessed receivables figure is fabrication.
+
     bs.other_current_assets:
       source: stored
       collected: true
@@ -404,9 +430,21 @@ vocabulary:
       collected: true
       expr: "bs.current_assets + bs.noncurrent_assets"
     bs.payables:
-      source: absent
-      collected: false
-      requires: "payables as distinct from the current_liabilities_ex_debt aggregate. TEMPLATE QUESTION, not a registry one — joins the v9 pile alongside the other_current_assets split (bs.receivables, bs.inventory). Was marked collected: true and is not collected."
+      source: stored
+      collected: true
+      field: payables
+      optional: true
+      component_of: bs.other_current_liabilities
+      # ⭐⭐ R6 (2 Aug) — COLLECTED FROM TEMPLATE v10. It is a COMPONENT of its
+      # aggregate, not a re-partition of it: current_liabilities_ex_debt stays exactly as
+      # entered and remains the source of truth for every total. Deriving the
+      # aggregate from the parts would have silently dropped everything else
+      # living in it.
+      #
+      # ⭐ OPTIONAL, AND ABSENT ON EVERY DATASET UPLOADED BEFORE v10. A ratio
+      # needing it renders ABSENCE, stated per ratio — never zero, and never
+      # inferred from the unsplit total. A cash conversion cycle computed from
+      # a guessed receivables figure is fabrication.
     bs.short_term_debt:
       source: stored
       collected: true

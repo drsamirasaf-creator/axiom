@@ -7128,10 +7128,80 @@ and `renders_any_figure: false`, with the version **read** from the registry
 rather than typed. The gap text in the pack stands — the gap was always about
 what renders.
 
-## §7r-S3b — R6: THE TEMPLATE SPLIT (2 Aug)
+## §7r-S3b — R6: TEMPLATE v10, THE WORKING-CAPITAL SPLIT (2 Aug)
 
-*(recorded below, following the same version discipline as v8's non-current
-split and v9's monthly frequency)*
+`receivables` and `inventory` join the balance sheet as components of
+`other_current_assets`; `payables` as a component of
+`current_liabilities_ex_debt`. Registry **7r.10 → 7r.11**.
+
+⭐⭐ **DETAIL, NOT A RE-PARTITION — AND THAT IS THE DESIGN DECISION.** v8 split
+the non-current aggregate and derived the total back from its five components.
+This split deliberately does **not** do that. There is no third component to
+carry the residual, and inventing one ("other current assets excluding
+receivables and inventory") would ask for a figure no ledger produces. Deriving
+the aggregate from two parts would **silently drop prepayments, accrued income
+and everything else living in it** — a total that shrinks because we asked for
+more detail. The aggregates stay exactly as entered and remain the source of
+truth for every total, which is why **no stored figure moves**.
+
+What the parts must not do is exceed the whole. `validate_dataset` warns —
+**flag and store, never refuse**, beside the does-not-balance warning, because
+refusing costs the customer their whole upload for one mis-mapped column.
+
+**The version discipline, third time:** `VERSION_MAJOR` 9 → 10, all three
+strings derived from the one number, the parser accepts v1–v9 unchanged, and
+the three new rows **parse as absent** for them.
+
+### ⭐⭐ THE SPLIT UNBLOCKS SIX AND ONLY TWO EXECUTE — MEASURED, NOT ASSUMED
+
+The scope report said **+6**, and a static recount after the split agreed: all
+six resolve to declared, collected tokens. **Execution disagreed, and execution
+is the stronger instrument.**
+
+| | |
+|---|---|
+| execute today | `axiom.quick_ratio`, `axiom.inventory_turnover` |
+| **still blocked** | `axiom.receivable_days`, `axiom.inventory_days`, `axiom.payable_days`, `axiom.cash_conversion_cycle` |
+
+The four need **`po.days_in_period`**, whose `expr` is the prose
+*"365 | 366 | 90 by period basis"*. It is a **declared** token, so a resolver
+asking only "is every token declared and collected" counts it available; an
+evaluator that must produce a number cannot. Its disposition is one of the two
+prose-expr rulings carried since stage 2, and **the convention is not a default
+to pick** — 365 vs 366, and 90 vs 91 for a quarter, changes every DSO/DPO/DIO
+figure a customer is shown.
+
+**Recorded as a correction to this programme's own arithmetic:** "+6" was a
+token-availability count in the scope report and in §7r-S3a's recount. The
+honest figure is **+6 computable, +2 executable**.
+
+### Absence on the existing cohort, proven
+
+All 33 stored datasets, six ratios, every period — **1,944 cells, 1,944 absent,
+0 numeric.** Every absence names its cause (`not supplied: bs.inventory`,
+`bs.receivables`, `bs.payables`). Nothing was inferred from the unsplit total: a
+cash conversion cycle computed from a guessed receivables figure is fabrication.
+
+⭐ **AND THE OTHER HALF IS TESTED**, because "absent everywhere" is what a broken
+ratio also looks like: a synthetic v10 dataset computes the two that do not need
+a day count, and the four that do fail with the absence naming
+`po.days_in_period` rather than a v10 row — a reader must be able to tell *"you
+have not supplied this"* from *"we have not ruled on this"*.
+
+### Two defects I introduced, caught by existing tests
+
+⭐ **INDENTED LABELS CAN NEVER MATCH THEMSELVES.** The new rows were written as
+`"  of which: Accounts Receivable"` for visual nesting. The parser compares
+`.strip()`ed labels, so **every workbook — including freshly downloaded ones —
+failed label parity**, and with it every v8/v9 backwards-compatibility test.
+Indentation belongs in cell alignment, not in the string.
+
+**The sample data must carry the new rows too**, or `build_template` raises
+`KeyError` on its own output. v8's note said the sample must *foot*; v10's must
+sit **inside** its aggregate, at 80% with a visible residual — a sample whose two
+parts summed exactly to the whole would teach that the aggregate *is*
+receivables plus inventory, and the new warning would then read as a false alarm
+the first time it fired correctly.
 
 ## §7r-H — HEADLINE SET: FOURTEEN, LOCKED (founder ruling)
 
