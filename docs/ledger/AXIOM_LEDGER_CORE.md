@@ -14940,6 +14940,82 @@ company — and the id is now read from **`useActiveCompany().id`**, the store's
 own accessor. ⭐ **Both are needed**: dropping the resolver would leave the store
 empty and produce the same symptom by the opposite route, which a test now pins.
 
+# ⭐⭐ §7r-S4 · THE RATIO SURFACE — THE REGISTRY, RENDERED (2 Aug)
+
+Frontend `757772a`. The registry executed from R7 and reached **no screen**:
+`pack.py` pinned `executed: true, renders_any_figure: false`.
+
+## ⭐ THE PRE-BUILD SPLIT — AND IT CORRECTS THE DISPATCH'S PREMISE
+
+| | |
+|---|---|
+| registry ratios (7r.11) | 77 |
+| compute on ≥1 active dataset | **45** (41–45 per dataset) |
+| compute on none | 32 |
+| of the 45, already reach a screen | **11** — KPI strip, covenant panel, target-state |
+| **compute and reach nothing** | **34** |
+| rendered by the surface (wacc supplied) | 48, with 29 listed |
+
+⭐ **"52 of 77" is the STATIC token count.** On live data three more fall out to
+caller-supplied WACC and per-dataset optional lines. The honest split is 45/32,
+and the surface's own coverage line ships the denominator with the numerator.
+
+## ⭐⭐ THE EXPLAINER IS THE CLAIM
+
+Definition · formula · **numerator and denominator as actual numbers** · the
+statement line each was read from. Provenance comes from the vocabulary's own
+`field` and `expr` — **never restated**. The `* 100` unit scale is unwrapped so
+the operands are the ratio's, not the percentage's.
+
+⭐ **No new computation, asserted by AST** — a `/` or `*` in the endpoint body
+fails the test, with a known positive proving the recogniser sees a division.
+Sole ownership holds: the surface calls `explain`, and a test refuses any read of
+`dashboard_metrics` — two paths to one number is the defect it exists to end.
+
+## ⭐⭐ A REAL DEFECT IN THE R7 EVALUATOR, REACHABLE SINCE R7
+
+```python
+return bad or (min(vs) if name == "min" else max(vs))
+```
+
+`Absent.__bool__` returns **False** — deliberately, so `if not sketch` reads
+naturally — so an Absent fell **through** the `or` into `max(vs)`, compared an
+int with an Absent and **raised TypeError**.
+
+⭐ `is.tax_expense` is `po.tax_rate_policy * max(is.pbt, 0)`, so **every growth
+chain using `prior()` hit it at the first period** — raising where absence was
+the entire contract. Found because this is the **first caller to ask every ratio
+for every period**; every prior caller asked for one.
+
+## ⭐ ABSENCE, PROJECTION, PLACEMENT
+
+The 29 appear **once, with the data each needs** — the brochure's own line,
+never a blank column and never a zero. Forecast periods are marked **projection**
+on the column and the row.
+
+**Placement: a tab inside Dashboard & Reports**, after the analytical tabs and
+**before Urgent Items** — the boundary between what is true and what to do about
+it. A ratio panel beside a to-do list reads as a task rather than a finding.
+
+⭐ **STRIP WIDTH MEASURED IN THE HARNESS AT SIX WIDTHS**, not reasoned about:
+**one row down to 1280px, two rows at 1024px and below.** All seven tabs stay
+visible at every width — it wraps rather than truncating or hiding, so no
+presentation ruling is forced.
+
+## ⭐ WHAT THIS RESTORES, AND WHAT IT DOES NOT
+
+The **fourteen-ratio screen with its explainer** is now true — §7r-H's fourteen,
+not the brochure's thirteen. ⭐ **Amending the brochure text is a follow-on, not
+this lane's to write.**
+
+**Not restored, and their corrections stand:** common-size statements (R3
+withdrew both from the registry — they need a per-line family construct the
+registry has no representation for), client-defined ratios (`client_extension`
+is a **stanza, not a build** — needs a definition UI, a per-account store and a
+guard that a client formula cannot restate a guarded quantity), and
+client-defined inputs (needs a template extension and a per-period entry
+surface). **Three separate features.**
+
 # ⭐⭐ §4z.1 · "WHAT IS AXIOM?" — FOUR TABS, AND A STATED EXCEPTION TO ADMISSIBILITY (2 Aug)
 
 Built from **AXIOM_Capabilities_Brochure_v7.pdf**, read from Drive by file id

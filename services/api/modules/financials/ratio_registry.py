@@ -266,7 +266,20 @@ def _call(ctx, node, offset):
     if name in ("min", "max"):
         vs = [_eval(ctx, a, offset) for a in node.args]
         bad = next((v for v in vs if isinstance(v, Absent)), None)
-        return bad or (min(vs) if name == "min" else max(vs))
+        # ⭐⭐ `bad or …` WAS WRONG, AND WRONG BECAUSE OF A DELIBERATE CHOICE
+        # ELSEWHERE. `Absent.__bool__` returns False so that `if not sketch`
+        # reads naturally — which makes an Absent fall THROUGH the `or` into
+        # `max(vs)`, comparing an int with an Absent and raising TypeError.
+        #
+        # ⭐ Reachable since R7: `is.tax_expense` is
+        # `po.tax_rate_policy * max(is.pbt, 0)`, and `is.pbt` is absent at the
+        # first period of any growth chain using `prior()`. It raised instead of
+        # propagating absence — the one outcome this evaluator exists to avoid.
+        # Found by the ratio surface asking every ratio for every period, which
+        # is the first caller to exercise the whole matrix.
+        if bad is not None:
+            return bad
+        return min(vs) if name == "min" else max(vs)
 
     if name in ENGINE_FUNCTIONS:
         args = [_eval(ctx, a, offset) for a in node.args]
@@ -325,3 +338,109 @@ def as_fraction(ratio_id, value):
     if isinstance(value, Absent) or value is None:
         return value
     return value / 100.0 if unit_of(ratio_id) == "percent" else value
+
+
+# ── the explainer ───────────────────────────────────────────────────────────
+# ⭐⭐ THE EXPLAINER IS THE CLAIM. "Each ratio opens to its definition, its
+# formula, this period's numerator and denominator as ACTUAL NUMBERS, and the
+# statement lines those numbers came from." A table of ratios is a dashboard;
+# the operands and their provenance are what make it defensible under
+# questioning.
+#
+# ⭐ NO NEW COMPUTATION — asserted by test. Every number below comes from
+# `_eval` on a SUB-NODE of the same parsed formula. Nothing here adds, divides
+# or scales; it evaluates expressions the registry already owns and reports what
+# they returned.
+
+def _leaf_tokens(node, out=None):
+    """Every vocabulary token a node reaches, for provenance."""
+    out = set() if out is None else out
+    d = _dotted(node)
+    if d:
+        out.add(d)
+    elif isinstance(node, ast.Name):
+        out.add(node.id)
+    for ch in ast.iter_child_nodes(node):
+        _leaf_tokens(ch, out)
+    return out
+
+
+def _statement_lines(tokens):
+    """token -> the statement line it was read from. ⭐ THE PROVENANCE IS READ
+    FROM THE VOCABULARY, never restated here: `field` is the stored column, and
+    a derived token reports the expression it resolves through."""
+    vocab, group_of, _ = _index()
+    out = []
+    for t in sorted(tokens):
+        meta = vocab.get(t)
+        if not meta:
+            continue
+        out.append({
+            "token": t,
+            "group": group_of.get(t),
+            "source": meta.get("source"),
+            "field": meta.get("field"),
+            "expr": meta.get("expr"),
+            "collected": meta.get("collected"),
+        })
+    return out
+
+
+def _operands(ctx, node, offset=0):
+    """The top-level operands of a formula, evaluated. -> [{role, text, value}]
+
+    ⭐ A DIVISION HAS A NUMERATOR AND A DENOMINATOR AND THAT IS THE INTERESTING
+    CASE — it is what a reader is checking. Other shapes report their top-level
+    terms under a neutral role rather than being forced into a fraction they do
+    not have.
+    """
+    def one(role, n):
+        v = _eval(ctx, n, offset)
+        return {"role": role, "text": ast.unparse(n),
+                "value": None if isinstance(v, Absent) else v,
+                "absent": v.reason if isinstance(v, Absent) else None}
+
+    # unwrap a trailing unit scale so the operands are the RATIO's, not the
+    # percentage's — `a / b * 100` reads as numerator a, denominator b.
+    n = node
+    while (isinstance(n, ast.BinOp) and isinstance(n.op, ast.Mult)
+           and isinstance(n.right, ast.Constant) and n.right.value == 100):
+        n = n.left
+    if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Div):
+        return [one("numerator", n.left), one("denominator", n.right)]
+    if isinstance(n, ast.BinOp) and isinstance(n.op, (ast.Add, ast.Sub)):
+        return [one("term", n.left), one("term", n.right)]
+    if isinstance(n, ast.Call):
+        return [one("argument", a) for a in n.args]
+    return [one("value", n)]
+
+
+def explain(data, years, i, ratio_id, supplied=None):
+    """One ratio, fully explained for one period. Reads; computes nothing new."""
+    _v, _g, ratios = _index()
+    r = ratios.get(ratio_id)
+    if not r:
+        return {"absent": "no such ratio", "id": ratio_id}
+    ctx = _Ctx(data, years, i, supplied=supplied)
+    node = _parse(r["formula"])
+    value = _eval(ctx, node)
+    toks = _leaf_tokens(node)
+    out = {
+        "id": r["id"], "name": r["name"], "category": r["category"],
+        "unit": r.get("unit"), "polarity": r.get("polarity"),
+        "basis": r.get("basis"), "tier": r.get("tier"),
+        "headline": bool(r.get("headline")),
+        "definition": r.get("definition"),
+        "formula": r["formula"],
+        "display_rule": r.get("display_rule"),
+        "operands": _operands(ctx, node),
+        "inputs": _statement_lines(toks),
+    }
+    if isinstance(value, Absent):
+        # ⭐ ABSENCE NAMES WHAT IT NEEDS. "listed once, with the data it would
+        # need, rather than shown as a page of blanks."
+        out["absent"] = value.reason
+        out["needs"] = value.token
+    else:
+        out["value"] = value
+    return out

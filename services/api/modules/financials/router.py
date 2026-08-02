@@ -511,6 +511,98 @@ def glossary():
     return engines.GLOSSARY
 
 
+@metrics_router.get("/ratios/{dataset_id}")
+def ratios_surface(dataset_id: int, db: Session = Depends(get_db),
+                   tenant: str = Depends(_tenant),
+                   scoped: int | None = Depends(_scoped)):
+    """The ratio surface — the registry, rendered.
+
+    ⭐⭐ A RENDERING JOB OVER COMPLETED WORK. The registry has executed since R7
+    and reached no screen: pack.py pins `executed: true, renders_any_figure:
+    false`. This endpoint computes NOTHING — it calls `ratio_registry.explain`
+    per ratio per period and reports what came back. A test asserts by AST that
+    this function contains no arithmetic operator.
+
+    ⭐ SOLE OWNERSHIP HOLDS. Every value here resolves through the evaluator,
+    which delegates the five guarded quantities to their owners in ratios.py.
+    The surface consumes owners; it never restates one.
+
+    ⭐⭐ MEASURED BEFORE BUILDING: of 77 registry ratios, 45 compute on at least
+    one active dataset and 32 compute on none. Of the 45, ELEVEN already reach a
+    screen (the KPI strip, the covenant panel, target-state) and 34 reach
+    nothing. This surface is for all 45, with the 32 listed once with what they
+    need.
+    """
+    from . import ratio_registry as rr
+    row = _get_dataset(db, tenant, dataset_id, scoped)
+    data = row.data
+    der = engines.derive_series(data)
+    years, n_hist = der["years"], der["n_historical"]
+    # period_labels is a MAP keyed by period value, not a list — one map per
+    # response, deliberately asymmetric with the per-row `year_label` (see
+    # engines.period_labels). Indexing it by position raises KeyError, which is
+    # how this was caught.
+    labels = der.get("period_labels") or {}
+
+    def _label(y):
+        return str(labels.get(y, labels.get(str(y), y)))
+
+    # ⭐ THE CALLER SUPPLIES WACC, because the registry delegates it to
+    # ratios.wacc_at and the evaluator will not reach for a caller's data. This
+    # is the ENGINE's own wacc for this dataset — one number, one owner.
+    try:
+        supplied = {"wacc_at": engines.wacc(dict(data.get("company") or {},
+                                                 _debt_book=None))["wacc"]}
+    except Exception:
+        supplied = {}
+
+    out, absent = [], []
+    for r in rr.load()["ratios"]:
+        periods = []
+        for i, y in enumerate(years):
+            e = rr.explain(data, years, i, r["id"], supplied=supplied)
+            periods.append({
+                "year": y, "label": _label(y),
+                # ⭐ PROJECTION IS MARKED, NEVER PRESENTED AS FACT. A ratio on a
+                # forecast period is a projection of a projection.
+                "projection": i >= n_hist,
+                "value": e.get("value"), "absent": e.get("absent"),
+                "needs": e.get("needs"),
+                "operands": e.get("operands"), "inputs": e.get("inputs"),
+            })
+        computed = [p for p in periods if p["value"] is not None]
+        rec = {"id": r["id"], "name": r["name"], "category": r["category"],
+               "unit": r.get("unit"), "polarity": r.get("polarity"),
+               "definition": r.get("definition"), "formula": r["formula"],
+               "headline": bool(r.get("headline")),
+               "display_rule": r.get("display_rule"),
+               "periods": periods}
+        if computed:
+            out.append(rec)
+        else:
+            # ⭐ LISTED ONCE, WITH WHAT IT WOULD NEED — never a page of blanks.
+            absent.append({"id": r["id"], "name": r["name"],
+                           "category": r["category"],
+                           "definition": r.get("definition"),
+                           "needs": next((p["needs"] for p in periods
+                                          if p.get("needs")), None),
+                           "reason": next((p["absent"] for p in periods
+                                           if p.get("absent")), None)})
+    return {
+        "dataset_id": dataset_id,
+        "registry_version": rr.load().get("registry_version"),
+        "periods": [{"year": y, "label": _label(y),
+                     "projection": i >= n_hist} for i, y in enumerate(years)],
+        "n_historical": n_hist,
+        "ratios": out,
+        "absent": absent,
+        # ⭐ COVERAGE ON THE SURFACE (III.4): "0 of 0" and "0 of 77" print the
+        # same tick, so the denominator ships with the numerator.
+        "coverage": {"in_registry": len(rr.load()["ratios"]),
+                     "rendered": len(out), "absent": len(absent)},
+    }
+
+
 @metrics_router.get("/dashboard/{dataset_id}")
 def dashboard(dataset_id: int, valuation_run_id: int | None = None,
               db: Session = Depends(get_db), tenant: str = Depends(_tenant),
