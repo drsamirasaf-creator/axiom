@@ -14940,6 +14940,75 @@ company — and the id is now read from **`useActiveCompany().id`**, the store's
 own accessor. ⭐ **Both are needed**: dropping the resolver would leave the store
 empty and produce the same symptom by the opposite route, which a test now pins.
 
+# ⭐⭐ §4y.4 · FOUR PAGES INTO TWO — AND TWO DEAD LINKS ON THE MATRIX (2 Aug)
+
+Frontend `64625a3`. SWOT & Risk Analysis → a **Dashboard & Reports** tab;
+Scenario Analysis and Dynamics & Simulation → **Enterprise Optimization** tabs.
+
+## ⭐ THE PRECEDENT HELD — ALL THREE ARE FLAT ROUTES
+
+Paths unchanged, so every inbound link resolves and no redirect is needed. Only
+the nav entries moved. Same shape as pilot viewers (§4y.1) and Data Input
+(§4y.3).
+
+**The custody check ran first, per custody-10's lesson.** No permanence rule on
+these three — but **`"SWOT & Risk Analysis"` was in `EXPECTED_SIDEBAR_LINKS`**, a
+live dependency that would have failed the crawler. Updated in the same commit
+as the move, never ahead of it. `Scenario Analysis` appears only in a §17.3b
+live-control guard on its own page; `Dynamics & Simulation` nowhere. **My AXIOM's
+custody-10 entry untouched.**
+
+## ⭐⭐ TWO DEAD DEEP LINKS ON THE COMPARISON MATRIX — PRE-EXISTING, UNGUARDED
+
+| matrix link | actual route |
+|---|---|
+| `/scenarios` | `/scenario-analysis` |
+| `/organization` | `/org-structure` |
+
+Both sat on a **prospect-facing** surface pointing at 404s.
+
+⭐ **THE MECHANISM: the guard asserted the WITNESS existed and never that the
+LINK RESOLVED.** `check-comparison-matrix.py` proved each green's capability was
+real — and said nothing about the URL a reader clicks. **A green with a live
+capability and a dead link is still a broken claim to the person who clicks it.**
+
+Repointed, and the guard now checks **all 13 demo links against
+`routeTree.gen.ts`**, refusing rather than passing when the tree is unreadable.
+
+## ⭐ THE LINT RATCHET REFUSED THE LAZY FIX
+
+Adding `OPTIMIZATION_TABS` pushed `react-refresh/only-export-components` to
+**1048 against a ceiling of 1047**. Raising the ceiling was the forbidden move;
+the tab constants moved to `route-tabs-config.ts`, which is what the rule asks
+for and removes the whole class. Seventeen consumers and two backend guards
+repointed.
+
+## ⭐ STRIP WIDTHS, MEASURED AT SIX WIDTHS — NO RULING FORCED
+
+| strip | one row down to | wraps at |
+|---|---|---|
+| Dashboard & Reports (route tabs, 3) | **768px** | never, in range |
+| Enterprise Optimization (3) | 900px | **768px** |
+| Dashboard in-page strip (7, incl. Ratio Analysis) | 1280px | 1024px |
+
+All tabs stay visible at every width — the strips **wrap rather than truncate**,
+so no grouping, second level or overflow ruling is forced.
+
+## ⭐ TWO RATIO-SURFACE OBSERVATIONS, MEASURED
+
+**Invested Capital's `unit: currency` is CORRECT.** It is a currency amount —
+ROIC's denominator, exposed so the explainer can show it. It sits under Returns
+because it belongs to the ROIC family, not because it is a return. What looks odd
+is the CATEGORY placement, not the tag, and that is presentation rather than a
+defect.
+
+**The flat ratios are the data, with one exception.** Of 48 ratios with ≥3
+computed periods: **45 vary** at one decimal, **2 are genuinely constant** in the
+seed's data, and **one — `axiom.eps` — is a RENDERING ARTEFACT**: ten distinct
+underlying values collapsing to one at 1dp, because a per-share figure is too
+small for that precision. ⭐ Recorded, not fixed — the per-unit display precision
+is a presentation ruling.
+
 # ⭐⭐ §7r-S4 · THE RATIO SURFACE — THE REGISTRY, RENDERED (2 Aug)
 
 Frontend `757772a`. The registry executed from R7 and reached **no screen**:
