@@ -282,3 +282,114 @@ def test_THE_FRONTEND_CHAIN_link_by_link():
         assert lab in comp, f"the label {lab} does not survive into the render"
     assert "basis" in comp, "the reason for each label is not rendered"
     assert "methods_absent" in comp, "the absent methods are not stated"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐⭐ 8 · NAMES — the id is not a label
+# ═══════════════════════════════════════════════════════════════════════════
+
+class _Row:
+    def __init__(self, **kw):
+        for k, v in kw.items():
+            setattr(self, k, v)
+
+
+class _Q:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def filter_by(self, **kw):
+        return self
+
+    def all(self):
+        return self._rows
+
+
+class _DB:
+    """⭐ Returns rows by MODEL, so the resolver's own table choice is exercised
+    rather than a single list standing in for four."""
+    def __init__(self, by_model):
+        self._m = by_model
+
+    def query(self, model):
+        return _Q(self._m.get(model.__name__, []))
+
+
+def _db():
+    return _DB({
+        "KpiPlan": [_Row(kpi_key="k1", kpi_name="Gross margin")],
+        "Objective": [_Row(obj_key="g1", objective="Lift first-pass yield")],
+        "KeyResult": [_Row(kr_key="r1", key_result="Cut defects 20%")],
+        "Initiative": [_Row(id=7, title="Automate the close")],
+    })
+
+
+def test_a_node_RESOLVES_TO_ITS_NAME():
+    """⭐⭐ 82 edges rendered as truncated uuids. The name is the label."""
+    n = CM.resolve_names(_db(), 20, ["kpi:k1", "goal:g1", "kr:r1", "initiative:7"])
+    assert n["kpi:k1"]["name"] == "Gross margin"
+    assert n["goal:g1"]["name"] == "Lift first-pass yield"
+    assert n["kr:r1"]["name"] == "Cut defects 20%"
+    assert n["initiative:7"]["name"] == "Automate the close"
+
+
+def test_THE_ID_IS_KEPT_not_replaced():
+    """⭐ A reader needs the name; a support conversation needs the id. The map
+    is KEYED by the node id, so both survive."""
+    n = CM.resolve_names(_db(), 20, ["kpi:k1"])
+    assert "kpi:k1" in n
+    assert n["kpi:k1"]["kind"] == "kpi"
+
+
+def test_AN_UNRESOLVED_NAME_DECLARES_and_never_falls_back_to_the_id():
+    """⭐⭐ A silent fallback would reproduce THIS DEFECT for the one case where
+    nobody would notice — a bare id is indistinguishable from a name that was
+    never looked up."""
+    n = CM.resolve_names(_db(), 20, ["kpi:missing"])
+    v = n["kpi:missing"]
+    assert v["name"] is None, "an unresolved node silently became its id"
+    assert v["absent"] and "carries a name" in v["absent"]
+
+
+def test_an_UNKNOWN_KIND_says_so_rather_than_guessing():
+    n = CM.resolve_names(_db(), 20, ["widget:x"])
+    assert n["widget:x"]["name"] is None
+    assert "not a kind this map can name" in n["widget:x"]["absent"]
+
+
+def test_a_STATEMENT_LINE_IS_ITS_OWN_NAME():
+    """⭐ A line is a label, not a surrogate key — resolving it would be
+    inventing an indirection that does not exist."""
+    n = CM.resolve_names(_db(), 20, ["line:revenue"])
+    assert n["line:revenue"]["name"] == "revenue"
+    assert n["line:revenue"]["absent"] is None
+
+
+def test_the_NAMES_ARE_ADDITIVE_and_the_edge_model_is_untouched():
+    """⭐ Constraint: no change to the edge model, labels or thresholds."""
+    m = CM.build(line_links=[_link()], other_links=[], attribution=_att(),
+                 period_start=PERIOD)
+    e = m["edges"][0]
+    assert set(e) >= {"source", "target", "label", "basis"}
+    assert "source_name" not in e and "name" not in e, \
+        "the name was welded onto the edge instead of riding alongside"
+    assert m["counts"] and m["vocabulary"]["default"] == CM.HYPOTHESIS
+
+
+def test_the_endpoint_ATTACHES_the_names():
+    src = open(os.path.join(ROOT, "services/api/causal_map.py"),
+               encoding="utf-8").read()
+    assert 'out["names"] = resolve_names(' in src
+
+
+def test_THE_COMPONENT_RENDERS_THE_NAME_not_the_id():
+    """⭐ The layer at fault was the backend; this pins the render so a future
+    payload change cannot quietly go back to ids."""
+    p = os.path.join(FE, "src/components/CausalMap.tsx")
+    if not os.path.exists(p):
+        pytest.skip("frontend checkout not present")
+    src = open(p, encoding="utf-8").read()
+    assert "nodeLabel(" in src and "d.names" in src
+    assert "unnamed" in src, "an unresolved node does not say so in the render"
+    # ⭐ and the id stays reachable
+    assert "nodeTitle(" in src, "the id is no longer reachable from the render"

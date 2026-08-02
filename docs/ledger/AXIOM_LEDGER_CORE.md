@@ -14536,3 +14536,65 @@ nothing.**
 company — and the id is now read from **`useActiveCompany().id`**, the store's
 own accessor. ⭐ **Both are needed**: dropping the resolver would leave the store
 empty and produce the same symptom by the opposite route, which a test now pins.
+
+# ⭐⭐ §7j.11 · THE CAUSAL MAP RENDERED IDS WHERE NAMES BELONG
+
+**Observed 2 Aug on Meridian:** every edge read `kpi 4f75d535… → goal f0f60946…`.
+**82 edges, all unreadable.**
+
+## ⭐ 1 · THE LAYER AT FAULT — THE BACKEND
+
+⭐⭐ **THE ENDPOINT RETURNED IDS ALONE.** `_rows` built `"kpi:<uuid>"` and sent
+nothing else; ⭐ **the frontend was not ignoring names — it never received
+any**, and could only shorten what it was given.
+
+**The fix is therefore a backend join, not a render change** — though the render
+had to learn to prefer the name once it existed.
+
+## ⭐⭐ 2 · THE NAME TRAVELS WITH THE ID, NEVER INSTEAD OF IT
+
+| kind | key | name |
+|---|---|---|
+| kpi | `KpiPlan.kpi_key` | `kpi_name` |
+| goal | `Objective.obj_key` | `objective` |
+| kr | `KeyResult.kr_key` | `key_result` |
+| initiative | `Initiative.id` | `title` |
+| line | — | ⭐ **is its own name** — a label, not a surrogate |
+
+⭐ **A reader needs the name; a support conversation needs the id.** Returning
+one and discarding the other forces the surface to choose, and this one chose
+wrong. The names ride in a **`names` map keyed by node id** — ⭐ **additive, so
+the edge model, labels and thresholds are untouched**, asserted.
+
+## ⭐⭐ 3 · AN UNRESOLVED NAME DECLARES ITSELF
+
+It renders **`unnamed <kind> <id>`** with the reason on hover — ⭐⭐ **NEVER a
+silent fallback to the id.** A bare id is **indistinguishable from a name nobody
+looked up**, so a silent fallback would reproduce this very defect in the one
+case where no reader would catch it.
+
+Unknown kinds say so too, rather than guessing a table.
+
+## ⭐ 4 · MERIDIAN — ALL 75 NODES RESOLVE
+
+**41 kpi · 21 goal · 13 initiative. Unnamed: zero.** Sample:
+*"Lift first-pass yield to 96%"*, *"Automate the monthly close to 3 days"*,
+*"Shorten CAC payback to 18 months"*.
+
+## ⭐ 5 · THE RAW-ID SWEEP — DERIVED, AND NARROWED BY JUDGEMENT
+
+An AST sweep found **209 dict literals emitting an identifier with no name
+beside it**. ⭐⭐ **THAT IS A STARTING POINT, NOT A DEFECT COUNT** — most are
+internal payloads where the id IS the answer.
+
+Narrowed to **rendered** surfaces, only four sites, and ⭐ **the Causal Map was
+the only genuine one**:
+
+| site | verdict |
+|---|---|
+| `causal_map` source/target | ⭐ **the defect — fixed** |
+| `brief.py` `pack_id` | a URL component |
+| `brief.py` `section_id` | ⭐ a readable slug (`what_changed`), and the Brief renders the QUESTION anyway |
+| frontend `key={o.goal_key}` | a React key prop, never displayed |
+
+⭐ **No other surface renders an opaque identifier where a name exists.**

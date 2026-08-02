@@ -199,6 +199,57 @@ METHODS_ABSENT = {
 }
 
 
+def resolve_names(db, cid, nodes):
+    """-> {node_id: {"name": str|None, "kind": str, "absent": str|None}}.
+
+    ⭐⭐ THE NAME TRAVELS WITH THE ID, NEVER INSTEAD OF IT. A reader needs the
+    name; a support conversation needs the id. Returning one and discarding the
+    other forces the surface to choose, and the Causal Map chose wrong — 82
+    edges rendered as truncated uuids.
+
+    ⭐⭐ AND AN UNRESOLVED NAME DECLARES ITSELF. It is NEVER a silent fallback to
+    the id: that would reproduce this exact defect for the one case where nobody
+    would notice, because a bare id is indistinguishable from a name that was
+    never looked up.
+    """
+    from .accounts import Initiative, KeyResult, KpiPlan, Objective
+
+    kpi = {r.kpi_key: r.kpi_name for r in
+           db.query(KpiPlan).filter_by(company_id=cid).all() if r.kpi_key}
+    goal = {r.obj_key: r.objective for r in
+            db.query(Objective).filter_by(company_id=cid).all() if r.obj_key}
+    kr = {r.kr_key: r.key_result for r in
+          db.query(KeyResult).filter_by(company_id=cid).all() if r.kr_key}
+    ini = {str(r.id): r.title for r in
+           db.query(Initiative).filter_by(company_id=cid).all()}
+
+    BY_KIND = {"kpi": kpi, "goal": goal, "kr": kr, "initiative": ini,
+               "objective": goal, "key-result": kr}
+
+    out = {}
+    for n in nodes:
+        kind, _, ident = (n or "").partition(":")
+        # ⭐ a statement line IS its own name — it is a label, not a surrogate
+        if kind == "line":
+            out[n] = {"name": ident, "kind": kind, "absent": None}
+            continue
+        table = BY_KIND.get(kind)
+        if table is None:
+            out[n] = {"name": None, "kind": kind,
+                      "absent": f"'{kind}' is not a kind this map can name"}
+            continue
+        name = table.get(ident)
+        if name:
+            out[n] = {"name": name, "kind": kind, "absent": None}
+        else:
+            # ⭐ the row is gone, or was never named — both are stated, and the
+            # id stays visible so the reader can ask about it.
+            out[n] = {"name": None, "kind": kind,
+                      "absent": ("no %s with this identifier carries a name for "
+                                 "this company" % kind)}
+    return out
+
+
 def _rows(db, cid):
     """Read the five declared link tables. ⭐ Reads rows, computes nothing."""
     from .accounts import (GoalInitiativeLink, KpiInitiativeLink,
@@ -264,6 +315,9 @@ def include(app, get_db, require_company_member):
                     "tier_notice": _notice(db, company_id)}
         out = build(line_links=line_links, other_links=other,
                     attribution=None, period_start=None)
+        # ⭐ ADDITIVE: the edge model, labels and thresholds are untouched. The
+        # names ride alongside, keyed by the same node id the edges carry.
+        out["names"] = resolve_names(db, company_id, out.get("nodes") or [])
         from .modules.identity.plans import showcase_tier_notice
         out["tier_notice"] = showcase_tier_notice(db, company_id)
         return out
