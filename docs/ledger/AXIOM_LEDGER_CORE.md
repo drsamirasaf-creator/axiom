@@ -14940,6 +14940,107 @@ company — and the id is now read from **`useActiveCompany().id`**, the store's
 own accessor. ⭐ **Both are needed**: dropping the resolver would leave the store
 empty and produce the same symptom by the opposite route, which a test now pins.
 
+# ⭐⭐ §7j.13 · MULTIVERSE — THE RIGHT TRAJECTORY, AND TWO DISTRIBUTIONS
+
+Measured at `c06cbcb`, built 2 Aug.
+
+## ⭐ 1 · THE FIGURES WERE THE WRONG SUBJECT, NOT WRONG ARITHMETIC
+
+`multiverse.py` read `order_by(TrajectoryCache.id.desc()).first()` — an
+arbitrary trajectory of 261 — and the surface said nothing about which one. They
+now describe the **optimal sequence**, and the surface **names its moves**.
+
+⭐⭐ **MATCHING A CACHED ROW BACK BY ITS METRICS DOES NOT WORK, AND THAT WAS
+MEASURED BEFORE IT WAS TRUSTED.** Across 23 stored frontiers, matching on
+`(ev, mean_ev, cvar95, raev)` was **ambiguous on 3 — one with 114 rows sharing
+the optimal metrics**, because that company's EVs are degenerate. `_seq_hash`
+includes `params`, which `_move_view` deliberately drops, so the hash cannot be
+reconstructed downstream. `build_frontier` now **persists `seq_hash`** on
+`optimal_sequence`.
+
+⭐ **AND THERE IS NO FALLBACK TO AN ARBITRARY ROW.** A frontier written before
+`seq_hash` existed cannot identify its own optimal trajectory; substituting some
+other row would restore the exact defect. The summary figures come from the
+frontier's own `optimal_sequence` block — which carried them all along, so the
+row lookup was never needed for them — and the **row-only keys (`var95`,
+`equity_value`, `wacc`, `tier`) report absent**.
+
+## ⭐⭐ 2 · THE PERCENTILE MARKER RANKS BY A DIFFERENT STATISTIC THAN THE BARS
+
+The measurement at `c06cbcb` flagged that `current_strategy_percentile`'s
+provenance was untraced. **Traced:**
+
+```python
+below = sum(1 for _, m in full_results if m["raev"] <= dn_raev)
+current_percentile = round(100.0 * below / n_full, 1)
+```
+
+- Population: **correct** — `full_results` is the same set as the cached
+  full-tier rows (`full_evaluated` == cached count on every frontier checked).
+- Axis: **wrong for this chart** — it ranks by **`raev`**, a risk-adjusted
+  blend, not by `ev`.
+
+⭐ On the three most recent frontiers the two agree to 0.1pp (31.9/31.9,
+29.6/29.6, 1.2/1.2). **That is a coincidence of monotonicity within a run, not
+an identity**, and exactly the kind of agreement that stops holding without
+warning. The EV percentile is therefore **derived at read time from the same
+rows that make the bars**, and the surface states that the frontier's own
+percentile ranks by risk-adjusted EV and is not used.
+
+## ⭐⭐ 3 · TWO DISTRIBUTIONS, NEVER ONE CHART
+
+| | axis | question |
+|---|---|---|
+| **strategies** | decisions | how much the answer moves depending on which strategy is chosen |
+| **futures** | uncertainty | how confident we are in **one** strategy |
+
+Separate payload keys, separate captions, and **neither is ever called "the
+distribution of enterprise value"**. The browser gate asserts **three distinct
+sentinels** on this tab — subject, strategies, futures — because a surface
+drawing one chart twice would satisfy a single sentinel.
+
+⭐ **A DEGENERATE POPULATION SAYS SO.** Two of the four companies with a frontier
+have **2–3 distinct EVs across ~248 strategies**. The histogram is not wrong, but
+22 empty bins invite a reader to see structure that is not there, so the shape is
+named.
+
+## ⭐ 4 · THE SKETCH — 1 KB WHERE THE PATHS WERE 19 KB
+
+`evaluate_trajectory` discarded 2,000 draws per full-tier evaluation. It now
+records a **99-point nearest-rank percentile grid**.
+
+```
+sketch JSON        1,048 bytes      raw 2,000 floats   19,829 bytes   18.9x
+per company-dataset   268 kB                                  4.9 MB
+whole table        4,872 kB -> 10.0 MB (2.1x)          -> ~105 MB (22x)
+```
+
+⭐ **NEAREST-RANK, NOT INTERPOLATION** — every value shown is a value the
+simulation produced. ⭐ **`None`, not `{}`, when there are fewer than two
+paths**: a zero-path sketch and a sketch nobody wrote are different facts.
+⭐ **What it cannot answer is recorded in the code** — a mode, structure finer
+than 1%, or any question about an individual path.
+
+**Nothing backfilled.** Existing rows carry no sketch and the surface says so,
+naming the recompute that will supply it.
+
+## ⚠️ 5 · RETENTION IS STILL THE UNBOUNDED TERM
+
+Nothing prunes `ax_trajectory_cache`:
+
+| company | dataset versions | rows |
+|---|---|---|
+| 25 | **11** | 5,571 |
+| 39 | 5 | 2,413 |
+| 20 | 3 | 1,565 |
+| 38 | 2 | 1,016 |
+
+At 268 kB of sketch per version, company 25 alone would carry ~2.9 MB of sketch
+across versions it will never render. **The sketch is affordable; the absence of
+a pruning policy is the term that grows without bound, and it was already growing
+before this lane.** Routed, not fixed — deleting stored trajectories is a
+retention ruling, not a refactor.
+
 # ⭐⭐ §7j.12 · THE FOURTH GENERATION: A BROWSER ASSERTS THE RENDERED FIGURE
 
 Frontend `0d033bd`. **The frontend had zero test files.** CI ran typecheck,

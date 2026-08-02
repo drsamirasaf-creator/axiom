@@ -105,7 +105,161 @@ def censored(metrics):
             "absent": "the ambiguity stress was not computed for this run"}
 
 
-def build(frontier_row, metrics, *, sigma=None):
+# ══════════════════════════════════════════════════════════════════════════
+# ⭐⭐ TWO DISTRIBUTIONS, TWO QUESTIONS, NEVER ONE CHART
+#
+#   STRATEGIES  the per-sequence EVs — one deterministic value per candidate
+#               move sequence. Answers HOW MUCH THE ANSWER MOVES DEPENDING ON
+#               WHICH STRATEGY IS CHOSEN. The axis is decisions.
+#
+#   FUTURES     the 2,000 Monte Carlo draws inside ONE sequence, summarised as
+#               a percentile sketch. Answers HOW CONFIDENT WE ARE IN THAT ONE
+#               STRATEGY. The axis is uncertainty.
+#
+# ⭐ A chart that implies one while drawing the other is the failure this lane
+# exists to prevent, so they are separate keys with separate labels and neither
+# is ever called "the distribution of enterprise value".
+# ══════════════════════════════════════════════════════════════════════════
+STRATEGIES_MEANING = (
+    "Each bar is a STRATEGY the search evaluated, placed by the enterprise "
+    "value it produces. This is how much the answer moves depending on which "
+    "strategy is chosen — not how confident we are in any one of them.")
+FUTURES_MEANING = (
+    "Each bar is a share of the SIMULATED FUTURES for a single strategy — the "
+    "optimal sequence. This is how confident we are in that one strategy, and "
+    "says nothing about the others.")
+
+
+def _from_frontier(fr_json, tc):
+    """The optimal sequence's metrics — from its own cached row when it can be
+    identified, otherwise from the frontier's `optimal_sequence` block.
+
+    ⭐ THE FRONTIER ALREADY CARRIES ev / mean_ev / cvar95 / raev / p_target /
+    real_option_value / dro_breakeven_radius for the optimal sequence, so the
+    summary figures never needed a row lookup at all. What only the row has is
+    `var95`, `equity_value`, `wacc` and `tier` — and when the row cannot be
+    identified those are ABSENT rather than borrowed from a different
+    trajectory, which is the whole defect being fixed.
+    """
+    if tc is not None:
+        return dict(tc.metrics or {})
+    opt = (fr_json or {}).get("optimal_sequence") or {}
+    if not opt:
+        return {}
+    return {k: opt.get(k) for k in
+            ("ev", "mean_ev", "cvar95", "raev", "p_target",
+             "real_option_value", "dro_breakeven_radius",
+             "dro_resilient_beyond")}
+
+
+def subject(fr):
+    """⭐⭐ WHICH TRAJECTORY THE SUMMARY FIGURES DESCRIBE, SAID ON THE SURFACE.
+
+    They were never wrong arithmetic — they were the wrong SUBJECT, read from
+    `order_by(id.desc()).first()`, and nothing told the reader which trajectory
+    they belonged to. They now describe the OPTIMAL sequence, and it is named.
+    """
+    opt = (fr or {}).get("optimal_sequence") or {}
+    moves = opt.get("moves") or []
+    if not moves:
+        return {"absent": ("no optimal sequence has been recorded, so these "
+                           "figures cannot be attributed to a named strategy")}
+    return {
+        "is": "optimal_sequence",
+        "moves": [m.get("label") or m.get("atom_type") for m in moves],
+        "seq_hash": opt.get("seq_hash"),
+        "note": ("These figures describe the OPTIMAL sequence — the best of the "
+                 "trajectories searched, not the plan of record. The current "
+                 "plan is the do-nothing baseline."),
+    }
+
+
+def strategies(rows, fr):
+    """The per-sequence EV histogram. -> bins + the current plan's position.
+
+    ⭐ THE MARKER IS COMPUTED ON THE HISTOGRAM'S OWN AXIS. The frontier
+    persists `current_strategy_percentile`, and it is a **raev** percentile —
+    `below = sum(1 for _, m in full_results if m["raev"] <= dn_raev)`. Marking
+    an EV histogram with a risk-adjusted-EV percentile would place the line by a
+    different statistic than the bars. Measured on the three most recent
+    frontiers the two agreed to 0.1pp (31.9/31.9, 29.6/29.6, 1.2/1.2) — which is
+    a coincidence of monotonicity within a run, not an identity, and is exactly
+    the kind of agreement that stops holding without warning. So the EV
+    percentile is derived here from the same rows that make the bars.
+    """
+    evs = sorted(m["ev"] for m in rows if isinstance(m, dict) and m.get("ev") is not None)
+    if len(evs) < 2:
+        return {"absent": ("fewer than two strategies have been evaluated, so "
+                           "there is no spread across strategies to show")}
+    lo, hi = evs[0], evs[-1]
+    n_bins = 24
+    width = (hi - lo) / n_bins or 1.0
+    counts = [0] * n_bins
+    for e in evs:
+        counts[min(n_bins - 1, int((e - lo) / width))] += 1
+    plan_ev = ((fr or {}).get("current_plan") or {}).get("ev")
+    opt_ev = ((fr or {}).get("optimal_sequence") or {}).get("ev")
+
+    def pct(v):
+        if v is None:
+            return None
+        return round(100.0 * sum(1 for e in evs if e <= v) / len(evs), 1)
+
+    # ⭐ A DEGENERATE POPULATION SAYS SO. Two of the four companies with a
+    # frontier have 2-3 distinct EVs across ~248 strategies — every move
+    # produces almost the same value. The histogram is not wrong, but 22 empty
+    # bins invite a reader to see structure that is not there, so the shape is
+    # named rather than drawn silently.
+    degenerate = (len(set(evs)) < 5 or (hi - lo) < 1e-9)
+    return {
+        "n": len(evs), "distinct": len(set(evs)), "min": round(lo, 2),
+        "max": round(hi, 2), "bin_width": round(width, 4),
+        "bins": [{"from": round(lo + i * width, 2),
+                  "to": round(lo + (i + 1) * width, 2), "count": c}
+                 for i, c in enumerate(counts)],
+        "current_plan": {"ev": plan_ev, "percentile": pct(plan_ev),
+                         "label": "current plan (do nothing)"},
+        "optimal": {"ev": opt_ev, "percentile": pct(opt_ev),
+                    "label": "optimal sequence"},
+        "meaning": STRATEGIES_MEANING,
+        "degenerate": ({"note": (f"only {len(set(evs))} distinct values across "
+                                 f"{len(evs)} strategies — the search found "
+                                 f"almost no spread, so the shape of this "
+                                 f"histogram carries little information")}
+                       if degenerate else None),
+        "percentile_basis": ("computed here over these same EVs. The frontier's "
+                             "own current_strategy_percentile ranks by RISK-"
+                             "ADJUSTED EV, a different statistic, and is not "
+                             "used to mark this axis."),
+    }
+
+
+def futures(metrics):
+    """The percentile sketch of the 2,000 draws for the optimal sequence."""
+    sk = (metrics or {}).get("ev_sketch")
+    if not sk:
+        # ⭐ ABSENT AND STATED. Nothing is backfilled: rows written before the
+        # sketch existed carry none, and saying "no distribution" over a blank
+        # panel would read as certainty.
+        return {"absent": ("this trajectory was evaluated before the percentile "
+                           "sketch was recorded, so its simulated futures were "
+                           "not kept. It will be present after the next "
+                           "recompute for this company."),
+                "meaning": FUTURES_MEANING}
+    ps = sk.get("p") or []
+    if len(ps) < 3:
+        return {"absent": "the recorded sketch is too short to draw",
+                "meaning": FUTURES_MEANING}
+    return {"n_paths": sk.get("n"), "min": sk.get("min"), "max": sk.get("max"),
+            "percentiles": [{"p": i + 1, "value": v} for i, v in enumerate(ps)],
+            "meaning": FUTURES_MEANING,
+            "basis": ("nearest-rank percentiles over the simulated paths — every "
+                      "value shown is a value the simulation produced, never an "
+                      "interpolation and never a curve fitted to a mean and a "
+                      "tail")}
+
+
+def build(frontier_row, metrics, *, sigma=None, strategy_rows=None):
     """-> the Multiverse view. Pure over its inputs; reads nothing."""
     fr = (getattr(frontier_row, "frontier", None) or {}) if frontier_row else {}
     m = metrics or {}
@@ -115,6 +269,10 @@ def build(frontier_row, metrics, *, sigma=None):
 
     return {
         "has_data": bool(fr or m),
+        # ⭐ WHICH TRAJECTORY THESE FIGURES DESCRIBE. See `subject`.
+        "subject": subject(fr),
+        "strategies": strategies(strategy_rows or [], fr),
+        "futures": futures(m),
         # ⭐ THE QUESTION THIS SURFACE ANSWERS, said on the surface. The two tabs
         # differ by question, not by engine, and a reader must be told which.
         "question": ("What might happen, and how confident are we? "
@@ -179,22 +337,46 @@ def include(app, get_db, require_company_member):
         from .prescience_decision import DecisionFrontier, TrajectoryCache
         fr = (db.query(DecisionFrontier).filter_by(company_id=company_id)
                 .order_by(DecisionFrontier.id.desc()).first())
-        # ⭐ the FULL-tier row carries the distribution; the cheap tier does not
-        tc = (db.query(TrajectoryCache)
-                .filter_by(company_id=company_id, tier="full")
-                .order_by(TrajectoryCache.id.desc()).first())
-        if tc is None:
-            tc = (db.query(TrajectoryCache).filter_by(company_id=company_id)
+        # ⭐⭐ THE OPTIMAL SEQUENCE'S ROW, BY ITS HASH — NOT `id DESC`.
+        # `order_by(id.desc()).first()` returned an ARBITRARY trajectory, and
+        # the surface then described it with no statement of which one. The
+        # figures were the wrong SUBJECT, not wrong arithmetic.
+        #
+        # ⭐ MATCHING BY METRICS WAS TRIED AND REJECTED ON MEASUREMENT: across
+        # 23 stored frontiers it was ambiguous on 3, one of which had 114 rows
+        # sharing the optimal metrics. `seq_hash` is written by build_frontier
+        # for this purpose.
+        fr_json = (fr.frontier if fr else None) or {}
+        want = ((fr_json.get("optimal_sequence") or {}).get("seq_hash"))
+        tc = None
+        if want:
+            tc = (db.query(TrajectoryCache)
+                    .filter_by(company_id=company_id, tier="full", seq_hash=want)
                     .order_by(TrajectoryCache.id.desc()).first())
-        if fr is None and tc is None:
+        # ⭐ NO FALLBACK TO AN ARBITRARY ROW. A frontier built before seq_hash
+        # was recorded cannot name its own optimal trajectory, and substituting
+        # some other row would restore precisely the defect this fixes. The
+        # per-sequence figures then come from the frontier's own
+        # `optimal_sequence` block, which carries them, and the row-only keys
+        # (var95, equity_value, wacc) report absent — see `_from_frontier`.
+        opt_metrics = _from_frontier(fr_json, tc)
+
+        # the strategies histogram reads the whole evaluated population for the
+        # frontier's dataset version — the same rows the search wrote
+        strategy_rows = []
+        if fr is not None:
+            strategy_rows = [r.metrics for r in db.query(TrajectoryCache)
+                             .filter_by(company_id=company_id, tier="full",
+                                        dataset_version=fr.dataset_version).all()]
+        if fr is None and not opt_metrics:
             # ⭐ ABSENCE DECLARES. An empty distribution reads as certainty.
             return {"has_data": False, "quantities": [],
                     "absent": ("no trajectory has been evaluated for this "
                                "company yet, so there is no distribution to show"),
                     "uncertainty_basis": sigma_basis(),
                     "not_the_capital_structure_frontier": DISTINCT_FROM_OPTIMIZATION}
-        out = build(fr, (tc.metrics if tc else None))
-        out["tier"] = (tc.metrics or {}).get("tier") if tc else None
+        out = build(fr, opt_metrics, strategy_rows=strategy_rows)
+        out["tier"] = (opt_metrics or {}).get("tier")
         out["built_at"] = fr.built_at.isoformat() if fr and fr.built_at else None
         # ⭐ the marker travels with the payload, so it cannot be lost in a
         # component that forgets to ask for it.

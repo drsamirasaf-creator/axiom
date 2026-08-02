@@ -261,6 +261,36 @@ def _seq_hash(moves):
     return hashlib.sha256(json.dumps(key, sort_keys=True).encode()).hexdigest()[:32]
 
 
+# The percentile grid. 1..99 by 1, so a histogram can be reconstructed at any
+# bin width a chart would plausibly use, plus the exact extremes.
+SKETCH_GRID = tuple(range(1, 100))
+SKETCH_VERSION = 1
+
+
+def _sketch(paths):
+    """-> {version, n, min, max, p: [99 values]} | None.
+
+    ⭐ NONE, NOT AN EMPTY SKETCH. A zero-path sketch and a sketch nobody wrote
+    are different facts, and a surface must be able to say which. `{}` would
+    render as "computed, and empty", which is the fabrication this whole
+    programme removes.
+    """
+    xs = sorted(float(e) for e in (paths or []) if e is not None)
+    if len(xs) < 2:
+        return None
+    n = len(xs)
+
+    def q(p):
+        # nearest-rank on the sorted draws — no interpolation, so every value
+        # returned IS a value the simulation produced
+        i = min(n - 1, max(0, int(round(p / 100.0 * n)) - 1))
+        return round(xs[i], 2)
+
+    return {"version": SKETCH_VERSION, "n": n,
+            "min": round(xs[0], 2), "max": round(xs[-1], 2),
+            "p": [q(p) for p in SKETCH_GRID]}
+
+
 def evaluate_trajectory(data, moves, tier="cheap", target_ev=None, lam=LAMBDA):
     """Apply the move set to a proforma working dataset, run the certified kernel,
     attach CVaR (+ real options, TV-DRO, P(target) at full tier). Deterministic."""
@@ -284,6 +314,24 @@ def evaluate_trajectory(data, moves, tier="cheap", target_ev=None, lam=LAMBDA):
         paths = base["risk_adjusted"].get("_paths") or []
         if target_ev is not None and paths:
             metrics["p_target"] = round(sum(1 for e in paths if e > target_ev) / len(paths), 4)
+        # ⭐⭐ THE PERCENTILE SKETCH — 2,000 DRAWS EXISTED HERE AND WERE THROWN
+        # AWAY. `p_target` above is a COUNT over them, so the paths are real and
+        # transient; every distribution statistic on this surface came from them
+        # and none of them survived the function. The tab is called Multiverse
+        # and could not draw one.
+        #
+        # ⭐ A SKETCH, NOT THE PATHS. Measured on the live corpus: 2,000 floats
+        # as JSON is 19.3 KB per row — 4.9 MB per company-dataset, ~100 MB
+        # across the full-tier rows already stored, against a 4,872 kB table.
+        # The 99-percentile grid is ~1 KB, draws a histogram indistinguishable
+        # at chart resolution, and keeps the provenance: these ARE the draws,
+        # summarised, not a curve fitted to two numbers.
+        #
+        # ⭐ WHAT IT CANNOT ANSWER, so nobody asks it to: anything the
+        # percentiles do not contain — a mode, a multi-modal shape finer than
+        # 1%, or any question about an individual path's identity. Recorded here
+        # rather than discovered later.
+        metrics["ev_sketch"] = _sketch(paths)
         try:
             ro = V.real_options_suite(work)
             metrics["real_option_value"] = round(ro.get("total_flexibility_value", 0.0), 2)
@@ -460,6 +508,16 @@ def build_frontier(db, company_id, progress=None):
                          "p_target": do_nothing.get("p_target")},
         "current_strategy_percentile": current_percentile,
         "optimal_sequence": {
+            # ⭐⭐ THE SEQUENCE'S OWN IDENTITY, PERSISTED. The Multiverse surface
+            # showed summary figures with nothing saying WHICH trajectory they
+            # described — it read `order_by(id.desc()).first()`, an arbitrary
+            # row. Matching a cached row back by its metrics does not work:
+            # measured across 23 frontiers, 3 were AMBIGUOUS and one had 114
+            # rows sharing the optimal metrics. The hash is the only reliable
+            # key, and `_move_view` deliberately drops `params`, which
+            # `_seq_hash` needs — so it cannot be reconstructed downstream and
+            # has to be written here.
+            "seq_hash": _seq_hash(optimal_ms),
             "moves": [_move_view(m) for m in sorted(optimal_ms, key=lambda x: ATOM_TYPES.index(x["atom_type"]))],
             "ev": optimal["ev"], "mean_ev": optimal["mean_ev"], "cvar95": optimal["cvar95"],
             "raev": optimal["raev"], "p_target": optimal.get("p_target"),
