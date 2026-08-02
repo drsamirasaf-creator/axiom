@@ -53,10 +53,20 @@ EXPECTED_SIDEBAR_LINKS = [
     "Enterprise Optimization", "Prescience AI",
     "Initiatives & Projects", "Performance Monitoring",
     "Course Workspace", "What is AXIOM?",
-    # custody-10: the data-upload door must have a PERMANENT, app-controlled
-    # sidebar link. If this vanishes (a nav restructure drops it), the crawler
-    # FAILS — the upload path can never disappear silently again.
-    "Data Input",
+    # ⭐⭐ custody-10, AMENDED 2 Aug — THE MECHANISM MOVED, THE INTENT DID NOT.
+    # The rule was: the data-upload door must have a PERMANENT, app-controlled
+    # sidebar link, because the upload path had vanished TWICE — once to a
+    # Lovable redirect, once to a missing nav entry.
+    #
+    # Data Input is now a MY AXIOM TAB, not a top-level Workspace entry (ruled
+    # 2 Aug). So "Data Input" leaves this list and "My AXIOM" joins it — and the
+    # door assertion below now walks the tab.
+    #
+    # ⭐ A DOOR MOVED BEHIND A DOOR THAT COULD ITSELF MOVE IS NOT A PERMANENT
+    # DOOR. That is why My AXIOM is asserted here as a permanent sidebar entry
+    # in its own right: the rule now has two locks, not one, and losing either
+    # fails the run.
+    "My AXIOM",
 ]
 # Routes that must REDIRECT (not appear as their own sidebar link). Folded hub
 # routes (/cei, /data-input, /financial-forecasts, /risk-analysis, /brief) still
@@ -927,36 +937,59 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
         print(f"    {mode} demo-ranking (no bare band letter) -> "
               f"{'ok' if ok_rank else 'FAIL ' + str(bare)} [{len(codes or [])} coded rows]", flush=True)
 
-    # ---- DATA-UPLOAD door reachability (custody-10) ----
-    # The upload path has vanished twice (a Lovable redirect, then a missing nav
-    # entry). This asserts, from an authed session, that /data-input RENDERS its
-    # own upload surface (never redirects away) AND exposes an upload control /
-    # template-download / company-select prompt. FAIL = the door is broken again.
+    # ---- DATA-UPLOAD door reachability (custody-10, AMENDED 2 Aug) ----
+    # ⭐⭐ THE MECHANISM MOVED; THE RULE DID NOT. The upload path has vanished
+    # TWICE — a Lovable redirect, then a missing nav entry — and custody-10 was
+    # written so it could never vanish silently a third time. On 2 Aug Data
+    # Input became a MY AXIOM TAB rather than a top-level Workspace entry, so
+    # the sidebar lock moved to "My AXIOM" (see EXPECTED_SIDEBAR_LINKS) and this
+    # walks the TAB.
+    #
+    # ⭐ THIS IS NOT THE THIRD DISAPPEARANCE, and the difference is measurable:
+    # the PATH does not move, all 13 inbound `to="/data-input"` links across 12
+    # files still resolve, and KPI editing's binding to /data-input is
+    # untouched. What changed is DISCOVERABILITY — and discoverability is
+    # exactly what the two assertions below now cover.
+    #
+    # ⭐⭐ TWO LOCKS, BECAUSE ONE WOULD BE WEAKER THAN WHAT IT REPLACED. A door
+    # moved behind a door that could itself move is not a permanent door:
+    #   (a) My AXIOM is a permanent SIDEBAR entry  — EXPECTED_SIDEBAR_LINKS
+    #   (b) the Data Input TAB exists there and reaches the upload surface
+    # Losing either fails the run.
     if authed:
         up_ok, up_why = True, ""
         try:
-            _safe_goto(st["pg"], APP_BASE + "/data-input")
+            # (b) — start at My AXIOM and walk the tab, exactly as a user would.
+            _safe_goto(st["pg"], APP_BASE + "/my-axiom")
             st["pg"].wait_for_timeout(SETTLE_MS)
-            final = _norm_href(st["pg"].url)
-            body = (st["pg"].inner_text("body") or "").lower()
-            has_file = st["pg"].locator("input[type='file']").count() > 0
-            markers = any(m in body for m in (
-                "download template", "financial data", "additional documents",
-                "select a company", "upload"))
-            # ⭐ A DEFAULT TAB IS NOT A REDIRECT AWAY. The app lands on
-            # /data-input?tab=financial — the same page with a tab pre-selected —
-            # and this compared the full href including the query, reading a
-            # working door as a broken one. custody-10 cares that the PATH is
-            # still /data-input; which tab opens is a UI choice.
-            if final.split("?")[0] != "/data-input":
-                up_ok, up_why = False, f"redirected away to {final}"
-            elif not (has_file or markers):
-                up_ok, up_why = False, "no upload control / data-input surface rendered"
+            tab = st["pg"].get_by_role("link", name="KPIs", exact=True)
+            if tab.count() == 0:
+                up_ok, up_why = False, ("no 'KPIs' tab on /my-axiom — the door "
+                                        "is no longer reachable from the "
+                                        "Workspace entry point")
+            else:
+                tab.first.click()
+                st["pg"].wait_for_timeout(SETTLE_MS)
+                final = _norm_href(st["pg"].url)
+                body = (st["pg"].inner_text("body") or "").lower()
+                has_file = st["pg"].locator("input[type=\'file\']").count() > 0
+                markers = any(m in body for m in (
+                    "download template", "financial data", "additional documents",
+                    "select a company", "upload"))
+                # ⭐ A DEFAULT TAB IS NOT A REDIRECT AWAY. The app lands on
+                # /data-input?tab=financial — the same page with a tab
+                # pre-selected — and this once compared the full href including
+                # the query, reading a working door as a broken one. custody-10
+                # cares that the PATH is still /data-input.
+                if final.split("?")[0] != "/data-input":
+                    up_ok, up_why = False, f"the tab did not reach /data-input (got {final})"
+                elif not (has_file or markers):
+                    up_ok, up_why = False, "no upload control / data-input surface rendered"
         except Exception as e:
             up_ok, up_why = False, f"navigation error {e}"
         tick()
         if not up_ok:
-            fails.append(f"{mode} DATA-UPLOAD door UNREACHABLE on /data-input :: {up_why}")
+            fails.append(f"{mode} DATA-UPLOAD door UNREACHABLE via My AXIOM :: {up_why}")
 
     # ---- interaction-level sweep (report-only; operator/authed) ----
     # Click every interactive control per route and record any error boundary,

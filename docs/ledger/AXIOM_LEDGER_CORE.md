@@ -14940,6 +14940,86 @@ company — and the id is now read from **`useActiveCompany().id`**, the store's
 own accessor. ⭐ **Both are needed**: dropping the resolver would leave the store
 empty and produce the same symptom by the opposite route, which a test now pins.
 
+# ⭐⭐ §4y.3 · custody-10 — THE UPLOAD DOOR, AND ITS MECHANISM MOVED (2 Aug)
+
+Frontend `67820e2`.
+
+## ⭐⭐ THE RULE WAS NEVER IN THE LEDGER
+
+**Zero occurrences of "custody-10" in either ledger file** before this entry. It
+existed in two places only — a comment in `AppLayout.tsx` and two assertions in
+`scripts/auth-regression.py` — and it is a **standing rule with a veto**: it
+blocked this lane's first attempt outright.
+
+⭐ **Third rule found this way** (see §7r-O and §7r-D, both absent while build
+segments ran against them). A rule enforced by code and absent from the ledger is
+one a future advisor will "restructure" past, exactly as this lane nearly did.
+
+## ⭐ THE RULE, AND WHY IT EXISTS
+
+> The data-upload door must have a **permanent, app-controlled** link. It must
+> not depend on inline links or a per-company card surviving a restructure.
+
+**Because the upload path has vanished TWICE:**
+
+1. a **Lovable redirect** carried `/data-input` away from itself;
+2. a **missing nav entry** left the page reachable only by typing the URL.
+
+Both are recorded in the guard's own comment. custody-10 is the answer to
+"never silently a third time".
+
+## ⭐⭐ AMENDED — THE MECHANISM MOVES, THE INTENT DOES NOT
+
+Ruled 2 Aug: Data Input becomes an area inside My AXIOM rather than a top-level
+Workspace entry. So:
+
+| | before | after |
+|---|---|---|
+| sidebar lock | `"Data Input"` in `EXPECTED_SIDEBAR_LINKS` | **`"My AXIOM"`** |
+| door assertion | navigate to `/data-input`, assert it renders its own upload surface | **start at `/my-axiom`, click the KPIs tab**, assert it reaches `/data-input` and renders the upload surface |
+
+⭐⭐ **TWO LOCKS, BECAUSE ONE WOULD BE WEAKER THAN WHAT IT REPLACED.** A door
+moved behind a door that could itself move is not a permanent door. Losing
+either fails the run.
+
+## ⭐ WHY THIS IS NOT THE THIRD DISAPPEARANCE — MEASURED, NOT ASSERTED
+
+| | |
+|---|---|
+| the path | **unchanged** — `/data-input`, still in `routeTree.gen.ts` |
+| inbound links | **13 across 11 files**, all still resolving |
+| KPI editing's binding to `/data-input` | **untouched** |
+| what changed | **discoverability** — and the amended guard covers exactly that |
+
+Both prior disappearances broke the PATH or left it reachable only by typing.
+This breaks neither.
+
+## ⭐⭐ THE REWRITE WAS PROVEN TO STILL BLOCK WHAT IT WAS BUILT FOR
+
+A guard rewritten to permit the change it was built to block is worthless unless
+it is shown to still block the original thing. Both planted, both red:
+
+| planted defect | result |
+|---|---|
+| remove the **KPIs tab** from `MY_AXIOM_TABS` | ✗ *"no 'KPIs' tab on /my-axiom — the upload door is not reachable from the Workspace entry point"* |
+| remove **My AXIOM** from the sidebar | ✗ *"'My AXIOM' is not a permanent sidebar entry — the door now sits behind a door that itself moved"* |
+
+Restored: **PASS**, and the source diff is clean.
+
+## ⭐ AND THERE WAS NO DUPLICATION TO REMOVE
+
+The lane was briefed to consolidate two upload paths. Measured first:
+**`DataInputContent` is ONE exported component with TWO mount points.** My AXIOM
+mounts it per-company (a `companyId` override, so an account holder opens uploads
+for any of their companies without switching the active one); `/data-input`
+mounts it for the active company and adds the Participant List department scope.
+**Neither is redundant.** And My AXIOM holds **zero** `to="/data-input"` links —
+it embeds rather than links, so there were no self-references to resolve.
+
+⭐ **The tab is NOT `adminOnly`**, unlike pilot viewers: `/data-input` already
+renders for a viewer with `ViewOnlyNote` and `canWrite={isAdmin}`, and a
+read-only view of a company's own data health is legitimate.
+
 # ⭐⭐ §4y.2 · THE MY AXIOM TABS NAVIGATED AWAY (2 Aug)
 
 Frontend `42b967d`. Clicking **KPIs** landed on Data Input and **Objectives &
