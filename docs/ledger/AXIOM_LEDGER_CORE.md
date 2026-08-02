@@ -14598,3 +14598,96 @@ the only genuine one**:
 | frontend `key={o.goal_key}` | a React key prop, never displayed |
 
 ⭐ **No other surface renders an opaque identifier where a name exists.**
+
+
+# ⭐⭐ §8.G2b · G2 DOES NOT CLOSE — AND THE RECORDED CAUSE IS DISPROVEN (2 Aug)
+
+## ⭐ 1 · THE SCHEDULE WORKS — RPO IS NOW BOUNDED AS A MEASURED FACT
+
+| kind | cron | retention | fired |
+|---|---|---|---|
+| **DAILY** | `11 11 * * *` | 6 days | ⭐ **2026-08-01T11:11Z · 250 MB** |
+| **MONTHLY** | `21 11 1 * *` | 89 days | ⭐ **2026-08-01T11:21Z · 250 MB** |
+| **WEEKLY** | `29 20 * * 6` | 27 days | ⭐ **2026-08-01T20:29Z · 250 MB** |
+
+Plus the manual `g2-restore-proof` (31 Jul, 249 MB, **no expiry**).
+
+⭐⭐ **ALL THREE SCHEDULES HAVE PRODUCED A BACKUP.** G1's closure is confirmed by
+output, not by configuration. ⭐ Today's DAILY had not yet fired at the time of
+measurement (04:56Z, cron 11:11Z) — **that is the cron, not a miss.**
+
+## ⭐⭐ 2 · THE RESTORE STILL FAILS, AND THE 31 Jul INFERENCE IS WRONG
+
+**Signatures re-confirmed before anything was called, unchanged:**
+
+| mutation | verdict |
+|---|---|
+| `volumeInstanceBackupRestore(volumeInstanceBackupId, volumeInstanceId)` | ⭐⭐ **STILL NO TARGET PARAMETER. NOT CALLED.** |
+| `volumeInstancePITRRestore(newServiceName, sourceRepoPath, targetTimestamp, volumeInstanceId)` | the safe path — ⭐ **FAILED AGAIN** |
+
+**Four attempts today, three different target timestamps spanning the whole
+retention window** — just after the WEEKLY, at the DAILY's own instant, and eight
+hours before now. **Every one returned the identical message:**
+
+> *"Couldn't reach the source service's pgBackRest catalog. This is usually
+> transient…"*
+
+⭐⭐ **TEN IDENTICAL FAILURES ACROSS TWO DAYS. IT IS NOT TRANSIENT.**
+
+### ⭐⭐ THE 31 Jul INFERENCE IS DISPROVEN
+
+CORE recorded, explicitly **as an inference and not a measurement**, that the
+catalog was probably uninitialised **because no scheduled backup had run**.
+
+⭐⭐ **THREE SCHEDULED BACKUPS HAVE NOW RUN AND THE ERROR IS UNCHANGED. THE
+STATED CAUSE IS FALSE.** ⭐ Recording it as an inference is what made it
+falsifiable — and it has now been falsified by the retest it named.
+
+⭐ **What is established:** the volume backup mechanism produces artefacts; the
+**PITR path cannot read a pgBackRest catalog for this volume**, and no field in
+the API indicates whether one exists. ⭐ **The cause is now UNDETERMINED and is
+recorded as such rather than replaced with a second guess.**
+
+## ⭐ 3 · RTO REMAINS UNMEASURED
+
+⭐⭐ **NOT ESTIMATED.** No restore completed, so there is no duration to report.
+A guessed RTO would be a hypothesis about a hypothesis.
+
+**RPO, observed:** last backup **2026-08-01T20:29Z**, measurement at
+**2026-08-02T04:56Z** → ⭐ **8h27m of exposure at that moment**, bounded by the
+DAILY cadence at **24h worst case** — the platform's finest offering.
+
+⭐ **RPO is bounded and PROVEN by output. RTO is UNKNOWN. G2 asks the second
+question.**
+
+## ⭐ 4 · NO WORKAROUND — AGAIN, AND FOR THE SAME REASON
+
+⭐⭐ **A `pg_dump` into a scratch database would prove `pg_dump` works, not that
+RAILWAY'S BACKUPS RESTORE.** It verifies a different artefact than the schedule
+produces. **A mechanism that appears to restore and does not is the state G1 and
+G2 exist to end.**
+
+## ⭐ 5 · PRODUCTION UNTOUCHED — CONFIRMED BY MEASUREMENT
+
+| | |
+|---|---|
+| services | ⭐ **exactly `web` + `Postgres`** — no restore target was created |
+| `/health` | **200** |
+| tables / rows | **101 / 33,651** — ⭐ **identical to the pre-attempt baseline** |
+| packs | **16**, ⭐ **every `content_hash` identical** |
+| tables with changed counts | ⭐ **0** |
+
+⭐ **The fresh baseline differs from G1's** (97 tables / 34,753 rows / 20 packs):
+tables grew with the Prescience and pilot-viewer work, and packs fell from 20 to
+16 when Halcyon and Helios were deleted. **The baseline was re-captured rather
+than assumed, which is why the comparison means anything.**
+
+## ⭐⭐ 6 · G2 DOES NOT CLOSE
+
+**Second consecutive lane.** ⭐ **AN UNTESTED BACKUP IS A HYPOTHESIS, AND AXIOM
+STILL HOLDS ONE.** The backups exist, are scheduled, and are 250 MB; **whether
+they restore is unknown.**
+
+⭐ **This is a platform-side blocker, and the next step is Railway support** —
+not another attempt from this side. Ten identical failures is the evidence to
+open that with.
