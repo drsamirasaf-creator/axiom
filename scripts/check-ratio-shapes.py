@@ -4,7 +4,7 @@
 ⭐ WHAT THIS IS AND IS NOT. It keys on ARITHMETIC SHAPE, never on identifier, and
 it reports THREE coverage numbers before it reports a single duplicate:
 
-    1. shapes derivable of 79      a property of the REGISTRY
+    1. shapes derivable of N       a property of the REGISTRY (N read, not typed)
     2. detectable at all, of (1)   a property of the INSTRUMENT
     3. detectable UNAMBIGUOUSLY    the only number a zero may be read against
 
@@ -311,7 +311,11 @@ def main():
     live = {f: rid for f, rid in shapes.items() if rid in passed}
 
     print("COVERAGE — before any duplicate count")
-    print(f"  1. shapes derivable of 79                {len(derivable)}")
+    # ⭐ THE DENOMINATOR IS READ, NEVER TYPED. It was the literal 79 and the
+    # registry became 80 on 2 Aug — a coverage line whose denominator is a
+    # constant stops describing the corpus the moment the corpus moves, and
+    # reports the same reassuring fraction while drifting.
+    print(f"  1. shapes derivable of {len(by_id):<17d}{len(derivable)}")
     print(f"  2. detectable at all, of {len(derivable):<3}             {len(det)}")
     print(f"  3. detectable UNAMBIGUOUSLY, of {len(derivable):<3}      {len(unamb)}")
     print(f"  4. known-positive control PASSES         {len(live)}   <- a zero may only be read against this")

@@ -135,7 +135,7 @@ stochastic engine is no longer blocked on a false premise.**)
 |---|---|---|
 | B1 | ~~Wire `notify_ready` to publication~~ | ⭐ **BUILT `060bbd4`** — called from the calendar sweep after publish, idempotent per pack, CEO only. Retrospective notification of the twenty existing packs is OFF and is a RULING (see A10). |
 | B1b | ~~§7s.5 the Value Bridge~~ | ⭐ **BUILT `bc3b44f`** — residual shown, rate driver on KD_FLAT with the kd counterfactual in the artefact, initiative driver absent and measured. |
-| B2 | **§7r ratio library** | **Nothing.** The registry yaml is read only by a CI guard; the Pack's "Why" section declares this gap today. |
+| B2 | **§7r ratio library** | **Stage 1 done (2 Aug, §7r-R / §7r-G).** ⭐ "Nothing" was wrong: `ratios.py` owns 7 functions and `dashboard_metrics` serves 14 ratios as `kpi_strip` VALUES — a scan for ratio-named KEYS reports zero on a working surface. Registry 7r.8, 45/80 computable, guard now scans the yaml. Still unexecuted; the Pack's "Why" gap text stands. |
 | B3 | **§7r-D DuPont** | **Nothing — blocker cleared.** |
 | B4 | **`ValuationRun` code version** | **Nothing.** §7v closed payload hash + registry versions; code revision remains absent. |
 | B5 | **§7u (b)** per-company stored assumptions | Deferred, not dropped. |
@@ -6799,6 +6799,164 @@ not yet computable. A survey of producers found **one independent implementation
 for all twelve policed quantities** — the claim confirmed from a second
 direction — but that survey sees dict-literal keys under `services/` only, so a
 report builder or the frontend is invisible to it.
+
+## §7r-R — THE SEVEN RATIO RULINGS (founder rulings, 2 Aug)
+
+Scoped at `383b9e0`. Ten items were routed for ruling; **five of them were not
+rulings at all** — defects with one correct answer, separated out before the
+rulings were made, because a defect presented as an option invites a decision
+nobody needs to take. The five are recorded under §7r-DEF below.
+
+**R1 · `nwc` is OPERATING working capital — ex-cash, ex-debt.** A cash-flow
+bridge that includes cash double-counts it. `axiom.working_capital` remains the
+separate all-current measure. ⭐ **This settles a THIRD registry-versus-engine
+disagreement that the scope report did not carry:** `axiom.fcff`'s formula uses
+`bs.current_assets - bs.current_liabilities` — the inclusive basis — while the
+engine's FCFF uses the operating one. FCFF feeds the DCF and renders in the KPI
+strip, so `axiom.fcff` must move to the operating basis too.
+
+**R2 · Delegation is the pattern.** The registry is a specification that calls
+into owners for anything already owned. Reversing it would create a second
+WACC. `cagr` must state its horizon regardless.
+
+**R3 · Common-size is a rendering mode of the statements, not a ratio family.**
+Both leave the registry's arithmetic. `axiom.ohlson_o` waits until specified —
+assume no source exists.
+
+**R4 · The engine is authoritative: POINT-IN-TIME.** The registry drops `avg()`
+and the `basis` field for ROA, ROE and ROIC. First period renders **absence,
+never the closing balance** — a single-balance average is not an average.
+*Measured before ruling: 291 period pairs, median gap 0.46 pp, maximum 313.54
+pp, 79 pairs (27%) over 1 pp.*
+
+**R5 · Keep both ROICs; label the peer figure as computed on a reduced basis.**
+Aligning downward would make a company's headline ROIC differ from its benchmark
+ROIC on the same screen. **The silence is the defect, not the difference.**
+
+**R6 · Split `other_current_assets` into receivables and inventory, and
+`other_current_liabilities` into payables.** Template change, +6 ratios — the
+largest single unblock available.
+
+**R7 · The registry is read at COMPUTE TIME.**
+
+### §7r-DEF — the five that were defects, not rulings (fixed 2 Aug, 7r.8)
+
+| | defect | why it was not a choice |
+|---|---|---|
+| 1 | `is.ebit` expr said `depreciation_amortization` | that is the **storage field name** of `is.dep_amort`; 7r.7's rename missed the site. Blocked **29** ratios |
+| 2 | `bs.noncurrent_assets` undeclared | the field **is** collected; `templates.py:411` derives it at ingest |
+| 3 | `bs.other_noncurrent_liabilities` undeclared | collected, and a v8 OPTIONAL key |
+| 4 | `axiom.roic` had no `* 100` | its own `unit: percent` **and** `axiom.eva`'s `/100` both require it — two independent constraints, one answer |
+| 5 | `axiom.ebit_growth_yoy` referenced, absent | written from its two identically-shaped siblings; the alternative (deleting `operating_leverage`) destroys the more useful of the two |
+
+**Registry 7r.7 → 7r.8. Ratios 79 → 80. Computable 41 → 45. Headline stays 14.**
+
+⭐ **NO FIGURE MOVED, PROVEN NOT ARGUED.** The production `derive_series` and
+`dashboard_metrics` were run over all 33 stored datasets in both trees:
+**28,455 leaf values, byte-identical digest, 0 call failures.** The peer
+benchmark path — the one Python file this lane edited — was fingerprinted on
+**numbers only**, since R5's disclosure is a string and is meant to change:
+**2,798 numbers, identical digest.** The fingerprint was controlled against a
+**1e-9** perturbation and moved, so the match is not vacuity.
+
+## §7r-G — THE GUARD SAID "SHAPE" AND MEANT "VARIABLE NAME" (2 Aug)
+
+`check-sole-owner.py` reported **ROIC 1 site, expected 1, ✓ sole ownership
+holds** while a second ROIC sat in the tree at `benchmarks/engines.py:100`:
+
+```python
+out["roic"] = ebit * (1 - tax_rate) / (td + te - cash)
+```
+
+`_roic_shape` required operands literally **named** `nopat` and `ic`. The peer
+site names neither — its locals come from
+`ta, te, td = g("total_assets"), g("total_equity"), g("total_debt")`. The
+registry's own `enumeration_guard` stanza declared `keys_on: arithmetic_shape`
+and `not_keyed_on: identifier`, and for this quantity **that was false**.
+
+⭐ **`check-ratio-shapes.py` PREDICTED THIS IN WRITING** — *"a second ROIC that
+computes its own denominator inline INVISIBLE"* — while the instance was already
+present. A named blind spot is a shape to add, not a limitation to restate.
+
+**FIXED** by resolving local names to what they were **bound from**, so
+`td + te - cash` reads as debt + equity − cash whatever it is spelled. Direction
+matters: the alias lookup is **last** and can only ADD detections, so no existing
+site can be lost — the standing law that a counter falling when code improves is
+a silently loosened guard.
+
+**WHAT THE FIX CAUGHT, beyond the known breach:** the inline invested capital
+beside it (`benchmarks:99`), on the reduced basis. Both allowlisted under R5 —
+and the allowlist entry is **conditional**: `label_control()` fails the build if
+the served disclosure stops naming the reduced basis, so an exemption cannot
+outlive its reason.
+
+### The registry is now scanned, before it executes
+
+The guard walked `.py` under `services/api` and nothing else. Under R7 the
+registry becomes code, and **four of five guarded quantities are restated in
+it** — `axiom.net_debt`, `bs.total_debt`, `axiom.invested_capital`,
+`axiom.roic` — with `axiom.eva` the fifth once its shape was added. It would
+have printed "✓ sole ownership holds" throughout.
+
+⭐ **THE EXEMPTION IS TIED TO NON-EXECUTION AND MEASURED.** While nothing reads
+the file at runtime these are specification. The day a module under `services/`
+loads it, the build fails until each delegates — **R2 enforced at exactly the
+moment it starts to matter, and not one lane before.** `axiom.wacc` already
+delegates (`wacc_at(actual_leverage)`): the registry solved this for the hardest
+of the five and did not carry it to the other four.
+
+### Three instrument defects found by the controls, not by the output
+
+1. ⭐⭐ **`is` IS A PYTHON KEYWORD.** `is.gross_profit / is.revenue * 100` raises
+   `SyntaxError`, so **every income-statement formula** — the largest token
+   group, carrying EBIT, PAT and every margin — landed in `except SyntaxError`
+   and was skipped silently. Nothing looked wrong: the scan still found the
+   `bs.`-namespace duplicates. Only a **known positive** catches this; a smoke
+   test does not.
+2. **§III.9, ninth instance — and inside a control written in the same lane as
+   the rule it enforces.** `registry_readers()` was a substring search and
+   reported `pack_render.py` as a runtime reader, failing the build. That module
+   does not load the registry: its **docstring** says the registry is loaded by
+   nothing but a CI guard, and the search matched the sentence describing the
+   absence. Now an AST read that excludes docstrings.
+3. **The non-descent law was not carried into the new scan.** `axiom.net_debt`
+   was counted once as NET_DEBT and again as TOTAL_DEBT for its own inner
+   add-chain, then reported as an "UNEXPECTED registry site". One expression,
+   two accusations.
+
+⭐ A fourth was caught by the label control: the disclosure spans **seven
+adjacent string literals**, so `"reduced basis"` falls across a line break and a
+text search over the file reported it missing while the **shipped string
+contained it**. An AST read gets what Python assembles — and also avoids matching
+the explanatory comment above it, which would have passed on prose no reader
+ever sees.
+
+### §7r-T — THE REGRESSION TEST THAT PASSED ON THE REGRESSION (2 Aug)
+
+`tests/unit/test_ratio_registry_integrity.py` exists because three of the five
+defects were ONE defect — a token referenced and never declared — and
+`evaluation.forbidden` already prohibited it with no instrument.
+
+⭐⭐ **ITS FIRST DRAFT WENT GREEN ON THE PRE-FIX REGISTRY — all five tests
+passing against the very defects they were written for.** Two causes, the same
+mistake twice:
+
+1. **The token pattern required a namespace** (`(is|bs|cf|…)\.name`). All three
+   undeclared tokens were **bare** names — *which is precisely why they were
+   undeclared*. A pattern keyed on the namespace can only find tokens that have
+   one.
+2. **The percent test's exemption was assumed, not checked.** "Chains into a
+   ratio" was read as "chains into a percent", so `axiom.roic`'s
+   `avg(axiom.invested_capital)` — **currency** — exempted it from the rule it
+   was breaking.
+
+**STANDING LAW, reaffirmed: a new guard is run against the OLD artefact before
+it is believed.** Three of the five now fail at `383b9e0` and pass at 7r.8. Both
+defects above were found by that run, not by reading the tests.
+
+The four remaining unresolved references are named per-owner in a **shrink-only
+PENDING list**, never a blanket skip — a blanket skip would also hide a sixth
+appearing tomorrow, which is the whole subject of the file.
 
 ## §7r-H — HEADLINE SET: FOURTEEN, LOCKED (founder ruling)
 

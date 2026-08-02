@@ -7,8 +7,20 @@ calibrated against a codebase that already passes, so it proves only that it can
 print a tick. This one is expected to find FOUR net-debt sites on the day it is
 written. If it finds three, the detector is wrong, not the codebase.
 
-⭐ IT KEYS ON ARITHMETIC SHAPE, NOT ON IDENTIFIERS. Every one of the four sites
-computes the same quantity and only two of them spell it the same way:
+⭐⭐ IT KEYS ON ARITHMETIC SHAPE, NOT ON IDENTIFIERS — AND FOR ROIC THAT WAS
+FALSE UNTIL 2 Aug. `_roic_shape` required operands literally NAMED `nopat` and
+`ic`, so a second ROIC at `benchmarks/engines.py:100` — whose locals come from
+`ta, te, td = g("total_assets"), g("total_equity"), g("total_debt")` — read as
+zero sites and this file printed "✓ sole ownership holds" over it.
+
+The claim in this docstring was stronger than the mechanism beneath it, which is
+the §III.9 shape one level up: a rule that states more than it enforces. Fixed
+by resolving local names to what they were BOUND from. The sentence is kept in
+its corrected form rather than deleted, because the next reader needs to know
+the guard was once wrong in exactly the direction it warns about.
+
+Every one of the four net-debt sites computes the same quantity and only two of
+them spell it the same way:
 
     financials:328    _n(lambda a, b: a - b, debt, cash)          <- inside a lambda,
                                                                      operands are the
@@ -31,6 +43,7 @@ One-directional coverage checks report clean on a surface they can no longer
 see, which is the failure this whole family of guards exists to prevent.
 """
 import ast
+import re
 import os
 import sys
 
@@ -164,20 +177,50 @@ TOTAL_DEBT_SITES = [
 # real violations — a guard red on work that has not been scheduled yet is
 # noise, and noise is how a red stops being read.
 ENGINES = "services/api/modules/financials/engines.py"
+
+# ⭐⭐ THE PEER SITE IS ALLOWLISTED BY RULING, AND THE RULING HAS A CONDITION.
+# R5 (2 Aug): "Keep both ROICs; label the peer figure as computed on a reduced
+# basis. Aligning downward would make a company's headline ROIC differ from its
+# benchmark ROIC. The silence is the defect, not the difference."
+#
+# So this entry is not an excuse — it is the second half of a ruling whose first
+# half is a disclosure. `label_control()` fails the build if the disclosure goes
+# missing, which makes the allowlist entry conditional on the thing that
+# justifies it. An allowlist that outlives its reason is how a guard becomes
+# decoration.
+PEERS = "services/api/modules/benchmarks/engines.py"
 ALLOWLIST = {"net_debt": [LIBRARY],
-             "roic": [ENGINES],        # -> LIBRARY in Segment E (after IC)
+             "roic": [ENGINES, PEERS],  # -> LIBRARY in Segment E (after IC)
              "eva": [ENGINES],         # -> LIBRARY in Segment E
              "wacc": [LIBRARY],        # consolidated in D-1
              # total_debt is COUNTED, not consolidated — see
              # _total_debt_shape. Its allowlist is the set of
              # callers legitimately forming the base term.
              "total_debt": TOTAL_DEBT_SITES,
-             "invested_capital": IC_SITES}
-EXPECTED = {"net_debt": 1, "roic": 1, "eva": 1, "wacc": 1,
-            "total_debt": 17, "invested_capital": 1}
+             "invested_capital": IC_SITES + [PEERS]}
+EXPECTED = {"net_debt": 1, "roic": 2, "eva": 1, "wacc": 1,
+            "total_debt": 17, "invested_capital": 2}
+
+# The disclosure R5 requires, and where it lives. Checked as SUBSTANCE, not as a
+# string: the note must name what the peer basis omits.
+LABEL_SITE = PEERS
+LABEL_MUST_MENTION = ("preferred", "minority", "reduced basis")
 
 SCAN_DIRS = ["services/api"]
 SKIP = {"__pycache__"}
+
+
+# ⭐⭐ LOCAL NAMES ARE RESOLVED TO WHAT THEY WERE BOUND FROM. Set per module by
+# the Finder; consulted by `_key_of` as a last resort, never before the
+# structural reading. See `alias_map` for why this exists.
+ALIASES = {}
+
+# Registry formulas wrap operands in the evaluator's own functions. `avg(x)` and
+# `prior(x)` are period selectors — they do not change WHICH quantity is meant,
+# so an operand recogniser must see through them exactly as it sees through
+# `.get(...)`. Without this, `avg(axiom.invested_capital)` reads as None and the
+# registry's ROIC goes uncounted.
+_TRANSPARENT_CALLS = {"avg", "prior", "abs"}
 
 
 # ── operand recognisers: what does this expression MEAN, not what is it called ─
@@ -190,16 +233,101 @@ def _key_of(node):
     `BS["preferred_equity"].get(ys)` — a Call, not a Subscript — and the
     recogniser returned None for every such operand. The counter would have
     reported 1 where there are 2, and an expected count taken from an
-    uncalibrated counter is a number about the counter, not the codebase."""
+    uncalibrated counter is a number about the counter, not the codebase.
+
+    ⭐⭐ AND IT MUST SEE THROUGH A LOCAL NAME TO WHAT THE LOCAL WAS BOUND FROM.
+    This is the fix for the breach the guard was missing. `benchmarks:100`
+    writes `ebit * (1 - tax_rate) / (td + te - cash)`, where `td` and `te` come
+    from `ta, te, td = g("total_assets"), g("total_equity"), g("total_debt")`.
+    Every operand recogniser here compared `_key_of` against a fixed vocabulary
+    of spellings — `total_equity`, `equity` — so a two-letter local matched
+    nothing and a second ROIC read as zero sites.
+
+    A guard whose docstring says "enforced by SHAPE" and which is in fact
+    enforced by VARIABLE NAME is the §III.9 shape one level up: the rule states
+    a stronger claim than the mechanism delivers. `check-ratio-shapes.py`
+    predicted this exact failure in writing — "a second ROIC that computes its
+    own denominator inline INVISIBLE" — and it was already in the tree.
+
+    ⭐ THE ALIAS LOOKUP IS LAST, AND ONLY ADDS. A name that already reads as a
+    key keeps that reading, so no existing detection can be lost by resolving
+    aliases — the direction that matters under the standing law below."""
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
             and node.func.attr == "get":
         node = node.func.value
+    # registry period selectors: avg(x) / prior(x) mean the same quantity as x
+    while (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+           and node.func.id in _TRANSPARENT_CALLS and len(node.args) == 1):
+        node = node.args[0]
     while isinstance(node, ast.Subscript):
         k = node.slice
         if isinstance(k, ast.Constant) and isinstance(k.value, str):
             return k.value
         node = node.value
-    return node.id if isinstance(node, ast.Name) else None
+    # registry tokens are dotted: bs.short_term_debt -> short_term_debt
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Name):
+        return ALIASES.get(node.id, node.id)
+    return None
+
+
+def alias_map(tree):
+    """name -> the string key it was bound from, within one module.
+
+    Recognises the two binding forms this codebase actually uses:
+
+        td = g("total_debt")                      a keyed accessor call
+        ta, te, td = g("total_assets"), g("total_equity"), g("total_debt")
+
+    ⭐ IT DOES NOT FOLLOW ARITHMETIC. `debt = std + ltd` binds a name to an
+    EXPRESSION, and calling that alias "short_term_debt" would make the guard
+    assert an operand identity the code does not have. Only a direct keyed read
+    is followed; anything else leaves the name reading as itself.
+
+    ⭐ AND IT NEVER OVERWRITES A REBOUND NAME WITH AN OLDER READING. A name
+    assigned twice from different keys is dropped rather than guessed — an alias
+    that is wrong is worse than an alias that is absent, because it produces a
+    confident match on the wrong quantity."""
+    def keyed(v):
+        # g("total_equity") / _series(IS, "revenue", years) — a constant string arg
+        if isinstance(v, ast.Call):
+            consts = [a.value for a in v.args
+                      if isinstance(a, ast.Constant) and isinstance(a.value, str)]
+            if len(consts) == 1:
+                return consts[0]
+        # BS["total_equity"].get(ys) / bs["cash"][ys]
+        if isinstance(v, (ast.Subscript, ast.Call)):
+            k = _key_of(v)
+            if k and not isinstance(v, ast.Name):
+                return k
+        return None
+
+    out, conflicted = {}, set()
+
+    def bind(target, value):
+        if not isinstance(target, ast.Name):
+            return
+        k = keyed(value)
+        if not k:
+            return
+        if target.id in out and out[target.id] != k:
+            conflicted.add(target.id)
+        out[target.id] = k
+
+    for n in ast.walk(tree):
+        if not isinstance(n, ast.Assign) or len(n.targets) != 1:
+            continue
+        t, v = n.targets[0], n.value
+        if isinstance(t, ast.Tuple) and isinstance(v, ast.Tuple) \
+                and len(t.elts) == len(v.elts):
+            for tt, vv in zip(t.elts, v.elts):
+                bind(tt, vv)
+        else:
+            bind(t, v)
+    for c in conflicted:
+        out.pop(c, None)
+    return out
 
 
 def _is_cash(n):
@@ -251,23 +379,53 @@ def _n_call_shape(node):
     return (_is_debt_aggregate(a) or _is_debt_component(a)) and _is_cash(b)
 
 
+_NOPAT_KEYS = {"nopat", "n_"}
+_IC_KEYS = {"ic", "invested_capital"}
+_EBIT_KEYS = {"ebit", "e", "operating_profit"}
+_TAX_KEYS = {"tax_rate", "tax_rate_policy", "t", "T", "tax"}
+
+
+def _is_nopat(n):
+    """A name meaning NOPAT, or NOPAT written out: <ebit> * (1 - <tax rate>).
+
+    ⭐ THE INLINE FORM IS THE ONE THAT WAS INVISIBLE. Requiring the literal name
+    `nopat` meant the guard could only find a NOPAT somebody had already named,
+    which is precisely the site least likely to be a stray copy."""
+    if _key_of(n) in _NOPAT_KEYS:
+        return True
+    if not (isinstance(n, ast.BinOp) and isinstance(n.op, ast.Mult)):
+        return False
+
+    def _one_minus_tax(x):
+        return (isinstance(x, ast.BinOp) and isinstance(x.op, ast.Sub)
+                and isinstance(x.left, ast.Constant) and x.left.value in (1, 1.0)
+                and _key_of(x.right) in _TAX_KEYS)
+
+    return ((_key_of(n.left) in _EBIT_KEYS and _one_minus_tax(n.right))
+            or (_key_of(n.right) in _EBIT_KEYS and _one_minus_tax(n.left)))
+
+
+def _is_ic(n):
+    """A name meaning invested capital, or invested capital written out —
+    on either the full basis or the reduced one. See `_ic_shape`."""
+    return _key_of(n) in _IC_KEYS or _ic_shape(n)
+
+
 def _roic_shape(node):
-    """<nopat> / <invested capital>."""
+    """<nopat> / <invested capital>, with both operands read by MEANING."""
     if not (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div)):
         return False
-    return _key_of(node.left) == "nopat" and _key_of(node.right) in ("ic", "invested_capital")
+    return _is_nopat(node.left) and _is_ic(node.right)
 
 
 def _roic_n_shape(node):
-    if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-            and node.func.id == "_n" and len(node.args) == 3):
+    if not (_is_n_call(node) and len(node.args) == 3):
         return False
     fn = node.args[0]
     if not (isinstance(fn, ast.Lambda) and isinstance(fn.body, ast.BinOp)
             and isinstance(fn.body.op, ast.Div)):
         return False
-    return (_key_of(node.args[1]) == "nopat"
-            and _key_of(node.args[2]) in ("ic", "invested_capital"))
+    return _is_nopat(node.args[1]) and _is_ic(node.args[2])
 
 
 def _eva_shape(node):
@@ -285,6 +443,38 @@ def _eva_shape(node):
             and node.func.id == "_n" and node.args:
         fn = node.args[0]
         if isinstance(fn, ast.Lambda) and _sub_mult(fn.body):
+            return True
+    # ⭐⭐ THE SPREAD FORM: (roic - wacc) * ic, optionally scaled by 100.
+    # EVA has two standard spellings — `nopat - wacc*ic` and `(roic - wacc)*ic`
+    # — which are algebraically identical and structurally unrelated. The guard
+    # knew only the first, and `axiom.eva` in the registry is written the
+    # second way, so the registry scan found four of the five duplicates and
+    # reported the fifth as absent. This file's own closing note names that
+    # blind spot in general terms ("a duplicate that reorders into an
+    # algebraically equal but structurally different form is not matched"); a
+    # named instance of it is a shape to add, not a limitation to restate.
+    if _spread_eva(node):
+        return True
+    return False
+
+
+def _spread_eva(node):
+    """(<roic> - <wacc>) * <invested capital>, with or without a /100 scale."""
+    def _unscale(n):
+        # strip a trailing / 100 or * 0.01 — a unit conversion, not a definition
+        if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Div) \
+                and isinstance(n.right, ast.Constant) and n.right.value == 100:
+            return n.left
+        return n
+
+    if not (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mult)):
+        return False
+    for a, b in ((node.left, node.right), (node.right, node.left)):
+        spread = _unscale(a)
+        if not (isinstance(spread, ast.BinOp) and isinstance(spread.op, ast.Sub)):
+            continue
+        if _key_of(spread.left) in ("roic",) and _key_of(spread.right) in ("wacc",) \
+                and _is_ic(b):
             return True
     return False
 
@@ -346,6 +536,9 @@ _EQUITY_KEYS = {"total_equity", "equity"}
 # code improves reports a fix as a removal, and a ratchet welcomes it.
 _PREF_KEYS = {"preferred_equity", "preferred"}
 _MINO_KEYS = {"minority_interest", "minority"}
+# An aggregate debt term standing in the invested-capital chain. Components
+# (short/long term) are NOT here: two of those with no equity is net debt.
+_DEBT_KEYS = {"total_debt", "debt", "debt0", "td"}
 
 
 def _is_equity(n):
@@ -380,8 +573,23 @@ def _ic_shape(node):
         if not _is_cash(sub.right):
             return False
         keys = _chain_keys(sub.left, set())
-        return (bool(keys & _EQUITY_KEYS)
-                and bool(keys & (_PREF_KEYS | _MINO_KEYS)))
+        if not (keys & _EQUITY_KEYS):
+            return False
+        # full basis: equity plus at least one of preferred / minority
+        if keys & (_PREF_KEYS | _MINO_KEYS):
+            return True
+        # ⭐⭐ THE REDUCED BASIS — RULED KEPT (R5, 2 Aug), THEREFORE RULED VISIBLE.
+        # `td + te - cash` at benchmarks:100 is invested capital computed without
+        # preferred equity or minority interest, because peer disclosures do not
+        # carry them. The ruling keeps both definitions and labels the peer one;
+        # what it does not permit is the guard reporting ONE site while two
+        # definitions ship. An equity-and-debt chain less cash is invested
+        # capital on any basis, so it counts here and earns its allowlist entry
+        # with a stated reason, rather than passing by being unseen.
+        #
+        # It cannot be confused with net debt: net debt's add-chain is two DEBT
+        # components and carries no equity term at all.
+        return bool(keys & _DEBT_KEYS)
 
     if _match(node):
         return True
@@ -407,9 +615,13 @@ SHAPES = {"net_debt": (_net_debt_shape, _n_call_shape),
 
 
 class Finder(ast.NodeVisitor):
-    def __init__(self, rel, src):
+    def __init__(self, rel, src, aliases=None):
+        global ALIASES
         self.rel, self.src = rel, src
         self.hits = {k: [] for k in SHAPES}
+        # module-scoped: a local named `te` means total_equity HERE and may mean
+        # nothing anywhere else.
+        ALIASES = aliases or {}
 
     def generic_visit(self, node):
         for kind, fns in SHAPES.items():
@@ -453,6 +665,11 @@ EQUIVALENT_FORMS = {
         'ic = _n(lambda d,e,pe,mi,c: d+e+pe+mi-c, debt, equity, BS["preferred_equity"].get(ys), BS["minority_interest"].get(ys), cash)',
         'ic = _n(lambda d,e,pe,mi,c: d+e+pe+mi-c, debt, equity, preferred, minority, cash)',
     ],
+    "eva": [
+        'x = _n(lambda n_, i_: n_ - w["wacc"] * i_, nopat_, ic_)',
+        'x = (roic - wacc) / 100 * ic',
+        'x = (roic - wacc) * invested_capital',
+    ],
     "net_debt": [
         'x = bs["short_term_debt"][ys] + bs["long_term_debt"][ys] - bs["cash"][ys]',
         'x = company["_debt_book"] - bs["cash"][ys]',
@@ -460,6 +677,148 @@ EQUIVALENT_FORMS = {
         'x = fin._n(lambda a, b: a - b, debt, cash)',
     ],
 }
+
+
+# ── ⭐⭐ THE REGISTRY IS SCANNED TOO, BECAUSE IT IS ABOUT TO BECOME CODE ───────
+#
+# This guard walked `.py` files under services/api and nothing else. The ratio
+# registry holds 79 formulas in YAML, four of which restate a quantity this file
+# exists to keep single. While the registry is inert that is a documentation
+# problem; the moment it is EVALUATED (R7, 2 Aug — read at compute time) it is a
+# second implementation, and the guard would have printed "✓ sole ownership
+# holds" throughout, because a `.yaml` file was never opened.
+#
+# ⭐ THE EXEMPTION IS TIED TO NON-EXECUTION, NOT ASSERTED. A registry formula is
+# allowed to restate a guarded quantity ONLY while nothing reads the registry at
+# runtime. `registry_readers()` measures that rather than trusting it: the day a
+# module under services/ loads the file, these four must delegate — which is
+# R2's ruling, enforced at exactly the moment it starts to matter, and not one
+# lane before.
+REGISTRY = os.path.join("docs", "reference", "axiom_ratio_registry.yaml")
+REGISTRY_SPEC_SITES = {
+    "net_debt": "axiom.net_debt",
+    "invested_capital": "axiom.invested_capital",
+    "roic": "axiom.roic",
+    "eva": "axiom.eva",
+    "total_debt": "bs.total_debt",
+}
+
+
+# ⭐⭐ `is` IS A PYTHON KEYWORD, AND THE INCOME STATEMENT IS THE `is.` NAMESPACE.
+# Caught by the capability control on its first run: `is.gross_profit /
+# is.revenue * 100` raises SyntaxError, so EVERY income-statement formula — the
+# largest token group in the registry, and the one carrying EBIT, PAT and every
+# margin — was landing in the `except SyntaxError` branch and being skipped. The
+# scan would have reported its remaining matches and printed no error at all.
+#
+# This is the reason a control has to be a KNOWN POSITIVE rather than a smoke
+# test. Nothing about the output looked wrong: it found the net-debt and
+# total-debt duplicates, which live in the `bs.` namespace and parse fine.
+#
+# The rename is prefix-only and preserves the Attribute structure `_key_of`
+# reads, so `IS_.gross_profit` yields exactly the key `is.gross_profit` would.
+_IS_PREFIX = re.compile(r'\bis\.')
+
+
+def _parseable(formula):
+    return _IS_PREFIX.sub("IS_.", formula)
+
+
+def registry_readers():
+    """Modules under services/ that open the registry. Empty == inert.
+
+    ⭐⭐ AN AST READ, AND THE FIRST RUN IS WHY. Written as a substring search,
+    this reported `services/api/pack_render.py` as a runtime reader and failed
+    the build. That module does not load the registry — its DOCSTRING says the
+    registry is loaded by nothing but a CI guard, and the search matched the
+    sentence describing the absence.
+
+    §III.9, ninth instance, and the first one inside a control written in the
+    same lane as the rule it enforces: a check keyed on text punishes the file
+    that states the check's own subject. A docstring is not an import."""
+    out = []
+    for base, dirs, files in os.walk(os.path.join(ROOT, "services")):
+        dirs[:] = [x for x in dirs if x not in SKIP]
+        for f in sorted(files):
+            if not f.endswith(".py"):
+                continue
+            p = os.path.join(base, f)
+            try:
+                tree = ast.parse(open(p, encoding="utf-8").read())
+            except (OSError, SyntaxError):
+                continue
+            docs = set()
+            for n in ast.walk(tree):
+                if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                                  ast.AsyncFunctionDef)):
+                    d = ast.get_docstring(n, clean=False)
+                    if d:
+                        docs.add(d)
+            for n in ast.walk(tree):
+                if (isinstance(n, ast.Constant) and isinstance(n.value, str)
+                        and "axiom_ratio_registry" in n.value
+                        and n.value not in docs):
+                    out.append(os.path.relpath(p, ROOT))
+                    break
+    return out
+
+
+def scan_registry():
+    """-> {kind: [(ratio_id, formula)]}. Every formula parsed as an expression.
+
+    ⭐ THE SHAPE FUNCTIONS ARE REUSED UNCHANGED. A registry token is an
+    Attribute (`bs.cash`) where Python writes a Subscript (`bs["cash"]`); once
+    `_key_of` reads both, `bs.short_term_debt + bs.long_term_debt - bs.cash` and
+    its Python twin are the SAME SHAPE to this guard. That is the point — a
+    duplicate that changes file format is still a duplicate."""
+    global ALIASES
+    hits = {k: [] for k in SHAPES}
+    path = os.path.join(ROOT, REGISTRY)
+    try:
+        import yaml
+        doc = yaml.safe_load(open(path, encoding="utf-8"))
+    except Exception as e:
+        return hits, f"{type(e).__name__}: {e}"
+
+    exprs = [(r["id"], r["formula"]) for r in (doc.get("ratios") or [])
+             if isinstance(r.get("formula"), str)]
+    for grp in (doc.get("vocabulary") or {}).values():
+        for tok, meta in (grp or {}).items():
+            if isinstance(meta, dict) and isinstance(meta.get("expr"), str):
+                exprs.append((tok, meta["expr"]))
+
+    ALIASES = {}
+    parsed, skipped = 0, []
+    for rid, formula in exprs:
+        try:
+            tree = ast.parse(_parseable(formula), mode="eval")
+        except SyntaxError:
+            # placeholders and prose exprs. NAMED, never silently swallowed —
+            # a skip that prints nothing is indistinguishable from a clean pass.
+            skipped.append(rid)
+            continue
+        parsed += 1
+        # ⭐ DO NOT DESCEND INTO A MATCHED NODE — the same law the Python
+        # Finder carries, and I did not carry it here on the first pass.
+        # `axiom.net_debt` is `bs.short_term_debt + bs.long_term_debt - bs.cash`;
+        # walking every node counted it once as NET_DEBT and again as TOTAL_DEBT
+        # for its own inner add-chain, then reported the second as an
+        # "UNEXPECTED registry site". One expression, two accusations.
+        stack = [tree.body]
+        while stack:
+            node = stack.pop()
+            matched = False
+            for kind, fns in SHAPES.items():
+                if any(f(node) for f in fns):
+                    hits[kind].append((rid, formula[:64]))
+                    matched = True
+                    break
+            if not matched:
+                stack.extend(ast.iter_child_nodes(node))
+    note = f"{parsed}/{len(exprs)} expressions parsed"
+    if skipped:
+        note += f"; {len(skipped)} unparseable: {', '.join(sorted(skipped))}"
+    return hits, note
 
 
 def form_control():
@@ -472,6 +831,78 @@ def form_control():
             if not any(any(f(n) for f in fns) for n in ast.walk(tree)):
                 bad.append((kind, src))
     return bad
+
+
+# ── ⭐ CONTROLS FOR THE TWO NEW CAPABILITIES — IN MEMORY, NOTHING WRITTEN ─────
+# The planted-control leak has happened four times. Nothing below touches disk.
+#
+# A control that only proves detection is half a control: a recogniser that
+# matched everything would pass it. Each block therefore carries a POSITIVE that
+# must fire and a NEGATIVE that must not.
+_ALIAS_POSITIVE = (
+    'def f(peer, tax_rate):\n'
+    '    ta, te, td = g("total_assets"), g("total_equity"), g("total_debt")\n'
+    '    cash = g("cash")\n'
+    '    out["roic"] = ebit * (1 - tax_rate) / (td + te - cash)\n')
+_ALIAS_NEGATIVE = (
+    # same arithmetic SHAPE, operands that mean something else entirely — an
+    # alias resolver that fired here would be matching punctuation, not meaning
+    'def f():\n'
+    '    a, b = g("headcount"), g("payroll_cost")\n'
+    '    c = g("revenue")\n'
+    '    out["x"] = a * (1 - rate) / (b + c - other)\n')
+_REGISTRY_POSITIVE = "bs.short_term_debt + bs.long_term_debt - bs.cash"
+_REGISTRY_NEGATIVE = "is.gross_profit / is.revenue * 100"   # also the `is` keyword control
+
+
+def _fires(src, kind, aliases=None, mode="exec"):
+    global ALIASES
+    tree = ast.parse(_parseable(src) if mode == "eval" else src, mode=mode)
+    ALIASES = aliases if aliases is not None else alias_map(tree)
+    return any(any(f(n) for f in SHAPES[kind]) for n in ast.walk(tree))
+
+
+def capability_control():
+    """-> list of failures. Proves the two new capabilities work BOTH ways."""
+    global ALIASES
+    bad = []
+    if not _fires(_ALIAS_POSITIVE, "roic"):
+        bad.append("alias resolution does NOT detect an inline peer-style ROIC "
+                   "— the breach this lane exists to fix would still be missed")
+    if _fires(_ALIAS_NEGATIVE, "roic"):
+        bad.append("alias resolution fires on unrelated operands of the same "
+                   "shape — it is matching arithmetic, not meaning")
+    if not _fires(_REGISTRY_POSITIVE, "net_debt", aliases={}, mode="eval"):
+        bad.append("registry formulas are NOT matched — a YAML net debt would "
+                   "be invisible, which is the precondition this lane requires")
+    if _fires(_REGISTRY_NEGATIVE, "net_debt", aliases={}, mode="eval"):
+        bad.append("registry scan fires on a plain margin — it would report "
+                   "every percentage in the file as a guarded quantity")
+    ALIASES = {}
+    return bad
+
+
+def label_control():
+    """R5's disclosure must exist, or the peer allowlist entry loses its reason."""
+    try:
+        src = open(os.path.join(ROOT, LABEL_SITE), encoding="utf-8").read()
+        tree = ast.parse(src)
+    except (OSError, SyntaxError) as e:
+        return [f"{LABEL_SITE}: {type(e).__name__}"]
+    # ⭐ AN AST READ, NOT A TEXT SEARCH — AND THE FIRST RUN PROVED WHY. The note
+    # is written as adjacent string literals across seven source lines, so
+    # "reduced basis" falls across a line break and a substring search over the
+    # file reported it missing while the shipped string contained it. Python
+    # joins adjacent literals at parse time, so the Constant carries the whole
+    # note. Searching source text would also have matched the explanatory
+    # COMMENT above it, passing on prose that never reaches a reader — the
+    # §III.9 shape, in the guard written to enforce a disclosure.
+    served = [n.value for n in ast.walk(tree)
+              if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+    missing = [m for m in LABEL_MUST_MENTION
+               if not any(m in s for s in served)]
+    return ([f"the peer ROIC disclosure no longer states: {missing}"]
+            if missing else [])
 
 
 def main():
@@ -489,7 +920,7 @@ def main():
                     tree = ast.parse(src)
                 except Exception:
                     continue
-                fi = Finder(rel, src)
+                fi = Finder(rel, src, alias_map(tree))
                 fi.visit(tree)
                 for k, hits in fi.hits.items():
                     for ln, txt in hits:
@@ -510,6 +941,33 @@ def main():
     else:
         print(f"  ✓ form control: {sum(len(v) for v in EQUIVALENT_FORMS.values())} "
               f"equivalent spellings all detected\n")
+
+    # ── the two new capabilities, positive AND negative, before any count ────
+    bad_cap = capability_control()
+    if bad_cap:
+        print("  ✗ CAPABILITY CONTROL FAILED — the counts below are unreadable:")
+        for b in bad_cap:
+            print(f"      {b}")
+        print()
+        rc = 1
+    else:
+        print("  ✓ capability control: alias resolution and the registry scan "
+              "each fire on a\n    known positive and stay silent on a "
+              "same-shaped negative\n")
+
+    bad_label = label_control()
+    if bad_label:
+        print("  ✗ R5 DISCLOSURE MISSING — the peer allowlist entry exists only\n"
+              "    because the reduced basis is disclosed. Without the note the\n"
+              "    entry is an exemption with no reason, so the build fails\n"
+              "    rather than the silence returning:")
+        for b in bad_label:
+            print(f"      {b}")
+        print()
+        rc = 1
+    else:
+        print("  ✓ R5 disclosure present: the peer ROIC states its reduced "
+              "basis\n")
 
     # ── the name collision, asserted rather than skipped ────────────────────
     cpath, cfrag = COLLISION_SITE
@@ -565,6 +1023,40 @@ def main():
             print(f"      ✗ COUNT {len(hits)} != expected {EXPECTED[kind]}")
             rc = 1
         print()
+
+    # ── ⭐⭐ THE REGISTRY, WHICH THIS GUARD COULD NOT SEE UNTIL NOW ───────────
+    reg, note = scan_registry()
+    readers = registry_readers()
+    print(f"  REGISTRY  {REGISTRY}  ({note})")
+    print(f"    runtime readers under services/: "
+          f"{readers if readers else 'NONE — the registry is inert'}")
+    total = sum(len(v) for v in reg.values())
+    if total == 0:
+        # ⭐ A ZERO HERE IS THE FAILURE MODE, NOT THE GOAL. The whole point is
+        # that four formulas DO restate guarded quantities; reporting none means
+        # the parser stopped working, not that the registry became clean.
+        print("    ✗ ZERO formulas matched any shape. The capability control "
+              "passed,\n      so this is a corpus or parse failure, not a "
+              "clean registry.")
+        rc = 1
+    for kind in ("net_debt", "total_debt", "invested_capital", "roic", "eva", "wacc"):
+        for rid, formula in reg[kind]:
+            expected_id = REGISTRY_SPEC_SITES.get(kind)
+            state = "specification" if readers == [] else "EXECUTING"
+            flag = "  ✗" if readers else ""
+            print(f"    {kind.upper():<17} {rid:<26} [{state}]{flag}")
+            if rid != expected_id and expected_id is not None:
+                print(f"      ✗ UNEXPECTED registry site — {expected_id!r} was "
+                      f"the known duplicate, this is a NEW one")
+                rc = 1
+            if readers:
+                print(f"      ✗ THE REGISTRY IS READ AT RUNTIME AND STILL "
+                      f"RESTATES A GUARDED QUANTITY.\n"
+                      f"        R2 rules delegation the pattern: this formula "
+                      f"must call the owner,\n        as axiom.wacc already "
+                      f"does. Until it does, two definitions ship.")
+                rc = 1
+    print()
 
     print("  ✓ sole ownership holds." if rc == 0 else
           "  ✗ sole ownership VIOLATED — see above.")

@@ -32,7 +32,7 @@
 # in place. Do not proceed to formula evaluation until the vocabulary is real.
 
 schema_version: 1
-registry_version: "7r.7"   # Segment B: debt-as-argument   # founder rulings 31 Jul; headline set = 14
+registry_version: "7r.8"   # 2 Aug: five defects fixed; R4 point-in-time; guard scans this file   # Segment B: debt-as-argument   # founder rulings 31 Jul; headline set = 14
 # 7r.5 — CHAINING RULE RELOCATED, NOT RELAXED. Founder ruling. The
 #   no-ratio-of-ratios prohibition applied to everything and was written in
 #   evaluation.forbidden; it now lives in client_extension.no_ratio_of_ratios,
@@ -205,8 +205,22 @@ vocabulary:
     is.ebit:
       source: derived
       collected: true
-      expr: "is.ebitda - depreciation_amortization"
+      expr: "is.ebitda - is.dep_amort"
       at: "engines.py:280"
+      # ⭐⭐ DEFECT 1, FIXED 2 Aug. This read `is.ebitda -
+      # depreciation_amortization` — the STORAGE FIELD NAME of is.dep_amort,
+      # not the token. Fallout from FOUNDER RULING 7r.7, which collapsed
+      # is.depreciation + is.amortisation into is.dep_amort: the vocabulary key
+      # was renamed and this expression was not.
+      #
+      # `evaluation.forbidden` already prohibits "any token not present in
+      # vocabulary", so the registry violated its own evaluation contract at
+      # its most-used token. NOT A RULING — one correct answer: EBITDA less D&A
+      # is EBIT, and is.dep_amort is the only D&A token the vocabulary has.
+      #
+      # It blocked 29 downstream ratios, six of them headline. A rename that
+      # misses one site is invisible until something tries to resolve it, and
+      # nothing did for five registry versions.
     is.interest_expense:
       source: stored
       collected: true
@@ -277,10 +291,38 @@ vocabulary:
       collected: true
       field: intangible_assets_net
       note: "goodwill is a SEPARATE stored field and is not included here"
+    # ⭐⭐ DEFECT 2, FIXED 2 Aug. `bs.total_assets` referenced a bare
+    # `noncurrent_assets` that was in no namespace and no vocabulary — so the
+    # registry's own total assets was unresolvable, and with it ROA.
+    #
+    # NOT A RULING: the field is collected. `templates.py:411` derives it from
+    # five components with absence propagating, and `derive_series` reads
+    # BS["noncurrent_assets"] on every dataset. The token was simply never
+    # declared. Basis and absence semantics are copied from that site rather
+    # than restated, because a second description of one rule is how the two
+    # drift apart.
+    bs.noncurrent_assets:
+      source: stored
+      collected: true
+      field: noncurrent_assets
+      # ⭐ STORED, NOT DERIVED — and the first draft of this entry got it wrong
+      # in the way this whole lane is about. Writing it as `expr: bs.ppe_net +
+      # bs.goodwill + bs.intangibles + bs.long_term_investments +
+      # bs.other_noncurrent_assets` would have introduced THREE new undeclared
+      # tokens while fixing a defect whose whole content is an undeclared token.
+      #
+      # The line is a required field of the data model. v8 ALSO derives it at
+      # INGEST from five optional components (templates.py:411) when they are
+      # supplied, with absence propagating — if any component is absent the
+      # total is absent, because a partial sum presented as a total is a
+      # fabricated balance sheet. A pre-v8 workbook supplies no components and
+      # its own entered total stands unchanged. That is an ingest rule, not a
+      # ratio-evaluation rule, and it stays owned where it is written.
+      at: "templates.py:411 (ingest-time derivation), engines.py:487 (read)"
     bs.total_assets:
       source: derived
       collected: true
-      expr: "bs.current_assets + noncurrent_assets"
+      expr: "bs.current_assets + bs.noncurrent_assets"
     bs.payables:
       source: absent
       collected: false
@@ -302,10 +344,21 @@ vocabulary:
       source: stored
       collected: true
       field: long_term_debt
+    # ⭐⭐ DEFECT 3, FIXED 2 Aug. Same shape as bs.noncurrent_assets: the token
+    # was referenced bare by bs.total_liabilities and never declared. It IS
+    # collected — templates.py:67 carries it as "Other Non-Current Liabilities"
+    # — and it is one of the v8 OPTIONAL keys (engines.py:62), so absence is a
+    # legitimate state on a pre-v8 dataset rather than a validation failure.
+    bs.other_noncurrent_liabilities:
+      source: stored
+      collected: true
+      field: other_noncurrent_liabilities
+      optional: true
+      at: "engines.py:62 (BS_OPTIONAL_KEYS)"
     bs.total_liabilities:
       source: derived
       collected: true
-      expr: "bs.current_liabilities + bs.long_term_debt + other_noncurrent_liabilities"
+      expr: "bs.current_liabilities + bs.long_term_debt + bs.other_noncurrent_liabilities"
     bs.equity:
       source: stored
       collected: true
@@ -577,10 +630,26 @@ ratios:
     category: Returns
     tier: core
     headline: true
-    formula: "is.pat / avg(bs.total_assets) * 100"
+    # ⭐⭐ R4 (FOUNDER RULING, 2 Aug) — POINT-IN-TIME, NOT AVERAGE.
+    # This carried `basis: average` and an avg() while the engine has always
+    # computed point-in-time. Measured over 291 consecutive period pairs on the
+    # live corpus: median gap 0.46 pp, MAXIMUM 313.54 pp, and 79 pairs (27%)
+    # differing by more than a full percentage point. ROIC drives the
+    # "value-creating / value-eroding" sentence, so a gap that size crosses the
+    # verdict.
+    #
+    # RULED: the ENGINE is authoritative. avg() and the basis field are removed
+    # rather than the engine changed — the specification was wrong, and no
+    # rendered figure moves.
+    #
+    # ⭐ AND THE FIRST PERIOD RENDERS ABSENCE, NEVER THE CLOSING BALANCE. A
+    # single-balance "average" is not an average; substituting the closing
+    # balance would have made period one silently disagree with every other
+    # period under a label claiming they were computed alike.
+    formula: "is.pat / bs.total_assets * 100"
     unit: percent
     polarity: higher_better
-    basis: average
+    basis: point_in_time
     definition: "Profit after tax over average total assets."
 
   - id: axiom.roe
@@ -588,10 +657,26 @@ ratios:
     category: Returns
     tier: core
     headline: true
-    formula: "is.pat / avg(bs.equity) * 100"
+    # ⭐⭐ R4 (FOUNDER RULING, 2 Aug) — POINT-IN-TIME, NOT AVERAGE.
+    # This carried `basis: average` and an avg() while the engine has always
+    # computed point-in-time. Measured over 291 consecutive period pairs on the
+    # live corpus: median gap 0.46 pp, MAXIMUM 313.54 pp, and 79 pairs (27%)
+    # differing by more than a full percentage point. ROIC drives the
+    # "value-creating / value-eroding" sentence, so a gap that size crosses the
+    # verdict.
+    #
+    # RULED: the ENGINE is authoritative. avg() and the basis field are removed
+    # rather than the engine changed — the specification was wrong, and no
+    # rendered figure moves.
+    #
+    # ⭐ AND THE FIRST PERIOD RENDERS ABSENCE, NEVER THE CLOSING BALANCE. A
+    # single-balance "average" is not an average; substituting the closing
+    # balance would have made period one silently disagree with every other
+    # period under a label claiming they were computed alike.
+    formula: "is.pat / bs.equity * 100"
     unit: percent
     polarity: higher_better
-    basis: average
+    basis: point_in_time
     definition: "Profit after tax over average shareholders' equity."
 
   - id: axiom.invested_capital
@@ -618,10 +703,33 @@ ratios:
     category: Returns
     tier: core
     headline: true
-    formula: "is.ebit * (1 - po.tax_rate_policy) / avg(axiom.invested_capital)"
+    # ⭐⭐ R4 (FOUNDER RULING, 2 Aug) — POINT-IN-TIME, NOT AVERAGE.
+    # This carried `basis: average` and an avg() while the engine has always
+    # computed point-in-time. Measured over 291 consecutive period pairs on the
+    # live corpus: median gap 0.46 pp, MAXIMUM 313.54 pp, and 79 pairs (27%)
+    # differing by more than a full percentage point. ROIC drives the
+    # "value-creating / value-eroding" sentence, so a gap that size crosses the
+    # verdict.
+    #
+    # RULED: the ENGINE is authoritative. avg() and the basis field are removed
+    # rather than the engine changed — the specification was wrong, and no
+    # rendered figure moves.
+    #
+    # ⭐ AND THE FIRST PERIOD RENDERS ABSENCE, NEVER THE CLOSING BALANCE. A
+    # single-balance "average" is not an average; substituting the closing
+    # balance would have made period one silently disagree with every other
+    # period under a label claiming they were computed alike.
+    #
+    # ⭐⭐ DEFECT 4, FIXED 2 Aug — THE MISSING `* 100`. Declared `unit: percent`
+    # while its formula produced a fraction, alone among the three Returns
+    # ratios. NOT A RULING: two independent constraints agree. Its own unit
+    # field says percent, and axiom.eva computes (roic - wacc) / 100, a scale
+    # that is only correct if both operands ALREADY arrive as percent. eva was
+    # right; roic was under-specified.
+    formula: "is.ebit * (1 - po.tax_rate_policy) / axiom.invested_capital * 100"
     unit: percent
     polarity: higher_better
-    basis: average
+    basis: point_in_time
     single_owner: true
     owner_note: "FOUNDER RULING. This is the ONLY ROIC in AXIOM.
       optimization_status must consume this and must not compute its own.
@@ -1143,6 +1251,37 @@ ratios:
     definition: "Year-over-year EBITDA growth."
     display_rule: "Sign flips are meaningless when the prior period is
       negative. Suppress and state 'prior period negative'."
+
+  # ⭐⭐ DEFECT 5, FIXED 2 Aug. axiom.operating_leverage's formula is
+  # `axiom.ebit_growth_yoy / axiom.revenue_growth_yoy` and referenced a ratio
+  # that was not in the file — a canonical chain dangling into nothing. The
+  # canonical_chaining ruling (7r.5) permits axiom.* chains precisely because
+  # they are "a fixed, hand-audited graph"; a dangling edge is the one thing
+  # that reading cannot survive.
+  #
+  # NOT A RULING: the definition is mechanical. Its two siblings —
+  # ebitda_growth_yoy above and pat_growth_yoy below — are identical in shape,
+  # unit, polarity, basis and display rule, differing only in the line they
+  # measure. Written from them rather than invented.
+  #
+  # ⭐ THE ONE ALTERNATIVE, NAMED SO IT IS NOT SILENTLY DISMISSED: deleting
+  # axiom.operating_leverage instead. Rejected — operating leverage is a real
+  # ratio, nothing suggests it was withdrawn, and removing a ratio to resolve a
+  # missing reference destroys the more useful of the two.
+  - id: axiom.ebit_growth_yoy
+    name: EBIT Growth (YoY)
+    category: Growth
+    tier: core
+    headline: false   # not in the locked 14
+    formula: "(is.ebit - prior(is.ebit)) / prior(is.ebit) * 100"
+    unit: percent
+    polarity: higher_better
+    basis: point_in_time
+    growth_basis: yoy
+    definition: "Year-over-year EBIT growth."
+    display_rule: "Sign flips are meaningless when the prior period is
+      negative. Suppress and state 'prior period negative'."
+    required_by: "axiom.operating_leverage — the numerator of its chain."
 
   - id: axiom.pat_growth_yoy
     name: PAT Growth (YoY)
@@ -1794,9 +1933,49 @@ enumeration_guard:
       COLLISION SITE GONE; restoring clears it."
   expected_counts:
     axiom.net_debt: 1
-    axiom.roic: 1
+    axiom.roic: 2      # see peer_roic below
     axiom.wacc: 1
     axiom.eva: 1
+    axiom.invested_capital: 2
+  # ⭐⭐ THE GUARD NOW SCANS THIS FILE (2 Aug). It walked `.py` under
+  # services/api and nothing else, so the five formulas below — which restate
+  # quantities this registry itself declares single-owner — were invisible to
+  # it. Under R7 the registry is read at COMPUTE TIME, at which point each is a
+  # second implementation. The scan was built BEFORE anything executes.
+  #
+  # The exemption is tied to non-execution and MEASURED, not asserted:
+  # check-sole-owner.py fails the build the day a module under services/ loads
+  # this file while these formulas still restate rather than delegate.
+  scans_this_file: true
+  registry_duplicates:
+    - axiom.net_debt
+    - bs.total_debt
+    - axiom.invested_capital
+    - axiom.roic
+    - axiom.eva
+  duplicate_status: "SPECIFICATION — inert while nothing reads this file at
+    runtime. Under R2 each must call its owner, as axiom.wacc already does
+    (`wacc_at(actual_leverage)`). The registry already solved this for the
+    hardest of the five and did not carry it to the other four."
+  peer_roic:
+    site: "services/api/modules/benchmarks/engines.py:100"
+    ruling: "R5 (2 Aug) — KEPT, NOT ALIGNED. A peer's ROIC divides by
+      total_debt + total_equity - cash: invested capital on a REDUCED BASIS,
+      without preferred equity or minority interest, because peer disclosures
+      rarely carry them. Aligning downward would make a company's headline ROIC
+      disagree with its benchmark ROIC on the same screen. The silence was the
+      defect, not the difference."
+    disclosure_required: true
+    enforced_by: "check-sole-owner.py label_control() — the allowlist entry is
+      void if the served note stops naming the reduced basis."
+  why_it_was_missed: "⭐ THE GUARD SAID 'keyed_on: arithmetic_shape,
+    not_keyed_on: identifier' AND FOR ROIC THAT WAS FALSE. _roic_shape required
+    operands literally NAMED `nopat` and `ic`; the peer site names neither, so
+    a second ROIC read as one site and passed. check-ratio-shapes.py had
+    predicted this exact failure in its own docstring — 'a second ROIC that
+    computes its own denominator inline INVISIBLE' — while the instance sat in
+    the tree. Fixed by resolving local names to what they were BOUND from, so
+    `td + te - cash` reads as debt + equity - cash regardless of spelling."
   note: "Counts encode the TARGET state, not today's. The guard is correctly
     RED until consolidation. A guard whose expected values describe the
     current codebase is a description, not a guard."

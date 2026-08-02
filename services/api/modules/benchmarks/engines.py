@@ -157,11 +157,27 @@ def compare(dataset: dict, sector: str | None = None,
         source = {"name": "Custom peer set",
                   "version": f"n={len(peers)} peers",
                   "kind": "peers",
+                  # ⭐⭐ R5 (2 Aug): THE SILENCE WAS THE DEFECT, NOT THE
+                  # DIFFERENCE. Peer ROIC divides by `total_debt + total_equity
+                  # - cash` — invested capital on a REDUCED BASIS, without
+                  # preferred equity or minority interest, because peer
+                  # disclosures do not carry them. The subject's own ROIC
+                  # includes both (ruled 7r.4). Both figures were shown side by
+                  # side and only the tax-rate difference was disclosed, so a
+                  # company with preferred equity was compared against peers on
+                  # a definition nobody stated. Aligning downward was rejected:
+                  # it would make the benchmark ROIC disagree with the headline
+                  # ROIC on the same screen. The note carries the difference.
                   "note": ("Sector statistics are arithmetic means computed "
                            "from the peers you supplied. Peer NWC uses the "
                            "(current assets - cash - current liabilities) "
                            "approximation; peer ROIC uses the subject's tax "
-                           "rate."),
+                           "rate, and divides by invested capital on a reduced "
+                           "basis — total debt plus total equity less cash, "
+                           "excluding preferred equity and minority interest, "
+                           "which peer disclosures rarely carry. The subject's "
+                           "own ROIC includes both, so the two are not computed "
+                           "on identical definitions."),
                   "peers": [p.get("name", f"peer {i+1}")
                             for i, p in enumerate(peers)]}
         sector_label = sector or company.get("sector") or "custom peer set"
