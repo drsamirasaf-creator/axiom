@@ -14940,6 +14940,82 @@ company — and the id is now read from **`useActiveCompany().id`**, the store's
 own accessor. ⭐ **Both are needed**: dropping the resolver would leave the store
 empty and produce the same symptom by the opposite route, which a test now pins.
 
+# ⭐⭐ §4z.1 · "WHAT IS AXIOM?" — FOUR TABS, AND A STATED EXCEPTION TO ADMISSIBILITY (2 Aug)
+
+Built from **AXIOM_Capabilities_Brochure_v7.pdf**, read from Drive by file id
+after title search failed. Frontend commit in the lane report.
+
+## ⭐ THE CLAIM AUDIT — SEVEN OF v7'S CLAIMS DID NOT SURVIVE
+
+| v7 claim | measured | disposition |
+|---|---|---|
+| *"ROIC, WACC, net debt and EVA computed once and consumed everywhere"* | `EXPECTED = {net_debt:1, roic:2, eva:1, wacc:1, total_debt:17, invested_capital:2}` | **corrected** to the ratchet formulation |
+| *"an automated check … fails it if a second copy appears anywhere"* | the guard fails on **deviation from an expected count**, not on a second copy | **corrected** |
+| *"Web and mobile … iOS and Android"* (twice) | no `ios/`, no `android/`, no Capacitor, **zero** React Native | **removed** |
+| *"Thirteen ratios on one screen"* | §7r-H locks the headline set at **fourteen** | **corrected** |
+| *"Common-size income statement and balance sheet"* (twice) | **renders nowhere** — zero matches in either repo, and R3 withdrew both from the registry on 2 Aug | **removed** |
+| *"Your own ratios"* — client-defined definitions and formulas | `client_extension` is a registry **stanza**, not a build; no UI | **removed** |
+| *"Your own inputs"* — declare metrics no template collects | no surface | **removed** |
+
+⭐ Two were mandated by the dispatch; **five more were found by audit**, which is
+what the v3 audit's history predicted.
+
+## ⭐⭐ THE STATED EXCEPTION — AND ITS BOUNDARY
+
+**Ruled 2 Aug:** Features & Benefits includes *"Segment and Product Line Revenue
+and Profitability Analysis"*, which **is not built and is not yet scoped**.
+
+The admissibility rule holds that **a claim ships when the demo answers it**, and
+this claim does not. ⭐⭐ **It is admissible ONLY because it does not assert
+present existence** — it is marked *"In development — not available today"*, in
+words, above the capability name, in a dashed-border block outside the feature
+inventory. A prospect can tell it from shipped capability **without hovering**.
+
+⭐ **THE SCOPE STATED IS ONLY WHAT IS RULED**: segment, product-line and customer
+profitability, revenue mix, concentration, the margin bridge, growth quality —
+the slice recommended and **not yet confirmed by measurement**. The design
+document's pricing elasticity, cohort economics, cannibalisation matrices and
+controlled experimentation are **deliberately absent**, because most may never
+ship in V1.0.
+
+⭐⭐ **THE EXCEPTION IS BOUNDED TO THIS ITEM AND DOES NOT GENERALISE.** The
+precedent for what happens when it does is already on the record: **the withdrawn
+brochure proof point**, and **the page-8 single-site correction** — both claims
+that outran the product and had to be retracted from a customer-facing surface.
+
+### The guard — `scripts/check-in-development-marking.py`
+
+The same rule as the comparison matrix's greens, run in the other direction: a
+green must be backed by existence, and **an in-development marking must be backed
+by ABSENCE**. It fails **both ways**:
+
+| condition | verdict |
+|---|---|
+| marking removed while the capability is absent | ✗ *"the block now reads as shipped capability on a prospect-facing page"* |
+| capability shipped while still marked | ✗ *"the page understates the product, and §4z.1's exception should be RETIRED"* |
+| frontend checkout missing | ✗ **a refusal, not a green** — an unmeasured claim is what this exists to prevent |
+
+⭐ **Its recogniser searches by SHAPE, never for the word "revenue"** — a matcher
+on that word would fire on every page of a finance product. The known positive
+asserts it fires on a real signature and stays silent on ordinary prose. Both
+red-proofs were run.
+
+## ⭐ THE RE-HOMING, AND TAB 3
+
+The page was **not a blank canvas**: 899 lines with its own Act 1 / Act 2
+tablist and `ComparisonMatrix`. Both are **carried forward verbatim** — the
+matrix untouched (no dot, label, hover, price or attribution paragraph changed),
+the Acts moved inside Getting Started alongside **§4z's twelve steps**, which
+supersede the brochure's eight because **CORE is the source of truth for
+commercial surfaces**. Steps 4 and 12 are load-bearing and both are stated as
+such on the page.
+
+⭐ **Tab 3 is OMITTED from the strip, not rendered disabled** — following
+`adminOnly`'s pattern of hiding a tab a reader cannot use. `RouteTabs` has no
+disabled state and inventing one for a single unbuilt tab would be a mechanism
+outliving its use. **Its absence is asserted** by the browser gate: a dead tab
+reappearing is as much a defect as a live one vanishing.
+
 # ⭐⭐ §4y.3 · custody-10 — THE UPLOAD DOOR, AND ITS MECHANISM MOVED (2 Aug)
 
 Frontend `67820e2`.
