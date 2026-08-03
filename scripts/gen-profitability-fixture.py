@@ -76,6 +76,30 @@ EARLIER = {2018: {"revenue": 520.0, "cogs": 312.0, "opex": 130.0},
            2020: {"revenue": 610.0, "cogs": 372.0, "opex": 158.0},
            2021: {"revenue": 700.0, "cogs": 420.0, "opex": 175.0}}
 STATEMENT_ONLY = tuple(sorted(EARLIER))
+
+# ⭐ One pool per class, so every branch of `split_pool` is exercised by the
+# recording rather than only by a unit test. Variable cost is deliberately small
+# enough that PL-B — negative at allocated EBIT — is POSITIVE at contribution,
+# which is the case the §22 corrective exists for.
+# ⭐⭐ THE POOLS RECONCILE TO cogs + opex EXACTLY, because contribution declines
+# unless they do: cost the client did not classify is variable cost the module
+# cannot see, and every unseen variable cost overstates contribution.
+# One pool per behaviour class, so every branch of `split_pool` is exercised by
+# the recording rather than only by a unit test.
+COST_POOLS = []
+for _p, _st in STATEMENT.items():
+    _cogs, _opex = _st["cogs"], _st["opex"]
+    COST_POOLS += [
+        {"period": _p, "pool": "Direct Materials", "amount": _cogs,
+         "behaviour": "variable"},
+        {"period": _p, "pool": "Facilities", "amount": _opex * 0.35,
+         "behaviour": "fixed"},
+        {"period": _p, "pool": "Customer Support", "amount": _opex * 0.45,
+         "behaviour": "semi-variable",
+         "fixed_portion": _opex * 0.30, "variable_portion": _opex * 0.15},
+        {"period": _p, "pool": "Shift Supervision", "amount": _opex * 0.20,
+         "behaviour": "step-fixed", "step_threshold": 900.0, "step_size": 12.0},
+    ]
 # Forecast periods: never carry dimensional detail, BY RULING rather than by
 # omission — the distinction the coverage block has to make.
 PROJECTED = {2026: {"revenue": 1200.0, "cogs": 720.0, "opex": 430.0},
@@ -117,7 +141,11 @@ def main(out_path):
                       k: {**{str(p): v[k] for p, v in EARLIER.items()},
                           **{str(p): STATEMENT[p][k] for p in PERIODS},
                           **{str(p): v[k] for p, v in PROJECTED.items()}}
-                      for k in ("revenue", "cogs", "opex")}},
+                      for k in ("revenue", "cogs", "opex")},
+                  # ⭐⭐ COST-BEHAVIOUR POOLS, so the recording can prove the §22
+                  # corrective renders. Meridian has none — the seed would need
+                  # them, and this lane does not seed. These belong to nobody.
+                  "cost_behaviour": COST_POOLS},
             validation={"warnings": []})
         db.add(ds); db.flush()
         for code, name in NAMES.items():
@@ -163,9 +191,15 @@ def main(out_path):
     assert len(block.get("mix_shift_series") or []) == 3, "no mix-shift series"
     diverging = [c for c, t in (block.get("trend") or {}).items() if t["diverging"]]
     assert diverging, "no line diverges — the trend panel would say nothing"
+    assert cur.get("contribution"), "no contribution in the recording"
+    assert any(c.get("available") for c in cur["contribution"].values())
     kinds = {f["id"].split(":")[0] for f in (block.get("findings") or [])}
     assert "reversal_trajectory" in kinds, f"no trajectory finding: {kinds}"
     assert "mix_dilutive" in kinds, f"no mix-shift finding: {kinds}"
+    # ⭐⭐ THE §22 CORRECTIVE MUST BE IN THE RECORDING, or the browser proof of
+    # the sentence this whole tier exists for would be over a payload that
+    # cannot express it.
+    assert "covers_variable_cost" in kinds, f"no §22 corrective: {kinds}"
     # ⭐ AND THE SHORTFALL IS IN THE RECORDING. Without it the browser could not
     # prove the surface states what it does not hold.
     cov = payload["coverage"]

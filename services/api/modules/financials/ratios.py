@@ -304,3 +304,70 @@ def eva(nopat: Number, wacc: Number, invested_capital_: Number) -> Number:
     """
     from .engines import _n
     return _n(lambda n_, w_, i_: n_ - w_ * i_, nopat, wacc, invested_capital_)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐⭐ T4.2 — THE MANAGERIAL DIVISIONS. Same owner, same reason as `margin`.
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ⭐ `check-margin-boundary.py` IS A DOWNWARD-ONLY RATCHET ON WHICH MODULES MAY
+# DIVIDE BY A SCALE, and a NEW module doing it fails. `managerial.py` composes,
+# subtracts and selects; every division it needs lives here, where absence
+# propagates once and the boundary stays where it is.
+
+def breakeven_revenue(fixed_cost: Number, contribution_ratio: Number) -> Number:
+    """Fixed cost over the contribution margin ratio. Absence propagates.
+
+    ⭐ THE CALLER GUARDS THE SIGN, NOT THIS FUNCTION. A non-positive ratio gives
+    a negative break-even — arithmetically valid, nonsense to a reader — and the
+    document requires an explanatory refusal rather than the number. Refusing
+    here would put a business rule in the arithmetic owner; refusing in the
+    caller keeps this file a library of divisions.
+    """
+    from .engines import _n
+    return _n(lambda f, r: f / r, fixed_cost, contribution_ratio)
+
+
+def breakeven_units(fixed_cost: Number, contribution_per_unit: Number) -> Number:
+    """Fixed cost over contribution per unit. Absence propagates."""
+    from .engines import _n
+    return _n(lambda f, c: f / c, fixed_cost, contribution_per_unit)
+
+
+def safety_margin(actual: Number, breakeven: Number) -> Number:
+    """How far revenue may fall before the line stops covering its fixed cost.
+
+    ⭐ NUMERATOR AND DENOMINATOR NAME THE SAME SCALE — revenue over revenue — so
+    the boundary gate reads it as a growth-like quantity rather than a margin.
+    It lives here anyway: putting it in `managerial.py` would make that module a
+    divider, and the exemption would then be a fact about a regex rather than a
+    decision anyone made.
+    """
+    from .engines import _n
+    return _n(lambda a, b: (a - b) / a, actual, breakeven)
+
+
+def contribution_leverage(contribution: Number, ebit: Number) -> Number:
+    """Contribution over EBIT — the managerial degree of operating leverage.
+
+    ⭐⭐ IT DOES NOT RESTATE `axiom.operating_leverage` (CORE §8l·1). The
+    registry's is `ebit_growth_yoy / revenue_growth_yoy` — the OBSERVED leverage
+    between two periods, a two-period quantity. This is a one-period structural
+    quantity: how much EBIT moves for a given move in revenue, given the cost
+    structure. Two different questions; two names; neither derived from the
+    other.
+    """
+    from .engines import _n
+    return _n(lambda c, e: c / e, contribution, ebit)
+
+
+def per_constrained_unit(contribution_per_unit: Number,
+                         consumption_per_unit: Number) -> Number:
+    """Contribution per unit of the SCARCE RESOURCE, not per unit of revenue.
+
+    ⭐⭐ THE RANKING THIS PRODUCES IS THE WHOLE MIX OPTIMISATION. A line with a
+    fat margin that consumes four hours a unit can be worth less than a thin one
+    consuming half an hour, and ranking by margin gets that exactly backwards.
+    """
+    from .engines import _n
+    return _n(lambda c, u: c / u, contribution_per_unit, consumption_per_unit)

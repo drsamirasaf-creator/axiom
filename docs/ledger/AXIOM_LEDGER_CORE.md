@@ -17375,3 +17375,108 @@ Contribution is the corrective and it does not exist until T4.2. **This lane
 makes the data collectable; it does not close the exposure.** Until it does, the
 Profitability surface shows a fully-allocated loss with no contribution figure
 beside it.
+
+# ⭐⭐ §8m · T4.2 BUILT — MANAGERIAL ANALYTICS, AND §22 IS CLOSED (4 Aug)
+
+Report: `docs/reports/t4-2-managerial-analytics-2026-08-04.md`.
+
+## ⭐⭐ THE SENTENCE THE PRODUCT DID NOT HAVE
+
+> *"Beta Controls covers its own variable cost. It contributes 117.5 before any
+> share of fixed and shared cost, and it is negative at allocated EBIT (-17.6)
+> only because of the share it is charged. Discontinuing it would remove that
+> contribution and move its allocated share onto the lines that remain — the
+> company would be worse off, not better."*
+
+Derived, never written: contribution positive while allocated EBIT is negative.
+It is **severity 1 and outranks the reversal itself**, and it renders in its own
+card headed *"Before you act on that loss"* on the new Contribution tab.
+
+⭐ The document's §22 — "do not automatically recommend discontinuation based on
+fully allocated EBIT alone" — was an exposure T3 created and could not close.
+**This closes it.**
+
+## ⭐⭐ CONTRIBUTION MUST BE COMPLETE OR IT DECLINES
+
+`pools_reconcile` checks the declared pools against `cogs + opex` within 0.5%
+and DECLINES otherwise, naming the shortfall: *"the cost pools declared for 2025
+add to X and your income statement shows Y — classify the remaining Z."*
+
+⭐⭐ **THE REASONING IS THE INVERSE OF THE USUAL ONE.** Cost the client did not
+classify is variable cost this module cannot see, and unseen variable cost
+OVERSTATES contribution — the figure the §22 corrective argues FROM. An
+overstatement there argues for keeping a line that should go, which is the exact
+error the corrective exists to prevent, produced by the corrective itself. Zero
+declared pools is **not** "everything is fixed"; it is nothing known, and
+treating it as zero variable cost would make every line look like it covers its
+variable cost — the strongest possible false reassurance.
+
+## ⭐ TWO BOUNDARIES SURVIVED THIS LANE RATHER THAN BEING WIDENED FOR IT
+
+**No margin is computed in `managerial.py`.** `check-margin-boundary.py` fails a
+NEW module that divides by a scale, so all five new divisions
+(`breakeven_revenue`, `breakeven_units`, `safety_margin`,
+`contribution_leverage`, `per_constrained_unit`) live in `ratios.py` — the
+owner, with no ceiling. The module composes, subtracts and selects.
+
+**No status is composed in `managerial.py`.** `_needs` and `_ok` are IMPORTED
+from T2 rather than reimplemented, because `_ok` is the ONE site where
+`weakest_status` is applied (§8a, composition rule 1). A copy would have been a
+second place where a derived figure's data status is decided.
+
+⭐ And `_variable_cost_by_line` was written in the ENDPOINT first, where it
+summed allocated amounts across pools. It moved to `managerial.py` because the
+surface's AST guard forbids arithmetic — **the guard held rather than the rule
+being widened for the lane that tripped it.**
+
+## ⭐⭐ THE STEP IS CHARGED WHERE IT IS CROSSED
+
+`optimise_mix` carries `steps` and subtracts each step whose threshold the plan
+crosses. Asserted: 9,000 units at 10/unit against an 8,000-unit threshold with a
+40 step earns **89,960, not 90,000**. A smoothed step-fixed cost produces a
+smooth optimum where the real one jumps — which is the wrong answer to the only
+question the capacity data was collected for.
+
+## ⭐ THE OPTIMUM IS A RANKING, AND THE CEILING IS DECLARED
+
+One binding constraint puts the optimum at a vertex, so the optimiser is a
+greedy fill by contribution per unit of the SCARCE RESOURCE — not per unit of
+revenue. **A line with a fat margin consuming four hours a unit is worth less
+than a thin one consuming half an hour, and ranking by margin gets that exactly
+backwards.** Every line needs a declared `maximum_sales_units` or the whole plan
+declines (§8h·2): without it the optimum puts everything into the best line,
+which is a demand claim AXIOM has no basis for.
+
+⛔ **IT REPORTS CONTRIBUTION AND NEVER ENTERPRISE VALUE** (§8k) — asserted by
+scanning the module's source for `enterprise_value`, `raev`, `cvar`,
+`discount_rate` and `wacc`.
+
+## ⭐ THE TRANSPORT PLAN STATES ITS GROUND METRIC AND ITS TIE-BREAK
+
+Unit ground metric; ties broken by **largest absolute share first**; both
+returned in the payload and stated in a sentence. Asserted deterministic by
+running the same data with its keys reversed. ⛔ **The residual is never a
+source or a destination** — a plan moving revenue into `Unallocated / Other`
+would be recommending that revenue stop being attributable.
+
+## ⛔ THE REFUSALS SHIP AS VALUES, NOT AS ABSENCES
+
+`REFUSED` carries price optimisation, optimal payment terms and automated
+discontinuation, each with its reason. **A capability that is merely missing
+reads as unbuilt and the next lane builds it; a refusal with its reason attached
+is a decision someone has to overturn deliberately.**
+
+## MERIDIAN NEEDS FOUR POOLS
+
+The seed has no cost behaviour, so contribution declines on it today. It would
+need one row per pool per period on the Cost Behaviour sheet, reconciling to
+`cogs + opex`: the two existing driver pools (customer support, logistics), the
+directly-assigned commission slice, and the corporate residual — with a
+behaviour each. **Not seeded here, by dispatch.**
+
+## VERIFIED
+
+**1976 passed** (was 1948) / 1 skipped / 3 xfailed · 29/29 gates · 28 new tests,
+red before · browser 3 modes green, 14/14 pinned still pinned · tab strip
+**1080×42px with 6 tabs**, still one row · `tsc` 0 · lint rc=0 · ratchet
+819/819 · margin boundary green with `ratios.py` as owner.

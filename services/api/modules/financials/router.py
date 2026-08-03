@@ -73,6 +73,13 @@ def _statement_totals(A, co_rev, co_cogs, co_opex):
     }
 
 
+def _company_cost(cogs, opex):
+    """The statement's total operating cost. ⭐ In `managerial`, not here — the
+    endpoint's AST guard forbids arithmetic and the rule survived this lane."""
+    from . import managerial as _M
+    return _M._sum(cogs, opex)
+
+
 def _mix_shift_series(A, block, ordered):
     """Every consecutive mix shift, each labelled with the pair it spans.
 
@@ -236,6 +243,25 @@ def _findings(block, names, currency_note=None):
                 "derivation": ("gross margin above 15% with negative allocated "
                                "EBIT in the latest period"),
             })
+
+    # ── 1b · ⭐⭐ THE §22 CORRECTIVE, AND IT OUTRANKS THE REVERSAL ITSELF ──
+    # The source document forbids recommending discontinuation on fully
+    # allocated EBIT alone. A line negative there and POSITIVE at contribution
+    # is the case where acting on the loss makes the company worse off, so the
+    # sentence that says so is severity 1 and sits beside the reversal.
+    for code, cov in (cur.get("covers_variable_cost") or {}).items():
+        if not cov.get("available"):
+            continue
+        eb = ((cur["lines"].get(code) or {}).get("allocated_ebit") or {})
+        if not eb.get("available") or (eb.get("value") or 0) >= 0:
+            continue
+        out.append({
+            "id": f"covers_variable_cost:{code}",
+            "severity": 1,
+            "sentence": cov["statement"],
+            "derivation": ("contribution is positive while allocated EBIT is "
+                           "negative — the line covers its own variable cost"),
+        })
 
     # ── 2 · gross margin holding while allocated EBIT falls ───────────────
     for code, tr in (block.get("trend") or {}).items():
@@ -1004,6 +1030,7 @@ def profitability_surface(dataset_id: int, db: Session = Depends(get_db),
     """
     from . import dimensional_analytics as A
     from . import dimensions as DIM
+    from . import managerial as M
     from ...dimensional import DimensionMember, DimensionObservation
 
     ds = _get_dataset(db, tenant, dataset_id, scoped)
@@ -1026,6 +1053,10 @@ def profitability_surface(dataset_id: int, db: Session = Depends(get_db),
                 "needs": ["revenue by segment or product line"],
                 "dimension_types": [], "periods": []}
 
+    # ⭐ THE POOLS RIDE ON THE DATASET PAYLOAD, like the statements. They are
+    # company-level period facts, not dimensional observations, and the Cost
+    # Behaviour sheet collects them at pool grain (CORE §8l).
+    cb_pools = data.get("cost_behaviour") or []
     by_type = {}
     for obs, mem in rows:
         by_type.setdefault(mem.dimension_type, {}) \
@@ -1050,6 +1081,15 @@ def profitability_surface(dataset_id: int, db: Session = Depends(get_db),
             co_cogs = (IS.get("cogs") or {}).get(str(p))
             co_opex = (IS.get("opex") or {}).get(str(p))
 
+            # ⭐⭐ T4.2 — CONTRIBUTION, AND THE §22 CORRECTIVE. The pools live on
+            # the dataset payload (the Cost Behaviour sheet); where none are
+            # supplied every capability below DECLINES in the client's own
+            # column names and nothing is guessed.
+            # ⭐ COVERAGE FIRST. Partial classification overstates contribution,
+            # and contribution is the figure the §22 corrective argues from.
+            coverage = M.pools_reconcile(cb_pools, p, _company_cost(co_cogs, co_opex))
+            variable_by_line = (M.variable_cost_by_line(cb_pools, p, rev)
+                                if coverage["available"] else {})
             rev_panel = A.revenue_by_dimension(rev, co_rev)
             dopex_panel = A.revenue_by_dimension(dopex, co_opex)
 
@@ -1075,7 +1115,10 @@ def profitability_surface(dataset_id: int, db: Session = Depends(get_db),
             share_of = shared.get("value") or {}
 
             lines = {}
+            contributions = {}
             for code in rev:
+                contributions[code] = M.contribution(
+                    rev.get(code), variable_by_line.get(code))
                 lines[code] = A.margin_hierarchy(
                     revenue=rev.get(code), direct_cost=cost.get(code),
                     direct_opex=dopex.get(code),
@@ -1088,6 +1131,18 @@ def profitability_surface(dataset_id: int, db: Session = Depends(get_db),
                 "direct_opex": dopex_panel,
                 "shared_allocation": dict(shared, pool=pool),
                 "lines": lines,
+                "contribution": contributions,
+                "cost_behaviour_coverage": coverage,
+                # ⭐⭐ THE SENTENCE THE SOURCE DOCUMENT'S §22 REQUIRES BESIDE THE
+                # FULLY-ALLOCATED LOSS. Without it the surface shows a negative
+                # line and invites the exit that would make the company worse
+                # off.
+                "covers_variable_cost": {
+                    code: M.covers_variable_cost(
+                        (contributions[code] or {}).get("value"),
+                        (lines[code]["allocated_ebit"] or {}).get("value"),
+                        line=names.get(code, code))
+                    for code in rev},
                 "totals": _statement_totals(A, co_rev, co_cogs, co_opex),
             }
         if len(ordered) >= 2:
