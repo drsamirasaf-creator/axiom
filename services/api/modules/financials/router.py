@@ -668,3 +668,103 @@ def oci_schema():
     """The OCI driver input schema (for the data-entry surface)."""
     from . import oci as oci_mod
     return oci_mod.OCI_DRIVER_SCHEMA
+
+
+@metrics_router.get("/profitability/{dataset_id}")
+def profitability_surface(dataset_id: int, db: Session = Depends(get_db),
+                          tenant: str = Depends(_tenant),
+                          scoped: int | None = Depends(_scoped)):
+    """The profitability surface — T2, rendered.
+
+    ⭐⭐ A RENDERING JOB OVER COMPLETED WORK, exactly as the ratio surface was.
+    This endpoint COMPUTES NOTHING: it reads the stored dimensional observations,
+    hands them to `dimensional_analytics`, and reports what came back. A test
+    asserts by AST that this function contains no arithmetic operator.
+
+    ⭐ THE ASSUMPTION TRAVELS WITH THE NUMBER. T2 returns each allocated figure
+    together with its method, grade and prose assumption in ONE object, and this
+    passes that object through whole. Splitting them here — figures in one key,
+    method in another — would restore exactly the defect the design prevents.
+
+    ⭐⭐ R1'S REFUSAL IS PAYLOAD, NOT AN OMISSION. `profit_before_tax` and
+    `net_profit` arrive as `{refused, ruling, reason}` and are forwarded intact,
+    so a surface renders a stated refusal rather than a blank.
+    """
+    from . import dimensional_analytics as A
+    from . import dimensions as DIM
+    from ...dimensional import DimensionMember, DimensionObservation
+
+    ds = _get_dataset(db, tenant, dataset_id, scoped)
+    data = ds.data or {}
+    IS = data.get("income_statement") or {}
+    freq = (data.get("periods") or {}).get("frequency") or ds.frequency or "annual"
+
+    rows = (db.query(DimensionObservation, DimensionMember)
+            .filter(DimensionObservation.dataset_id == dataset_id)
+            .filter(DimensionMember.id == DimensionObservation.member_id)
+            .all())
+    if not rows:
+        # ⭐ ABSENCE DECLARES. No dimensional detail is not an empty chart — it
+        # is a stated fact with the measure that would change it.
+        return {"dataset_id": dataset_id, "available": False,
+                "reason": ("No dimensional detail has been supplied for this "
+                           "dataset. Add a Segments & Products sheet to your "
+                           "upload to unlock revenue, margin and allocation "
+                           "analysis by line."),
+                "needs": ["revenue by segment or product line"],
+                "dimension_types": [], "periods": []}
+
+    by_type = {}
+    for obs, mem in rows:
+        by_type.setdefault(mem.dimension_type, {}) \
+               .setdefault(obs.period, {}) \
+               .setdefault(obs.measure, {})[mem.code] = obs.value
+    names = {m.code: m.name for _o, m in rows}
+
+    out = {"dataset_id": dataset_id, "available": True, "frequency": freq,
+           "member_names": names, "dimension_types": sorted(by_type),
+           "calculation_version": A.CALCULATION_VERSION, "by_type": {}}
+
+    for dtype, periods in by_type.items():
+        ordered = sorted(periods)
+        block = {"periods": ordered, "by_period": {}, "mix_shift": None,
+                 "margin_bridge": None}
+        for p in ordered:
+            meas = periods[p]
+            rev = meas.get("revenue") or {}
+            cost = meas.get("direct_cost") or {}
+            dopex = meas.get("direct_opex") or {}
+            co_rev = (IS.get("revenue") or {}).get(str(p))
+            co_cogs = (IS.get("cogs") or {}).get(str(p))
+            co_opex = (IS.get("opex") or {}).get(str(p))
+
+            lines = {}
+            for code in rev:
+                lines[code] = A.margin_hierarchy(
+                    revenue=rev.get(code), direct_cost=cost.get(code),
+                    direct_opex=dopex.get(code))
+            block["by_period"][p] = {
+                "revenue": A.revenue_by_dimension(rev, co_rev),
+                "mix": A.revenue_mix(rev, co_rev),
+                "concentration": A.concentration(rev),
+                "direct_cost": A.revenue_by_dimension(cost, co_cogs),
+                "direct_opex": A.revenue_by_dimension(dopex, co_opex),
+                "lines": lines,
+            }
+        if len(ordered) >= 2:
+            a, b = ordered[-2], ordered[-1]
+            ma = block["by_period"][a]["mix"]
+            mb = block["by_period"][b]["mix"]
+            if ma["available"] and mb["available"]:
+                block["mix_shift"] = A.mix_shift(ma["value"], mb["value"])
+                ga = {c: block["by_period"][a]["lines"][c]["gross_profit"].get("margin")
+                      for c in block["by_period"][a]["lines"]}
+                gb = {c: block["by_period"][b]["lines"][c]["gross_profit"].get("margin")
+                      for c in block["by_period"][b]["lines"]}
+                block["margin_bridge"] = A.margin_bridge(ma["value"], ga,
+                                                         mb["value"], gb)
+        out["by_type"][dtype] = block
+
+    out["data_statuses"] = list(DIM.DATA_STATUSES)
+    out["allocation_methods"] = A.ALLOCATION_METHODS
+    return out

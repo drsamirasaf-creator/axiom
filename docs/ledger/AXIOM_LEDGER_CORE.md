@@ -16610,3 +16610,103 @@ The seed's first run failed: `created_at` NOT NULL. Migration 0027 declares a
 raw-SQL writer against a `create_all`-made table hit a violation the same INSERT
 would have survived against a migration-made one. **T1 built both mechanisms and
 they were not equivalent.** `server_default` added to the ORM.
+
+# ⭐⭐ §8c · T3 — THE PROFITABILITY SURFACE (3 Aug)
+
+`GET /api/v1/metrics/profitability/{dataset_id}` and `/profitability`. A
+top-level ANALYZE entry: Structure · Dashboard · Feedback · **Profitability** ·
+Valuation. Report: `docs/reports/t3-profitability-surface-2026-08-03.md`.
+
+## ⭐⭐ IT RENDERS; IT DOES NOT COMPUTE — AND THAT IS AN AST READ
+
+`test_the_surface_contains_no_arithmetic` walks the endpoint's AST and fails on
+any `Add`/`Sub`/`Mult`/`Div`/`Pow`. **The first draft matched EVERY `BinOp` and
+failed on `int | None` in the signature** — the ratio surface's precedent
+applies: a guard that flags a type annotation gets loosened rather than obeyed,
+so it is restricted to arithmetic and carries a known-positive control that
+fires on a function which divides. Three further tests assert no sole-owned
+quantity is named, and that every panel is a call into T2.
+
+## ⭐⭐ THE PAGE NEVER SEATED A DATASET, AND NOTHING BUT THE BROWSER SAW IT
+
+It read `datasetId` from the store, assuming an earlier page had seated one. A
+session landing on `/profitability` FIRST — deep link, bookmark, cold sidebar
+click — seated nothing, so the fetch effect returned early and the page held its
+skeleton **forever**. It looked like a slow request; **there was no request**.
+
+⭐ **`tsc`, lint, the ratchet and the build were all green on it.** The harness
+found it because it opens every route in a COLD context, which is what a first
+visit is. Fixed by seating it the way every other analysis page does, with its
+own per-company persistence scope.
+
+⭐ Second defect underneath it: the local row type was `{ id: number }`, while
+`pickDatasetId` decides on `enterprise_id`, `is_active` and `version`. **A
+narrower local type compiles and hands the picker rows whose deciding fields are
+all `undefined`** — a tenant-scoped choice degrading into "the first row". Use
+the picker's own `DatasetRowLike`; a row type is part of the contract.
+
+## ⚠️ `build:preview` DISCARDS THE ROUTE TREE — READ THE SCRIPT
+
+`"build:preview": "NITRO_PRESET=node-server vite build; git checkout --
+src/routeTree.gen.ts"`. The regenerated tree — the only place the new route is
+registered — was **thrown away by the build that produced the bundle it was
+verified against**. §7z.1 recorded that `vite build` REWRITES the tree; it did
+not record that the preview script then REVERTS it.
+
+⭐ **The order is: regenerate → strip the augmentation → keep the LOOSE variant →
+build.** A tree that is clean in `git status` after adding a route is not a tree
+that needs no change; it is a tree that was reverted.
+
+## ⭐ FOUR TABS, NOT FIFTEEN
+
+The source document proposes eight Profitability sub-tabs and seven for Revenue.
+Six consume capabilities that do not exist. **A tab that opens onto "coming
+soon" teaches a reader that the others might be empty too**, so only built
+capabilities get one. The remainder arrive with their tiers.
+
+## ⭐ THE STRIP IS MEASURED, NOT EYEBALLED
+
+Tab strip **1080 × 42 px, 4 tabs**; sidebar **256 px**; the `Profitability`
+link **232 × 38 px** — identical in member and operator. `Profitability` is the
+longest ANALYZE label and does not wrap. The check fails above 56 px, so a
+fifth tab that wrapped the strip is caught as a NUMBER rather than needing a
+screenshot nobody opens.
+
+⭐ `PageTabs` renders plain `<button>`s — **no `role="tablist"`, no
+`role="tab"`**. Selecting by tab role found nothing and reported "not
+clickable", which reads as a broken page rather than a wrong selector. The
+harness selects by button role. The component is shared and was NOT changed
+here; the accessibility question is raised, not answered.
+
+## ⭐⭐ ASSERTED BY CONTENT, PER TAB, IN A COLD CONTEXT
+
+The reversal sentence must appear **above** the strip (ordering, not presence —
+that is what stops it being demoted into a tab by a later tidy-up);
+`Unallocated / Other` as a ROW; R1's `not reported by line`; `Contribution
+profit is not available` beside it; `Not included in this bridge:`; the strip
+surviving every selection; and **no `$0.0m` or `$0.00` anywhere on the
+surface** — a fabricated zero is the one defect this module exists to prevent.
+
+⭐ The landing assertions were first written to include R1's refusal and the
+declared absence. Both live one click away on Product Lines, so the route check
+would have failed a page behaving correctly — and the fix for that failure would
+have been to delete the assertion. **They moved to the walk, which clicks.**
+
+## VERIFIED
+
+1889 passed / 1 skipped / 3 xfailed · 28/28 gates · `tsc` 0 · lint rc=0 ·
+ratchet 819/819 unchanged · routeTree guard green · browser harness **3 modes**,
+14/14 pinned failures still pinned · anonymous `/profitability` renders 1363c
+and passes the refusal assertions.
+
+## ⚠️ ONE ASSERTION WAS ADDED AND HAS NEVER FIRED
+
+`EXPECTED_SIDEBAR_LINKS` in `scripts/auth-regression.py` now includes
+`Profitability`. **It did not run.** The crawler's member and operator modes are
+SKIPPED in this environment — no tokens — and anonymous has no sidebar to read.
+It is also forward-looking: red against the live app until the frontend is
+published, because `/profitability` is not deployed. **A survey that has never
+fired has not been tested**; it is recorded as written-but-unexercised rather
+than counted as coverage. Other crawler failures on this run (`/twin` 500, the
+Sentiment tab pending a Lovable Publish, the route sweep) are inherited and
+touch none of this lane's files.

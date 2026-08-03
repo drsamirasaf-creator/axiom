@@ -63,7 +63,7 @@ EXPECTED_SIDEBAR_LINKS = [
     #
     # ⭐ PATHS DID NOT MOVE. This list is about LABELS; every route and inbound
     # link resolves exactly as before.
-    "Dashboard", "Feedback",
+    "Dashboard", "Feedback", "Profitability",
     "Valuation", "Planning",
     "Optimization", "Prescience AI",
     "Projects", "Monitoring", "Structure",
