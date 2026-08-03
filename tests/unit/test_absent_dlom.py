@@ -49,7 +49,13 @@ def _dataset(dlom=0.25, public=False):
          "market_risk_premium": 0.055, "cost_of_debt": 0.06,
          "unlevered_industry_beta": 1.0, "target_debt_to_equity": 0.5,
          "size_premium": 0.02, "specific_risk_premium": 0.01,
-         "shares_outstanding": 1000}
+         # ⭐ AN ACTUAL COUNT (ruled 3 Aug). At 1,000 shares and $10 this public
+         # company had a $10,000 market cap against $200m of debt, so leverage
+         # came out at 20,000x, WACC collapsed to the after-tax cost of debt, and
+         # a sensitivity cell straddled the terminal growth rate and returned
+         # None. The fixture was authored in MILLIONS of shares like the rest;
+         # rescaling it is the same correction the certified companies took.
+         "shares_outstanding": 1_000_000_000}
     if public:
         c.update({"beta": 1.1, "share_price": 10.0})
     if dlom is not None:

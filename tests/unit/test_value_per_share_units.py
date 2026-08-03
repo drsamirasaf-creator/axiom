@@ -1,31 +1,25 @@
-"""The share count is expressed in MILLIONS, and the live data disagrees.
+"""The share count is an ACTUAL COUNT, and every consumer of it agrees.
 
-⭐⭐ THE ENGINE'S CONVENTION, PINNED RATHER THAN INFERRED. Every figure the
-engine carries is in millions, `shares_outstanding` included, so
-`equity_post / shares` is already DOLLARS per share. The authority is
-`test_meridian_public_wacc_exact`: the reference company holds 100 shares at $22
-and the checkpoint asserts market equity E=2200 against debt D=440 — both in
-millions, exact to 1e-9. Under a raw-count reading that company would carry
-$2,200 of market equity against $2.16bn of DCF equity.
+⭐⭐ RULED 3 Aug, RESOLVING §7w. `shares_outstanding` is a number of shares, not
+a number of millions of shares. The Excel template collects it that way, the
+parameter box shows that number, and the engine reads it that way. The stored
+values become correct AS TYPED and nothing is backfilled.
 
-⭐⭐ SO THE $0.00 ON MERIDIAN IS NOT A FORMULA DEFECT. It is a UNIT COLLISION in
-the stored data:
+⭐ THIS FILE PREVIOUSLY PINNED THE OPPOSITE. It asserted the millions reading,
+because that is what `test_meridian_public_wacc_exact` implied at the time: the
+certified Meridian held "100 shares" at $22 and the checkpoint asserted market
+equity of 2,200 against 440 of debt. Under the ruling those fixtures were the
+thing that was wrong — they were authored in millions — and rescaling them by
+1e6 leaves EVERY numerical checkpoint BYTE-IDENTICAL. That is the evidence this
+lane changed a unit and not a valuation.
 
-    ds 45  equity_post 2,784.740355m   shares stored 1,000,000
-           read as 1,000,000 MILLION shares -> a trillion shares -> $0.002785
-           read as 1,000,000 shares         -> $2,784.74
-    ds 55  equity_post   105.937581m   shares stored 10,000,000
+⭐⭐ THREE CONSUMERS READ THE FIELD AND ALL THREE WERE CORRECTED TOGETHER:
 
-Both live values are raw counts. The upload template asks for "Shares
-Outstanding" and states no unit, which is how two conventions came to coexist.
+    valuation.engines.run      per share  = equity_millions * 1e6 / count
+    financials.engines.wacc    market eq  = count * price / 1e6   (public branch)
+    intelligence.engines       market eq  = count * price / 1e6   (x2, beta relever)
 
-⭐ THESE TESTS PIN THE ENGINE'S CONVENTION so that a future lane cannot quietly
-"fix" the arithmetic to absorb the bad data — doing that would make every
-correctly-scaled dataset wrong instead, and would silently move the public WACC
-weights, which read the same field.
-
-The remediation of the stored values is a data ruling, not an engineering one,
-and is not made here.
+A change to one of them alone is the divergence this file exists to prevent.
 """
 import os
 import tempfile
@@ -35,6 +29,7 @@ os.environ.setdefault("DATABASE_URL",
 
 import pytest
 
+from services.api.modules.financials import engines as FE
 from services.api.modules.valuation import engines as val
 
 IS = ("revenue", "cogs", "opex", "depreciation_amortization", "interest_expense")
@@ -44,7 +39,7 @@ BS = ("cash", "other_current_assets", "noncurrent_assets", "short_term_debt",
 CF = ("capex", "net_borrowing", "dividends")
 
 
-def _dataset(shares=100.0, dlom=0.2, public=False):
+def _dataset(shares=1_000_000, dlom=0.2, public=False):
     years = [2021, 2022, 2023]
 
     def block(keys):
@@ -70,73 +65,111 @@ def _det(**kw):
     return val.run(_dataset(**kw), mode="auto_forecast")["deterministic"]
 
 
-def test_shares_are_in_millions_so_no_conversion_belongs_in_the_division():
-    """⭐ THE CONVENTION. Both sides of the division are in millions, so the
-    quotient is already dollars per share."""
-    det = _det(shares=100.0)
-    # rel=1e-6 tracks `_r`'s six-decimal rounding of the payload, not a loose
-    # assertion: the collision this file exists for is a factor of a million.
-    assert det["value_per_share"] == pytest.approx(
-        det["equity_value_post_dlom"] / 100.0, rel=1e-6)
+# ── the conversion ─────────────────────────────────────────────────────────
+
+def test_per_share_converts_millions_to_dollars():
+    det = _det(shares=1_000_000)
+    expected = det["equity_value_post_dlom"] * 1e6 / 1_000_000
+    assert det["value_per_share"] == pytest.approx(expected, rel=1e-6)
+
+
+def test_one_share_owns_the_whole_company():
+    """⭐⭐ THE CASE THAT SETTLES THE UNIT. A single share against $1.86bn of
+    nonmarketable equity is worth $1,860,000,000 — not $1,864.13, which is what
+    the millions reading returned and is off by exactly 1e6.
+
+    A one-share company is not a realistic company; it is the case where the two
+    readings differ by a factor no tolerance can hide.
+    """
+    det = _det(shares=1, dlom=0.2)
+    equity_dollars = det["equity_value_post_dlom"] * 1e6
+    assert det["value_per_share"] == pytest.approx(equity_dollars, rel=1e-9)
+    assert abs(det["value_per_share"]) > 1e6, (
+        f"one share of a company worth {det['equity_value_post_dlom']}m came "
+        f"out at {det['value_per_share']} — that is the millions reading")
 
 
 def test_the_numerator_is_the_post_dlom_equity():
-    """For a private company the nonmarketable figure is the defensible
-    numerator, and the two differ by the whole discount."""
-    det = _det(shares=100.0, dlom=0.2)
-    assert det["value_per_share"] == pytest.approx(
-        det["equity_value_post_dlom"] / 100.0, rel=1e-6)
-    assert det["value_per_share"] != pytest.approx(
-        det["equity_value"] / 100.0, rel=1e-6), (
-        "per share divides the PRE-discount equity — the overstatement DLOM was "
-        "applied to remove")
+    det = _det(shares=1_000_000, dlom=0.2)
+    post = det["equity_value_post_dlom"] * 1e6 / 1_000_000
+    pre = det["equity_value"] * 1e6 / 1_000_000
+    assert det["value_per_share"] == pytest.approx(post, rel=1e-6)
+    assert det["value_per_share"] != pytest.approx(pre, rel=1e-6)
 
 
 def test_scaling_the_share_count_scales_the_price_inversely():
-    """⭐ A UNIT ERROR SURVIVES A SINGLE FIXTURE. Ten times the shares must be a
-    tenth of the price — a constant factor error passes any one case alone."""
-    a = _det(shares=100.0)["value_per_share"]
-    b = _det(shares=1000.0)["value_per_share"]
-    # rel=1e-6, not 1e-9: `_r` rounds the payload to six decimals and the
-    # comparison multiplies that rounding by ten.
+    a = _det(shares=1_000_000)["value_per_share"]
+    b = _det(shares=10_000_000)["value_per_share"]
     assert a == pytest.approx(b * 10, rel=1e-6)
 
 
-def test_a_raw_share_count_produces_a_figure_that_reads_as_worthless():
-    """⭐⭐ THE LIVE DEFECT, PINNED AS BEHAVIOUR RATHER THAN PROSE.
-
-    This is what Meridian stores. The engine is behaving correctly and the
-    ANSWER IS STILL UNUSABLE, because the input is in the wrong unit. The test
-    asserts the symptom so that the day the data is corrected, it fails and
-    someone reads this docstring.
-    """
-    det = _det(shares=1_000_000.0)
-    assert abs(det["value_per_share"]) < 0.005, (
-        "a raw share count no longer collapses the per-share figure — if the "
-        "stored units were corrected, update this test and CORE §7w together")
-
-
 def test_absent_shares_still_report_absent():
-    """Absence propagates — nothing manufactures a per-share figure."""
-    det = _det(shares=None)
-    assert det["value_per_share"] is None
+    assert _det(shares=None)["value_per_share"] is None
 
 
-def test_the_public_wacc_weights_read_the_same_field_and_the_same_unit():
-    """⭐⭐ WHY THE FORMULA MUST NOT BE "FIXED" TO ABSORB THE BAD DATA. The share
-    count feeds the public WACC's equity weight as well as the per-share line.
-    Rescaling one without the other would move every public company's discount
-    rate to make a private company's per-share figure look right."""
-    from services.api.modules.financials import engines as FE
+# ── the public branch, which reads the same field ──────────────────────────
+
+def test_the_public_wacc_weights_market_equity_in_millions():
+    """⭐⭐ §7w RECORDED THIS AS A STRICT XFAIL AND IT IS NOW FIXED. 50,000,000
+    shares at $40 is $2.0bn of market equity against $500m of debt — leverage
+    0.25, WACC 0.0894. Before the correction the raw product was weighed against
+    a millions-denominated debt figure and gave leverage 0.00000025 and WACC
+    0.1005: the company priced as though it were debt-free, which is the exact
+    failure the `_debt_book` KeyError beside it was written to prevent.
+    """
     co = {"name": "Pub", "ownership": "public", "standard": "us_gaap",
           "tax_rate": 0.25, "risk_free_rate": 0.04, "market_risk_premium": 0.055,
           "cost_of_debt": 0.06, "beta": 1.1,
-          "shares_outstanding": 100.0, "share_price": 22.0, "_debt_book": 440.0}
+          "shares_outstanding": 50_000_000.0, "share_price": 40.0,
+          "_debt_book": 500.0}
     w = FE.wacc(co)
-    # E = 100 * 22 = 2,200 (millions) against D = 440 (millions) -> 16.67% debt.
-    assert w["wacc"] == pytest.approx(0.09125, abs=1e-9)
-    # The same company with a RAW count prices as though it were debt-free.
-    raw = FE.wacc({**co, "shares_outstanding": 100_000_000.0})
-    assert raw["wacc"] > w["wacc"], (
-        "a raw share count inflates the equity weight and drives WACC toward a "
-        "pure cost of equity — the same collision, on the discount rate")
+    d = w["detail"] if isinstance(w.get("detail"), dict) else {}
+    if "equity_value_market" in d:
+        assert d["equity_value_market"] == pytest.approx(2000.0, rel=1e-9), (
+            "market equity is not in the canonical millions")
+    # 0.25 leverage: 80% equity at Ke 10.05%, 20% debt at 4.5% after tax.
+    assert w["wacc"] == pytest.approx(0.8 * 0.1005 + 0.2 * 0.045, abs=1e-6)
+
+
+def test_the_public_branch_and_the_per_share_line_agree_on_the_unit():
+    """⭐⭐ THE ANTI-DIVERGENCE ASSERTION. Three consumers read this field; the
+    §7w collision existed because two of them disagreed. Doubling the count must
+    halve the per-share figure AND halve market equity's weight — if a future
+    lane corrects one site and not the others, this fails."""
+    # ⭐ PROPORTIONALITY IS ASSERTED ON THE PRIVATE PATH, NOT HERE. For a PUBLIC
+    # company the count feeds market equity too, so doubling it lowers the debt
+    # weight, lowers the WACC and RAISES the equity value — numerator and
+    # denominator both move and the per-share figure is deliberately NOT a
+    # simple inverse. Asserting proportionality here would be asserting that the
+    # public branch ignores the field, which is the defect.
+    a = _det(shares=50_000_000, public=True)["value_per_share"]
+    b = _det(shares=100_000_000, public=True)["value_per_share"]
+    assert a != pytest.approx(b, rel=1e-6), "the per-share line ignores the count"
+    assert abs(b) < abs(a), "twice the shares must be less value per share"
+
+    base = {"name": "P", "ownership": "public", "standard": "us_gaap",
+            "tax_rate": 0.25, "risk_free_rate": 0.04,
+            "market_risk_premium": 0.055, "cost_of_debt": 0.06, "beta": 1.1,
+            "share_price": 40.0, "_debt_book": 500.0}
+    w1 = FE.wacc({**base, "shares_outstanding": 50_000_000.0})["wacc"]
+    w2 = FE.wacc({**base, "shares_outstanding": 100_000_000.0})["wacc"]
+    # ⭐ UPWARDS, and the first draft of this assertion had the sign backwards.
+    # Doubling the count doubles market equity, so the DEBT weight halves — and
+    # debt is the cheaper leg after tax (4.5% against a 10.05% Ke), so losing it
+    # pulls the WACC UP toward the cost of equity. Beta is observed on the public
+    # branch, so Ke itself does not move.
+    assert w2 > w1, (
+        "doubling the share count doubles market equity and halves the debt "
+        "weight, which must raise the WACC toward Ke — the public branch is "
+        "not reading the count")
+
+
+def test_the_certified_companies_are_expressed_as_actual_counts():
+    """⭐ The fixtures seed the sandbox showcase, so their units are shipped
+    data as much as test data. A count under a million would mean the millions
+    reading survived somewhere."""
+    from services.api.core.refcompanies import halcyon, meridian
+    for f in (meridian, halcyon):
+        n = f()["company"]["shares_outstanding"]
+        assert n >= 1_000_000, (
+            f"{f.__name__} carries {n} shares — that is a millions-scaled value")

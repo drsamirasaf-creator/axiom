@@ -15861,6 +15861,17 @@ send someone looking.
 
 # ⭐⭐ §7w · VALUE PER SHARE READ $0.00 — TWO UNITS IN ONE FIELD (3 Aug)
 
+> ⭐⭐ **SUPERSEDED IN PART BY §7y (3 Aug).** The collision recorded here was
+> resolved by RULING: `shares_outstanding` is an ACTUAL COUNT. The diagnosis
+> below stands as the record of how it was found; the "millions" reading it
+> settled on is no longer the convention.
+>
+> ⚠️ **AND ONE CLAIM HERE WAS FALSE WHEN WRITTEN.** This entry and its report say
+> the public-branch defect was pinned by a strict xfail. **It was never
+> committed** — it existed in the working tree, and rewriting the test file in
+> the same lane removed it before the commit. `git log -S` finds it nowhere. The
+> defect survived as prose only. See §7y.
+
 Diagnosed and fixed 3 Aug. Backend `1f5df25` → this lane. The engine formula is
 **correct and untouched**; what shipped was a display that let a wrong number
 arrive as a zero, and a stored value in the wrong unit.
@@ -16091,3 +16102,72 @@ only caller sends `{horizon}`, so nothing is dead there today — the mechanism 
 The served chunk still lacks the per-unit guard AND `wacc_override`, and still
 contains `t.wacc=n`. **Production still renders $0.00 and still has a dead WACC
 box.** Content settles this, not build hashes. A deploy is the remaining step.
+
+# ⭐⭐ §7y · THE SHARE COUNT IS A RAW COUNT — RULED, AND EVERY CONSUMER AGREES (3 Aug)
+
+RULED 3 Aug, resolving §7w. `shares_outstanding` is an actual number of shares.
+The stored values become correct AS TYPED; nothing was backfilled.
+
+## ⭐⭐ 1 · THE FIXTURES WERE THE THING THAT WAS WRONG
+
+The certified companies were authored in MILLIONS of shares — Meridian held "100
+shares" at $22, which `test_meridian_public_wacc_exact` read as $2,200m of market
+equity, and §7w took that checkpoint as proof of the millions convention.
+
+⭐⭐ **RESCALING THE THREE FIXTURES BY 1e6 LEAVES ALL 16 NUMERICAL CHECKPOINTS
+BYTE-IDENTICAL.** That is the evidence this lane changed a UNIT and not a
+valuation, and it is the strongest form that evidence can take.
+
+⭐ **THE ONE-SHARE CASE SETTLES THE UNIT.** One share against $1.86bn of equity is
+worth $1,860,000,000, not $1,864.13 — the two readings differ by a factor no
+tolerance can absorb, so the test cannot pass under both.
+
+## ⭐⭐ 2 · THREE CONSUMERS READ THE FIELD, NOT ONE
+
+Fixing `wacc()` alone left the suite red in four places: `intelligence/engines.py`
+computes market equity the same way TWICE, for the beta-relever behind REO,
+health and the frontier. All three now divide by 1e6, and an assertion requires
+the count to move BOTH the per-share figure and the WACC — correcting one site
+and not the others is exactly what §7w was.
+
+⭐ **MEASURED:** 50m shares at $40 against $500m debt → leverage 0.25, WACC
+0.0894. Before: leverage 0.00000025, WACC 0.1005 — priced as debt-free, the exact
+failure the `_debt_book` KeyError beside it exists to prevent.
+
+⭐ **TWO OF MY OWN ASSERTIONS WERE WRONG BEFORE THE CODE WAS.** Per-share does NOT
+scale inversely with the count on the PUBLIC branch (the count moves market
+equity, hence the WACC, hence the numerator), and doubling the count RAISES the
+WACC (the cheaper after-tax debt leg loses weight). Both corrected.
+
+## ⚠️ 3 · §7w's XFAIL WAS NEVER COMMITTED
+
+The dispatch expected a strict xfail to flip to xpass. There was none: it existed
+in the working tree during §7w and was removed when that lane rewrote the test
+file, before the commit. **The §7w report's sentence "a test pins the
+relationship rather than leaving it as prose" was false when written.**
+
+⭐⭐ **A CLAIM THAT A DEFECT IS PINNED IS ITSELF A CLAIM THAT NEEDS CHECKING.**
+Prose survived; the executable record did not, and nothing noticed for a day.
+§7w is now annotated in place.
+
+## ⭐ 4 · THE TEMPLATE STATES THE UNIT — v10 → v11
+
+"Shares Outstanding (actual number of shares, not millions)". Prior versions
+parse unchanged. Five tests pin the version quartet TOGETHER so a bump cannot
+move one string and leave the others.
+
+## ⭐⭐ 5 · TWO INERT CLASSES WITH IDENTICAL SILENCE
+
+Nothing on the valuation form is dead by defect any more. Five drivers remain
+inert **by mode** in proforma, and the notice they carried said only "Drivers
+derived from pro-forma dataset" — which tells a reader something is inert without
+saying WHICH, so the four that were dead BY DEFECT looked identical from outside.
+The notice now NAMES all five, and the browser gate asserts that it does.
+
+⚠️ `check-period-labels-consumed` failed on my first wording — "forecast YEARS"
+must follow the dataset's frequency, and a quarterly dataset has none.
+
+## ⭐ 6 · THE FOUR STORED COUNTS, CORRECT AS TYPED
+
+ds 45: 1,000,000 → $2,784.74/share. ds 55: 10,000,000 → $10.59/share. ds 48 and
+57 carry no count and report absent. **No stored value changed.**

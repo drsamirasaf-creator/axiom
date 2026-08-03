@@ -73,7 +73,13 @@ def meridian():
     company = {"name": "Meridian Industries, Inc.", "ownership": "public", "sector": "Industrials",
                "standard": "us_gaap", "currency": "USD", "tax_rate": 0.25,
                "risk_free_rate": 0.04, "market_risk_premium": 0.055,
-               "cost_of_debt": 0.06, "shares_outstanding": 100.0,
+               # ⭐⭐ AN ACTUAL COUNT OF SHARES (ruled 3 Aug). These three were
+               # authored when the engine read this field as MILLIONS, so 100
+               # meant a hundred million. Under the raw-count ruling the DATA is
+               # what was wrong, not the expected values: rescaling by 1e6 leaves
+               # every numerical checkpoint BYTE-IDENTICAL, which is the evidence
+               # that this lane changed a unit and not a valuation.
+               "cost_of_debt": 0.06, "shares_outstanding": 100_000_000.0,
                "share_price": 22.0, "beta": 1.1}
     return {"company": company,
             "periods": {"historical": hist, "forecast": fcst},
@@ -120,7 +126,13 @@ def halcyon():
                "cost_of_debt": 0.07, "unlevered_industry_beta": 0.9,
                "target_debt_to_equity": 0.5, "size_premium": 0.03,
                "specific_risk_premium": 0.02, "dlom": 0.20,
-               "shares_outstanding": 10.0}
+               # ⭐⭐ AN ACTUAL COUNT OF SHARES (ruled 3 Aug). These three were
+               # authored when the engine read this field as MILLIONS, so 100
+               # meant a hundred million. Under the raw-count ruling the DATA is
+               # what was wrong, not the expected values: rescaling by 1e6 leaves
+               # every numerical checkpoint BYTE-IDENTICAL, which is the evidence
+               # that this lane changed a unit and not a valuation.
+               "shares_outstanding": 10_000_000.0}
     return {"company": company, "periods": {"historical": hist, "forecast": []},
             "income_statement": IS, "balance_sheet": BS, "cash_flow": CF,
             "oci": {
@@ -204,7 +216,14 @@ def helios():
                "sector": "Industrials", "standard": "us_gaap",
                "currency": "USD", "tax_rate": 0.25, "risk_free_rate": 0.04,
                "market_risk_premium": 0.055, "cost_of_debt": 0.085,
-               "shares_outstanding": 60.0, "share_price": 6.0, "beta": 1.6}
+               # ⭐⭐ AN ACTUAL COUNT OF SHARES (ruled 3 Aug). These three were
+               # authored when the engine read this field as MILLIONS, so 100
+               # meant a hundred million. Under the raw-count ruling the DATA is
+               # what was wrong, not the expected values: rescaling by 1e6 leaves
+               # every numerical checkpoint BYTE-IDENTICAL, which is the evidence
+               # that this lane changed a unit and not a valuation.
+               "shares_outstanding": 60_000_000.0, "share_price": 6.0,
+               "beta": 1.6}
     return {"company": company,
             "periods": {"historical": hist, "forecast": fcst},
             "income_statement": IS, "balance_sheet": BS, "cash_flow": CF}

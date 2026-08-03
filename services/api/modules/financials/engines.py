@@ -602,7 +602,15 @@ def wacc(company: dict) -> dict:
         beta = float(company["beta"])
         ke = ratio_lib.cost_of_equity_at(
             ke_source=ratio_lib.KE_OBSERVED, rf=rf, mrp=mrp, beta=beta)
-        e = float(company["shares_outstanding"]) * float(company["share_price"])
+        # ⭐⭐ MARKET EQUITY IN THE CANONICAL MILLIONS. `shares_outstanding` is an
+        # ACTUAL COUNT (ruled 3 Aug) and `share_price` is in dollars, so their
+        # product is DOLLARS — and it is weighed against `_debt_book`, which is
+        # in millions. Without the 1e6 a company with 50,000,000 shares at $40
+        # against $500m of debt computed leverage 0.00000025 where the answer is
+        # 0.25, pricing it as though it were debt-free. That is the exact failure
+        # the `_debt_book` KeyError below was written to prevent, arriving by the
+        # other operand. §7w recorded it as a strict xfail; this is the fix.
+        e = float(company["shares_outstanding"]) * float(company["share_price"]) / 1e6
         # ⭐ THE 0.0 DEFAULT IS GONE. `company.get("_debt_book", 0.0)` turned a
         # MISSING injection into a company with no debt, so a public WACC became
         # a pure cost of equity and every discounted value moved — silently, and

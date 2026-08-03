@@ -62,7 +62,13 @@ COMPANY_FAMILY = "AXIOM-COMPANY-TEMPLATE"  # _AXIOM!A1 on the per-company book
 # and remain the source of truth for every total, so no stored figure moves.
 # See BS_CURRENT_ASSET_COMPONENTS in engines.py for why deriving the aggregate
 # from the parts would have silently dropped prepayments and accrued income.
-VERSION_MAJOR = 10
+# v11 (3 Aug): "Shares Outstanding" now states its unit — an ACTUAL COUNT, not
+# millions. Every adjacent money field is normalised to millions at ingest and
+# this one is not, and the label said nothing either way; that silence is how two
+# conventions came to coexist in one field (§7w). ⭐ PRIOR VERSIONS PARSE
+# UNCHANGED — the bump names the sheet a reader is holding, and ingest has
+# accepted any stamped version since 29 Jul.
+VERSION_MAJOR = 11
 GENERIC_VERSION = f"v{VERSION_MAJOR}"
 COMPANY_VERSION = f"7M-v{VERSION_MAJOR}.0"
 USER_FACING_VERSION = f"v{VERSION_MAJOR}"

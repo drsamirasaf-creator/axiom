@@ -180,23 +180,19 @@ def run(data: dict, mode: str, assumptions: dict | None = None,
     # pre-discount equity, which would reintroduce the overstatement one
     # line below the place it was just removed.
     #
-    # ⭐⭐ `shares_outstanding` IS EXPRESSED IN MILLIONS OF SHARES, like every
-    # other figure the engine carries — so millions ÷ millions is already
-    # DOLLARS per share and no 1e6 belongs here. Pinned by
-    # test_meridian_public_wacc_exact: the reference company holds 100 shares at
-    # $22 and the checkpoint asserts E=2200 against D=440, both in millions. A
-    # raw-count reading would put $2,200 of market equity against $2.16bn of DCF
-    # equity, and would break the public WACC weights as well as this line.
+    # ⭐⭐ `shares_outstanding` IS AN ACTUAL COUNT OF SHARES — RULED 3 Aug, and it
+    # resolves the §7w collision. The Excel template collects a raw count, the
+    # parameter box shows a raw count, and the engine now reads one. Equity is
+    # carried in the canonical MILLIONS, so the conversion to dollars is the
+    # whole quantity: a company worth $1.86bn with ONE share outstanding is worth
+    # $1,860,000,000 a share, not $1,864.13.
     #
-    # ⚠️ THE LIVE DATA DISAGREES WITH THE ENGINE, AND THAT IS THE OPEN DEFECT.
-    # Two active datasets store RAW COUNTS (1,000,000 and 10,000,000) where the
-    # engine reads millions, so Meridian is priced as though it had a trillion
-    # shares and its per-share figure comes out at $0.002785. The formula is not
-    # the fault and must not be "corrected" to absorb the bad unit — that would
-    # make every dataset with a correctly-scaled share count wrong instead.
-    # See CORE §7w. The upload template asks for "Shares Outstanding" and states
-    # no unit, which is how the two conventions came to coexist.
-    per_share = (fin._n(lambda e: e / float(_shares), equity_post)
+    # ⭐ THE STORED VALUES BECOME CORRECT AS TYPED and nothing is backfilled —
+    # 1,000,000 now means a million shares, which is what the client entered.
+    # `wacc()`'s public branch reads the same field and was corrected in the same
+    # change; the two must never diverge again, which is what
+    # test_the_public_branch_and_the_per_share_line_agree_on_the_unit asserts.
+    per_share = (fin._n(lambda e: e * 1e6 / float(_shares), equity_post)
                  if _shares and float(_shares) > 0 else None)
     per_share_indicative = bool(per_share is not None
                                 and company["ownership"] != "public")

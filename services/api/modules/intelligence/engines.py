@@ -172,7 +172,11 @@ def health_reo(data: dict) -> dict:
     debt = bs["short_term_debt"][ys] + bs["long_term_debt"][ys]
 
     if company["ownership"] == "public":
-        e_mkt = float(company["shares_outstanding"]) * float(company["share_price"])
+        # ⭐ /1e6 — market equity in the canonical MILLIONS, to match `debt`,
+        # which comes straight off the balance sheet. `shares_outstanding` is an
+        # ACTUAL COUNT (ruled 3 Aug) and the price is in dollars, so the raw
+        # product is dollars and `debt / e_mkt` was a ratio between two scales.
+        e_mkt = float(company["shares_outstanding"]) * float(company["share_price"]) / 1e6
         x_cur = debt / e_mkt if e_mkt else 0.0
         beta_u = float(company["beta"]) / (1 + (1 - T) * x_cur)
     else:
@@ -344,7 +348,11 @@ def frontier(data: dict, de_grid: list | None = None,
     bs = data["balance_sheet"]
     debt = bs["short_term_debt"][ys] + bs["long_term_debt"][ys]
     if company["ownership"] == "public":
-        e_mkt = float(company["shares_outstanding"]) * float(company["share_price"])
+        # ⭐ /1e6 — market equity in the canonical MILLIONS, to match `debt`,
+        # which comes straight off the balance sheet. `shares_outstanding` is an
+        # ACTUAL COUNT (ruled 3 Aug) and the price is in dollars, so the raw
+        # product is dollars and `debt / e_mkt` was a ratio between two scales.
+        e_mkt = float(company["shares_outstanding"]) * float(company["share_price"]) / 1e6
         x_cur = debt / e_mkt if e_mkt else 0.0
         beta_u = float(company["beta"]) / (1 + (1 - T) * x_cur)
     else:
