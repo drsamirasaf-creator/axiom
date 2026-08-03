@@ -39,15 +39,43 @@ from services.api.modules.financials import models as fin_models   # noqa: E402
 # public repo, so it carries no customer numbers: five lines, an incomplete
 # decomposition on every measure, and one line that reverses — the properties
 # the page must render, at figures that belong to nobody.
-STATEMENT = {"revenue": 1000.0, "cogs": 600.0, "opex": 300.0}
-LINES = {
-    "PL-A": ("Alpha Systems",     360.0, 180.0, 12.0),
-    "PL-B": ("Beta Controls",     180.0, 126.0,  6.0),   # thin — reverses
-    "PL-C": ("Gamma Instruments", 200.0, 110.0,  7.0),
-    "PL-D": ("Delta Modules",     100.0,  62.0,  3.0),
-    "PL-E": ("Epsilon Services",   60.0,  32.0,  2.0),
-}
-PERIODS = (2024, 2025)
+# ⭐ OPEX GROWS FASTER THAN REVENUE (25% -> 36% of it). That is the CAUSE of the
+# reversal: the shared pool a line is charged for outruns the gross profit it
+# earns, so a line whose own margin never moves still slides into loss. The
+# first draft held opex at a flat 30% of revenue — every line then scaled
+# together, nothing diverged, and the generator REFUSED TO RECORD ITSELF.
+STATEMENT = {2022: {"revenue": 800.0, "cogs": 480.0, "opex": 200.0},
+             2023: {"revenue": 900.0, "cogs": 540.0, "opex": 255.0},
+             2024: {"revenue": 1000.0, "cogs": 600.0, "opex": 320.0},
+             2025: {"revenue": 1100.0, "cogs": 660.0, "opex": 395.0}}
+
+# ⭐⭐ FOUR PERIODS WITH THE DEVELOPING REVERSAL. A two-period fixture can only
+# prove that a reversal RENDERS; it cannot prove the trend panel or the
+# trajectory finding, both of which need a direction. PL-B's gross margin holds
+# while its allocated EBIT falls every year — the divergence the module exists
+# to surface.
+NAMES = {"PL-A": "Alpha Systems", "PL-B": "Beta Controls",
+         "PL-C": "Gamma Instruments", "PL-D": "Delta Modules",
+         "PL-E": "Epsilon Services"}
+SHARE = {2022: {"PL-A": 0.38, "PL-B": 0.18, "PL-C": 0.18, "PL-D": 0.10, "PL-E": 0.06},
+         2023: {"PL-A": 0.37, "PL-B": 0.18, "PL-C": 0.19, "PL-D": 0.10, "PL-E": 0.06},
+         2024: {"PL-A": 0.36, "PL-B": 0.18, "PL-C": 0.20, "PL-D": 0.10, "PL-E": 0.06},
+         2025: {"PL-A": 0.34, "PL-B": 0.18, "PL-C": 0.22, "PL-D": 0.10, "PL-E": 0.06}}
+GM = {2022: {"PL-A": 0.50, "PL-B": 0.31, "PL-C": 0.44, "PL-D": 0.38, "PL-E": 0.46},
+      2023: {"PL-A": 0.50, "PL-B": 0.31, "PL-C": 0.43, "PL-D": 0.38, "PL-E": 0.46},
+      2024: {"PL-A": 0.51, "PL-B": 0.31, "PL-C": 0.42, "PL-D": 0.38, "PL-E": 0.46},
+      2025: {"PL-A": 0.52, "PL-B": 0.31, "PL-C": 0.40, "PL-D": 0.38, "PL-E": 0.46}}
+# direct opex share of the company opex line, per line — small and stable, so
+# the movement in allocated EBIT comes from the SHARED pool as it does on a real
+# dataset (the endpoint allocates the residual by revenue).
+DOPEX = {"PL-A": 0.040, "PL-B": 0.020, "PL-C": 0.023, "PL-D": 0.010, "PL-E": 0.007}
+PERIODS = (2022, 2023, 2024, 2025)
+# Statement-only periods: no dimensional detail exists for them, by design.
+EARLIER = {2018: {"revenue": 520.0, "cogs": 312.0, "opex": 130.0},
+           2019: {"revenue": 585.0, "cogs": 351.0, "opex": 146.0},
+           2020: {"revenue": 610.0, "cogs": 372.0, "opex": 158.0},
+           2021: {"revenue": 700.0, "cogs": 420.0, "opex": 175.0}}
+STATEMENT_ONLY = tuple(sorted(EARLIER))
 EMAIL = "fixture-gen@example.test"
 
 
@@ -67,18 +95,29 @@ def main(out_path):
             tenant=tenant, name="Fixture Co", standard="ifrs",
             ownership="private", source="direct",
             data={"company": {"name": "Fixture Co", "ownership": "private"},
-                  "periods": {"historical": list(PERIODS), "forecast": [],
-                              "frequency": "annual"},
-                  "income_statement": {k: {str(p): v for p in PERIODS}
-                                       for k, v in STATEMENT.items()}},
+                  # ⭐⭐ EIGHT PERIODS OF STATEMENTS, FOUR OF DIMENSIONAL DETAIL
+                  # — the real shape, and the one the surface must be honest
+                  # about. A fixture whose statement matched its detail exactly
+                  # could not prove that the page STATES what it lacks, which is
+                  # the whole point of the coverage block.
+                  "periods": {"historical": list(STATEMENT_ONLY) + list(PERIODS),
+                              "forecast": [], "frequency": "annual"},
+                  "income_statement": {
+                      k: {**{str(p): v[k] for p, v in EARLIER.items()},
+                          **{str(p): STATEMENT[p][k] for p in PERIODS}}
+                      for k in ("revenue", "cogs", "opex")}},
             validation={"warnings": []})
         db.add(ds); db.flush()
-        for code, (name, rev, dc, do) in LINES.items():
+        for code, name in NAMES.items():
             m = DimensionMember(company_id=1, dimension_type="product",
                                 member_key=f"k-{code}", code=code, name=name,
                                 source="fixture")
             db.add(m); db.flush()
             for period in PERIODS:
+                st = STATEMENT[period]
+                rev = st["revenue"] * SHARE[period][code]
+                dc = rev * (1.0 - GM[period][code])
+                do = st["opex"] * DOPEX[code]
                 for measure, value in (("revenue", rev), ("direct_cost", dc),
                                        ("direct_opex", do)):
                     db.add(DimensionObservation(
@@ -103,8 +142,22 @@ def main(out_path):
                  and h["allocated_ebit"]["value"] < 0
                  and (h["gross_profit"]["margin"] or 0) > 0.15]
     assert reversing, "the endpoint produced no reversal — refusing to record it"
-    assert cur["totals"]["revenue"]["value"] == STATEMENT["revenue"]
+    assert cur["totals"]["revenue"]["value"] == STATEMENT[PERIODS[-1]]["revenue"]
     assert cur["revenue"]["value"].get("__unallocated__"), "no residual to show"
+    # ⭐ THE FOUR-PERIOD CAPABILITIES MUST BE IN THE RECORDING, or the browser
+    # proof of the trend panel and the findings would be over a payload that
+    # cannot express them.
+    assert len(block["periods"]) == 4, "the fixture is not four periods"
+    assert len(block.get("mix_shift_series") or []) == 3, "no mix-shift series"
+    diverging = [c for c, t in (block.get("trend") or {}).items() if t["diverging"]]
+    assert diverging, "no line diverges — the trend panel would say nothing"
+    kinds = {f["id"].split(":")[0] for f in (block.get("findings") or [])}
+    assert "reversal_trajectory" in kinds, f"no trajectory finding: {kinds}"
+    assert "mix_dilutive" in kinds, f"no mix-shift finding: {kinds}"
+    # ⭐ AND THE SHORTFALL IS IN THE RECORDING. Without it the browser could not
+    # prove the surface states what it does not hold.
+    assert payload["coverage"]["missing_periods"] == list(STATEMENT_ONLY), \
+        payload["coverage"]
 
     payload["_provenance"] = (
         "RECORDED FROM THE ENDPOINT by scripts/gen-profitability-fixture.py in "

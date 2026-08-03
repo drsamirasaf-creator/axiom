@@ -73,6 +73,259 @@ def _statement_totals(A, co_rev, co_cogs, co_opex):
     }
 
 
+def _mix_shift_series(A, block, ordered):
+    """Every consecutive mix shift, each labelled with the pair it spans.
+
+    ⭐ T2 OWNS THE ARITHMETIC. This calls `mix_shift` once per pair and labels
+    the result; the deltas are not recomputed here.
+    """
+    out = []
+    for before, after in zip(ordered, ordered[1:]):
+        ma = block["by_period"][before]["mix"]
+        mb = block["by_period"][after]["mix"]
+        if not (ma["available"] and mb["available"]):
+            continue
+        shift = A.mix_shift(ma["value"], mb["value"])
+        out.append(dict(shift, **{"from_period": before, "to_period": after}))
+    return out
+
+
+# ⭐ DIRECTION IS A COMPARISON, NOT A DIFFERENCE. Saying "fell in every period"
+# needs `<` on values T2 already produced; saying "fell by $24.6m" would need a
+# subtraction this layer does not own. The surface therefore reports the shape
+# of the movement and quotes the endpoints, and the reader does the sum they
+# can already see.
+_RISING, _FALLING, _MIXED, _FLAT = "rising", "falling", "mixed", "flat"
+
+
+def _direction(series):
+    """rising | falling | mixed | flat, from a series of values.
+
+    ⭐⭐ ROUNDED BEFORE COMPARING, AND STRICT MONOTONICITY IS THE WRONG TEST.
+    Both were defects in the first version, and both made a real series read as
+    noise:
+
+      · a gross margin held at exactly 31% arrives as 0.31, 0.3100000000000001,
+        0.31 — because it is computed as (revenue − cost) / revenue — so `==`
+        was false and the series reported MIXED. A margin flat to twelve
+        decimal places is flat, and the trend panel's whole claim rests on
+        saying so.
+      · a margin of 50%, 50%, 51%, 52% is rising, but `all(b > a)` rejects it
+        for the one equal pair. Direction is about never going the other way,
+        not about moving at every step.
+
+    Rounding through `round` rather than a tolerance keeps this function free of
+    arithmetic, which the AST guard requires of everything on this path.
+    """
+    vals = [round(v, 6) for v in series if v is not None]
+    if len(vals) < 2:
+        return None
+    pairs = list(zip(vals, vals[1:]))
+    if all(b == a for a, b in pairs):
+        return _FLAT
+    if all(b >= a for a, b in pairs):
+        return _RISING
+    if all(b <= a for a, b in pairs):
+        return _FALLING
+    return _MIXED
+
+
+def _margin_trend(block, ordered):
+    """Per line: gross margin and allocated EBIT across every period, and the
+    direction of each.
+
+    ⭐⭐ THIS IS WHERE THE INSIGHT LIVES. A line whose GROSS MARGIN HOLDS while
+    its ALLOCATED EBIT DETERIORATES is consuming shared cost faster than it
+    earns revenue — a statement neither series can make alone, and one that a
+    single period cannot make at all.
+    """
+    codes = []
+    for p in ordered:
+        for code in block["by_period"][p]["lines"]:
+            if code not in codes:
+                codes.append(code)
+    trend = {}
+    for code in codes:
+        gm, eb = [], []
+        for p in ordered:
+            line = block["by_period"][p]["lines"].get(code) or {}
+            gp = line.get("gross_profit") or {}
+            ae = line.get("allocated_ebit") or {}
+            gm.append(gp.get("margin") if gp.get("available") else None)
+            eb.append(ae.get("value") if ae.get("available") else None)
+        trend[code] = {
+            "periods": list(ordered),
+            "gross_margin": gm, "allocated_ebit": eb,
+            "gross_margin_direction": _direction(gm),
+            "allocated_ebit_direction": _direction(eb),
+            # ⭐ THE DIVERGENCE, NAMED. Gross margin steady or improving while
+            # allocated EBIT falls is the pattern the module exists to surface.
+            "diverging": _direction(gm) in (_RISING, _FLAT)
+                         and _direction(eb) == _FALLING,
+        }
+    return trend
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐⭐ FINDINGS — SENTENCES DERIVED FROM THE PAYLOAD, NEVER WRITTEN
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ⭐⭐ NO TEXT IS KEYED TO ANY COMPANY. Every sentence below is a template over
+# values the payload already carries, and every one is GATED on a condition
+# read from that payload. A finding that cannot be derived does not render, and
+# on a company where the pattern is absent this function returns an empty list
+# — which is the honest output, not a failure.
+#
+# ⭐ THE ARITHMETIC BOUNDARY IS REAL AND IT COST A SENTENCE. "Allocated EBIT
+# fell by $24.6m" needs a subtraction T2 does not own, so it is NOT said. The
+# findings quote the endpoints of a series and name the direction — both of
+# which already exist — and the reader can do the sum they can see.
+#
+# ⭐ SEVERITY ORDERS THE LIST; it is not a score. There is no multiplication of
+# factors here, for the reason CORE §8a gives about priority scores.
+_HEALTHY_MARGIN = 0.15          # below this the line is weak, not squeezed
+_MATERIAL_TOP_1 = 0.30          # a largest line above this is worth naming
+_MATERIAL_MIX_MOVE = 0.02       # a share move below this is noise
+
+
+def _findings(block, names, currency_note=None):
+    """Derived findings for one dimension type. May legitimately be empty."""
+    out = []
+    ordered = block.get("periods") or []
+    if not ordered:
+        return out
+    first, last = ordered[0], ordered[-1]
+    cur = block["by_period"][last]
+    label = names.get
+
+    # ── 1 · the reversal, and its trajectory ──────────────────────────────
+    for code, tr in (block.get("trend") or {}).items():
+        eb = [v for v in (tr.get("allocated_ebit") or []) if v is not None]
+        gm = [v for v in (tr.get("gross_margin") or []) if v is not None]
+        if not eb or not gm or eb[-1] >= 0:
+            continue
+        if gm[-1] <= _HEALTHY_MARGIN:
+            continue                     # not a reversal — the line is simply weak
+        healthy = "its gross margin is still {:.0%}".format(gm[-1])
+        if tr["allocated_ebit_direction"] == _FALLING and len(eb) > 2:
+            # ⭐ THE TRAJECTORY SENTENCE, and it is only available because the
+            # seed carries four periods. It is gated on len(eb) > 2 so a
+            # two-period dataset gets the second sentence instead of a claim
+            # about a trend nobody can see.
+            out.append({
+                "id": f"reversal_trajectory:{code}",
+                "severity": 1,
+                "sentence": (
+                    f"{label(code, code)} has lost allocated EBIT in every "
+                    f"period since {first}, from {eb[0]:,.1f} to {eb[-1]:,.1f}, "
+                    f"while {healthy}. It is not a weak product — it is a "
+                    f"product being charged more for shared cost every year "
+                    f"than it earns."),
+                "derivation": ("allocated_ebit falls at every consecutive pair "
+                               "and is negative in the latest period, while "
+                               "gross margin remains above 15%"),
+            })
+        else:
+            out.append({
+                "id": f"reversal:{code}",
+                "severity": 1,
+                "sentence": (
+                    f"{label(code, code)} looks healthy until it is charged for "
+                    f"what it consumes: {healthy}, and allocated EBIT is "
+                    f"{eb[-1]:,.1f}."),
+                "derivation": ("gross margin above 15% with negative allocated "
+                               "EBIT in the latest period"),
+            })
+
+    # ── 2 · gross margin holding while allocated EBIT falls ───────────────
+    for code, tr in (block.get("trend") or {}).items():
+        if not tr.get("diverging"):
+            continue
+        if any(f["id"].endswith(f":{code}") for f in out):
+            continue                     # already named by the reversal above
+        # ⭐⭐ THE SENTENCE CLAIMS "ITS OWN PRICING IS NOT THE PROBLEM", SO THE
+        # MARGIN MUST ACTUALLY BE HEALTHY. A line at 9% gross margin whose EBIT
+        # falls is diverging by the arithmetic and NOT by the meaning — telling
+        # management its pricing is fine would send them after the wrong cause.
+        gm_ok = [v for v in (tr.get("gross_margin") or []) if v is not None]
+        if not gm_ok or gm_ok[-1] <= _HEALTHY_MARGIN:
+            continue
+        out.append({
+            "id": f"diverging:{code}",
+            "severity": 2,
+            "sentence": (
+                f"The gross margin of {label(code, code)} is holding while "
+                f"its allocated EBIT falls every period. The line is consuming "
+                f"shared cost faster than it earns revenue; its own pricing "
+                f"and direct cost are not the problem."),
+            "derivation": ("gross_margin_direction is rising or flat while "
+                           "allocated_ebit_direction is falling"),
+        })
+
+    # ── 3 · the mix shift, and its margin consequence ─────────────────────
+    series = block.get("mix_shift_series") or []
+    if series:
+        span = series[-1]
+        # ⭐ ROUNDED BEFORE THE THRESHOLD, for the reason `_direction` is. A
+        # share that moved from 20% to 22% arrives as 0.019999999999999997 and
+        # was silently dropped as immaterial by `< 0.02` — the finding vanished
+        # on the exact case it was written for.
+        moves = {c: round(v, 6) for c, v in (span.get("value") or {}).items()
+                 if v is not None and c != A_UNALLOCATED}
+        for code, move in sorted(moves.items(), key=lambda kv: -abs(kv[1])):
+            if abs(move) < _MATERIAL_MIX_MOVE:
+                break
+            tr = (block.get("trend") or {}).get(code) or {}
+            gmdir = tr.get("gross_margin_direction")
+            if move > 0 and gmdir == _FALLING:
+                out.append({
+                    "id": f"mix_dilutive:{code}",
+                    "severity": 2,
+                    "sentence": (
+                        f"{label(code, code)} gained {move:.1%} of revenue "
+                        f"share between {span['from_period']} and "
+                        f"{span['to_period']} while its gross margin fell. "
+                        f"The growth is being bought, and it dilutes the "
+                        f"portfolio margin as it grows."),
+                    "derivation": ("mix_shift positive above 2 points with "
+                                   "gross_margin_direction falling"),
+                })
+            elif move < 0 and gmdir == _RISING:
+                out.append({
+                    "id": f"mix_accretive:{code}",
+                    "severity": 3,
+                    "sentence": (
+                        f"{label(code, code)} gave up {abs(move):.1%} of "
+                        f"revenue share while improving its gross margin — the "
+                        f"opposite trade, and the one that raises portfolio "
+                        f"margin per unit of revenue given up."),
+                    "derivation": ("mix_shift negative above 2 points with "
+                                   "gross_margin_direction rising"),
+                })
+
+    # ── 4 · concentration, only where material ────────────────────────────
+    conc = cur.get("concentration") or {}
+    if conc.get("available"):
+        v = conc["value"]
+        if v.get("top_1") is not None and v["top_1"] > _MATERIAL_TOP_1:
+            out.append({
+                "id": "concentration",
+                "severity": 3,
+                "sentence": (
+                    f"{v['lines_for_80pct']} of {v['n_lines']} lines carry 80% "
+                    f"of revenue, and the largest alone is {v['top_1']:.0%}. "
+                    f"A shock to it is a shock to the company."),
+                "derivation": (f"top_1 above {_MATERIAL_TOP_1:.0%} of the "
+                               f"allocated detail"),
+            })
+
+    out.sort(key=lambda f: f["severity"])
+    return out
+
+
+A_UNALLOCATED = "__unallocated__"
+
+
 def _get_dataset(db: Session, tenant: str, dataset_id: int,
                  scoped_enterprise: int | None = None) -> models.FinancialDataset:
     row = db.get(models.FinancialDataset, dataset_id)
@@ -849,8 +1102,36 @@ def profitability_surface(dataset_id: int, db: Session = Depends(get_db),
                       for c in block["by_period"][b]["lines"]}
                 block["margin_bridge"] = A.margin_bridge(ma["value"], ga,
                                                          mb["value"], gb)
+        # ⭐⭐ EVERY CONSECUTIVE PAIR, NOT ONLY THE LAST. T2 built `mix_shift`
+        # and the surface rendered none of it, so the module answered "what is
+        # the mix" and never "what changed" — the second is the question worth
+        # asking. With four periods the shift has a DIRECTION, and a single
+        # latest-pair delta cannot show one.
+        block["mix_shift_series"] = _mix_shift_series(A, block, ordered)
+        block["trend"] = _margin_trend(block, ordered)
+        # ⭐⭐ THE LANE'S PURPOSE. Every other panel restates what the client
+        # uploaded plus arithmetic they can do themselves; these are sentences
+        # about what the data SAYS. Derived, gated, and empty where the pattern
+        # is absent.
+        block["findings"] = _findings(block, names)
         out["by_type"][dtype] = block
 
+    # ⭐⭐ WHAT THE SURFACE DOES NOT HAVE, STATED. Meridian holds ten periods of
+    # statements and four of dimensional detail; a page that draws a four-point
+    # series beside a ten-point one, saying nothing, implies a series it does
+    # not hold. The shortfall is payload, not a footnote someone remembers.
+    stmt_periods = sorted(
+        {int(p) for p in ((IS.get("revenue") or {}).keys()) if str(p).isdigit()})
+    dim_periods = sorted({p for pers in by_type.values() for p in pers})
+    out["coverage"] = {
+        "statement_periods": stmt_periods,
+        "dimensional_periods": dim_periods,
+        "missing_periods": [p for p in stmt_periods if p not in dim_periods],
+        "note": ("Dimensional detail covers actual periods only. A product-line "
+                 "allocation of a forecast compounds two estimates — the "
+                 "projection's own uncertainty and the allocation assumption on "
+                 "top of it — so AXIOM does not produce one."),
+    }
     out["data_statuses"] = list(DIM.DATA_STATUSES)
     out["allocation_methods"] = A.ALLOCATION_METHODS
     return out

@@ -28,15 +28,18 @@ def _fn(name):
 
 # ── 1 · it renders; it does not compute ────────────────────────────────────
 
-@pytest.mark.parametrize("name", ["profitability_surface", "_statement_totals"])
+@pytest.mark.parametrize("name", ["profitability_surface", "_statement_totals",
+                                  "_mix_shift_series", "_margin_trend",
+                                  "_direction", "_findings"])
 def test_the_surface_contains_no_arithmetic(name):
     """⭐⭐ THE PROPERTY THAT MAKES IT A SURFACE. A second definition of any
     figure would be the duplication the sole-owner programme exists to prevent;
     an AST check cannot be satisfied by a careful comment.
 
-    ⭐ BOTH FUNCTIONS, NOT JUST THE ENDPOINT. `_statement_totals` was added
-    beside it and would have been an unguarded place to subtract — which is
-    exactly where a totals row wants to be computed."""
+    ⭐ EVERY FUNCTION ON THE PATH, NOT JUST THE ENDPOINT. Each one added beside
+    it is an unguarded place to compute: a totals row wants to subtract, a trend
+    wants a delta, and a finding wants to say "fell by $24.6m". The guard is
+    what keeps that sentence unsayable without T2 owning the arithmetic."""
     fn = _fn(name)
     # ⭐ ARITHMETIC ONLY, per the ratio surface's precedent. The first draft
     # matched every BinOp and failed on `int | None` in the signature — a guard

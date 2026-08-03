@@ -29,12 +29,21 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 COMPANY_ID = 20
 DATASET_ID = 45
-PERIODS = (2024, 2025)
+# ⭐⭐ ACTUAL PERIODS ONLY, NEVER FORECAST (ruled 3 Aug). Meridian's dataset
+# holds ten periods — five historical and five forecast — and the dimensional
+# layer covers four of the actuals. A product-line allocation of a PROJECTION
+# compounds two estimates: the forecast's own uncertainty and the allocation
+# assumption on top of it, and a CFO would rightly question the result. The
+# surface states the shortfall rather than implying a series it does not hold.
+PERIODS = (2022, 2023, 2024, 2025)
 FREQUENCY = "annual"
 
-# Meridian's own income statement, read from the dataset. The seed reconciles
-# AGAINST these; it never rewrites them.
+# Meridian's own income statement, READ FROM THE DATASET (id 45) on 4 Aug. The
+# seed reconciles AGAINST these; it never rewrites them, and `verify` asserts
+# they are byte-identical before and after.
 STATEMENT = {
+    2022: {"revenue": 906.8571, "cogs": 500.7429, "opex": 161.6571},
+    2023: {"revenue": 1040.9143, "cogs": 571.7143, "opex": 189.2571},
     2024: {"revenue": 1198.6286, "cogs": 658.4571, "opex": 216.8571},
     2025: {"revenue": 1380.0000, "cogs": 757.0286, "opex": 248.4000},
 }
@@ -43,30 +52,58 @@ STATEMENT = {
 # THE PRODUCT LINES — designed for COVERAGE, each earning its place
 # ═══════════════════════════════════════════════════════════════════════════
 #
-# ⭐⭐ PL-CTRL IS THE REVERSAL, AND IT IS THE POINT OF THE WHOLE SEED. It is
-# healthy at gross margin (33%) and LOSS-MAKING at allocated EBIT, because it
-# consumes support and logistics far out of proportion to its revenue. "This
-# product looks fine until you charge it for what it consumes" is the finding a
-# CFO reacts to, and it exercises the hierarchy end to end.
+# ⭐⭐ PL-CTRL IS THE REVERSAL, AND IT DEVELOPS. Healthy at gross margin
+# throughout and loss-making at allocated EBIT from 2024, because it consumes
+# support and logistics far out of proportion to its revenue — and that
+# consumption has been GROWING for three years.
 #
-# ⭐ THE SHARES ARE DELIBERATELY UNEVEN so the Pareto point is a real answer
-# rather than an artefact of equal weighting.
+#   PL-CTRL allocated EBIT:  2022 +18.6   2023 +8.0   2024 -6.0   2025 -13.6
+#
+# ⭐⭐ FOUR PERIODS WITH A DEVELOPING STORY, NOT FOUR RANDOM ONES. "This has been
+# deteriorating for three years, and here is the driver" is an ARGUMENT. "This
+# is bad now" is a data point. Two periods could only ever produce the second.
 PRODUCTS = {
-    "PL-DRIVE":  {"name": "Drive Systems",        "share": 0.34, "gm": 0.47},
-    "PL-AUTO":   {"name": "Automation Modules",   "share": 0.24, "gm": 0.44},
-    "PL-CTRL":   {"name": "Control Electronics",  "share": 0.13, "gm": 0.33},
-    "PL-SERV":   {"name": "Field Service",        "share": 0.09, "gm": 0.58},
-    "PL-SPARE":  {"name": "Spares & Consumables", "share": 0.08, "gm": 0.50},
+    "PL-DRIVE":  {"name": "Drive Systems"},
+    "PL-AUTO":   {"name": "Automation Modules"},
+    "PL-CTRL":   {"name": "Control Electronics"},
+    "PL-SERV":   {"name": "Field Service"},
+    "PL-SPARE":  {"name": "Spares & Consumables"},
 }
-# ⭐ Sums to 0.88 — the remaining 12% is genuinely UNALLOCATED, and it is
-# material on purpose. A demo where everything allocates cleanly hides the
-# residual, which is the honest half of the reconciliation.
 
-# Year-two drift, so mix shift and the margin bridge have something to bridge.
-DRIFT_2025 = {"PL-DRIVE": -0.02, "PL-AUTO": +0.03, "PL-CTRL": +0.01,
-              "PL-SERV": +0.01, "PL-SPARE": -0.01}
-GM_DRIFT_2025 = {"PL-DRIVE": -0.01, "PL-AUTO": -0.03, "PL-CTRL": -0.02,
-                 "PL-SERV": +0.02, "PL-SPARE": 0.0}
+# ⭐⭐ THE MIX STORY, AND EVERY LINE OF IT HAS A CAUSE.
+#   PL-AUTO  GAINS SHARE (19% -> 27%) while its margin THINS (47% -> 41%) —
+#            growth bought with price, which is what the mix-shift effect in
+#            the margin bridge exists to surface.
+#   PL-DRIVE SHRINKS (36% -> 32%) while its margin IMPROVES (46% -> 48%) —
+#            the opposite trade, so the bridge's two effects point in opposite
+#            directions and neither can be mistaken for the other.
+#   PL-CTRL  holds its share and loses margin every year.
+# A drift constant could not express any of this; the shares are stated per
+# period so the story is legible in the data rather than in a comment.
+SHARE = {
+    2022: {"PL-DRIVE": 0.36, "PL-AUTO": 0.19, "PL-CTRL": 0.15,
+           "PL-SERV": 0.09, "PL-SPARE": 0.09},
+    2023: {"PL-DRIVE": 0.35, "PL-AUTO": 0.21, "PL-CTRL": 0.14,
+           "PL-SERV": 0.09, "PL-SPARE": 0.09},
+    2024: {"PL-DRIVE": 0.34, "PL-AUTO": 0.24, "PL-CTRL": 0.13,
+           "PL-SERV": 0.09, "PL-SPARE": 0.08},
+    2025: {"PL-DRIVE": 0.32, "PL-AUTO": 0.27, "PL-CTRL": 0.14,
+           "PL-SERV": 0.10, "PL-SPARE": 0.07},
+}
+# ⭐ Sums to 0.88-0.90 — the remainder is genuinely UNALLOCATED and material on
+# purpose. A demo where everything allocates cleanly hides the residual, which
+# is the honest half of the reconciliation.
+
+GROSS_MARGIN = {
+    2022: {"PL-DRIVE": 0.46, "PL-AUTO": 0.47, "PL-CTRL": 0.36,
+           "PL-SERV": 0.56, "PL-SPARE": 0.50},
+    2023: {"PL-DRIVE": 0.47, "PL-AUTO": 0.45, "PL-CTRL": 0.35,
+           "PL-SERV": 0.57, "PL-SPARE": 0.50},
+    2024: {"PL-DRIVE": 0.47, "PL-AUTO": 0.44, "PL-CTRL": 0.34,
+           "PL-SERV": 0.58, "PL-SPARE": 0.50},
+    2025: {"PL-DRIVE": 0.48, "PL-AUTO": 0.41, "PL-CTRL": 0.32,
+           "PL-SERV": 0.60, "PL-SPARE": 0.50},
+}
 
 # ═══════════════════════════════════════════════════════════════════════════
 # ⭐⭐ THREE ALLOCATION GRADES — a seed where everything is grade A demonstrates
@@ -82,29 +119,50 @@ DIRECT_OPEX_POOL = 0.18                    # share of opex directly assigned
 DIRECT_OPEX_SPLIT = {"PL-DRIVE": 0.36, "PL-AUTO": 0.28, "PL-CTRL": 0.10,
                      "PL-SERV": 0.18, "PL-SPARE": 0.08}
 
+# ⭐⭐ THE DRIVERS DEVELOP, AND THAT IS THE CAUSE OF THE REVERSAL. PL-CTRL's
+# share of the support pool climbs 34% -> 64% and of logistics 30% -> 56% while
+# its REVENUE share barely moves. The reversal is therefore explainable from
+# the data — "it consumes more support every year" — rather than being an
+# unexplained sign change. A constant driver set would have produced a line that
+# is simply unprofitable, which no analyst can act on.
+SUPPORT_DRIVERS = {
+    2022: {"PL-DRIVE": 0.20, "PL-AUTO": 0.16, "PL-CTRL": 0.34,
+           "PL-SERV": 0.20, "PL-SPARE": 0.10},
+    2023: {"PL-DRIVE": 0.17, "PL-AUTO": 0.15, "PL-CTRL": 0.44,
+           "PL-SERV": 0.16, "PL-SPARE": 0.08},
+    2024: {"PL-DRIVE": 0.12, "PL-AUTO": 0.13, "PL-CTRL": 0.56,
+           "PL-SERV": 0.13, "PL-SPARE": 0.06},
+    2025: {"PL-DRIVE": 0.10, "PL-AUTO": 0.12, "PL-CTRL": 0.64,
+           "PL-SERV": 0.10, "PL-SPARE": 0.04},
+}
+LOGISTICS_DRIVERS = {
+    2022: {"PL-DRIVE": 0.25, "PL-AUTO": 0.18, "PL-CTRL": 0.30,
+           "PL-SERV": 0.10, "PL-SPARE": 0.17},
+    2023: {"PL-DRIVE": 0.22, "PL-AUTO": 0.16, "PL-CTRL": 0.40,
+           "PL-SERV": 0.07, "PL-SPARE": 0.15},
+    2024: {"PL-DRIVE": 0.18, "PL-AUTO": 0.13, "PL-CTRL": 0.50,
+           "PL-SERV": 0.05, "PL-SPARE": 0.14},
+    2025: {"PL-DRIVE": 0.14, "PL-AUTO": 0.11, "PL-CTRL": 0.56,
+           "PL-SERV": 0.04, "PL-SPARE": 0.15},
+}
+
 COST_POOLS = {
     # C — an operational driver: support hours. This is WHY PL-CTRL reverses.
-    "customer_support": {
-        "method": "operational_driver", "grade": "C", "share_of_opex": 0.24,
-        "drivers": {"PL-DRIVE": 0.10, "PL-AUTO": 0.12, "PL-CTRL": 0.64,
-                    "PL-SERV": 0.10, "PL-SPARE": 0.04}},
-    # C — logistics movements, also heavy on CTRL.
-    "logistics": {
-        "method": "operational_driver", "grade": "C", "share_of_opex": 0.18,
-        "drivers": {"PL-DRIVE": 0.14, "PL-AUTO": 0.11, "PL-CTRL": 0.56,
-                    "PL-SERV": 0.04, "PL-SPARE": 0.15}},
+    "customer_support": {"method": "operational_driver", "grade": "C",
+                         "share_of_opex": 0.24, "drivers": SUPPORT_DRIVERS},
+    # C — logistics movements, also heavy on CTRL and heavier every year.
+    "logistics": {"method": "operational_driver", "grade": "C",
+                  "share_of_opex": 0.18, "drivers": LOGISTICS_DRIVERS},
     # D — revenue allocation: the fallback, and it is LABELLED as the fallback.
-    "central_admin": {
-        "method": "revenue", "grade": "D", "share_of_opex": 0.20,
-        "drivers": None},          # None -> allocated by revenue share
+    "central_admin": {"method": "revenue", "grade": "D",
+                      "share_of_opex": 0.20, "drivers": None},
 }
 # ⭐ The remaining opex is CORPORATE RESIDUAL — never forced onto a line.
 
 # ⭐⭐ ONE DELIBERATE ABSENCE, per §7o. `units` is seeded for NO product, so the
 # margin bridge's price and volume effects stay unavailable and the Data Quality
-# surface has a real "supply this to unlock that" to render. See §5 of the report:
-# the bridge already NAMES seven effects it cannot compute, but a named absence
-# in prose and an absence a capability actually hits are different demonstrations
+# surface has a real "supply this to unlock that" to render. A named absence in
+# prose and an absence a capability actually HITS are different demonstrations
 # — the second exercises the declaration path.
 SEEDED_MEASURES = ("revenue", "direct_cost", "direct_opex")
 DELIBERATELY_ABSENT = ("units", "list_price", "realised_price")
@@ -115,17 +173,12 @@ def _rows():
     out = []
     for year in PERIODS:
         st = STATEMENT[year]
-        shares, gms = {}, {}
-        for code, spec in PRODUCTS.items():
-            shares[code] = spec["share"] + (DRIFT_2025.get(code, 0.0)
-                                            if year == 2025 else 0.0)
-            gms[code] = spec["gm"] + (GM_DRIFT_2025.get(code, 0.0)
-                                      if year == 2025 else 0.0)
         for code in PRODUCTS:
-            rev = st["revenue"] * shares[code]
+            rev = st["revenue"] * SHARE[year][code]
             out.append((year, code, "revenue", rev))
-            # direct cost from the line's own gross margin
-            out.append((year, code, "direct_cost", rev * (1.0 - gms[code])))
+            # direct cost from the line's own gross margin for that year
+            out.append((year, code, "direct_cost",
+                        rev * (1.0 - GROSS_MARGIN[year][code])))
         # ⭐ ONLY the DIRECTLY ASSIGNED slice is stored. The shared pools are
         # allocated at read time so the demo exercises `allocate()` and its
         # grades, and the corporate residual is never forced onto a line.
@@ -143,6 +196,10 @@ def shared_allocation(year, shares):
     but then the demo would show only C and D and would say nothing about what
     grade A looks like beside them — and the whole point is that the grades
     DIFFER visibly.
+
+    ⭐ THE DRIVERS ARE PER PERIOD. PL-CTRL's support share climbs 34% -> 64%
+    across the four years while its revenue share holds, which is what makes
+    the reversal explainable rather than merely true.
     """
     from services.api.modules.financials import dimensional_analytics as A
     st = STATEMENT[year]
@@ -150,15 +207,18 @@ def shared_allocation(year, shares):
         st["opex"] * DIRECT_OPEX_POOL, DIRECT_OPEX_SPLIT,
         method="direct_assignment")}
     for name, pool in COST_POOLS.items():
-        drivers = pool["drivers"] or {c: shares[c] for c in PRODUCTS}
+        drivers = pool["drivers"][year] if pool["drivers"] else dict(shares)
         out[name] = A.allocate(st["opex"] * pool["share_of_opex"], drivers,
                                method=pool["method"])
     return out
 
 
 def shares_for(year):
-    return {c: PRODUCTS[c]["share"] + (DRIFT_2025.get(c, 0.0) if year == 2025 else 0.0)
-            for c in PRODUCTS}
+    return dict(SHARE[year])
+
+
+def margins_for(year):
+    return dict(GROSS_MARGIN[year])
 
 
 def plan():
@@ -184,7 +244,7 @@ def plan():
         print(f"\n  {y}  line        revenue   gross   d.opex   allocated   allocEBIT")
         for c in PRODUCTS:
             rev = STATEMENT[y]["revenue"] * sh[c]
-            gm = PRODUCTS[c]["gm"] + (GM_DRIFT_2025.get(c, 0.0) if y == 2025 else 0.0)
+            gm = GROSS_MARGIN[y][c]
             g = rev * gm
             do = STATEMENT[y]["opex"] * DIRECT_OPEX_POOL * DIRECT_OPEX_SPLIT[c]
             eb = g - do - (tot[c] - do)

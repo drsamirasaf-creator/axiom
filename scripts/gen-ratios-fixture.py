@@ -5,7 +5,7 @@
 stubbed the ratio surface with a payload someone typed, carrying
 `"text": "is.gross_profit"` and no display fields at all. The page rendered it
 faithfully, the assertions passed, and the leak the client was looking at was
-invisible to every gate — the same failure recorded as CORE §8d one lane
+invisible to every gate — the same failure recorded as CORE §8g one lane
 earlier, on a different surface.
 
 This records the endpoint's own output and REFUSES to write a recording that

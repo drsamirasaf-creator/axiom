@@ -148,7 +148,7 @@ Browser proof, asserted on the rendered text:
 ⭐ The harness fixture for this surface was **hand-written**, carrying
 `"text": "is.gross_profit"` and no display fields at all. It is now RECORDED
 from the endpoint by `scripts/gen-ratios-fixture.py`, which refuses to record a
-payload that still leaks — the same correction CORE §8d made one lane earlier on
+payload that still leaks — the same correction CORE §8g (renumbered from §8d) made one lane earlier on
 a different surface, applied here before it could repeat.
 
 ## 7 · Two corrections made during the lane

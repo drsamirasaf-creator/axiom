@@ -37,8 +37,7 @@ def _lines(year):
     """Revenue, direct cost, direct opex and allocated shared, per line."""
     st = S.STATEMENT[year]
     sh = S.shares_for(year)
-    gm = {c: S.PRODUCTS[c]["gm"] + (S.GM_DRIFT_2025.get(c, 0.0)
-                                    if year == 2025 else 0.0) for c in S.PRODUCTS}
+    gm = S.margins_for(year)
     rev = {c: st["revenue"] * sh[c] for c in S.PRODUCTS}
     dc = {c: rev[c] * (1 - gm[c]) for c in S.PRODUCTS}
     do = {c: st["opex"] * S.DIRECT_OPEX_POOL * S.DIRECT_OPEX_SPLIT[c]
@@ -54,10 +53,17 @@ def _lines(year):
 
 # ── 6 · two periods ────────────────────────────────────────────────────────
 
-def test_two_consecutive_periods_are_seeded():
-    """Mix shift and the bridge need something to bridge between."""
-    assert S.PERIODS == (2024, 2025)
-    assert len(_lines(2024)[0]) == len(_lines(2025)[0]) == 5
+def test_four_consecutive_actual_periods_are_seeded():
+    """⭐⭐ FOUR, AND THEY ARE ALL ACTUALS. Two periods can only ever say "this
+    is bad now"; four can say "this has been deteriorating for three years, and
+    here is the driver" — which is an argument rather than a data point. Ruled
+    3 Aug: dimensional data covers actual periods only, never forecast, because
+    allocating a projection by product line compounds two estimates."""
+    assert S.PERIODS == (2022, 2023, 2024, 2025)
+    for y in S.PERIODS:
+        assert len(_lines(y)[0]) == 5
+    hist = [2021, 2022, 2023, 2024, 2025]
+    assert all(p in hist for p in S.PERIODS), "a forecast period is seeded"
 
 
 # ── 1 · every capability has something to render ───────────────────────────
@@ -150,7 +156,7 @@ def test_allocation_sensitivity_actually_varies():
     revenue drivers must disagree materially for the panel to be worth opening."""
     pool = S.STATEMENT[2025]["opex"] * 0.24
     s = A.allocation_sensitivity(pool, {
-        "operational_driver": S.COST_POOLS["customer_support"]["drivers"],
+        "operational_driver": S.COST_POOLS["customer_support"]["drivers"][2025],
         "revenue": S.shares_for(2025),
     })
     assert s["available"]
@@ -179,6 +185,61 @@ def test_one_line_is_healthy_at_gross_and_loss_making_at_allocated_ebit():
     assert {c for _y, c, _g, _e in found} == {"PL-CTRL"}
     for year, c, gm, eb in found:
         assert eb < -5.0, f"{year} {c} reversal is {eb:.2f} — too small to read"
+
+
+def test_the_reversal_DEVELOPS_rather_than_merely_existing():
+    """⭐⭐ THE REASON FOUR PERIODS EXIST. A line that is simply unprofitable is
+    a data point; a line whose allocated EBIT has fallen every year for three
+    years is an argument, and it is the difference between a chart and a case.
+    Two periods cannot express it, which is why the seed was extended."""
+    series = []
+    for year in S.PERIODS:
+        rev, dc, do, alloc = _lines(year)
+        h = A.margin_hierarchy(revenue=rev["PL-CTRL"], direct_cost=dc["PL-CTRL"],
+                               direct_opex=do["PL-CTRL"],
+                               allocated_opex=alloc["PL-CTRL"])
+        series.append((year, h["gross_profit"]["margin"],
+                       h["allocated_ebit"]["value"]))
+    ebits = [e for _y, _g, e in series]
+    assert all(b < a for a, b in zip(ebits, ebits[1:])), (
+        f"allocated EBIT does not fall every year: {ebits}")
+    assert ebits[0] > 0 and ebits[-1] < 0, (
+        "the line must START healthy and END loss-making, or there is no "
+        "trajectory to show")
+    # ⭐ AND IT STAYS HEALTHY AT GROSS MARGIN THROUGHOUT. If gross margin
+    # collapsed too, the finding would be "this product got worse" — ordinary.
+    # The finding worth the module is that gross margin is FINE and the line
+    # still loses money once it is charged for what it consumes.
+    assert all(g > 0.25 for _y, g, _e in series)
+
+
+def test_the_cause_of_the_reversal_is_in_the_data_not_only_in_a_comment():
+    """⭐⭐ AN UNEXPLAINED SIGN CHANGE IS NOT ACTIONABLE. PL-CTRL's share of the
+    support and logistics pools climbs while its REVENUE share does not, so an
+    analyst can read the driver off the seed rather than being told."""
+    first, last = S.PERIODS[0], S.PERIODS[-1]
+    sup = S.COST_POOLS["customer_support"]["drivers"]
+    log = S.COST_POOLS["logistics"]["drivers"]
+    assert sup[last]["PL-CTRL"] > sup[first]["PL-CTRL"] * 1.5
+    assert log[last]["PL-CTRL"] > log[first]["PL-CTRL"] * 1.5
+    rev_share = (S.SHARE[last]["PL-CTRL"], S.SHARE[first]["PL-CTRL"])
+    assert abs(rev_share[0] - rev_share[1]) < 0.03, (
+        "revenue share moved too — the cost growth would be explicable by "
+        "growth, and the finding would evaporate")
+
+
+def test_one_line_gains_share_as_its_margin_thins_and_another_does_the_opposite():
+    """⭐⭐ THE MIX STORY NEEDS A CAUSE, OR THE BRIDGE'S MIX EFFECT IS NOISE.
+    PL-AUTO buys growth with price; PL-DRIVE gives up share and improves. The
+    two effects point in OPPOSITE directions, so neither can be mistaken for
+    the other in the margin bridge."""
+    first, last = S.PERIODS[0], S.PERIODS[-1]
+    gain = "PL-AUTO"
+    assert S.SHARE[last][gain] > S.SHARE[first][gain] + 0.05
+    assert S.GROSS_MARGIN[last][gain] < S.GROSS_MARGIN[first][gain] - 0.03
+    shrink = "PL-DRIVE"
+    assert S.SHARE[last][shrink] < S.SHARE[first][shrink] - 0.02
+    assert S.GROSS_MARGIN[last][shrink] > S.GROSS_MARGIN[first][shrink]
 
 
 # ── 4 · the residual is material ───────────────────────────────────────────

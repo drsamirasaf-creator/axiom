@@ -16611,7 +16611,24 @@ raw-SQL writer against a `create_all`-made table hit a violation the same INSERT
 would have survived against a migration-made one. **T1 built both mechanisms and
 they were not equivalent.** `server_default` added to the ORM.
 
-# ⭐⭐ §8c · T3 — THE PROFITABILITY SURFACE (3 Aug)
+# ⭐⭐ §8f · T3 — THE PROFITABILITY SURFACE (3 Aug)
+
+> ⚠️ **RENUMBERED 4 Aug, FROM §8c. AND THE COLLISION WAS NOT ALONE:** fixing
+> the reported one exposed two more of exactly the same shape — `§8d` was used
+> for both T2's build and the allocated-EBIT fix, and `§8e` for both Meridian's
+> seed and the queued T4 questions. **Three duplicate pairs, all created on one
+> day, none of them noticed.** A numbering scheme that collides three times in a
+> day is not a scheme; the sequence is now unique and this note is why.
+>
+> The rule applied, uniformly: **the LATER section moves, and its citations move
+> with it in the same commit.** Two sections shipped as §8c — T1's dimensional
+> foundation and this one. **The LATER section moved,
+> because the earlier is CITED FROM CODE:** `dimensional_analytics.py`'s module
+> docstring reads "Read with CORE §8a (R1, R2 and the forbidden four), §8c (the
+> T1 foundation)", and renumbering T1 would have falsified a citation that is
+> correct today in order to fix a collision that is not its fault. The rule is
+> the same one the ledger uses everywhere else: **correct in place, and move
+> the thing nothing points at.**
 
 `GET /api/v1/metrics/profitability/{dataset_id}` and `/profitability`. A
 top-level ANALYZE entry: Structure · Dashboard · Feedback · **Profitability** ·
@@ -16711,7 +16728,13 @@ than counted as coverage. Other crawler failures on this run (`/twin` 500, the
 Sentiment tab pending a Lovable Publish, the route sweep) are inherited and
 touch none of this lane's files.
 
-# ⭐⭐ §8d · ALLOCATED EBIT WAS AN EM DASH ON EVERY LINE OF EVERY DATASET (3 Aug)
+# ⭐⭐ §8g · ALLOCATED EBIT WAS AN EM DASH ON EVERY LINE OF EVERY DATASET (3 Aug)
+
+> ⚠️ **RENUMBERED 4 Aug, FROM §8d** — see the note under §8f. Its two citations
+> (`scripts/gen-ratios-fixture.py` and
+> `docs/reports/ratio-explainer-display-names-2026-08-04.md`) were corrected in
+> the same commit; a renumbering that leaves a dangling citation has traded one
+> defect for a worse one.
 
 Report: `docs/reports/allocated-ebit-diagnosis-2026-08-03.md`.
 
@@ -16798,7 +16821,9 @@ rows need no change and the seed was not re-run.
 **`§8c` is used TWICE** — "T1 BUILT — THE DIMENSIONAL FOUNDATION" and "T3 — THE
 PROFITABILITY SURFACE". Not renumbered here; surfaced rather than auto-resolved.
 
-# ⭐ §8e · QUEUED — TWO QUESTIONS THE T4 SCOPING LANE MUST ANSWER (3 Aug)
+# ⭐ §8h · QUEUED — TWO QUESTIONS THE T4 SCOPING LANE MUST ANSWER (3 Aug)
+
+> ⚠️ **RENUMBERED 4 Aug, FROM §8e** — see the note under §8f. Nothing cites it.
 
 Added 3 Aug, before the T4 scoping lane was dispatched. Recorded here rather
 than held in a session, because a scoping requirement that lives only in a
@@ -16930,3 +16955,99 @@ pinned still pinned. Rendered and asserted: `Gross Profit ÷ Revenue × 100`,
 numerator `Gross Profit`, `Revenue — the income statement line "Revenue"`,
 `Gross Profit — derived: Revenue − Cost of Goods Sold`, and `is_.` / `is.cogs`
 absent from the surface.
+
+# ⭐⭐ §8i · FOUR PERIODS, MIX SHIFT, MARGIN TREND, AND FINDINGS (4 Aug)
+
+Production write to Meridian, authorized in the dispatch. Report:
+`docs/reports/four-period-seed-and-findings-2026-08-04.md`.
+
+## ⭐⭐ THE REVERSAL NOW DEVELOPS, AND ITS CAUSE IS IN THE DATA
+
+PL-CTRL allocated EBIT **+18.63 → +7.96 → −5.99 → −13.57** across 2022–2025,
+gross margin above 32% throughout. **"This has been deteriorating for three
+years, and here is the driver" is an ARGUMENT; "this is bad now" is a data
+point** — and two periods can only ever produce the second.
+
+⭐ The DRIVERS develop too: PL-CTRL's share of the support pool climbs 34% → 64%
+and logistics 30% → 56% while its revenue share barely moves. A constant driver
+set would have produced a line that is simply unprofitable, which nobody can act
+on. Asserted, not narrated.
+
+⭐ THE STATEMENT FIGURES CAME FROM DATASET 45, NOT THE REFCASE. They differ —
+the fixture says 1270.0 for 2024 revenue, the live dataset 1198.6286. A seed
+reconciled against the fixture would have failed on the first production read.
+
+⛔ **ACTUAL PERIODS ONLY, NEVER FORECAST** (ruled 3 Aug). Allocating a
+projection by product line compounds the projection's uncertainty with the
+allocation assumption on top of it.
+
+## §7o — MEASURED BEFORE AND AFTER, NOT ASSERTED
+
+`income_statement` sha256, full payload sha256, both pack content hashes and all
+five member ids **byte-identical**; observations 30 → 60.
+
+⭐ **THE DELETION RULE HAD NOTHING TO DELETE, AND THAT IS A MEASURED FACT:** the
+profitability endpoint is the ONLY reader of `ax_dimension_observation` in the
+codebase and computes at read time with no cache, so no derived artefact exists
+over dimensional data.
+
+## ⭐⭐ FINDINGS — THE MODULE'S PURPOSE, AND THE TEST THAT MAKES IT SAFE
+
+Every other panel restates what the client uploaded plus arithmetic they can do
+themselves. Findings state what the data SAYS — defensible only because no
+sentence is hand-authored: each is a template over payload values, gated on a
+condition read from that payload, and **the derivation prints beneath it on the
+page**. A sentence a reader cannot audit is one they must take on trust.
+
+⭐⭐ **THE MOST IMPORTANT TEST IS THE EMPTY ONE.** Every line healthy and steady
+returns `[]`. **A findings engine that always finds something is a horoscope.**
+
+⭐ THE TRAJECTORY SENTENCE IS GATED ON MORE THAN TWO PERIODS. With two, the
+module may say "this is loss-making"; it may NOT say "deteriorating for three
+years". That gate is why the seed was extended.
+
+## ⭐ THE ARITHMETIC BOUNDARY COST A SENTENCE, AND IT SHOULD HAVE
+
+"Allocated EBIT fell by $24.6m" needs a subtraction T2 does not own, so **it is
+not said**. Findings quote the endpoints of a series and name the direction —
+both already computed. The AST no-arithmetic guard now covers all SIX functions
+on the path; each new helper beside the endpoint is an unguarded place to
+compute, and a totals row, a trend and a finding all want to.
+
+## ⚠️ THREE DEFECTS IN THIS LANE'S OWN WORK
+
+1. ⭐⭐ **`_direction` REPORTED A FLAT SERIES AS "MIXED".** A margin held at
+   exactly 31% arrives as `0.31, 0.3100000000000001, 0.31` — it is computed as
+   `(revenue − cost) / revenue`. The trend panel's whole claim is that the
+   margin HOLDS, and float equality destroyed it. Rounded before comparing.
+2. **STRICT MONOTONICITY WAS THE WRONG TEST.** 50/50/51/52 is rising;
+   `all(b > a)` rejected it for one equal pair. Direction is about never going
+   the other way, not moving at every step.
+3. ⭐⭐ **A 9%-MARGIN LINE WAS TOLD ITS PRICING WAS FINE.** The divergence
+   sentence claims "its own pricing is not the problem", so it is now gated on a
+   HEALTHY margin. Diverging by the arithmetic is not diverging by the meaning,
+   and the sentence would have sent management after the wrong cause.
+
+⭐ The fixture generator REFUSED TO RECORD ITSELF when the shared pool grew in
+step with revenue and nothing diverged — the guard working as designed.
+
+## ⭐⭐ THE §8c COLLISION WAS NOT ALONE — THREE PAIRS IN ONE DAY
+
+`§8d` was T2's build AND the allocated-EBIT fix; `§8e` was Meridian's seed AND
+the queued T4 questions. **Three duplicate pairs, all created on one day, none
+noticed.** Rule applied uniformly: **the LATER section moves, and its citations
+move with it in the same commit.** T3 §8c→**§8f**; allocated-EBIT §8d→**§8g**
+(two citations corrected); T4 questions §8e→**§8h**.
+
+⭐ **T1's §8c DID NOT MOVE BECAUSE IT IS CITED FROM CODE** —
+`dimensional_analytics.py`'s docstring reads "§8c (the T1 foundation)".
+Renumbering it would falsify a correct citation to fix a collision that is not
+its fault. **Correct in place; move the thing nothing points at.**
+
+## VERIFIED
+
+1934 passed (was 1914) / 1 skipped / 3 xfailed · 29/29 gates · 20 new tests ·
+`tsc` 0 · lint rc=0 · ratchet 819/819 · declared-absence green (it caught two of
+this lane's own cells) · browser 3 modes, 14/14 pinned still pinned. Tab strip
+**1080×42px with 5 tabs** — still one row. Total row reads **$45.00M** (the
+statement), not the **$29.00M** the visible rows sum to.
