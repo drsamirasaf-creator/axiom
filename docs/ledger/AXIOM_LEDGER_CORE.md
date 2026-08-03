@@ -16362,3 +16362,25 @@ statuses.
 FROM THEIR EMPLOYER (§4u-b). A client's own customer list is the client's own
 data, and customer profitability at n=1 is identifying BY DESIGN. These look like
 one rule and are two.
+
+# ⭐⭐ §8b · KFLOOR DOES NOT APPLY TO CUSTOMER ECONOMICS — RULED 3 Aug
+
+**The floor follows the RESPONDENT, not the table.**
+
+KFLOOR=3 exists so employees answer honestly: it protects respondents from their
+employer. **A client's own customers are not respondents and made no such
+bargain.** The client holds their invoices and can name them from memory, so
+suppressing a customer's margin would make the analysis useless while protecting
+nothing.
+
+## ⭐⭐ TWO CONSTRAINTS SURVIVE, AND THEY ARE NOT WEAKENED
+
+1. **The floor still governs anything DERIVED FROM ASSESSMENT RESPONSES, however
+   sliced.** A sentiment figure cut by customer segment is still respondent data
+   and still floors at 3. ⭐ **It follows the respondent, not the table** — which
+   is why "is this a customer table?" is the wrong question to ask of it.
+2. **The one-visibility-rule export ruling still applies.** What a viewer may see
+   on screen is what they may export; customer economics does not create a second
+   export path.
+
+**T5 is unblocked.**
