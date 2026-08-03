@@ -16465,3 +16465,86 @@ An ingest path from the tab to observations; a read endpoint; and the Data
 Quality surface that reads each capability's measure dependencies and renders
 Available / Available-with-qualification / Unavailable-and-here-is-the-measure.
 **None of that is in this lane.**
+
+# ⭐⭐ §8d · T2 BUILT — REVENUE AND PROFITABILITY ANALYTICS (3 Aug)
+
+Computation only. **Nothing renders; the surface is T3.**
+`modules/financials/dimensional_analytics.py`, on the T1 foundation.
+
+## ⭐ WHAT WAS BUILT
+
+Revenue by dimension · mix · mix-shift · concentration (top-1/3/5, HHI, entropy,
+**Pareto calculated not assumed**) · the margin hierarchy · cost allocation with
+grades · allocation sensitivity · the margin bridge · incremental margin ·
+growth quality · working-capital intensity.
+
+## ⭐⭐ THE MARGIN BOUNDARY GATE CAUGHT THE LANE, AND THE PRECEDENT DECIDED IT
+
+`check-margin-boundary.py` failed with **"NEW MODULE COMPUTING A MARGIN"** — 7
+sites. The precedent was already in the tree: `debt_to_revenue` lives in
+`ratios.py` because this same gate failed §7s.5's lane, and its comment says
+declaring the module *"would have raised the boundary to make a lane pass, which
+is the one thing the ratchet exists to forbid."*
+
+⭐ **So the division moved to the owner, not the boundary to the division.**
+`ratios.margin()` and `ratios.share()` are new; T2 consumes them. A per-line
+margin is a different quantity from `axiom.gross_margin` — different denominator,
+different grain — but **the OPERATION has one owner**.
+
+⭐ And a share is revenue-over-revenue, genuinely not a margin, but the gate
+excludes only same-IDENTIFIER divisions. Rather than rename until a regex was
+satisfied, the share went to the owner too.
+
+## ⭐⭐ R1 SHIPS IN THE PAYLOAD
+
+`margin_hierarchy` returns `profit_before_tax` and `net_profit` as
+`{refused: True, ruling: "R1", reason: …}` — the refusal travels with the result
+rather than being a thing a surface must remember to say. The reason names what
+assigning them would require (a debt balance, a rate and a tax position per line)
+and **where the hierarchy does stop**.
+
+⭐ `allocated_ebit` is ALWAYS `ALLOCATED`, however clean its other operands are:
+it carries an allocated share of a shared pool and must say so.
+
+## ⭐⭐ THE ALLOCATION ASSUMPTION IS THE RETURN VALUE'S SHAPE
+
+`allocate()` returns the figures, the method, the grade and a prose assumption in
+ONE object — **a consumer cannot render the number without having been handed the
+assumption.** Grade is a property of the method, not a judgement someone types:
+revenue allocation is a D however carefully it was set up.
+
+`allocation_sensitivity()` returns low/central/high, the method behind each, how
+many were tested, and whether the sign holds — **and no probability**, per §8a.
+
+## ⚠️ THE PARETO COUNTER WAS OFF BY ONE ON THE FLATTEST PORTFOLIO
+
+Accumulating ten shares of 0.1 reaches 0.7999999999999999, so a strict `>=`
+reported that **NINE of ten equal lines make 80% of revenue** when the answer is
+eight. A company would have been told its revenue was more concentrated than it
+is, on the most evenly spread portfolio possible. Fixed with a stated epsilon.
+
+## ⭐ THE MARGIN BRIDGE COMPUTES THREE EFFECTS AND NAMES SEVEN IT CANNOT
+
+Within-line margin, mix shift and interaction reconcile EXACTLY to the portfolio
+margin change, with the interaction term shown rather than folded away. Price,
+volume, input-cost, productivity, absorption, currency and allocation-method
+effects each declare the data that would unlock them — §23 forbids fabricating
+price-volume analysis, and a bridge silently missing them reads as a complete
+explanation of a change it has only partly explained.
+
+⭐ `value_destructive` is deliberately NOT a growth-quality label: it needs
+per-line working capital and capital intensity, which is Tier 5.
+
+## CONSUMED, NOT RESTATED
+
+Sole-owned: `net_debt · roic · eva · wacc · total_debt · invested_capital`.
+Registry: `axiom.gross_margin · operating_margin · revenue_growth_yoy ·
+revenue_cagr · working_capital · receivable_days · inventory_days ·
+ebitda_margin`. Asserted by test that no company-level definition appears here.
+
+## MERIDIAN HAS NO DIMENSIONAL DATA — NOTHING WAS SEEDED
+
+`ax_dimension_observation` holds **0 rows** live. To exercise T2 the seed would
+need, per period: revenue by segment or product (T1's one measure), then direct
+cost by the same members for the gross level, then a shared pool with at least
+two drivers for allocation sensitivity. **Reported, not seeded.**

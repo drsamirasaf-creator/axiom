@@ -55,6 +55,41 @@ def net_debt(debt: Number, cash: Number) -> Number:
     return _n(lambda d, c: d - c, debt, cash)
 
 
+def margin(profit: Number, scale: Number) -> Number:
+    """A profit over a scale — the generic margin. Absence propagates.
+
+    ⭐ IT LIVES HERE BECAUSE THE MARGIN BOUNDARY SAID SO, and for the same reason
+    `debt_to_revenue` does. T2's per-line hierarchy needed gross, contribution,
+    direct-operating and allocated-EBIT margins and computed them inline;
+    `check-margin-boundary.py` failed the lane with "NEW MODULE COMPUTING A
+    MARGIN". Declaring `dimensional_analytics.py` in the boundary would have
+    raised it to make a lane pass, which is the one thing the ratchet forbids.
+
+    ⭐⭐ IT DOES NOT RESTATE `axiom.gross_margin`. The registry ratio is the
+    COMPANY figure with the company's own revenue as its denominator; this is the
+    division itself, applied by T2 at a per-line grain. One owner for the
+    operation, and the company-level figure is still read from the registry.
+    """
+    # Imported inside the function, per `net_debt`: engines imports this module.
+    from .engines import _n
+    return _n(lambda p, s: p / s, profit, scale)
+
+
+def share(part: Number, whole: Number) -> Number:
+    """A part over its whole — a mix or contribution share. Absence propagates.
+
+    ⭐ SAME OWNER AS `margin`, AND FOR THE SAME REASON. A share divides a
+    financial quantity by a scale, so the boundary gate reads it as a margin
+    unless the two sides carry the SAME identifier — and `line_revenue /
+    company_revenue` does not, because they are genuinely two different
+    quantities. Rather than rename until a regex is satisfied, the division
+    lives with every other division, and absence propagates once.
+    """
+    # Imported inside the function, per `net_debt`: engines imports this module.
+    from .engines import _n
+    return _n(lambda p, w: p / w, part, whole)
+
+
 def debt_to_revenue(debt: Number, revenue: Number) -> Number:
     """Total debt over revenue. Absence propagates.
 
