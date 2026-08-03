@@ -16298,3 +16298,67 @@ reads exactly like a pass if the code is not checked). Pre-commit carried a
 exit 1; `ALLOW_ROUTETREE=1` on the same poisoned tree → both pass; removed →
 both green. ⭐ **A guard wired without a red-proof is the class this is the
 fourth instance of.**
+
+# ⭐⭐ §8a · REVENUE & PROFITABILITY — DESIGN ENTRY AND TWO RULINGS (3 Aug)
+
+DESIGN ONLY. Full design at `docs/design/revenue-profitability-entry-2026-08-03.md`.
+
+## ⭐⭐ R1 · THE MARGIN HIERARCHY STOPS AT ALLOCATED EBIT
+
+**No per-line PBT or NPAT — not even labelled.** Interest and tax are
+company-level financing facts; assigning them to a product line invents a capital
+structure per line that the client never stated and no auditor can tie to
+anything. This OVERRIDES §18, which permits them as "optional estimates."
+
+⭐ **THE SURFACE STATES WHY, AND THAT SENTENCE IS STRONGER THAN THE NUMBER WOULD
+HAVE BEEN.** A CFO expecting IFRS 8-style segment reporting gets a defensible
+refusal rather than a figure they cannot take to an auditor.
+
+## ⭐⭐ R2 · ELASTICITY IS DESCRIPTIVE ONLY
+
+`%Δvolume / %Δprice` as arithmetic on supplied data, **never promoted to a
+decision estimate** — the document's own §13 position. No econometrics, no causal
+machinery, no IV, no diff-in-diff.
+
+⭐ **SAME DISCIPLINE AS THE CAUSAL MAP:** attribution rendered, causal evidence
+withheld until it qualifies. Promotion later is a RULING, NOT A REBUILD — the
+descriptive ratio and the decision estimate are different fields with different
+statuses.
+
+## ⭐ THE DESIGN, IN ONE LINE EACH
+
+- **One fact table with a `measure` enum**, not the document's four observation
+  tables — every measure reconciles, statuses and versions identically.
+- **`ax_dimension_map`'s EXISTENCE is the licence to join segment and product.**
+  Absent, they are parallel and the reconciler refuses. The anti-double-counting
+  rule becomes STRUCTURAL rather than a validation someone forgets.
+- **The residual is a stored `Unallocated / Other` member**, so every chart sums
+  to the company total by construction and the gap is visible, not implied.
+- **Long-form template tab**: 30% of the data is 30% of the ROWS, so a client
+  never sees a column they cannot fill — and it is the shape an ERP export
+  already lands in, which makes §6's ERP lane a mapping exercise, not a parser.
+- **A derived result takes the WEAKEST status of its inputs** — one function at
+  the `_n` sites that already exist, which is why the taxonomy is cheap.
+- **A confidence factor AXIOM cannot measure is EXCLUDED and said to be** — never
+  defaulted to 1.0. §III.4's coverage floor, applied to a score.
+
+## ⭐⭐ FOUR THINGS THE DOCUMENT SPECIFIES THAT AXIOM FORBIDS
+
+1. **`imputed` as a data status** — "a missing observation filled under an
+   approved imputation method" is exactly what absence propagation forbids. There
+   is no approval that converts a gap into a value. The taxonomy ships without it.
+2. **The proportional gross-up escape** ("unless explicitly approved") — the rule
+   is right, the escape is not.
+3. **"Probability of remaining profitable" across allocation methods** — a spread
+   over AXIOM's OWN MODELLING CHOICES is not a distribution over states of the
+   world. Same category error §7j.13 ruled against for the strategies histogram.
+   Ships as a range and a method count, never a probability.
+4. **`Priority = Impact × Probability × Persistence × Strategic × Actionability`**
+   — one zero factor annihilates a material finding SILENTLY.
+
+## ⚠️ NEEDS A RULING BEFORE T5
+
+**Does KFLOOR=3 apply to customer economics?** It exists to protect EMPLOYEES
+FROM THEIR EMPLOYER (§4u-b). A client's own customer list is the client's own
+data, and customer profitability at n=1 is identifying BY DESIGN. These look like
+one rule and are two.
