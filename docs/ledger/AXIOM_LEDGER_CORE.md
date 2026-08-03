@@ -16171,3 +16171,56 @@ must follow the dataset's frequency, and a quarterly dataset has none.
 
 ds 45: 1,000,000 → $2,784.74/share. ds 55: 10,000,000 → $10.59/share. ds 48 and
 57 carry no count and report absent. **No stored value changed.**
+
+# ⛔ §7z · BLOCKING CONDITION — `tsc` IS RED ON FRONTEND MAIN (3 Aug)
+
+**NOT A DEFECT TO FIX. NOT SOMETHING A LATER LANE MAY PATCH AROUND.**
+
+## What is red
+
+`bunx tsc --noEmit` on frontend `origin/main`: **90 errors across 44 files**,
+**79 of them the `Property 'search' is missing` class** — every `Link` or
+`navigate` to any route carrying a `validateSearch`, not only `/login`.
+
+## The cause — a half-landed TanStack Start migration
+
+Commit **`0107848` ("Work in progress")** added ten lines to `routeTree.gen.ts`:
+
+```ts
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register { ssr: true; router: ...; config: ... }
+}
+```
+
+⭐⭐ **IT IS A TYPE REGISTRATION, NOT A ROUTE CHANGE.** Registering the router
+switches on strict typed-router checking **app-wide**, which is why the blast
+radius is 44 files from a ten-line diff. `src/router.tsx`, `src/start.ts` and
+`@tanstack/react-start ^1.168.26` are all present: the migration is **in
+flight**, across five commits (`0107848 · 1b71d5a · 7af8985 · 38e9129 · 9704ffa`).
+
+## ⭐ What still passes, and why the app is not down
+
+`lint`, `ratchet`, `check-routetabs-hoisted` and `bun run build` all pass. **Vite
+does not typecheck**, so the app builds and serves. Only `tsc` is red — which is
+also why the pre-push hook blocks every frontend push until this resolves.
+
+## ⛔ THE RULING
+
+**The migration finishes, or it is reverted.** Forty-four files repaired
+underneath it would be undone by whichever way it resolves, and would land on
+top of work in flight.
+
+⭐ **A LATER LANE MUST NOT QUIETLY PATCH AROUND THIS.** The first diagnosis of it
+said "two errors in AuthMenu.tsx" — that came from reading `tsc` through
+`head -3`, and a two-line repair would have fixed 2 of 90 while appearing to
+close the item. **Read the whole error list before believing its size.**
+
+## Precedent set here
+
+`b3bf30d` (§7y, the raw-count lane) was pushed with the pre-push hook bypassed,
+on explicit instruction, having established that **its own files appear nowhere
+in the 90**. That is the only condition under which a bypass is defensible: the
+lane is verified green by every gate that can still run, and the red is provably
+inherited. **A bypass without that evidence is just a disabled gate.**
