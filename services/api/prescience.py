@@ -194,6 +194,18 @@ def _num(x, dp=0):
         return None
 
 
+def _per_unit_fact(x, dp=2):
+    """A per-share figure never states itself as zero — see
+    report_format.per_unit for why a rounded-to-zero price is not a small
+    price."""
+    from .report_format import per_unit
+    try:
+        float(x)
+    except (TypeError, ValueError):
+        return None
+    return per_unit(x, dp)
+
+
 def _money(x, cur="USD"):
     n = _num(x, 0)
     return f"{cur} {n}M" if n is not None else None
@@ -334,7 +346,10 @@ def _sec_valuation(doc, secs, cur):
     doc.fact("valuation.dcf.enterprise_value", "DCF enterprise value", _money(dcf.get("enterprise_value"), cur))
     doc.fact("valuation.dcf.equity_value", "DCF equity value", _money(dcf.get("equity_value"), cur))
     doc.fact("valuation.dcf.equity_value_post_dlom", "Equity value post-DLOM", _money(dcf.get("equity_value_post_dlom"), cur))
-    doc.fact("valuation.dcf.value_per_share", "Value per share", _num(dcf.get("value_per_share"), 2))
+    # ⭐ per-unit, not _num: _num(0.002785, 2) is "0.00", and a fact stating a
+    # share is worth zero is worse than no fact. See report_format.per_unit.
+    doc.fact("valuation.dcf.value_per_share", "Value per share",
+             _per_unit_fact(dcf.get("value_per_share"), 2))
     doc.fact("valuation.dcf.wacc", "WACC", _pct(dcf.get("wacc"), 2))
     mc = dcf.get("monte_carlo", {})
     doc.fact("valuation.dcf.monte_carlo.mean", "Monte Carlo mean EV", _money(mc.get("mean"), cur))

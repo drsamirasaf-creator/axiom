@@ -45,6 +45,7 @@ SEVCOL = {"opportunity": TEAL, "insight": NAVY, "risk": RED, "strength": GREEN, 
 from .modules.financials.periods import format_period as _fmt_period
 from .report_format import (currency_symbol as _sym_for, money as _money,
                             percent as _pc, number as _num,
+                            per_unit as _per_unit,
                             kpi_value as _kpi_value, plan_value as _plan_value)
 
 
@@ -569,7 +570,9 @@ def build_board_pdf(report: dict, extras: dict, meta: dict) -> bytes:
         story.append(_png_img(_lens, 5.9))
     story.append(Spacer(1, 6))
     story.append(cards([("DCF enterprise value", M(ev), None), ("Equity value", M(s["dcf"]["equity_value"]), None),
-                        ("Value / share", (f"{sym}{NUM(s['dcf']['value_per_share'],2)}" if s['dcf'].get('value_per_share') is not None else "—"), None),
+                        # per_unit, not NUM: a per-share figure that rounds to 0.00 reads as a
+                        # worthless share. See report_format.per_unit.
+                        ("Value / share", (f"{sym}{_per_unit(s['dcf']['value_per_share'],2)}" if s['dcf'].get('value_per_share') is not None else "—"), None),
                         ("WACC", PC(s["dcf"]["wacc"], 2), None)]))
     story.append(Spacer(1, 6))
     if mult:

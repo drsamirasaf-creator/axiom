@@ -511,3 +511,69 @@ def test_the_UI_shows_the_inert_reason_and_the_stale_count():
     assert "marked stale" in src
     # ⭐ and it no longer lists three options it does not act on
     assert "none has been applied" not in src
+
+
+def test_shares_outstanding_is_NOT_inert_on_the_private_branch():
+    """⭐⭐ THE INERT CLAIM WAS DERIVED FROM ONE FUNCTION AND STATED ABOUT THE
+    WHOLE VALUATION.
+
+    `_PUBLIC_ONLY` is the set of names inside `wacc_inputs`' public branch, and
+    that is correct about the COST OF EQUITY: a private company's Ke never reads
+    a share count. But `effective_fields` uses it to tell the customer the field
+    "is stored and inert", and the valuation's per-share line divides the
+    post-DLOM equity by `shares_outstanding` on BOTH branches.
+
+    ⭐ So the surface told a Meridian admin that shares outstanding could not
+    move any figure, on the same screen whose Value / share card is computed
+    from it. `share_price` IS genuinely inert there — nothing but the public Ke
+    reads it — and the two must not be lumped together.
+
+    ⭐ The requirement in COMPANY_FIELDS is `required_for`, not `read_by`.
+    Conflating the two is the mechanism: a field required only of public
+    companies is not thereby unread for private ones.
+    """
+    from services.api.assumptions_api import effective_fields
+    e = effective_fields({"ownership": "private"})
+
+    assert e["share_price"]["effective"] is False, (
+        "share_price genuinely is inert on the relevered path")
+
+    so = e["shares_outstanding"]
+    assert so["effective"] is not False, (
+        "shares_outstanding is read by the per-share line on both branches — "
+        f"reporting it inert is a false statement to the customer: {so['reason']!r}")
+
+
+def test_the_per_share_line_really_does_read_shares_on_the_private_branch():
+    """The anti-regression for the test above: if the engine ever stops reading
+    the share count for private companies, the claim flips back and this says so
+    rather than leaving the previous test asserting a stale reason."""
+    import os
+    import tempfile
+    os.environ.setdefault(
+        "DATABASE_URL", "sqlite:///" + tempfile.mktemp(prefix="eff-", suffix=".db"))
+    from services.api.modules.valuation import engines as val
+
+    years = [2021, 2022, 2023]
+    blk = lambda keys: {k: {str(y): 100.0 for y in years} for k in keys}  # noqa: E731
+    data = {
+        "company": {"name": "P", "ownership": "private", "standard": "us_gaap",
+                    "tax_rate": 0.25, "risk_free_rate": 0.04,
+                    "market_risk_premium": 0.055, "cost_of_debt": 0.06,
+                    "unlevered_industry_beta": 1.0, "target_debt_to_equity": 0.5,
+                    "size_premium": 0.02, "specific_risk_premium": 0.01,
+                    "dlom": 0.2, "shares_outstanding": 1_000_000},
+        "periods": {"historical": years, "forecast": [], "frequency": "annual"},
+        "income_statement": blk(("revenue", "cogs", "opex",
+                                 "depreciation_amortization", "interest_expense")),
+        "balance_sheet": blk(("cash", "other_current_assets", "noncurrent_assets",
+                              "short_term_debt", "long_term_debt",
+                              "current_liabilities_ex_debt", "total_equity",
+                              "preferred_equity", "minority_interest")),
+        "cash_flow": blk(("capex", "net_borrowing", "dividends")),
+    }
+    a = val.run(data, mode="auto_forecast")["deterministic"]["value_per_share"]
+    data["company"]["shares_outstanding"] = 2_000_000
+    b = val.run(data, mode="auto_forecast")["deterministic"]["value_per_share"]
+    assert a is not None and b is not None
+    assert a != b, "changing the share count moved nothing — it really is inert"

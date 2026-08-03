@@ -94,6 +94,37 @@ def number(x, d: int = 2) -> str:
     return f"{x:,.{d}f}"
 
 
+def per_unit(x, d: int = 2) -> str:
+    """A PER-UNIT figure — a price per share, per seat, per licence.
+
+    ⭐⭐ A NON-ZERO VALUE MUST NEVER RENDER AS ZERO. `number(0.002785, 2)` is
+    "0.00", and on a Value / share line that does not read as "small", it reads
+    as WORTHLESS — a finished answer rather than a question. That is how a
+    share count stored in the wrong unit reached three surfaces (the valuation
+    card, the board report and the PDF) without anyone seeing a wrong number:
+    there was no wrong number on screen, only a zero.
+
+    ⭐ WIDENED TO FOUR SIGNIFICANT FIGURES, NOT TO THE FIRST SIGNIFICANT DIGIT.
+    "$0.003" clears the never-a-zero bar and is still useless for telling a unit
+    error from a genuinely small price. A value that does NOT round to zero is
+    left alone, so an ordinary 50-cent figure stays "0.50".
+
+    A true zero still renders "0.00": widening the precision of a real zero
+    would state a certainty nobody has.
+    """
+    if x is None:
+        return DASH
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return DASH
+    a = abs(v)
+    if a > 0 and a < 0.5 * (10 ** -d):
+        while d < 10 and a * (10 ** d) < 1000:
+            d += 1
+    return f"{v:,.{d}f}"
+
+
 def kpi_value(k: dict, sym: str = "") -> str:
     """Format one KPI strip entry BY ITS DECLARED FORMAT.
 

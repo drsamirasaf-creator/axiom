@@ -143,11 +143,24 @@ def affected_runs(db, dataset_id):
 # ═══════════════════════════════════════════════════════════════════════════
 
 # Fields the cost-of-equity path reads ONLY on the relevered (private) branch.
-# ⭐ DERIVED FROM ONE PLACE — `wacc_inputs` in financials.engines chooses the
-# branch on `company["ownership"]`, and these are the names inside that branch.
+# ⭐ DERIVED FROM ONE PLACE — `wacc` in financials.engines chooses the branch on
+# `company["ownership"]`, and these are the names inside that branch.
 _PRIVATE_ONLY = {"size_premium", "specific_risk_premium",
                  "unlevered_industry_beta", "target_debt_to_equity"}
 _PUBLIC_ONLY = {"beta", "share_price", "shares_outstanding"}
+
+# ⭐⭐ READ OUTSIDE THE COST-OF-EQUITY BRANCH, SO THE BRANCH DOES NOT DECIDE IT.
+# The sets above are derived from ONE function and were used to make a claim
+# about the WHOLE valuation. `shares_outstanding` is in `_PUBLIC_ONLY` because a
+# private company's Ke never reads a share count — true — but the valuation's
+# per-share line divides the post-DLOM equity by it on BOTH branches. So the
+# assumptions screen told a private-company admin that shares outstanding "is
+# stored and inert" while the Value / share card beside it was computed from it.
+#
+# ⭐ THE MECHANISM WAS A CONFLATION: `COMPANY_FIELDS` records `required_for`,
+# not `read_by`. A field required only of public companies is not thereby unread
+# for private ones.
+_READ_OUTSIDE_KE = {"shares_outstanding"}
 
 
 def effective_fields(company):
@@ -172,6 +185,13 @@ def effective_fields(company):
                                  "(public) path, which does not read this field. "
                                  "It is stored, and it will not move any figure "
                                  "until the company's ownership is 'private'.")}
+        elif own == "private" and f in _PUBLIC_ONLY and f in _READ_OUTSIDE_KE:
+            out[f] = {"effective": True, "branch": "private",
+                      "reason": ("the RELEVERED-BETA (private) cost of equity "
+                                 "does not read this field, but the valuation "
+                                 "does: value per share divides the "
+                                 "nonmarketable (post-DLOM) equity by it. It "
+                                 "moves the per-share figure and nothing else.")}
         elif own == "private" and f in _PUBLIC_ONLY:
             out[f] = {"effective": False, "branch": "private",
                       "reason": ("this company is valued on the RELEVERED-BETA "

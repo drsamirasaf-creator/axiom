@@ -15858,3 +15858,98 @@ three controls reproduced their defects and the tree restored clean.
 BLIND. The inverse makes it LIE in the other direction** — and the message it
 prints accuses the source tree, which is the most expensive possible place to
 send someone looking.
+
+# ⭐⭐ §7w · VALUE PER SHARE READ $0.00 — TWO UNITS IN ONE FIELD (3 Aug)
+
+Diagnosed and fixed 3 Aug. Backend `1f5df25` → this lane. The engine formula is
+**correct and untouched**; what shipped was a display that let a wrong number
+arrive as a zero, and a stored value in the wrong unit.
+
+## ⭐⭐ 1 · NEITHER CANDIDATE — THE FIELD RESOLVES AND THE FORMULA IS RIGHT
+
+`shares_outstanding` is carried in **MILLIONS OF SHARES**, like every other
+engine figure, so `equity_post / shares` is already dollars per share. Pinned,
+not inferred, by `test_meridian_public_wacc_exact`: 100 shares at $22 asserting
+**E=2200 against D=440**, both millions, exact to 1e-9.
+
+**The live data stores RAW COUNTS** — ds 45 holds 1,000,000 and ds 55 holds
+10,000,000. So Meridian is priced as a company with a trillion shares and its
+per-share figure is 0.002785. **Two conventions in one field.**
+
+⭐ **DISPLAY PRECISION HID IT, IT DID NOT CAUSE IT.** Two decimals rendered
+0.002785 as `$0.00`, and a zero does not read as "check this number" — it reads
+as a finished answer. `$0.002785` would have been obvious on the first
+screenshot.
+
+## ⭐⭐ 2 · THE FIRST DIAGNOSIS WAS WRONG AND THE NUMERICAL CHECKPOINTS CAUGHT IT
+
+I concluded the engine divided millions by a raw count, wrote six red tests,
+applied a `× 1e6`, and **`tests/numerical/test_financials_checkpoints.py` failed
+on two reference cases.** Reverted in full.
+
+⭐⭐ **THE NEAR-MISS IS THE FINDING.** Correcting the arithmetic to absorb bad
+data would have made every correctly-scaled dataset wrong instead — and would
+have silently moved **the public WACC's equity weight**, which reads the same
+field. A byte-identical reference checkpoint is what stood between a plausible
+fix and a valuation-wide regression.
+
+⭐ The convention is now pinned by tests, so the same move cannot be made
+quietly next time.
+
+## ⭐⭐ 3 · THE RENDERING LAYER REINTRODUCED THE FALLBACK THE ENGINE REFUSES
+
+`valuation.tsx` computed its local per-share from `equity_value` — the
+**PRE-DLOM** figure — one layer above the engine comment that says it "must not
+fall back to the pre-discount equity, which would reintroduce the overstatement
+one line below the place it was just removed." Reachable for any private company
+with shares and no DLOM. Fixed, and its units aligned to the engine's (it also
+multiplied by 1e6).
+
+## ⭐⭐ 4 · A DERIVED SET, USED TO MAKE A CLAIM ABOUT SOMETHING ELSE
+
+`effective_fields` told a private-company admin that `shares_outstanding` "is
+stored and inert" **on the same screen whose Value / share card divides by it**.
+
+`_PUBLIC_ONLY` is derived from `wacc()`'s public branch and is correct about the
+COST OF EQUITY; it was used to make a claim about the WHOLE VALUATION.
+
+⭐ **The mechanism is a conflation: `COMPANY_FIELDS` records `required_for`, not
+`read_by`.** A field required only of public companies is not thereby unread for
+private ones. `share_price` genuinely IS inert there — the two were lumped
+together and only one belonged.
+
+## ⭐⭐ 5 · "INDICATIVE" LAUNDERS A UNIT ERROR AS IMPRECISION
+
+The badge means *private company, not a market price* — correct for illiquidity
+and kept. But it sat beside a figure wrong by a factor of a million, and
+"indicative" reads as *approximate*. **A qualifier about liquidity cannot carry
+doubt about arithmetic**, and nothing on the card said which kind was meant.
+
+## ⭐ 6 · THE RULE: A NON-ZERO VALUE NEVER RENDERS AS ZERO
+
+`report_format.per_unit` and `formatMoneyPerUnit`, one rule in two languages.
+Widened to **four significant figures, not the first significant digit** —
+"$0.003" clears the bar and still cannot tell a unit error from a small price.
+Values that do not round to zero are untouched; a **true zero stays "0.00"**,
+because widening the precision of a real zero states a certainty nobody has.
+
+⭐⭐ **AND THE SWEEP CAUGHT MY OWN NEAR-REGRESSION.** `board-report.tsx`'s
+`fmtMoney` ASSUMES MILLIONS (`>=1000 -> "B"`). It rendered the per-share as
+"$0.0M" — and under the reverted engine fix would have rendered a $2,784.74
+share as **"$2.78B PER SHARE"**. The `phi` shadow price matched the same search
+and is CORRECT: millions-per-unit through a millions formatter. Classified by
+what each reads, not by what it is called.
+
+## ⚠️ 7 · OPEN, AND NOT RULED HERE
+
+1. **The stored share counts are in the wrong unit.** Correcting customer values
+   is a data ruling.
+2. **The upload template asks "Shares Outstanding" and states no unit** while
+   every adjacent money field is normalised to millions at ingest. This is what
+   will recreate the collision after any correction.
+3. **`valuation.tsx` defaults `shares` to "1000000"** — left as found, because
+   changing the default alone leaves the stored data wrong and makes the two
+   disagree in a new way. One ruling, across template, default and stored values.
+4. **The public WACC branch reads the same field** for its equity weight; a raw
+   count there drives WACC toward a pure cost of equity — the failure the
+   `_debt_book` KeyError above it exists to prevent. No live dataset is public.
