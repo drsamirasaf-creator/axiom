@@ -16821,13 +16821,22 @@ rows need no change and the seed was not re-run.
 **`§8c` is used TWICE** — "T1 BUILT — THE DIMENSIONAL FOUNDATION" and "T3 — THE
 PROFITABILITY SURFACE". Not renumbered here; surfaced rather than auto-resolved.
 
-# ⭐ §8h · QUEUED — TWO QUESTIONS THE T4 SCOPING LANE MUST ANSWER (3 Aug)
+# ⭐ §8h · QUEUED FOR T4 — TWO QUESTIONS AND FIVE RULINGS (3 Aug)
 
 > ⚠️ **RENUMBERED 4 Aug, FROM §8e** — see the note under §8f. Nothing cites it.
+>
+> ⚠️ **THE 4 Aug ADDITION WAS DISPATCHED AGAINST "§8e".** That letter now
+> belongs to Meridian's dimensional seed, which the five rulings below have
+> nothing to do with; they are T4 scoping material and were appended HERE, to
+> the section that was §8e when the dispatch was written. Recorded rather than
+> silently redirected, because a ruling filed under the wrong number is a ruling
+> the next reader will not find.
 
-Added 3 Aug, before the T4 scoping lane was dispatched. Recorded here rather
-than held in a session, because a scoping requirement that lives only in a
-conversation is a requirement the scoping report will not have.
+Added 3 Aug, before the T4 scoping lane was dispatched, and extended 4 Aug with
+five rulings. Recorded here rather than held in a session, because a scoping
+requirement that lives only in a conversation is a requirement the scoping
+report will not have. **Items 1–2 are questions the lane must ANSWER; items 3–7
+are rulings it must OBEY.**
 
 T4's tier is defined in `docs/design/revenue-profitability-entry-2026-08-03.md`
 (units, prices, discounts → PVM · margin bridge · list-to-net waterfall ·
@@ -16859,6 +16868,68 @@ This is R2's discipline applied one level up: R2 forbids promoting a descriptive
 elasticity to a decision estimate; this forbids an OPTIMISER whose objective
 silently assumes the response R2 refused to supply. A capability that fails this
 test is reported as needing a measurement, never shipped with a default.
+
+## ⭐⭐ 3 · WASSERSTEIN DISTANCE IS A NAMED T4 CAPABILITY, AND THE PLAN IS THE
+##      RECOMMENDATION (ruled 3 Aug)
+
+The current mix and the constrained-optimal mix are **distributions over the
+same lines**, so the **1-Wasserstein distance** between them states how much
+revenue moves, from which lines to which.
+
+⭐⭐ **THE OPTIMAL TRANSPORT PLAN IS THE RECOMMENDATION, NOT A METRIC BESIDE
+IT.** "Shift X% from A and Y% from B into C" IS the answer; the distance is the
+same object viewed as a scalar. A surface that renders the number and withholds
+the plan has thrown away the half a management accountant can act on. **The
+metric and the move are ONE object** — the same rule the allocation vocabulary
+follows, where the figure and its assumption cannot be separated.
+
+## ⭐ 4 · VIRIDIS FOR CONTINUOUS ENCODINGS, ON A STATED GROUND (ruled 3 Aug)
+
+**Perceptually uniform** — equal colour steps mean equal distance — **and
+colourblind-safe**. A red-green ramp misrepresents magnitude: its steps are not
+equal in perceived distance, so a reader infers differences the data does not
+contain.
+
+Applies **wherever the module encodes distance or intensity**. It does NOT apply
+to categorical states, where R/A/G already carries meaning — a status is not a
+magnitude, and recolouring it would destroy a convention that works.
+
+## ⛔ 5 · "STATIONARY EQUILIBRIUM" IS REFUSED, AND THIS IS WHY (ruled 3 Aug)
+
+**That is Markov language**: a distribution a process converges to under fixed
+transition dynamics. **Constrained mix optimisation has no process and no
+transition dynamics** — it is a STATIC OPTIMUM UNDER CONSTRAINTS.
+
+⭐⭐ Calling it an equilibrium implies **the business drifts there unaided**, and
+would require exactly the demand and switching dynamics §8h·2 forbids assuming.
+The term is **the constrained optimum**, and the framing is not a wording
+preference: it is the difference between a target management must act to reach
+and a state they can wait for.
+
+## ⭐⭐ 6 · THE DECORATION RULE (ruled 3 Aug — governs the presentation lane)
+
+**Decoration that encodes a fact is built. Decoration that fills space is not.**
+
+| Encodes a fact — BUILT | Encodes nothing — NOT BUILT |
+|---|---|
+| sparklines (direction) | a gradient behind a card |
+| magnitude bars (concentration) | decorative iconography |
+| colour bands (a defensible threshold) | shadows, texture, filler imagery |
+| a distinct residual style (Unallocated is not a product) | |
+
+⭐ The test is not whether it looks better. It is whether a reader who
+understood the mark would know something they did not know before.
+
+## ⭐⭐ 7 · UNALLOCATED APPEARS IN EVERY CHART, AS IT DOES IN EVERY TABLE
+##      (ruled 3 Aug)
+
+On the seed it is **10% of revenue and 82% of direct opex**. A chart that omits
+it **overstates coverage**, and the lines would appear to be the whole company.
+
+⭐⭐ **THE PICTURE WOULD LIE WHERE THE TABLE DOES NOT** — the tables already
+carry the residual as a row and the totals row already ties to the statement, so
+a chart dropping it would contradict the table beside it. Same rule, same
+reason, applied to a different rendering.
 
 # ⭐⭐ §7r-S5 · THE RATIO EXPLAINER RENDERED INTERNAL TOKENS TO CLIENTS (4 Aug)
 
