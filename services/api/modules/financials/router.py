@@ -73,6 +73,66 @@ def _statement_totals(A, co_rev, co_cogs, co_opex):
     }
 
 
+def _constrained_mix(M, capacity_rows, period, contributions, units, pools):
+    """The constrained optimum and the transport plan, for one period.
+
+    ⭐ WIRING, NOT ANALYTICS. Every number comes from a call into `managerial`;
+    this selects the rows for the period and shapes them. The AST guard covers
+    this function too, so a division here would fail the build rather than
+    quietly becoming a second definition of contribution per unit.
+    """
+    rows = [r for r in (capacity_rows or [])
+            if r.get("period") is None or r.get("period") == period]
+    if not rows:
+        return None, None
+    capacity = next((r.get("value") for r in rows
+                     if r.get("measure") == "capacity_available"), None)
+    consumption = {r.get("line_code"): r.get("value") for r in rows
+                   if r.get("measure") == "consumption_per_unit"}
+    ceilings = {r.get("line_code"): r.get("value") for r in rows
+                if r.get("measure") == "maximum_sales_units"}
+    steps = []
+    for pool in (pools or []):
+        if pool.get("period") is not None and pool.get("period") != period:
+            continue
+        split = M.split_pool(pool)
+        if split.get("available") and split.get("step"):
+            steps.append(dict(split["step"], pool=pool.get("pool")))
+
+    lines = {}
+    for code, con in (contributions or {}).items():
+        if not con.get("available"):
+            continue
+        per_unit = M.contribution_per_constrained_unit(con.get("value"),
+                                                       (units or {}).get(code))
+        lines[code] = {
+            "contribution_per_unit": per_unit.get("value"),
+            "consumption_per_unit": consumption.get(code),
+            "max_units": ceilings.get(code),
+        }
+    plan = M.optimise_mix(lines, capacity, steps=steps)
+    if not plan.get("available"):
+        return plan, None
+
+    # ⭐⭐ THE PLAN IS OVER THE UNITS MIX, AND THE SURFACE SAYS SO. A revenue
+    # mix would need price x units — a multiplication, which the AST guard
+    # forbids here and which `managerial` would have to own. Units are also the
+    # better object for a CAPACITY decision: what a plant reallocates is
+    # production, not invoice value. The difference is stated rather than left
+    # for a reader to assume.
+    opt_units = plan["value"]["units"]
+    from . import ratios as _r
+    cur_total = sum(v for v in (units or {}).values() if v is not None)
+    opt_total = sum(v for v in opt_units.values() if v is not None)
+    current_mix = {c: _r.share((units or {}).get(c), cur_total)
+                   for c in opt_units}
+    target_mix = {c: _r.share(opt_units.get(c), opt_total) for c in opt_units}
+    move = M.transport_plan(current_mix, target_mix)
+    if move.get("available"):
+        move["basis"] = "share of units produced, not of revenue"
+    return plan, move
+
+
 def _company_cost(cogs, opex):
     """The statement's total operating cost. ⭐ In `managerial`, not here — the
     endpoint's AST guard forbids arithmetic and the rule survived this lane."""
@@ -1114,6 +1174,7 @@ def profitability_surface(dataset_id: int, db: Session = Depends(get_db),
             shared = A.allocate(pool, rev, method="revenue")
             share_of = shared.get("value") or {}
 
+            units_by_line = meas.get("units") or {}
             lines = {}
             contributions = {}
             for code in rev:
@@ -1123,6 +1184,9 @@ def profitability_surface(dataset_id: int, db: Session = Depends(get_db),
                     revenue=rev.get(code), direct_cost=cost.get(code),
                     direct_opex=dopex.get(code),
                     allocated_opex=share_of.get(code))
+            mix_plan, move_plan = _constrained_mix(
+                M, data.get("capacity"), p, contributions, units_by_line,
+                cb_pools)
             block["by_period"][p] = {
                 "revenue": rev_panel,
                 "mix": A.revenue_mix(rev, co_rev),
@@ -1133,6 +1197,8 @@ def profitability_surface(dataset_id: int, db: Session = Depends(get_db),
                 "lines": lines,
                 "contribution": contributions,
                 "cost_behaviour_coverage": coverage,
+                "constrained_mix": mix_plan,
+                "transport_plan": move_plan,
                 # ⭐⭐ THE SENTENCE THE SOURCE DOCUMENT'S §22 REQUIRES BESIDE THE
                 # FULLY-ALLOCATED LOSS. Without it the surface shows a negative
                 # line and invites the exit that would make the company worse

@@ -17480,3 +17480,95 @@ behaviour each. **Not seeded here, by dispatch.**
 red before · browser 3 modes green, 14/14 pinned still pinned · tab strip
 **1080×42px with 6 tabs**, still one row · `tsc` 0 · lint rc=0 · ratchet
 819/819 · margin boundary green with `ratios.py` as owner.
+
+# ⭐⭐ §8n · T4.3 — MERIDIAN SEEDED WITH COST BEHAVIOUR AND CAPACITY (4 Aug)
+
+Production write, authorized. Report:
+`docs/reports/t4-3-cost-behaviour-seed-2026-08-04.md`.
+
+## ⚠️ FIVE POOLS, NOT FOUR — AND THE DISPATCH INHERITED MY OWN ERROR
+
+§8k's report said "four pools summing to cogs + opex". **The four named are all
+OPEX pools and sum to opex alone.** COGS is the largest variable cost a
+manufacturer has; omitting it fails `pools_reconcile`, and had it somehow passed
+it would have **overstated contribution by the whole of COGS** — on the figure
+the §22 corrective argues from. Direct Materials is the fifth, and it is not
+optional. All four behaviour classes appear; all five reconcile exactly in every
+period.
+
+## ⭐⭐ THE §22 CORRECTIVE NOW FIRES ON REAL DATA
+
+`2024 PL-CTRL allocEBIT −5.99 contribution +49.58` · `2025 −13.57 / +64.62` —
+it covers its own variable cost, and the allocated share is what makes it
+negative. **From the seed, not from a fixture.**
+
+## ⛔ ITEM 3 IS ARITHMETICALLY UNREACHABLE, AND THE CAUSE IS IN T4.2
+
+The dispatch asked for a line negative at BOTH levels so the inverse sentence
+renders. **No seed can produce one.** `variable_cost_by_line` allocates every
+variable pool BY REVENUE, so
+
+    contribution_i = rev_i − V·rev_i/Σrev = rev_i·(1 − V/Σrev)
+
+— the ratio is **identical for every line** (measured: 0.354476 for all five).
+Either all lines cover their variable cost or none do.
+
+⭐⭐ **THE CAUSE: T4.2 IGNORES THE `Direct or Shared` COLUMN T4.1 COLLECTS.** A
+direct pool's per-line split is already OBSERVED — `direct_cost` per line
+differs by gross margin, 32% on PL-CTRL against 60% on PL-SERV — and
+re-allocating the company COGS by revenue **throws that observation away and
+replaces it with an assumption**. Fixing it is a T4.2 change, which this lane
+was explicitly forbidden to make. **Reported, not worked around.**
+
+## ⭐ THE STEP IS CROSSED INSIDE THE RANGE
+
+Total units 37.95 · 43.27 · **48.46** · 56.42 against a threshold of 45 — two
+periods below, two above. A threshold no period crosses makes the whole
+step-fixed column set decorative.
+
+## ⭐⭐ THE CONSTRAINT REORDERS THE PORTFOLIO, AND THAT IS THE FINDING
+
+| by revenue | by contribution per assembly hour |
+|---|---|
+| DRIVE > AUTO > CTRL > **SERV** > SPARE | **SPARE** > DRIVE > AUTO > CTRL > **SERV** |
+
+Field Service carries the **highest price on the sheet (60)** and consumes **six
+hours a unit**; Spares carry the lowest (8) and consume **0.15**. Ranked by
+revenue the first leads; ranked by the constraint it comes **last**. That
+inversion is the entire argument for collecting consumption.
+
+## ⚠️ A CONSTRAINT THAT DOES NOT BIND DEMONSTRATES NOTHING
+
+The first capacity figures sat ABOVE what the current mix consumes: every line
+filled to its ceiling and the plan moved 1.4% of revenue. **"Shift 0.5% out of
+Field Service" is not a recommendation anyone acts on.** Capacity now sits ~17%
+below current consumption and the plan moves **16.7%**, headed *"shift 8.1% out
+of Field Service into Drive Systems"*. Asserted: capacity < hours the current
+mix consumes, in every period.
+
+## ⭐ THE TRANSPORT PLAN IS OVER THE UNITS MIX, AND THE SURFACE SAYS SO
+
+A revenue mix needs `price × units` — a MULTIPLICATION, which the endpoint's AST
+guard forbids and which `managerial` would have to own. Units are also the
+better object for a CAPACITY decision: what a plant reallocates is production,
+not invoice value. **Stated in the payload rather than left for a reader to
+assume.**
+
+## §7o — MEASURED
+
+`income_statement` sha256 **unchanged**; both pack content hashes **unchanged**;
+observations 60 → 80 (`units` added); two payload keys added (`cost_behaviour`,
+`capacity`). ⭐ The apply refuses to write if the statements move — it hashes
+them before and after inside the transaction.
+
+## ⭐ THE DECLARED ABSENCE MOVED RATHER THAN DISAPPEARING
+
+`units` is now seeded because T4.3 needs it; **prices took its place**, so the
+margin bridge's price effect still declines and the declaration path keeps
+rendering on real data. §7o asks for a deliberate absence, not a particular one.
+
+## VERIFIED
+
+**1988 passed** (was 1976) / 1 skipped / 3 xfailed · 29/29 gates · 12 new tests ·
+browser 3 modes green, 14/14 pinned still pinned · `tsc` 0 · lint rc=0 ·
+ratchet 819/819.

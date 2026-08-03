@@ -274,12 +274,18 @@ def test_a_measure_is_deliberately_absent_so_a_capability_declares():
     named absence in prose and an absence a capability actually HITS are
     different demonstrations. Seeding no `units` makes the declaration path
     render on real data rather than only in a docstring."""
-    assert "units" in S.DELIBERATELY_ABSENT
-    assert "units" not in S.SEEDED_MEASURES
-    m = D.MEASURES["units"]   # the vocabulary lives on T1, not on the analytics
+    # ⭐ T4.3 MOVED THE ABSENCE RATHER THAN REMOVING IT. `units` is now seeded —
+    # contribution per unit and the capacity constraint both need it — and
+    # PRICES took its place: the margin bridge's price effect still declines,
+    # so the declaration path keeps rendering on real data. §7o asks for a
+    # deliberate absence, not for a particular one.
+    assert "list_price" in S.DELIBERATELY_ABSENT
+    assert "realised_price" in S.DELIBERATELY_ABSENT
+    assert "list_price" not in S.SEEDED_MEASURES
+    m = D.MEASURES["list_price"]   # the vocabulary lives on T1, not the analytics
     assert m["reconciles_to"] is None
     r = A.margin_bridge({"a": 1.0}, {"a": 0.4}, {"a": 1.0}, {"a": 0.38})
-    assert "price" in r["not_computable"] and "volume" in r["not_computable"]
+    assert "price" in r["not_computable"]
 
 
 # ── 7 · reconciliation, on the seed's own arithmetic ───────────────────────
@@ -303,3 +309,162 @@ def test_the_seed_reconciles_against_meridians_own_statement_figures():
     for year in S.PERIODS:
         for k in ("revenue", "cogs", "opex"):
             assert S.STATEMENT[year][k] > 0
+
+
+# ── 8 · T4.3 — cost behaviour, capacity, and the §22 corrective ────────────
+
+def _pools(year):
+    return S.cost_pools(year)
+
+
+def test_the_pools_reconcile_to_cogs_plus_opex_in_every_period():
+    """⭐⭐ CONTRIBUTION DECLINES UNLESS THEY DO (T4.2). Unseen variable cost
+    overstates contribution, which is the figure the §22 corrective argues
+    FROM — so a seed whose pools do not cover the statement would produce the
+    corrective's own failure mode."""
+    from services.api.modules.financials import managerial as MG
+    for year in S.PERIODS:
+        st = S.STATEMENT[year]
+        cov = MG.pools_reconcile(_pools(year), year, st["cogs"] + st["opex"])
+        assert cov["available"], f"{year}: {cov.get('unlocks')}"
+
+
+def test_five_pools_not_four_because_cogs_is_not_opex():
+    """⭐ The scope report said four pools summing to cogs + opex; the four
+    named are all OPEX pools and sum to opex alone. COGS is the largest
+    variable cost a manufacturer has, and omitting it would fail reconciliation
+    — or, worse, pass one that overstated contribution by the whole of it."""
+    for year in S.PERIODS:
+        pools = _pools(year)
+        assert len(pools) == 5
+        assert any(p["pool"] == "Direct Materials" for p in pools)
+
+
+def test_all_four_behaviour_classes_appear_in_the_seed():
+    behaviours = {p["behaviour"] for p in _pools(2025)}
+    assert behaviours == {"variable", "semi-variable", "step-fixed", "fixed"}
+
+
+def test_the_semi_variable_pool_carries_both_portions_and_they_add_up():
+    from services.api.modules.financials import managerial as MG
+    pool = next(p for p in _pools(2025) if p["behaviour"] == "semi-variable")
+    split = MG.split_pool(pool)
+    assert split["available"], split.get("unlocks")
+
+
+def test_the_step_is_crossed_inside_the_range_the_data_spans():
+    """⭐⭐ A THRESHOLD NO PERIOD CROSSES DEMONSTRATES NOTHING. T4.1 collects
+    threshold and size so a capacity decision is NON-LINEAR; the seed has to
+    put at least one period on each side of it or the column set is decorative.
+    """
+    below = [y for y in S.PERIODS
+             if sum(S.units_for(y).values()) <= S.LOGISTICS_STEP_THRESHOLD]
+    above = [y for y in S.PERIODS
+             if sum(S.units_for(y).values()) > S.LOGISTICS_STEP_THRESHOLD]
+    assert below and above, f"below={below} above={above}"
+
+
+def test_the_22_corrective_fires_on_the_seeds_own_numbers():
+    """⭐⭐ THE MODULE'S MOST VALUABLE SENTENCE, ON REAL DATA RATHER THAN A
+    FIXTURE. PL-CTRL is negative at allocated EBIT and positive at contribution:
+    it covers its own variable cost, and the allocated share is what makes it
+    negative."""
+    from services.api.modules.financials import managerial as MG
+    fired = []
+    for year in S.PERIODS:
+        st = S.STATEMENT[year]
+        rev = {c: st["revenue"] * S.SHARE[year][c] for c in S.PRODUCTS}
+        vc = MG.variable_cost_by_line(_pools(year), year, rev)
+        _r, _dc, do, alloc = _lines(year)
+        for c in S.PRODUCTS:
+            h = A.margin_hierarchy(revenue=rev[c], direct_cost=_dc[c],
+                                   direct_opex=do[c], allocated_opex=alloc[c])
+            eb = h["allocated_ebit"]["value"]
+            con = MG.contribution(rev[c], vc.get(c))
+            if eb is not None and eb < 0 and con["available"] and con["value"] > 0:
+                cov = MG.covers_variable_cost(con["value"], eb, line=c)
+                assert cov["value"] is True
+                assert "covers its own variable cost" in cov["statement"]
+                fired.append((year, c))
+    assert fired, "the corrective never fires on the seed"
+    assert {c for _y, c in fired} == {"PL-CTRL"}
+
+
+def test_the_constrained_ranking_reorders_against_a_revenue_ranking():
+    """⭐⭐ THE FINDING THE CAPACITY DATA EXISTS FOR. Field Service carries the
+    highest price on the sheet and consumes six hours a unit; Spares carry the
+    lowest and consume a sixth of an hour. Ranked by revenue the first leads;
+    ranked by contribution per unit of the CONSTRAINT it comes last."""
+    from services.api.modules.financials import managerial as MG
+    year = S.PERIODS[-1]
+    st = S.STATEMENT[year]
+    rev = {c: st["revenue"] * S.SHARE[year][c] for c in S.PRODUCTS}
+    vc = MG.variable_cost_by_line(_pools(year), year, rev)
+    u = S.units_for(year)
+    per_hour = {}
+    for c in S.PRODUCTS:
+        con = MG.contribution(rev[c], vc.get(c))
+        per_unit = MG.contribution_per_constrained_unit(con["value"], u[c])
+        per_hour[c] = MG.contribution_per_constrained_unit(
+            per_unit["value"], S.CONSUMPTION[c])["value"]
+    by_revenue = sorted(S.PRODUCTS, key=lambda c: -rev[c])
+    by_hour = sorted(S.PRODUCTS, key=lambda c: -per_hour[c])
+    assert by_revenue != by_hour, "the constraint changes nothing"
+    assert by_hour[-1] == "PL-SERV", by_hour
+    assert by_hour[0] == "PL-SPARE", by_hour
+
+
+def test_the_constraint_actually_binds():
+    """⭐ A capacity above what the current mix consumes makes every line fill
+    to its ceiling and the plan move nothing worth saying."""
+    for year in S.PERIODS:
+        u = S.units_for(year)
+        needed = sum(u[c] * S.CONSUMPTION[c] for c in S.PRODUCTS)
+        assert S.ASSEMBLY_HOURS[year] < needed, (
+            f"{year}: {S.ASSEMBLY_HOURS[year]} hours available, "
+            f"{needed:.1f} consumed by the current mix")
+
+
+def test_the_transport_plan_is_material_and_deterministic():
+    """⭐⭐ §8l·3. A plan that moves 1% is not a recommendation, and a plan that
+    changes between runs is one a reader stops believing."""
+    from services.api.modules.financials import managerial as MG
+    year = S.PERIODS[-1]
+    st = S.STATEMENT[year]
+    rev = {c: st["revenue"] * S.SHARE[year][c] for c in S.PRODUCTS}
+    vc = MG.variable_cost_by_line(_pools(year), year, rev)
+    u = S.units_for(year)
+    lines = {}
+    for c in S.PRODUCTS:
+        con = MG.contribution(rev[c], vc.get(c))
+        lines[c] = {
+            "contribution_per_unit": MG.contribution_per_constrained_unit(
+                con["value"], u[c])["value"],
+            "consumption_per_unit": S.CONSUMPTION[c],
+            "max_units": u[c] * 1.30}
+    plan = MG.optimise_mix(lines, S.ASSEMBLY_HOURS[year],
+                           steps=[{"pool": "Logistics",
+                                   "threshold": S.LOGISTICS_STEP_THRESHOLD,
+                                   "size": S.LOGISTICS_STEP_SIZE}])
+    assert plan["available"], plan.get("unlocks")
+    assert plan["steps_triggered"], "the step is never charged"
+    opt = plan["value"]["units"]
+    cur_mix = {c: u[c] / sum(u.values()) for c in S.PRODUCTS}
+    opt_mix = {c: opt[c] / sum(opt.values()) for c in S.PRODUCTS}
+    move = MG.transport_plan(cur_mix, opt_mix)
+    assert move["available"] and move["value"], "the plan is empty"
+    assert move["distance"] > 0.05, f"only {move['distance']:.3f} moves"
+    again = MG.transport_plan(dict(reversed(list(cur_mix.items()))),
+                              dict(reversed(list(opt_mix.items()))))
+    assert move["value"] == again["value"], "the plan is not deterministic"
+
+
+def test_one_declared_absence_survives():
+    """⭐ §7o. `units` is now seeded — T4.3 needs it — but PRICES are not, so the
+    margin bridge's price effect still declines and the declaration path keeps
+    rendering on real data."""
+    assert "units" in S.SEEDED_MEASURES
+    assert "list_price" in S.DELIBERATELY_ABSENT
+    assert "realised_price" in S.DELIBERATELY_ABSENT
+    r = A.margin_bridge({"a": 1.0}, {"a": 0.4}, {"a": 1.0}, {"a": 0.38})
+    assert "price" in r["not_computable"]

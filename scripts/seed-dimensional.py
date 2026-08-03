@@ -164,8 +164,112 @@ COST_POOLS = {
 # surface has a real "supply this to unlock that" to render. A named absence in
 # prose and an absence a capability actually HITS are different demonstrations
 # — the second exercises the declaration path.
-SEEDED_MEASURES = ("revenue", "direct_cost", "direct_opex")
-DELIBERATELY_ABSENT = ("units", "list_price", "realised_price")
+SEEDED_MEASURES = ("revenue", "direct_cost", "direct_opex", "units")
+# ⭐ ONE DECLARED ABSENCE SURVIVES (§7o). `units` is now seeded — T4.3 needs it
+# for contribution per unit and for the capacity constraint — but PRICES stay
+# absent, so the margin bridge's PRICE effect still declines and the
+# list-to-net waterfall still has nothing to draw. The declaration path keeps
+# rendering on real data, which is the point of keeping one.
+DELIBERATELY_ABSENT = ("list_price", "realised_price", "discount")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐⭐ T4.3 — UNITS, COST BEHAVIOUR AND CAPACITY
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ⭐ PRICES PER LINE DIFFER BY AN ORDER OF MAGNITUDE, and that is what makes the
+# constrained ranking REORDER against a revenue ranking. Contribution per unit
+# of the scarce resource is (price x contribution ratio) / consumption, so a
+# high-price line that eats the constraint can rank below a cheap one that
+# barely touches it — the finding the whole capacity tab exists to show.
+PRICE = {"PL-DRIVE": 40.0, "PL-AUTO": 25.0, "PL-CTRL": 12.0,
+         "PL-SERV": 60.0, "PL-SPARE": 8.0}
+
+# Assembly hours consumed by ONE unit of each line. PL-SERV is the trap: the
+# highest price on the sheet and the heaviest consumer of the constraint.
+CONSUMPTION = {"PL-DRIVE": 1.20, "PL-AUTO": 0.80, "PL-CTRL": 0.45,
+               "PL-SERV": 6.00, "PL-SPARE": 0.15}
+
+# ⭐⭐ THE CONSTRAINT ACTUALLY BINDS. Available hours sit ~17% BELOW what the
+# current mix consumes, so the optimum is a real reallocation rather than "do
+# what you already do". The first draft set capacity above current consumption:
+# every line filled to its ceiling, the plan moved 1.4% of revenue, and "shift
+# 0.5% out of Field Service" is not a recommendation anyone acts on. A
+# constraint that does not bind demonstrates nothing about constrained mix.
+ASSEMBLY_HOURS = {2022: 26.0, 2023: 30.0, 2024: 34.0, 2025: 40.0}
+
+# ⭐⭐ FOUR OPEX POOLS PLUS DIRECT MATERIALS — FIVE, NOT FOUR, AND THE FIFTH IS
+# NOT OPTIONAL. `pools_reconcile` requires the declared pools to cover
+# cogs + opex, and the four opex pools cover opex alone. COGS is the largest
+# variable cost a manufacturer has; omitting it would fail reconciliation and,
+# if it somehow passed, would overstate contribution by the whole of COGS.
+POOL_SHARE_OF_OPEX = {
+    "Sales Commission": 0.18,      # the directly-assigned slice — variable
+    "Customer Support": 0.24,      # semi-variable, both portions declared
+    "Logistics": 0.18,             # step-fixed, and the step is crossed
+    "Corporate Overhead": 0.40,    # the residual nobody drives — fixed
+}
+SUPPORT_FIXED_SHARE = 0.14         # of opex; the variable part is 0.24 - 0.14
+# ⭐⭐ THE THRESHOLD SITS INSIDE THE RANGE THE DATA SPANS. 2022 and 2023 are
+# below it, 2024 and 2025 above — so the seed demonstrates a capacity decision
+# that is NON-LINEAR. A threshold no period crosses demonstrates nothing.
+LOGISTICS_STEP_THRESHOLD = 45.0    # total units across the portfolio
+LOGISTICS_STEP_SIZE = 6.0
+
+
+def units_for(year):
+    """Units per line, from revenue and the line's price."""
+    st = STATEMENT[year]
+    return {c: st["revenue"] * SHARE[year][c] / PRICE[c] for c in PRODUCTS}
+
+
+def cost_pools(year):
+    """The five pools for one period. They reconcile to cogs + opex exactly."""
+    st = STATEMENT[year]
+    opex = st["opex"]
+    return [
+        {"period": year, "pool": "Direct Materials", "amount": st["cogs"],
+         "behaviour": "variable", "direct_or_shared": "direct"},
+        {"period": year, "pool": "Sales Commission",
+         "amount": opex * POOL_SHARE_OF_OPEX["Sales Commission"],
+         "behaviour": "variable", "direct_or_shared": "direct"},
+        {"period": year, "pool": "Customer Support",
+         "amount": opex * POOL_SHARE_OF_OPEX["Customer Support"],
+         "behaviour": "semi-variable",
+         "fixed_portion": opex * SUPPORT_FIXED_SHARE,
+         "variable_portion": opex * (POOL_SHARE_OF_OPEX["Customer Support"]
+                                     - SUPPORT_FIXED_SHARE),
+         "direct_or_shared": "shared"},
+        {"period": year, "pool": "Logistics",
+         "amount": opex * POOL_SHARE_OF_OPEX["Logistics"],
+         "behaviour": "step-fixed",
+         "step_threshold": LOGISTICS_STEP_THRESHOLD,
+         "step_size": LOGISTICS_STEP_SIZE, "direct_or_shared": "shared"},
+        {"period": year, "pool": "Corporate Overhead",
+         "amount": opex * POOL_SHARE_OF_OPEX["Corporate Overhead"],
+         "behaviour": "fixed", "direct_or_shared": "shared"},
+    ]
+
+
+def capacity_rows(year):
+    """The constraint, the per-line consumption, and the declared ceilings.
+
+    ⭐⭐ THE CEILING IS DECLARED, NEVER INFERRED (§8h·2). Meridian's is set at
+    30% above what it sells today — a statement of what the sales organisation
+    believes it could place, which is the only kind of demand figure AXIOM
+    accepts.
+    """
+    u = units_for(year)
+    rows = [{"period": year, "resource": "Assembly Hours", "line_code": None,
+             "measure": "capacity_available", "value": ASSEMBLY_HOURS[year],
+             "unit_of_measure": "hours"}]
+    for code in PRODUCTS:
+        rows.append({"period": year, "resource": "Assembly Hours",
+                     "line_code": code, "measure": "consumption_per_unit",
+                     "value": CONSUMPTION[code], "unit_of_measure": "hours"})
+        rows.append({"period": year, "resource": None, "line_code": code,
+                     "measure": "maximum_sales_units", "value": u[code] * 1.30,
+                     "unit_of_measure": "units"})
+    return rows
 
 
 def _rows():
@@ -185,6 +289,9 @@ def _rows():
         for code in PRODUCTS:
             out.append((year, code, "direct_opex",
                         st["opex"] * DIRECT_OPEX_POOL * DIRECT_OPEX_SPLIT[code]))
+        # ⭐ UNITS — needed for contribution per unit and for the constraint.
+        for code, units in units_for(year).items():
+            out.append((year, code, "units", units))
     return out
 
 
@@ -237,6 +344,7 @@ def plan():
     print(f"\n  deliberately absent: {', '.join(DELIBERATELY_ABSENT)}")
     grades = sorted({"A"} | {p["grade"] for p in COST_POOLS.values()})
     print(f"  allocation grades seeded: {grades}")
+    plan_t43()
     for y in PERIODS:
         sh = shares_for(y)
         alloc = shared_allocation(y, sh)
@@ -250,6 +358,106 @@ def plan():
             eb = g - do - (tot[c] - do)
             print(f"      {c:<10}{rev:9.1f} {g:7.1f} {do:7.1f} {tot[c]-do:10.1f} {eb:10.2f}"
                   + ("   <-- REVERSAL" if g > 0 and eb < 0 else ""))
+
+
+def plan_t43():
+    """⭐ THE T4.3 PROPERTIES, PRINTED BEFORE ANYTHING IS WRITTEN. Each is a
+    thing the dispatch requires of the seed, checked against the numbers rather
+    than asserted in prose."""
+    from services.api.modules.financials import managerial as M
+    from services.api.modules.financials import dimensional_analytics as A
+    print("\n─── cost pools ───────────────────────────────────────────────")
+    for year in PERIODS:
+        pools = cost_pools(year)
+        st = STATEMENT[year]
+        cov = M.pools_reconcile(pools, year, st["cogs"] + st["opex"])
+        declared = sum(p["amount"] for p in pools)
+        print(f"  {year}  {len(pools)} pools  declared={declared:10.4f}  "
+              f"cogs+opex={st['cogs'] + st['opex']:10.4f}  "
+              f"{'RECONCILES' if cov['available'] else 'FAILS'}")
+        for pl in pools:
+            extra = ""
+            if pl["behaviour"] == "semi-variable":
+                extra = (f" fixed={pl['fixed_portion']:.2f} "
+                         f"variable={pl['variable_portion']:.2f}")
+            if pl["behaviour"] == "step-fixed":
+                extra = (f" threshold={pl['step_threshold']:.0f} "
+                         f"step={pl['step_size']:.0f}")
+            print(f"        {pl['pool']:<20}{pl['amount']:9.2f}  "
+                  f"{pl['behaviour']:<14}{extra}")
+
+    print("\n─── the §22 corrective, on real data ─────────────────────────")
+    for year in PERIODS:
+        st = STATEMENT[year]
+        rev = {c: st["revenue"] * SHARE[year][c] for c in PRODUCTS}
+        vc = M.variable_cost_by_line(cost_pools(year), year, rev)
+        sh = shares_for(year)
+        alloc = shared_allocation(year, sh)
+        tot = {c: sum(a["value"].get(c, 0.0) for a in alloc.values())
+               for c in PRODUCTS}
+        for c in PRODUCTS:
+            gm = GROSS_MARGIN[year][c]
+            do = st["opex"] * DIRECT_OPEX_POOL * DIRECT_OPEX_SPLIT[c]
+            eb = rev[c] * gm - do - (tot[c] - do)
+            con = M.contribution(rev[c], vc.get(c))
+            if eb < 0 and con["available"]:
+                verdict = ("COVERS its variable cost" if con["value"] > 0
+                           else "does NOT cover it")
+                print(f"  {year} {c:<10} allocEBIT={eb:8.2f}  "
+                      f"contribution={con['value']:8.2f}  -> {verdict}")
+
+    print("\n─── the step-fixed crossing ──────────────────────────────────")
+    for year in PERIODS:
+        total_units = sum(units_for(year).values())
+        side = "ABOVE" if total_units > LOGISTICS_STEP_THRESHOLD else "below"
+        print(f"  {year}  total units={total_units:7.2f}  "
+              f"threshold={LOGISTICS_STEP_THRESHOLD:.0f}  {side}")
+
+    print("\n─── the constrained ranking, against a revenue ranking ───────")
+    year = PERIODS[-1]
+    st = STATEMENT[year]
+    rev = {c: st["revenue"] * SHARE[year][c] for c in PRODUCTS}
+    vc = M.variable_cost_by_line(cost_pools(year), year, rev)
+    u = units_for(year)
+    per_unit, per_hour = {}, {}
+    for c in PRODUCTS:
+        con = M.contribution(rev[c], vc.get(c))
+        per_unit[c] = con["value"] / u[c]
+        per_hour[c] = M.contribution_per_constrained_unit(
+            per_unit[c], CONSUMPTION[c])["value"]
+    by_revenue = sorted(PRODUCTS, key=lambda c: -rev[c])
+    by_hour = sorted(PRODUCTS, key=lambda c: -per_hour[c])
+    print(f"  by revenue        : {' > '.join(by_revenue)}")
+    print(f"  by contribution/hr: {' > '.join(by_hour)}")
+    print(f"  REORDERS: {by_revenue != by_hour}")
+    for c in by_hour:
+        print(f"        {c:<10} price={PRICE[c]:6.1f} hours/unit="
+              f"{CONSUMPTION[c]:5.2f}  contribution/hour={per_hour[c]:7.3f}")
+
+    print("\n─── the constrained optimum and the transport plan ───────────")
+    lines = {c: {"contribution_per_unit": per_unit[c],
+                 "consumption_per_unit": CONSUMPTION[c],
+                 "max_units": u[c] * 1.30} for c in PRODUCTS}
+    steps = [{"pool": "Logistics", "threshold": LOGISTICS_STEP_THRESHOLD,
+              "size": LOGISTICS_STEP_SIZE}]
+    plan = M.optimise_mix(lines, ASSEMBLY_HOURS[year], steps=steps)
+    if not plan["available"]:
+        print("  MIX DECLINES:", plan["unlocks"]); return
+    opt_units = plan["value"]["units"]
+    opt_rev = {c: opt_units[c] * PRICE[c] for c in PRODUCTS}
+    tot_opt = sum(opt_rev.values()) or 1.0
+    cur_mix = {c: rev[c] / sum(rev.values()) for c in PRODUCTS}
+    opt_mix = {c: opt_rev[c] / tot_opt for c in PRODUCTS}
+    print(f"  capacity {ASSEMBLY_HOURS[year]:.0f}h  used "
+          f"{plan['value']['capacity_used']:.1f}h  contribution "
+          f"{plan['value']['total_contribution']:.1f}  steps "
+          f"{[s['pool'] for s in plan['steps_triggered']]}")
+    tp = M.transport_plan(cur_mix, opt_mix)
+    for mv in tp["value"]:
+        print(f"        shift {mv['share']:6.1%} from {mv['from']:<10} "
+              f"into {mv['to']}")
+    print(f"  distance={tp['distance']:.4f}  metric={tp['ground_metric']}  "
+          f"tie-break={tp['tie_break']}")
 
 
 def _engine():
@@ -299,7 +507,27 @@ def apply_seed():
                 {"co": COMPANY_ID, "ds": DATASET_ID, "m": member_id[code],
                  "p": year, "f": FREQUENCY, "meas": measure, "v": value})
             n += 1
+        # ⭐⭐ THE POOLS AND THE CONSTRAINT RIDE ON THE DATASET PAYLOAD, because
+        # they are COMPANY-LEVEL PERIOD FACTS at pool grain, not dimensional
+        # observations about a member. The statements inside that payload are
+        # not touched — `verify` asserts them byte-identical, and §7o's rule is
+        # about the figures, not about the JSON never gaining a key.
+        import json as _json
+        row = c.execute(text("SELECT data FROM financial_datasets WHERE id=:d"),
+                        {"d": DATASET_ID}).scalar()
+        data = _json.loads(row) if isinstance(row, str) else dict(row)
+        before = _json.dumps(data.get("income_statement"), sort_keys=True)
+        data["cost_behaviour"] = [pl for y in PERIODS for pl in cost_pools(y)]
+        data["capacity"] = [r for y in PERIODS for r in capacity_rows(y)]
+        after = _json.dumps(data.get("income_statement"), sort_keys=True)
+        assert before == after, "the statements moved — refusing to write"
+        c.execute(text("UPDATE financial_datasets SET data = CAST(:d AS jsonb) "
+                       "WHERE id = :id"),
+                  {"d": _json.dumps(data), "id": DATASET_ID})
     print(f"seeded {len(member_id)} members and {n} observations")
+    print(f"       {len(PERIODS) * 5} cost pools and "
+          f"{sum(len(capacity_rows(y)) for y in PERIODS)} capacity rows "
+          f"on the dataset payload")
 
 
 def verify():

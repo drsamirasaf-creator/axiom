@@ -30,7 +30,8 @@ def _fn(name):
 
 @pytest.mark.parametrize("name", ["profitability_surface", "_statement_totals",
                                   "_mix_shift_series", "_margin_trend",
-                                  "_direction", "_findings"])
+                                  "_direction", "_findings",
+                                  "_constrained_mix", "_company_cost"])
 def test_the_surface_contains_no_arithmetic(name):
     """⭐⭐ THE PROPERTY THAT MAKES IT A SURFACE. A second definition of any
     figure would be the duplication the sole-owner programme exists to prevent;
