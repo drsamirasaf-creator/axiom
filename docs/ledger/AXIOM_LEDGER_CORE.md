@@ -16834,3 +16834,99 @@ This is R2's discipline applied one level up: R2 forbids promoting a descriptive
 elasticity to a decision estimate; this forbids an OPTIMISER whose objective
 silently assumes the response R2 refused to supply. A capability that fails this
 test is reported as needing a measurement, never shipped with a default.
+
+# ⭐⭐ §7r-S5 · THE RATIO EXPLAINER RENDERED INTERNAL TOKENS TO CLIENTS (4 Aug)
+
+Report: `docs/reports/ratio-explainer-display-names-2026-08-04.md`.
+
+Dashboard → Ratio Analysis, expanding Gross Margin, showed FOUR internal
+spellings on one panel: the formula `is.gross_profit / is.revenue * 100`, the
+operands `IS_.gross_profit` and `IS_.revenue`, the token `is.gross_profit`, and
+the derivation `is.revenue - is.cogs`. **`IS_` is `ast.unparse` reporting the
+parser's own rename** — `is` is a Python keyword, so `_parse` rewrites `is.` to
+`IS_.` before parsing. A workaround for a parser, on a page a CFO reads, since
+§7r-S4 shipped.
+
+## ⚠️ THE DISPATCH'S PREMISE WAS WRONG, AND IT CHANGED THE FIX
+
+"The vocabulary carries a name per token." **It does not** — the registry's 70
+vocabulary entries carry `source`, `field`, `expr`, `collected`, `note` and
+five others, and **no name of any kind**. Taken literally the dispatch produces
+no fix at all.
+
+⭐⭐ **NAMES AXIOM ALREADY OWNS EXIST ELSEWHERE, AND EVERY RENDERED NAME COMES
+FROM ONE:** `templates.LABELS[std]["lines"]` (16 tokens), `ingest.SUBTOTALS` —
+the locked subtotal rows the workbook itself computes (4), and
+`templates.COMPANY_ROWS` (3). **A client reading "Gross Profit" is reading the
+row they filled in.** Nothing was invented and the registry was not changed.
+
+⭐ **THE LABEL FOLLOWS THE CLIENT'S STANDARD.** `is.cogs` is "Cost of Goods
+Sold" on US GAAP and "Cost of Sales" on IFRS. One hard-coded name would be
+wrong for half the platform.
+
+## THE GAP, REPORTED NOT FILLED
+
+**51 tokens used by ratios · 23 named · 28 unnamed · 12 renderable.** The twelve
+are 11 `derived` (`is.pat`, `is.pbt`, `bs.nwc`, `bs.total_debt`,
+`cf.operating_cash_flow`, `mk.market_cap`, …) plus `po.actual_leverage`.
+
+⭐ **A SECOND GAP CLASS THAT IS NOT VOCABULARY:** `wacc_at` (6 ratios) and
+`cagr` (2) are caller-supplied ENGINE tokens and reach a reader through
+"needs wacc_at (caller must supply)". **Naming any of these is a registry
+decision, not a rendering one** — declared in each payload's `unnamed_tokens`,
+rendered in monospace so they read as identifiers, and reported rather than
+taken.
+
+## ⭐⭐ THE SWEEP IS OVER PAYLOADS, NOT SOURCE — AND IT FOUND THREE MORE PATHS
+
+Grepping the frontend for `IS_` finds NOTHING: the string is never written
+down, it is PRODUCED at request time. `scripts/check-no-internal-identifiers.py`
+walks every ratio for every period of two reference companies.
+**Red at 1,668 leaks across 770 ratio-periods; green at 0.**
+
+1. ⭐⭐ **THE ABSENCE PATH IS THE WIDER HALF.** 32 ratios cannot compute on a
+   typical dataset and each is listed with what it needs — the one sentence on
+   the panel meant to be ACTED on — and `needs` was a raw token.
+2. **PROSE.** Three registry definitions name a token inside their own sentence
+   ("...compared against po.cost_of_debt used in WACC"). `definition_display`
+   relabels it with no registry edit.
+3. ⭐ **BARE ENGINE TOKENS.** `wacc_at` and `cagr` have no namespace prefix, so
+   the sweep's first regex — shaped by the reported example — could not see
+   them. **A recogniser built from the case that was reported misses the cases
+   that were not.**
+
+## ⭐ THE DECLARATION IS DERIVED FROM WHAT RENDERS, NOT FROM THE FORMULA
+
+`unnamed_tokens` first listed the formula's leaf tokens, and the sweep caught
+three ways an identifier reaches the panel without being one: a NESTED
+derivation (`is.pat — derived: is.pbt − is.tax_expense`), a mention in PROSE,
+and the `needs` line of a ratio that never computed. **A declaration that does
+not match what a reader can see is not a declaration.**
+
+## ⭐ §8d APPLIED BEFORE IT COULD REPEAT
+
+This surface's harness fixture was HAND-WRITTEN, carrying `"text":
+"is.gross_profit"` and no display fields — so the page rendered raw
+identifiers, the browser assertions passed, and the leak a client was looking at
+was invisible to every gate. It is now RECORDED from the endpoint by
+`scripts/gen-ratios-fixture.py`, which refuses to record a leaking payload.
+
+## TWO CORRECTIONS MADE IN-LANE
+
+⚠️ The browser check first banned `cf.debt_repaid` beside two tokens that DO
+own names, and failed on a correct page. **Banning an unnamed token would have
+forced a name to be invented** — the one thing the dispatch forbade. It now
+asserts that token is PRESENT: a gap that renders as nothing cannot be reported.
+
+⚠️ The guard's first version called `tempfile.mktemp()` and
+`test_NO_GUARD_WRITES_TO_THE_FILESYSTEM` rejected it. A guard must not mutate
+the filesystem; it uses an in-memory URL and touches no database.
+
+## VERIFIED
+
+1914 passed (was 1900) / 1 skipped / 3 xfailed · **29/29 gates** · 13 new tests
+· `tsc` 0 · lint rc=0 · ratchet 819/819 unchanged · browser 3 modes, 14/14
+pinned still pinned. Rendered and asserted: `Gross Profit ÷ Revenue × 100`,
+numerator `Gross Profit`, `Revenue — the income statement line "Revenue"`,
+`Gross Profit — derived: Revenue − Cost of Goods Sold`, and `is_.` / `is.cogs`
+absent from the surface.

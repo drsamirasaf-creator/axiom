@@ -603,6 +603,7 @@ def ratios_surface(dataset_id: int, db: Session = Depends(get_db),
     except Exception:
         supplied = {}
 
+    _standard = ((data.get("company") or {}).get("standard") or "us_gaap")
     out, absent = [], []
     for r in rr.load()["ratios"]:
         periods = []
@@ -615,14 +616,20 @@ def ratios_surface(dataset_id: int, db: Session = Depends(get_db),
                 "projection": i >= n_hist,
                 "value": e.get("value"), "absent": e.get("absent"),
                 "needs": e.get("needs"),
+                "needs_display": e.get("needs_display"),
                 "operands": e.get("operands"), "inputs": e.get("inputs"),
+                "unnamed_tokens": e.get("unnamed_tokens"),
             })
         computed = [p for p in periods if p["value"] is not None]
         rec = {"id": r["id"], "name": r["name"], "category": r["category"],
                "unit": r.get("unit"), "polarity": r.get("polarity"),
-               "definition": r.get("definition"), "formula": r["formula"],
+               "definition": r.get("definition"),
+               "definition_display": rr.render_expr(r.get("definition"), _standard),
+               "formula": r["formula"],
                "headline": bool(r.get("headline")),
                "display_rule": r.get("display_rule"),
+               # ⭐ the display form travels with the machine-readable one
+               "formula_display": rr.render_expr(r["formula"], _standard),
                "periods": periods}
         if computed:
             out.append(rec)
@@ -631,8 +638,13 @@ def ratios_surface(dataset_id: int, db: Session = Depends(get_db),
             absent.append({"id": r["id"], "name": r["name"],
                            "category": r["category"],
                            "definition": r.get("definition"),
+                           "definition_display": rr.render_expr(
+                               r.get("definition"), _standard),
                            "needs": next((p["needs"] for p in periods
                                           if p.get("needs")), None),
+                           "needs_display": next(
+                               (p["needs_display"] for p in periods
+                                if p.get("needs_display")), None),
                            "reason": next((p["absent"] for p in periods
                                            if p.get("absent")), None)})
     return {

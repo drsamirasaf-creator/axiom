@@ -352,6 +352,132 @@ def as_fraction(ratio_id, value):
 # or scales; it evaluates expressions the registry already owns and reports what
 # they returned.
 
+# ── display names ───────────────────────────────────────────────────────────
+# ⭐⭐ THE EXPLAINER RENDERED INTERNAL TOKENS TO CLIENTS. Expanding Gross Margin
+# showed `is.gross_profit / is.revenue * 100`, operands `IS_.gross_profit` and
+# `IS_.revenue`, and a read-from line of `is.gross_profit — derived:
+# is.revenue - is.cogs`. Three internal spellings on one panel, one of them a
+# PARSER WORKAROUND: `IS_` exists only because `is` is a Python keyword.
+#
+# ⭐⭐ NO NAME IS INVENTED HERE, AND THAT IS THE WHOLE DESIGN. Every name below
+# is a label AXIOM ALREADY PRINTS ON THE CLIENT'S OWN TEMPLATE — the statement
+# line labels, the locked subtotal rows the workbook computes, and the company
+# input rows. A client reading "Gross Profit" in the explainer is reading the
+# row they filled in. A token with no such label resolves to None, renders as
+# its identifier, and is REPORTED: a missing name is a registry gap, and
+# inventing one here would put a name into the product that no owner ruled.
+#
+# ⭐ THE LABEL FOLLOWS THE CLIENT'S STANDARD. `is.cogs` is "Cost of Goods Sold"
+# for a US GAAP client and "Cost of Sales" for an IFRS one, because those are
+# the two template labels. One hard-coded name would be wrong for half of them.
+
+_NAME_SOURCES = ("template line", "company row", "template subtotal")
+
+
+@functools.lru_cache(maxsize=8)
+def _label_maps(standard):
+    """The three owned label maps, keyed as the vocabulary's `field` spells them.
+
+    ⭐ IMPORTED LAZILY. `ingest` carries openpyxl, and the explainer runs on
+    every ratio of every period — a module-level import would pay for a
+    spreadsheet writer on a read path that never writes one.
+    """
+    from .templates import LABELS, COMPANY_ROWS
+    from .ingest import SUBTOTALS
+    spec = LABELS.get(standard) or LABELS["us_gaap"]
+    lines = dict(spec.get("lines") or {})
+    company = {f: lab for f, lab, _applies in COMPANY_ROWS}
+    subtotals = {}
+    for _sheet, rows in SUBTOTALS.items():
+        for label, _formula in rows:
+            # ⭐ KEYED BY THE LABEL ITSELF, NORMALISED — not by a hand-written
+            # map from label to token. A hand-written pairing is a third place
+            # to state what `is.gross_profit` is called, and the one that drifts.
+            subtotals[re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")] = label
+    return lines, company, subtotals
+
+
+def display_name(token, standard="us_gaap"):
+    """The name a client reads for a vocabulary token, or None if none is owned."""
+    vocab, _g, _r = _index()
+    meta = vocab.get(token)
+    if meta is None:
+        return None
+    lines, company, subtotals = _label_maps(standard)
+    field = meta.get("field") or ""
+    if field in lines:
+        return lines[field]
+    if field.startswith("company."):
+        label = company.get(field.split(".", 1)[1])
+        if label:
+            # ⭐ THE PARENTHETICAL IS AN ENTRY INSTRUCTION, NOT PART OF THE NAME.
+            # "Effective Tax Rate (decimal, e.g. 0.25)" is addressed to someone
+            # typing into a workbook cell; inside a formula it is noise. The
+            # stem is the label, unedited — this drops an instruction, it does
+            # not compose a new name.
+            return label.split(" (")[0].strip()
+    stem = token.split(".", 1)[-1]
+    return subtotals.get(stem)
+
+
+# `a / b * 100` reads as arithmetic to a machine and as noise to a reader. The
+# operators are rendered as the symbols a finance reader writes.
+_OPERATOR_DISPLAY = ((" / ", " ÷ "), (" * ", " × "), (" - ", " − "))
+_TOKEN_RE = re.compile(r"\b(?:is|bs|cf|mk|po|hc|sa|axiom)\.[A-Za-z_][A-Za-z_0-9]*")
+
+
+def render_expr(expr, standard="us_gaap"):
+    """An expression string with its tokens replaced by the names they own.
+
+    ⭐ THE ARITHMETIC SURVIVES. This is a labelling change: every operator and
+    every constant stays exactly where it was, because the formula IS the claim
+    and a reader checking it needs to see it.
+    """
+    if not expr:
+        return expr
+    out = _TOKEN_RE.sub(
+        lambda m: display_name(m.group(0), standard) or m.group(0), expr)
+    for raw, shown in _OPERATOR_DISPLAY:
+        out = out.replace(raw, shown)
+    return out
+
+
+def unnamed_vocabulary(standard="us_gaap"):
+    """⭐⭐ THE REGISTRY GAP, ENUMERATED. §III.4: the denominator ships with the
+    numerator, so this reports how many tokens ratios actually use as well as
+    how many lack a name.
+
+    `renderable` is the set that can reach a reader as a bare identifier — an
+    `absent` token is never an operand of a computed ratio, so it cannot.
+    """
+    vocab, _g, ratios = _index()
+    used = set()
+    for r in ratios.values():
+        used |= {t for t in _leaf_tokens(_parse(r["formula"])) if t in vocab}
+    unnamed = sorted(t for t in used if display_name(t, standard) is None)
+    renderable = sorted(t for t in unnamed
+                        if (vocab[t] or {}).get("source") != "absent")
+    return {"used_by_ratios": len(used), "named": len(used) - len(unnamed),
+            "unnamed": unnamed, "renderable": renderable,
+            # ⭐ A SECOND GAP CLASS, reported separately because it is not
+            # vocabulary at all: caller-supplied engine tokens that reach a
+            # reader through the `needs` line of a ratio that could not compute.
+            "engine_tokens": sorted(k for k in ENGINE_FUNCTIONS
+                                    if display_name(k, standard) is None),
+            "sources": sorted(_NAME_SOURCES)}
+
+
+def _unparse(node):
+    """⭐⭐ THE PARSER'S RENAME IS REVERSED HERE AND NOWHERE ELSE. `_parse`
+    rewrites `is.` to `IS_.` because `is` is a Python keyword; `ast.unparse`
+    faithfully reports that rename, and it reached a customer-facing panel. Any
+    caller that unparses a node from this module must come through here."""
+    return _IS_RENAMED.sub("is.", ast.unparse(node))
+
+
+_IS_RENAMED = re.compile(r"\bIS_\.")
+
+
 def _leaf_tokens(node, out=None):
     """Every vocabulary token a node reaches, for provenance."""
     out = set() if out is None else out
@@ -365,7 +491,7 @@ def _leaf_tokens(node, out=None):
     return out
 
 
-def _statement_lines(tokens):
+def _statement_lines(tokens, standard="us_gaap"):
     """token -> the statement line it was read from. ⭐ THE PROVENANCE IS READ
     FROM THE VOCABULARY, never restated here: `field` is the stored column, and
     a derived token reports the expression it resolves through."""
@@ -382,11 +508,17 @@ def _statement_lines(tokens):
             "field": meta.get("field"),
             "expr": meta.get("expr"),
             "collected": meta.get("collected"),
+            # ⭐ `name` IS NULLABLE ON PURPOSE. None means no owner has named
+            # this token, and the surface renders the identifier — it does not
+            # mean the surface may compose one.
+            "name": display_name(t, standard),
+            "field_label": _label_maps(standard)[0].get(meta.get("field") or ""),
+            "expr_display": render_expr(meta.get("expr"), standard),
         })
     return out
 
 
-def _operands(ctx, node, offset=0):
+def _operands(ctx, node, offset=0, standard="us_gaap"):
     """The top-level operands of a formula, evaluated. -> [{role, text, value}]
 
     ⭐ A DIVISION HAS A NUMERATOR AND A DENOMINATOR AND THAT IS THE INTERESTING
@@ -396,7 +528,12 @@ def _operands(ctx, node, offset=0):
     """
     def one(role, n):
         v = _eval(ctx, n, offset)
-        return {"role": role, "text": ast.unparse(n),
+        # ⭐ `_unparse`, NEVER `ast.unparse`. The raw call reported the parser's
+        # `IS_` rename, and that string was rendered verbatim as the numerator
+        # on a client-facing panel.
+        text = _unparse(n)
+        return {"role": role, "text": text,
+                "text_display": render_expr(text, standard),
                 "value": None if isinstance(v, Absent) else v,
                 "absent": v.reason if isinstance(v, Absent) else None}
 
@@ -425,22 +562,84 @@ def explain(data, years, i, ratio_id, supplied=None):
     node = _parse(r["formula"])
     value = _eval(ctx, node)
     toks = _leaf_tokens(node)
+    # ⭐ THE CLIENT'S OWN STANDARD DECIDES THE LABELS. `is.cogs` is "Cost of
+    # Goods Sold" on a US GAAP template and "Cost of Sales" on an IFRS one.
+    standard = ((data or {}).get("company") or {}).get("standard") or "us_gaap"
     out = {
         "id": r["id"], "name": r["name"], "category": r["category"],
         "unit": r.get("unit"), "polarity": r.get("polarity"),
         "basis": r.get("basis"), "tier": r.get("tier"),
         "headline": bool(r.get("headline")),
         "definition": r.get("definition"),
+        # ⭐⭐ THE SWEEP FOUND A THIRD PATH: three definitions carry a raw token
+        # in their PROSE ("...compared against po.cost_of_debt used in WACC"),
+        # written into the registry yaml and rendered verbatim. Relabelling it
+        # here needs no registry edit and invents nothing — `po.cost_of_debt`
+        # resolves to the company row the client filled in.
+        "definition_display": render_expr(r.get("definition"), standard),
+        # ⭐ BOTH FORMS SHIP. The machine-readable formula is what the registry
+        # owns and what a reviewer diffs; the display form is what a client
+        # reads. Replacing one with the other would lose a reader either way.
         "formula": r["formula"],
+        "formula_display": render_expr(r["formula"], standard),
         "display_rule": r.get("display_rule"),
-        "operands": _operands(ctx, node),
-        "inputs": _statement_lines(toks),
+        "operands": _operands(ctx, node, standard=standard),
+        "inputs": _statement_lines(toks, standard),
+        # ⭐⭐ THE GAP IS IN THE PAYLOAD, PER RATIO. A surface that renders an
+        # identifier can say WHY it is rendering one, and a token that quietly
+        # never gets a name is visible rather than looking like a naming style.
+        # placeholder — filled below from what the payload ACTUALLY renders
+        "unnamed_tokens": [],
     }
     if isinstance(value, Absent):
         # ⭐ ABSENCE NAMES WHAT IT NEEDS. "listed once, with the data it would
         # need, rather than shown as a page of blanks."
         out["absent"] = value.reason
         out["needs"] = value.token
+        # ⭐⭐ THE SAME LEAK, ON THE ABSENCE PATH — AND IT IS THE WIDER ONE.
+        # 32 ratios cannot compute on a typical dataset and each is listed with
+        # what it needs; `needs` is a raw vocabulary token, so the "what you
+        # would have to supply" line — the one sentence in this panel meant to
+        # be ACTED on — was the least readable thing on it.
+        out["needs_display"] = (display_name(value.token, standard)
+                                or value.token) if value.token else None
     else:
         out["value"] = value
+    # ⭐⭐ DERIVED FROM WHAT RENDERS, NOT FROM THE FORMULA'S LEAVES. The first
+    # version listed the leaf tokens, and the sweep caught three ways an
+    # identifier reaches the panel without being one: a NESTED derivation
+    # (`is.pat — derived: is.pbt − is.tax_expense`), a token named only in
+    # PROSE (`...until is.purchases is collected`), and the `needs` line of a
+    # ratio that did not compute at all. A declaration that does not match what
+    # a reader can see is not a declaration.
+    out["unnamed_tokens"] = sorted(_unnamed_in_rendered(out, standard))
+    return out
+
+
+_DISPLAY_KEYS = ("formula_display", "definition_display", "needs_display")
+
+
+def _unnamed_in_rendered(payload, standard):
+    """Every unnamed vocabulary token visible in this payload's display text."""
+    vocab, _g, _r = _index()
+    text = [payload.get(k) or "" for k in _DISPLAY_KEYS]
+    text += [o.get("text_display") or "" for o in payload.get("operands") or ()]
+    for inp in payload.get("inputs") or ():
+        text.append(inp.get("expr_display") or "")
+        if not inp.get("name"):
+            text.append(inp["token"])
+    found = set()
+    for s in text:
+        found |= set(_TOKEN_RE.findall(s))
+    out = {t for t in found
+           if t in vocab and display_name(t, standard) is None}
+    # ⭐⭐ THE BARE ENGINE TOKENS COUNT TOO, AND THE SWEEP'S FIRST REGEX COULD
+    # NOT SEE THEM. `wacc_at` and `cagr` have no namespace prefix, so a pattern
+    # built around `is.`/`bs.` missed them entirely — and "needs wacc_at
+    # (caller must supply)" is exactly the defect on exactly the panel. Neither
+    # owns a name on any template, so the identifier is the ruled rendering;
+    # what was missing was DECLARING it.
+    needs = payload.get("needs_display") or ""
+    if needs in ENGINE_FUNCTIONS:
+        out.add(needs)
     return out
