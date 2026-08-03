@@ -34,11 +34,22 @@ def _needs(capability, missing, have=None):
     is broken; `unlocks` tells them what supplying it buys, which is the
     difference between a dead panel and a shopping list.
     """
+    # ⭐⭐ THE RAW TOKENS SURVIVE BESIDE THE CLIENT-FACING FORM, exactly as the
+    # ratio surface keeps `formula` beside `formula_display`. `missing_measures`
+    # is the machine field a consumer keys on; `needs_columns` and `unlocks` are
+    # what a person reads, and they name COLUMNS ON A SHEET rather than engine
+    # tokens. Until v13 there was no column to name — which is why this could
+    # not be fixed when the naming lane closed the same defect on the ratios.
+    from . import template_policy as _policy
+    tokens = sorted(missing)
+    columns = [_policy.needs_phrase(t) for t in tokens]
     return {"available": False, "capability": capability,
             "data_status": D.UNAVAILABLE, "value": None,
-            "missing_measures": sorted(missing),
+            "missing_measures": tokens,
+            "needs_columns": columns,
             "have_measures": sorted(have or []),
-            "unlocks": f"supply {' and '.join(sorted(missing))} to compute {capability}",
+            "unlocks": (f"supply {' and '.join(columns)} to compute "
+                        f"{_policy.capability_phrase(capability)}"),
             "calculation_version": CALCULATION_VERSION}
 
 

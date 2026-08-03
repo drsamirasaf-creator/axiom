@@ -17261,3 +17261,117 @@ actionable and its inputs the most contestable.
 grain a controller can answer, it composes with the pools T1/T2 already allocate
 by driver, and `semi-variable`/`step-fixed` must NOT be collapsed: a step-fixed
 cost is what makes a capacity decision non-linear.
+
+# ⭐⭐ §8l · FOUR T4 RULINGS (4 Aug) AND T4.1 BUILT — THE COST-BEHAVIOUR TAB
+
+Rulings first, then the extension. Report:
+`docs/reports/t4-1-cost-behaviour-template-2026-08-04.md`.
+
+## ⭐⭐ RULING 1 · TWO OPERATING LEVERAGES, NAMED DISTINCTLY
+
+`axiom.operating_leverage` = `ebit_growth_yoy / revenue_growth_yoy` — the
+OBSERVED leverage between two periods, registry-owned. The MANAGERIAL degree of
+operating leverage is `contribution / EBIT`, a different quantity at a different
+grain answering a different question. **Both stand; neither restates the other;
+they must not share a name.** T4.2 names its quantity
+`contribution_operating_leverage`. ⛔ A surface may never present one as the
+other, and no formula may reference both as though interchangeable.
+
+## ⭐⭐ RULING 2 · THE DSO FINANCING CHARGE USES THE SHORT-TERM BORROWING RATE
+
+**Not WACC.** WACC is the blended long-run cost of capital for the whole
+enterprise; a receivable is short-term working capital, financed at the
+short-term rate. Charging a 90-day receivable at WACC overstates its cost by
+whatever the term premium is, and understates it where a client borrows short at
+a penalty rate.
+
+⭐ **WHERE THE RATE COMES FROM:** the template already collects **"Pre-Tax Cost
+of Debt"** on the Company sheet (`po.cost_of_debt`) — a client-supplied figure,
+already labelled, already parsed. T4.3 consumes it. If a client supplies a
+distinct short-term facility rate later, that is a template field, not a
+default. ⛔ **AXIOM never infers a borrowing rate**, and where `cost_of_debt` is
+absent the charge DECLINES and names the Company-sheet row.
+
+## ⭐ RULING 3 · WASSERSTEIN — UNIT GROUND METRIC, LARGEST-SHARE TIE-BREAK
+
+Unit ground metric; ties broken by **largest absolute share first**. **Both
+stated on the surface**, because an unstated tie-break lets two runs print
+different transport plans for identical data — and a recommendation that changes
+between refreshes is one a reader stops believing.
+
+## ⭐ RULING 4 · STRANDED COST IS CLIENT-DECLARED, NEVER INFERRED
+
+Which shared cost survives an exit, and over what horizon, is a fact about the
+client's contracts and org — not a thing to derive from an allocation. AXIOM
+collects the declaration or the capability declines.
+
+# ⭐⭐ T4.1 — THE TEMPLATE EXTENSION (v12 → v13)
+
+## THE GRAIN IS THE COST POOL, AND THE ABSENCE OF A LINE COLUMN IS THE RULING
+
+**One row per cost pool per period. There is no `Product` column on the sheet.**
+A controller knows the support pool is largely fixed and freight is variable;
+asking for a fixed/variable split of EVERY LINE's cost asks them to perform the
+allocation AXIOM exists to perform. Pools are already the unit T1/T2 allocate by
+driver, so it composes with the machinery rather than sitting beside it.
+Asserted structurally — a test fails if `Product`, `Segment` or `Line Code` ever
+appears on that sheet.
+
+## ⭐⭐ FOUR CLASSES, AND TWO COLUMNS EACH IS WHAT STOPS THE COLLAPSE
+
+`fixed · variable · semi-variable · step-fixed`, as a dropdown rather than free
+text — a free column collects "mostly fixed" and "depends".
+
+**Semi-variable carries `Fixed Portion` and `Variable Portion`; step-fixed
+carries `Step Threshold` and `Step Size`.** Without those columns a client can
+only pick the nearest of fixed/variable, and **a step-fixed cost averaged into a
+smooth one produces a SMOOTH OPTIMUM WHERE THE REAL ONE JUMPS** — precisely the
+capacity decision T4.2 exists to get right.
+
+## CAPACITY IS A DECLARED CEILING (§8h·2)
+
+`Capacity & Constraints`, long-form with a `Measure` column because the three
+facts live at three grains: `capacity_available` (a resource's),
+`consumption_per_unit` (a line's use of it), `maximum_sales_units` (a line's
+ceiling). ⭐ The intro says it in the client's words: **"That last figure is
+your CEILING, not a forecast — AXIOM never estimates it for you."**
+
+## ⭐⭐ THE DECLINE VOCABULARY NOW NAMES COLUMNS, AND THE TOKENS SURVIVE BESIDE
+
+Before: `supply cost_behaviour (fixed/variable split) to compute
+contribution_profit` — two engine tokens and a parenthetical, on a page a CFO
+reads. After: **"supply the 'Cost Behaviour' column on the 'Cost Behaviour'
+sheet to compute contribution profit."**
+
+⭐ Same shape as the ratio lane's fix: `missing_measures` keeps the raw tokens
+as the MACHINE field, `needs_columns` and `unlocks` are what a person reads.
+⭐⭐ And the frontend's fallback was reading `missing_measures` — a SECOND route
+by which a token could reach a reader — now `needs_columns`.
+
+⭐ **A DECLINE THAT NAMES A COLUMN NOBODY CAN FIND IS WORSE THAN A TOKEN**: a
+test asserts the named column actually exists on the built sheet, so the
+sentence and the workbook cannot drift.
+
+## PRIOR VERSIONS PARSE UNCHANGED — ASSERTED AS EQUALITY, NOT AS EMPTINESS
+
+⚠️ The first version of that test asserted `errors == []` on a workbook with the
+sheets removed, and failed: **a blank download has NEVER parsed cleanly** — it
+carries no company data. That test would have measured the template's emptiness,
+not this lane's change. It now parses the SAME workbook with and without the two
+sheets and asserts **the error lists are identical**.
+
+## VERIFIED
+
+**1948 passed** (was 1934) / 1 skipped / 3 xfailed · 29/29 gates · 13 new tests,
+red before · five version pins advanced, as every prior bump did · `tsc` 0 ·
+lint rc=0 · ratchet 819/819 · declared-absence green.
+
+## ⚠️ THE §22 EXPOSURE, STATED PLAINLY
+
+The source document §22: *"Do not automatically recommend discontinuation based
+only on fully allocated EBIT."* **T3 renders exactly that figure today**, and
+PL-CTRL's reversal is exactly the finding a reader would act on wrongly.
+Contribution is the corrective and it does not exist until T4.2. **This lane
+makes the data collectable; it does not close the exposure.** Until it does, the
+Profitability surface shows a fully-allocated loss with no contribution figure
+beside it.

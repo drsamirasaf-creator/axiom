@@ -491,8 +491,8 @@ def test_the_current_template_stamps_the_current_version_and_offers_monthly():
     # ⭐ 9 -> 10 ON 2 Aug (R6, the working-capital split). Asserted as an
     # EXACT value rather than ">= 9": a version that can drift upward without
     # anyone updating this line is a version nobody is checking.
-    assert policy.VERSION_MAJOR == 12   # v12 (3 Aug): the dimensional tab
-    assert ingest.TEMPLATE_VERSION == "7M-v12.0"
+    assert policy.VERSION_MAJOR == 13   # v13 (4 Aug): cost behaviour + capacity
+    assert ingest.TEMPLATE_VERSION == "7M-v13.0"
     assert "monthly" in ingest.HISTORY_COLS and "monthly" in ingest.FORECAST_COLS
 
 

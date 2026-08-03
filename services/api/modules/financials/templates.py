@@ -277,10 +277,18 @@ def build_template(standard: str) -> bytes:
         ws.protection.password = _LOCK_PWD
 
     _dimensional_sheets(wb)
+    _cost_behaviour_sheets(wb)
 
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+# ⭐ NAMES, NOT LITERALS. Anything that must NAME one of these sheets — a
+# decline sentence, a test, a parser — reads it from here, so the sheet and the
+# sentence cannot drift apart.
+COST_BEHAVIOUR_SHEET = policy.COST_BEHAVIOUR_SHEET_NAME
+CAPACITY_SHEET = policy.CAPACITY_SHEET_NAME
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -555,3 +563,112 @@ def parse_workbook(content: bytes) -> tuple[dict | None, list]:
     errors = [{"cell": None, "error": e} for e in v["errors"]]
     return (dataset if not errors else None,
             errors or [{"cell": None, "warning": w} for w in v["warnings"]])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐⭐ T4.1 — COST BEHAVIOUR AND CAPACITY (v13)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _long_form_sheet(wb, name, columns, header_row, intro, numeric_cols,
+                     rows=200):
+    """One long-form tab, built from the policy's column list.
+
+    ⭐ LONG FORM IS WHAT MAKES "PARTIAL SUPPLY IS NEVER AN ERROR" STRUCTURAL —
+    with a third of the data a client supplies a third of the ROWS and never
+    sees a column they cannot fill. The dimensional tab established the shape;
+    these two follow it rather than inventing a second one.
+    """
+    ws = wb.create_sheet(name)
+    _style_header(ws["A1"], intro[0])
+    ws["A2"] = intro[1]
+    ws["A2"].font = Font(size=9, italic=True, color="666666")
+    for c, (label, _hint) in enumerate(columns, start=1):
+        _style_header(ws.cell(row=header_row, column=c), label)
+        ws.column_dimensions[get_column_letter(c)].width = max(12, len(label) + 4)
+    for r in range(header_row + 1, header_row + 1 + rows):
+        for c in range(1, len(columns) + 1):
+            _input_cell(ws.cell(row=r, column=c),
+                        numeric=columns[c - 1][0] in numeric_cols)
+    ws.protection.sheet = True
+    ws.protection.password = _LOCK_PWD
+    return ws
+
+
+def _cost_behaviour_sheets(wb):
+    """Cost behaviour per pool per period, and capacity as a declared ceiling.
+
+    ⭐⭐ NEITHER SHEET IS REQUIRED AND BOTH SAY SO ON THEIR FIRST LINE. A client
+    who fills neither uploads exactly as cleanly as one who never saw them.
+    """
+    from openpyxl.workbook.defined_name import DefinedName
+
+    # ── the behaviour vocabulary, as a named range so the dropdown is the
+    # vocabulary rather than free text collecting "mostly fixed" and "depends"
+    lw = wb["Lists"] if "Lists" in wb.sheetnames else wb.create_sheet("Lists")
+    start = (lw.max_row or 0) + 2
+    for i, cls in enumerate(policy.COST_BEHAVIOUR_CLASSES):
+        lw.cell(row=start + i, column=8, value=cls)
+    ref = (f"'Lists'!$H${start}:$H${start + len(policy.COST_BEHAVIOUR_CLASSES) - 1}")
+    wb.defined_names.add(DefinedName("BEHAVIOUR", attr_text=ref))
+    mstart = start + len(policy.COST_BEHAVIOUR_CLASSES) + 1
+    for i, m in enumerate(policy.CAPACITY_MEASURES):
+        lw.cell(row=mstart + i, column=8, value=m)
+    mref = f"'Lists'!$H${mstart}:$H${mstart + len(policy.CAPACITY_MEASURES) - 1}"
+    wb.defined_names.add(DefinedName("CAPMEASURES", attr_text=mref))
+
+    ws = _long_form_sheet(
+        wb, COST_BEHAVIOUR_SHEET, policy.COST_BEHAVIOUR_COLUMNS,
+        policy.COST_BEHAVIOUR_HEADER_ROW,
+        ("Cost behaviour — optional, and partial is fine",
+         "One row per cost pool per period. You do not need a row for every "
+         "pool, and you do not need to split costs by product line — that is "
+         "what AXIOM does with the drivers. Pools you omit are reported as not "
+         "supplied, never as zero."),
+        numeric_cols={"Amount", "Fixed Portion", "Variable Portion",
+                      "Step Threshold", "Step Size", "Driver Value"})
+    behaviour_col = policy.cost_behaviour_labels().index("Cost Behaviour") + 1
+    last = policy.COST_BEHAVIOUR_HEADER_ROW + 200
+    dv = DataValidation(type="list", formula1="=BEHAVIOUR", allow_blank=True)
+    ws.add_data_validation(dv)
+    dv.add(f"{get_column_letter(behaviour_col)}"
+           f"{policy.COST_BEHAVIOUR_HEADER_ROW + 1}:"
+           f"{get_column_letter(behaviour_col)}{last}")
+
+    cap = _long_form_sheet(
+        wb, CAPACITY_SHEET, policy.CAPACITY_COLUMNS,
+        policy.CAPACITY_HEADER_ROW,
+        ("Capacity and constraints — optional, and partial is fine",
+         "Tell AXIOM what limits you: how much of a resource a period has, how "
+         "much of it one unit of a line consumes, and the most of a line you "
+         "could sell if capacity allowed. That last figure is your CEILING, "
+         "not a forecast — AXIOM never estimates it for you."),
+        numeric_cols={"Value"})
+    mcol = [l for l, _h in policy.CAPACITY_COLUMNS].index("Measure") + 1
+    clast = policy.CAPACITY_HEADER_ROW + 200
+    dvc = DataValidation(type="list", formula1="=CAPMEASURES", allow_blank=True)
+    cap.add_data_validation(dvc)
+    dvc.add(f"{get_column_letter(mcol)}{policy.CAPACITY_HEADER_ROW + 1}:"
+            f"{get_column_letter(mcol)}{clast}")
+
+    # ── the Data Dictionary gains both sheets, derived from the same lists ──
+    # ⭐ A column added without an explanation is impossible rather than merely
+    # discouraged: the sheet and the dictionary are built from one list.
+    dd = wb["Data Dictionary"]
+    r = (dd.max_row or 1) + 2
+    for title, cols in ((COST_BEHAVIOUR_SHEET, policy.COST_BEHAVIOUR_COLUMNS),
+                        (CAPACITY_SHEET, policy.CAPACITY_COLUMNS)):
+        _style_header(dd[f"A{r}"], title)
+        _style_header(dd[f"B{r}"], "What it means")
+        r += 1
+        for label, hint in cols:
+            dd[f"A{r}"] = label
+            dd[f"B{r}"] = hint
+            r += 1
+        r += 1
+    _style_header(dd[f"A{r}"], "Capacity measure")
+    _style_header(dd[f"B{r}"], "What supplying it unlocks")
+    r += 1
+    for m in policy.CAPACITY_MEASURES:
+        dd[f"A{r}"] = m
+        dd[f"B{r}"] = policy.CAPACITY_MEASURE_HELP[m]
+        r += 1
