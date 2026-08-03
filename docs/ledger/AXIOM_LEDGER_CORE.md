@@ -17159,3 +17159,105 @@ on a premise nobody checked is the cheapest kind of avoidable damage.
 
 1935 passed / 1 skipped / 3 xfailed · 29/29 gates · browser 3 modes, 14/14
 pinned still pinned · `tsc` 0 · lint rc=0 · ratchet 819/819.
+
+# ⭐⭐ §8k · T4 SCOPED — THE MANAGERIAL ACCOUNTING LAYER (4 Aug)
+
+REPORT ONLY. Full scope: `docs/reports/t4-managerial-accounting-scope-2026-08-04.md`.
+
+## §8h·1 ANSWERED — `prescience_decision` CANNOT SERVE MIX OPTIMISATION
+
+**Not "with a change" — a different problem class.** Its `_search` selects a
+SUBSET of discrete moves; `_compatible()` expresses LOGICAL compatibility
+(`atom_type`, `excludes`, `prereqs`) and **has no representation of a resource
+capacity at all**. Its objective is `raev` — risk-adjusted enterprise value from
+a Monte Carlo DCF. Constrained mix allocates a CONTINUOUS quantity under a
+capacity budget to maximise PERIOD CONTRIBUTION. `intel.dp_optimize` is likewise
+a capital-structure DP, not a candidate.
+
+⭐⭐ **THE DUPLICATION RISK IS THE OBJECTIVE, NOT THE SOLVER.** Two optimisers
+only collide if they answer the same question, and these cannot. **Ruling
+proposed: the mix optimiser reports CONTRIBUTION and never enterprise value, EV
+uplift or any discounted figure. A mix decision to be VALUED enters the
+prescience move library and is valued there, once.** One owner for value, one
+for contribution, and the boundary is testable.
+
+⭐ With ONE binding constraint no solver is needed — the optimum is the greedy
+ranking by contribution per unit of the scarce resource. `scipy` is present for
+the two-constraint case; no new dependency.
+
+## §8h·2 ANSWERED — THE LINE IS A CEILING VERSUS A RESPONSE
+
+✅ Identities and DECLARATIONS build: contribution, break-even, margin of
+safety, DOL, cost-to-serve, capacity/deliverable revenue, working-capital
+contribution, avoidable/stranded (declared, never inferred), and **constrained
+mix — whose demand CEILING is a client declaration, not an estimate**.
+
+⛔ REFUSED: price optimisation, optimal payment terms, automated discontinuation
+— each needs a demand, default or substitution RESPONSE the client's data cannot
+estimate. **An optimiser whose objective assumes the elasticity R2 refused is R2
+evaded, not obeyed.**
+
+⭐⭐ **"We cannot sell more than 8,000 units" is an input a controller can
+defend. "Volume rises 4% when price falls 1%" is the invented input.** If the
+ceiling is absent the capability DECLINES; it does not fall back to unbounded.
+
+## ⭐⭐ W₁ NEEDS A GROUND METRIC, AND THE RULING DID NOT STATE ONE
+
+Product lines are an UNORDERED support, so "distance between mixes" is undefined
+until the cost of moving a unit of revenue from A to B is stated. **Under the
+unit metric W₁ is exactly ½·Σ|Δshare| — a restatement of T2's `mix_shift` under
+a more impressive name.** Which is precisely why §8h·3 is right that the
+TRANSPORT PLAN is the product. ⭐ The plan also needs a stated TIE-BREAK
+(recommended: fill the highest contribution-per-resource deficit first) or two
+runs may print different plans for identical data.
+
+## ⭐ 2D/3D — NEITHER. THE OPTIMUM'S SHAPE IS A RANKING
+
+One binding constraint puts the LP optimum at a VERTEX: fill the best
+contribution-per-resource line to its ceiling, then the next. No interior
+optimum, no curved frontier. The picture is a **ranked bar chart of contribution
+per constrained-resource unit** plus a **cumulative capacity waterfall** with
+current and optimal paths — "you are here, the optimum is there, the gap is
+worth $X" in 2D, both marks encoding facts per §8h·6. A genuine 2D frontier
+earns its place only when a SECOND constraint binds.
+
+## ⚠️ FOUR COLLISIONS AND RULINGS OWED
+
+1. ⭐⭐ **`axiom.operating_leverage` ALREADY EXISTS** as
+   `ebit_growth_yoy / revenue_growth_yoy`. The managerial DOL is
+   `contribution / EBIT` — different quantity, same name. **Rename one before
+   T4.1.**
+2. **The funding rate for the DSO financing charge.** The dispatch names the
+   sole-owned WACC; WACC is the blended long-run rate and a receivable is
+   short-term financing. Flagged rather than silently obeyed or substituted.
+3. **The Wasserstein ground metric and the plan's tie-break.**
+4. **Who declares the stranded-cost recovery horizon.**
+
+## ⭐⭐ THE DECLINE VOCABULARY IS DOWNSTREAM OF THE TEMPLATE
+
+Today's decline reads `cost_behaviour (fixed/variable split)` — **an engine
+token**, the exact defect the naming lane closed on the ratio surface. The
+resolver cannot fix it: it maps tokens to columns the WORKBOOK CONTAINS, and the
+template has three sheets and 26 lines with no cost-behaviour column at all.
+**The template extension must DEFINE the labels before the capability can
+decline in them.** Building first guarantees a decline naming an engine token.
+
+## ⭐ THE ARGUMENT FOR BUILDING T4 NEXT
+
+The document's §22: *"Do not automatically recommend discontinuation based only
+on fully allocated EBIT."* **T3 renders exactly that figure, and PL-CTRL's
+reversal is exactly the finding a reader would act on wrongly.** T4 is what
+makes the T3 finding safe to act on.
+
+## SEQUENCE, BY WHAT DATA WILL ARRIVE
+
+T4.1 cost behaviour (pool grain) → contribution · T4.2 capacity + demand
+ceiling → constrained mix · T4.3 company working-capital lines FIRST, then
+dimensional → CCC and the DSO charge · T4.4 cost-to-serve · T4.5
+avoidable/stranded → restructuring economics, last because it is the most
+actionable and its inputs the most contestable.
+
+⭐ Grain ruled: **behaviour per COST POOL per period**, not per line — it is the
+grain a controller can answer, it composes with the pools T1/T2 already allocate
+by driver, and `semi-variable`/`step-fixed` must NOT be collapsed: a step-fixed
+cost is what makes a capacity decision non-linear.
