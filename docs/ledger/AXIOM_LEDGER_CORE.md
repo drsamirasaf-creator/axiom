@@ -16021,3 +16021,73 @@ silent no-op. Two keys were wrong and nothing existed to notice.
 ⚠️ The standing **"confirm in incognito"** rule is **UNSATISFIED** — no browser
 against production in this lane. Not needed for the conclusion (served source
 plus byte-identical API responses settle it), and recorded rather than waved past.
+
+# ⭐⭐ §7x.1 · THE VALUATION KEYS, ALIGNED — AND THE FREE DICT CLOSED (3 Aug)
+
+BUILT 3 Aug, closing §7x. **The caller changed, not the contract.**
+
+## ⭐⭐ 1 · FOUR DEAD FIELDS, NOT TWO — THE SWEEP FOUND MORE THAN THE DIAGNOSIS
+
+Deriving the engine's vocabulary from `auto_forecast`'s own `a.get(...)` calls
+rather than from §7x's report:
+
+```
+assumptions.wacc        -> wacc_override        EV unchanged
+monte_carlo.paths       -> n_paths              n_paths echoed 2000, always
+forecast.capex_pct      -> capex_pct_revenue    EV unchanged (correct: -1981.37)
+forecast.nwc_pct        -> nwc_pct_revenue      EV unchanged (correct:  1810.55)
+```
+
+⭐ **A FIFTH INSTANCE IN THE READ DIRECTION**: the AI prefill consumed
+`fc.capex_pct`/`fc.nwc_pct`, names its producer never emits.
+
+**Why the caller**: every other caller already uses the engine's spelling, all
+four wrong spellings live in ONE file, and accepting both names would make two
+names permanent without preventing the next typo.
+
+## ⭐⭐ 2 · THE TYPO WAS ONE DEFECT; THE FREE DICT WAS A DEFECT GENERATOR
+
+`assumptions`/`monte_carlo` are typed models with `extra="forbid"` (§4u-c's
+shape). The field names are **derived from the engine's `.get()` calls**, and a
+test asserts every documented key is still accepted — the check that closing the
+contract did not NARROW it.
+
+⭐ **ABSENCE AND NULL STAY DISTINCT.** Unset fields are dumped out
+(`exclude_unset`) so engine defaults still apply; an explicit `null` is REFUSED,
+because a client that sends null has stated something.
+
+⭐ **NO CALLER BREAKS — 1796 PASS.** Only HTTP requests are validated; internal
+callers handing dicts straight to `engines.run` are untouched.
+
+## ⭐⭐ 3 · A NEEDLE FINDABLE IN THE PASSING CASE TESTS NOTHING
+
+`test_the_refusal_names_the_offending_key` PASSED against the broken boundary:
+it asserted only that `"wacc"` appeared in the body, and a **201** carries
+`wacc_used`. The status is now asserted first.
+
+## ⚠️ 4 · A TEST FILE THAT IMPORTED ANOTHER TEST MODULE BROKE 93 TESTS
+
+`from tests.unit.test_api import auth_client` pulled that module's import-time
+`os.environ["DATABASE_URL"] = ...` into a new collection order and re-pointed the
+engine mid-suite — **93 failed, 298 errors, every one reading "no such table:
+users" and none about valuation.** The change under test was green throughout,
+established by re-running with only the test file removed.
+
+⭐⭐ **THE CONVENTION IS `os.environ.setdefault` AND MODULE-LOCAL FIXTURES.**
+Importing fixtures across test modules imports their side effects with them.
+
+## ⭐⭐ 5 · THE SWEEP — 35 FREE DICTS, AND ANOTHER LIVE DEAD CONTROL
+
+`/twin/simulate` merges `**(custom or {})` over `{growth_shift, margin_shift,
+sigma_scale, …}` and `simulation.tsx` sends **`volatility_scale`** — **the
+Dynamics & Simulation volatility slider moves nothing.** Same class, different
+page, NOT fixed here: it needs its own before/after.
+
+`/financials/forecast` takes the same free dict over the same vocabulary; its
+only caller sends `{horizon}`, so nothing is dead there today — the mechanism is.
+
+## ⚠️ 6 · BOTH FIXES ARE PUSHED AND NEITHER IS LIVE
+
+The served chunk still lacks the per-unit guard AND `wacc_override`, and still
+contains `t.wacc=n`. **Production still renders $0.00 and still has a dead WACC
+box.** Content settles this, not build hashes. A deploy is the remaining step.

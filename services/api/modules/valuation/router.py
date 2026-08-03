@@ -123,8 +123,8 @@ def _provenance(ds, body, requested_mode, executed_mode, eff_data):
         "requested_mode": requested_mode,
         "executed_mode": executed_mode,
         # the caller's inputs, in full
-        "assumptions": body.assumptions,
-        "monte_carlo": body.monte_carlo,
+        "assumptions": body.assumptions.to_engine(),
+        "monte_carlo": body.monte_carlo.to_engine(),
         "basis_label": getattr(body, "basis_label", None),
         "forecast_override": getattr(body, "forecast_override", None),
         "radii": getattr(body, "radii", None),
@@ -153,10 +153,15 @@ def run_valuation(body: schemas.ValuationRequest, db: Session = Depends(get_db),
         eff_data = _data_for_mode(ds.data, body.mode)
         eff_mode = body.mode
     try:
-        result = engines.run(eff_data, eff_mode, body.assumptions, body.monte_carlo)
+        result = engines.run(eff_data, eff_mode,
+                             body.assumptions.to_engine(),
+                             body.monte_carlo.to_engine())
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    params = {"assumptions": body.assumptions, "monte_carlo": body.monte_carlo,
+    # ⭐ The ENGINE-SHAPED dict, which is what actually ran. Storing the raw
+    # model would record fields nobody supplied as explicit nulls.
+    params = {"assumptions": body.assumptions.to_engine(),
+              "monte_carlo": body.monte_carlo.to_engine(),
               "basis_label": body.basis_label,
               "extended": bool(body.forecast_override)}
     from ...core.config import require_auth
@@ -197,11 +202,15 @@ def run_stress(body: StressRequest, db: Session = Depends(get_db),
     eff_data = _data_for_mode(ds.data, body.mode)
     try:
         result = engines.stress(eff_data, body.mode,
-                                body.assumptions, body.monte_carlo, body.radii,
+                                body.assumptions.to_engine(),
+                                body.monte_carlo.to_engine(), body.radii,
                                 body.threshold_override)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    params = {"assumptions": body.assumptions, "monte_carlo": body.monte_carlo,
+    # ⭐ The ENGINE-SHAPED dict, which is what actually ran. Storing the raw
+    # model would record fields nobody supplied as explicit nulls.
+    params = {"assumptions": body.assumptions.to_engine(),
+              "monte_carlo": body.monte_carlo.to_engine(),
               "radii": body.radii,
               "threshold_override": body.threshold_override}
     from ...core.config import require_auth
