@@ -17122,3 +17122,40 @@ its fault. **Correct in place; move the thing nothing points at.**
 this lane's own cells) · browser 3 modes, 14/14 pinned still pinned. Tab strip
 **1080×42px with 5 tabs** — still one row. Total row reads **$45.00M** (the
 statement), not the **$29.00M** the visible rows sum to.
+
+# ⭐⭐ §8j · A FORECAST PERIOD IS EXCLUDED BY RULING, NOT MISSING (4 Aug)
+
+Found while re-verifying §8i against Meridian's REAL shape rather than the
+fixture's. The coverage block computed `missing_periods` from every period in
+the income statement, so on Meridian — five actual and five forecast periods —
+the surface listed **2021, 2026, 2027, 2028, 2029, 2030** as periods with no
+product-line detail.
+
+⛔ **THE PAGE CONTRADICTED ITS OWN RULING, ONE LINE APART.** The same block
+printed "a product-line allocation of a forecast compounds two estimates, so
+AXIOM does not produce one" directly beneath a sentence listing those forecast
+years as missing detail. **Only 2021 was a genuine gap.**
+
+⭐⭐ **THE TWO ABSENCES ARE DIFFERENT AND MUST BE SAID DIFFERENTLY.** One a
+client can close by supplying a sheet; the other AXIOM REFUSES to produce.
+Conflating them sends someone looking for data that is not absent but declined
+— the same error class as a declining capability that does not name what it
+needs (§8a), one level up.
+
+⭐ **THE FIXTURE COULD NOT REVEAL IT** because the fixture had no forecast
+periods at all. The recording now carries two, and the e2e test builds a dataset
+with three actual and two forecast periods and asserts `missing_periods ==
+[2023]` — red at `[2023, 2026, 2027]` before the fix.
+
+## THE §8i LANE ITSELF WAS ALREADY LANDED
+
+Re-dispatched 4 Aug on the premise that it never started. It had: `ff48d64`
+(backend) and `ac92e64` (frontend), with 60 observations across 2022–2025 live
+in production and reconciliation holding on all twelve measure-periods.
+**Verified before acting rather than re-applied** — a production write repeated
+on a premise nobody checked is the cheapest kind of avoidable damage.
+
+## VERIFIED
+
+1935 passed / 1 skipped / 3 xfailed · 29/29 gates · browser 3 modes, 14/14
+pinned still pinned · `tsc` 0 · lint rc=0 · ratchet 819/819.

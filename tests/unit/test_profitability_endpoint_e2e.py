@@ -245,3 +245,60 @@ def test_r1_is_still_refused_through_the_endpoint(payload):
     for level in ("profit_before_tax", "net_profit"):
         assert line[level]["refused"] is True
         assert line[level]["ruling"] == "R1"
+
+
+# ── 5 · a forecast period is EXCLUDED, never "missing" ─────────────────────
+
+def test_a_forecast_period_is_excluded_by_ruling_not_reported_as_missing(
+        client, tenant):
+    """⭐⭐ THE SURFACE CONTRADICTED ITS OWN RULING. On a dataset whose statements
+    run five actual and five forecast periods, the coverage block listed the
+    forecast years among those with "no product-line detail" — one sentence
+    above a note saying AXIOM DOES NOT PRODUCE ONE. A client would go looking
+    for a sheet that is not absent but refused.
+
+    ⭐ The fixture could not reveal this: it has no forecast periods. Only a
+    dataset shaped like the real one can.
+    """
+    db = SessionLocal()
+    try:
+        ds = fin_models.FinancialDataset(
+            tenant=tenant, name="Forecast Coverage", standard="ifrs",
+            ownership="private", source="direct",
+            data={"company": {"name": "FC Co", "ownership": "private"},
+                  "periods": {"historical": [2023, 2024, 2025],
+                              "forecast": [2026, 2027], "frequency": "annual"},
+                  "income_statement": {
+                      k: {str(p): v for p in (2023, 2024, 2025, 2026, 2027)}
+                      for k, v in STATEMENT.items()}},
+            validation={"warnings": []})
+        db.add(ds); db.flush()
+        did = ds.id
+        code = "L-ONLY"
+        for stale in db.query(DimensionMember).filter_by(
+                company_id=E2E_COMPANY, dimension_type="product",
+                code=code).all():
+            db.query(DimensionObservation).filter_by(member_id=stale.id).delete()
+            db.delete(stale)
+        db.flush()
+        m = DimensionMember(company_id=E2E_COMPANY, dimension_type="product",
+                            member_key="k-only", code=code, name="Only Line",
+                            source="test")
+        db.add(m); db.flush()
+        # detail for 2024 and 2025 only: 2023 is a GENUINE gap, 2026-27 are not
+        for period in (2024, 2025):
+            for measure, value in (("revenue", 600.0), ("direct_cost", 300.0),
+                                   ("direct_opex", 20.0)):
+                db.add(DimensionObservation(
+                    company_id=E2E_COMPANY, dataset_id=did, member_id=m.id,
+                    period=period, frequency="annual", measure=measure,
+                    value=value, data_status="observed", basis="actual"))
+        db.commit()
+    finally:
+        db.close()
+
+    cov = client.get(f"/api/v1/metrics/profitability/{did}").json()["coverage"]
+    assert cov["missing_periods"] == [2023], (
+        f"forecast periods reported as missing: {cov['missing_periods']}")
+    assert cov["excluded_forecast_periods"] == [2026, 2027]
+    assert cov["actual_periods"] == [2023, 2024, 2025]

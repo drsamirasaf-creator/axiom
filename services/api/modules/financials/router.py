@@ -1123,10 +1123,25 @@ def profitability_surface(dataset_id: int, db: Session = Depends(get_db),
     stmt_periods = sorted(
         {int(p) for p in ((IS.get("revenue") or {}).keys()) if str(p).isdigit()})
     dim_periods = sorted({p for pers in by_type.values() for p in pers})
+    # ⭐⭐ A FORECAST PERIOD IS EXCLUDED BY RULING, NOT MISSING — AND THE FIRST
+    # VERSION OF THIS BLOCK CALLED IT MISSING. On Meridian, whose statements run
+    # five actual and five forecast periods, the page listed 2026–2030 among the
+    # periods with "no product-line detail" — one sentence above a note saying
+    # AXIOM DOES NOT PRODUCE ONE. The surface contradicted its own ruling, and
+    # the fixture could not reveal it because the fixture has no forecast years.
+    #
+    # ⭐ Only an ACTUAL period with no detail is a gap a client can close by
+    # supplying data. Conflating the two would send someone looking for a sheet
+    # that is not merely absent but refused.
+    fc = {int(p) for p in ((data.get("periods") or {}).get("forecast") or [])
+          if str(p).isdigit()}
+    actual_periods = [p for p in stmt_periods if p not in fc]
     out["coverage"] = {
         "statement_periods": stmt_periods,
+        "actual_periods": actual_periods,
         "dimensional_periods": dim_periods,
-        "missing_periods": [p for p in stmt_periods if p not in dim_periods],
+        "missing_periods": [p for p in actual_periods if p not in dim_periods],
+        "excluded_forecast_periods": sorted(p for p in stmt_periods if p in fc),
         "note": ("Dimensional detail covers actual periods only. A product-line "
                  "allocation of a forecast compounds two estimates — the "
                  "projection's own uncertainty and the allocation assumption on "

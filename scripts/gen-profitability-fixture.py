@@ -76,6 +76,11 @@ EARLIER = {2018: {"revenue": 520.0, "cogs": 312.0, "opex": 130.0},
            2020: {"revenue": 610.0, "cogs": 372.0, "opex": 158.0},
            2021: {"revenue": 700.0, "cogs": 420.0, "opex": 175.0}}
 STATEMENT_ONLY = tuple(sorted(EARLIER))
+# Forecast periods: never carry dimensional detail, BY RULING rather than by
+# omission — the distinction the coverage block has to make.
+PROJECTED = {2026: {"revenue": 1200.0, "cogs": 720.0, "opex": 430.0},
+             2027: {"revenue": 1310.0, "cogs": 786.0, "opex": 470.0}}
+FORECAST = tuple(sorted(PROJECTED))
 EMAIL = "fixture-gen@example.test"
 
 
@@ -100,11 +105,18 @@ def main(out_path):
                   # about. A fixture whose statement matched its detail exactly
                   # could not prove that the page STATES what it lacks, which is
                   # the whole point of the coverage block.
+                  # ⭐⭐ AND FORECAST PERIODS, because the surface must
+                  # distinguish "no detail was supplied" from "AXIOM refuses to
+                  # produce it". The first version of this fixture had none, and
+                  # the endpoint reported Meridian's five forecast years among
+                  # the periods with no product-line detail — one line above a
+                  # note saying it does not produce one.
                   "periods": {"historical": list(STATEMENT_ONLY) + list(PERIODS),
-                              "forecast": [], "frequency": "annual"},
+                              "forecast": list(FORECAST), "frequency": "annual"},
                   "income_statement": {
                       k: {**{str(p): v[k] for p, v in EARLIER.items()},
-                          **{str(p): STATEMENT[p][k] for p in PERIODS}}
+                          **{str(p): STATEMENT[p][k] for p in PERIODS},
+                          **{str(p): v[k] for p, v in PROJECTED.items()}}
                       for k in ("revenue", "cogs", "opex")}},
             validation={"warnings": []})
         db.add(ds); db.flush()
@@ -156,8 +168,9 @@ def main(out_path):
     assert "mix_dilutive" in kinds, f"no mix-shift finding: {kinds}"
     # ⭐ AND THE SHORTFALL IS IN THE RECORDING. Without it the browser could not
     # prove the surface states what it does not hold.
-    assert payload["coverage"]["missing_periods"] == list(STATEMENT_ONLY), \
-        payload["coverage"]
+    cov = payload["coverage"]
+    assert cov["missing_periods"] == list(STATEMENT_ONLY), cov
+    assert cov["excluded_forecast_periods"] == list(FORECAST), cov
 
     payload["_provenance"] = (
         "RECORDED FROM THE ENDPOINT by scripts/gen-profitability-fixture.py in "
