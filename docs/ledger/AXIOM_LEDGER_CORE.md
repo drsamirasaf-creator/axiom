@@ -16797,3 +16797,40 @@ rows need no change and the seed was not re-run.
 
 **`§8c` is used TWICE** — "T1 BUILT — THE DIMENSIONAL FOUNDATION" and "T3 — THE
 PROFITABILITY SURFACE". Not renumbered here; surfaced rather than auto-resolved.
+
+# ⭐ §8e · QUEUED — TWO QUESTIONS THE T4 SCOPING LANE MUST ANSWER (3 Aug)
+
+Added 3 Aug, before the T4 scoping lane was dispatched. Recorded here rather
+than held in a session, because a scoping requirement that lives only in a
+conversation is a requirement the scoping report will not have.
+
+T4's tier is defined in `docs/design/revenue-profitability-entry-2026-08-03.md`
+(units, prices, discounts → PVM · margin bridge · list-to-net waterfall ·
+discount leakage · descriptive elasticity under R2).
+
+## 1 · CAN `prescience_decision`'S CONSTRAINED SEARCH SERVE MIX OPTIMISATION?
+
+Report whether the EXISTING constrained search can be pointed at mix directly,
+**rather than a second optimiser being written**. A second optimiser is a second
+definition of "the best allocation", and two of those drift apart exactly the
+way two definitions of a quantity do — the duplication the sole-owner programme
+exists to prevent, in a solver rather than a metric.
+
+The answer must be one of: it serves it as-is; it serves it with a stated
+change; or it cannot, **with the reason named**.
+
+## 2 · ⭐⭐ PER CAPABILITY: CAN THE CLIENT'S DATA ESTIMATE THE OBJECTIVE'S
+##      RESPONSE FUNCTION?
+
+For EVERY candidate capability, report whether its objective function needs a
+response the client's own data can estimate.
+
+⛔ **A STOCHASTIC OPTIMUM OVER AN UNESTIMABLE DEMAND OR CREDIT RESPONSE IS A
+CONFIDENT NUMBER FROM AN INVENTED INPUT.** The machinery is real, the output is
+precise, and the input was never measured — which is the failure mode that
+survives review, because nothing about the result looks uncertain.
+
+This is R2's discipline applied one level up: R2 forbids promoting a descriptive
+elasticity to a decision estimate; this forbids an OPTIMISER whose objective
+silently assumes the response R2 refused to supply. A capability that fails this
+test is reported as needing a measurement, never shipped with a default.
