@@ -74,13 +74,13 @@ def v10_data(v9_data):
 
 # ── the version discipline ──────────────────────────────────────────────────
 def test_the_version_bumped_and_all_three_strings_agree():
-    # ⭐ v11 (3 Aug): "Shares Outstanding" states its unit. The four strings
+    # ⭐ v12 (3 Aug): the dimensional tab. The four strings
     # are pinned TOGETHER so a bump cannot move one and leave the others —
     # which is what this test is for, not the number itself.
-    assert policy.VERSION_MAJOR == 11
-    assert policy.GENERIC_VERSION == "v11"
-    assert policy.COMPANY_VERSION == "7M-v11.0"
-    assert policy.USER_FACING_VERSION == "v11"
+    assert policy.VERSION_MAJOR == 12
+    assert policy.GENERIC_VERSION == "v12"
+    assert policy.COMPANY_VERSION == "7M-v12.0"
+    assert policy.USER_FACING_VERSION == "v12"
 
 
 def test_the_new_rows_are_optional_on_every_path():

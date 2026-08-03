@@ -276,9 +276,119 @@ def build_template(standard: str) -> bytes:
         ws.protection.sheet = True
         ws.protection.password = _LOCK_PWD
 
+    _dimensional_sheets(wb)
+
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐⭐ THE DIMENSIONAL TAB — LONG FORM, AND THAT IS THE RULING
+# ═══════════════════════════════════════════════════════════════════════════
+
+DIMENSION_COLUMNS = [
+    ("Period", "The period this row belongs to. Same labels as the statement sheets."),
+    ("Frequency", "annual, quarterly or monthly. Must match the statements."),
+    ("Dimension Type", "segment, product, customer, channel or geography."),
+    ("Code", "A stable code for this line. Reused every period — never renumbered."),
+    ("Name", "Display name. Safe to change; the Code is what identifies the line."),
+    ("Parent Code", "Optional. Only where this line NESTS INSIDE another of the SAME type."),
+    ("Measure", "What this row states. See the Data Dictionary sheet."),
+    ("Value", "The amount, in the same units as your statements."),
+    ("Currency", "Optional. Defaults to the company currency."),
+    ("Unit of Measure", "Optional. Only for unit measures (each, kg, hours)."),
+    ("Actual / Plan", "actual or plan. Defaults to actual."),
+    ("Notes", "Optional. Never imported as data."),
+]
+
+
+def _dimensional_sheets(wb):
+    """One long-form tab, plus the Data Dictionary that makes it self-teaching.
+
+    ⭐⭐ LONG FORM IS WHAT MAKES "PARTIAL DATA IS NEVER AN ERROR" STRUCTURAL.
+    With 30% of the data a client supplies 30% of the ROWS — they never see a
+    column they cannot fill. A wide sheet with a column per measure presents
+    every gap as a blank to be explained, and "partial completion is permitted"
+    degrades into a validation exemption rather than the shape of the thing.
+
+    ⭐ `Dimension Type` IS A COLUMN, NOT A SHEET NAME. Segment and product rows
+    sit in one table and are never adjacent in a way that invites a sum — the
+    anti-double-counting rule made structural, the same way `ax_dimension_map`'s
+    existence is what licenses a combination.
+
+    ⭐ AND IT IS THE SHAPE AN ERP EXPORT ALREADY LANDS IN, which is why the
+    deferred ERP lane is a column-mapping exercise rather than a second parser.
+    """
+    from .dimensions import DIMENSION_TYPES, MEASURES
+
+    ws = wb.create_sheet("Segments & Products")
+    _style_header(ws["A1"], "Dimensional detail — optional, and partial is fine")
+    ws["A2"] = ("Supply only the rows you have. Every row you add unlocks more "
+                "analysis; rows you omit are reported as not supplied, never as "
+                "zero. Nothing here is required to upload.")
+    ws["A2"].font = Font(size=9, italic=True, color="666666")
+
+    for c, (label, _hint) in enumerate(DIMENSION_COLUMNS, start=1):
+        _style_header(ws.cell(row=4, column=c), label)
+        ws.column_dimensions[get_column_letter(c)].width = max(12, len(label) + 4)
+    for r in range(5, 205):
+        for c in range(1, len(DIMENSION_COLUMNS) + 1):
+            _input_cell(ws.cell(row=r, column=c),
+                        numeric=DIMENSION_COLUMNS[c - 1][0] == "Value")
+    dv = DataValidation(type="list", formula1="=DIMTYPES", allow_blank=True)
+    ws.add_data_validation(dv)
+    dv.add(f"C5:C204")
+    dvm = DataValidation(type="list", formula1="=MEASURES", allow_blank=True)
+    ws.add_data_validation(dvm)
+    dvm.add(f"G5:G204")
+    ws.protection.sheet = True
+    ws.protection.password = _LOCK_PWD
+
+    # ── the Data Dictionary: what each measure unlocks ──────────────────────
+    dd = wb.create_sheet("Data Dictionary")
+    _style_header(dd["A1"], "Field")
+    _style_header(dd["B1"], "What it means")
+    for r, (label, hint) in enumerate(DIMENSION_COLUMNS, start=2):
+        dd[f"A{r}"] = label
+        dd[f"B{r}"] = hint
+    r = len(DIMENSION_COLUMNS) + 3
+    _style_header(dd[f"A{r}"], "Measure")
+    _style_header(dd[f"B{r}"], "What supplying it unlocks")
+    # ⭐ DERIVED FROM `MEASURES`, never a second list. A measure added to the
+    # vocabulary appears here automatically; a hand list would go stale the
+    # first time a tier landed and would then teach the client the wrong thing.
+    unlocks = {
+        "revenue": "Revenue mix, share, concentration and contribution to growth "
+                   "by this dimension — and reconciliation to your income statement.",
+        "direct_cost": "Gross profit and gross margin by line; profit pools.",
+        "direct_opex": "Direct operating profit by line.",
+        "units": "Price-volume-mix analysis and the margin bridge.",
+        "list_price": "List-to-net waterfall and discount leakage.",
+        "realised_price": "Realised-price trend and pricing variance.",
+        "discount": "Discount analysis and leakage.",
+    }
+    for i, (name, spec) in enumerate(sorted(MEASURES.items()), start=r + 1):
+        dd[f"A{i}"] = name
+        dd[f"B{i}"] = unlocks.get(name, "")
+        dd[f"C{i}"] = f"tier {spec['tier']}"
+    dd.column_dimensions["A"].width = 20
+    dd.column_dimensions["B"].width = 78
+    dd.column_dimensions["C"].width = 10
+    dd.protection.sheet = True
+    dd.protection.password = _LOCK_PWD
+
+    # dropdown sources, on the existing Lists sheet
+    lw = wb["Lists"]
+    col_t, col_m = "H", "I"
+    for i, t in enumerate(DIMENSION_TYPES, start=1):
+        lw[f"{col_t}{i}"] = t
+    for i, m in enumerate(sorted(MEASURES), start=1):
+        lw[f"{col_m}{i}"] = m
+    wb.defined_names["DIMTYPES"] = DefinedName(
+        "DIMTYPES", attr_text=f"'Lists'!${col_t}$1:${col_t}${len(DIMENSION_TYPES)}")
+    wb.defined_names["MEASURES"] = DefinedName(
+        "MEASURES", attr_text=f"'Lists'!${col_m}$1:${col_m}${len(MEASURES)}")
 
 
 def parse_workbook(content: bytes) -> tuple[dict | None, list]:

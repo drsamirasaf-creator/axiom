@@ -282,6 +282,12 @@ from . import voice_of_employee as _voe  # noqa: E402,F401
 # comment above is why it was caught the second time in minutes rather than in
 # production.
 from . import pilot_viewers as _pilot_viewers  # noqa: E402,F401
+# ⭐⭐ §8a T1 — the dimensional model. THE SAME REASON AND THE SAME CLASS as the
+# two imports above: three tables that `create_all` can only make if the models
+# are registered before it runs. The Procfile starts gunicorn with no migration
+# step, so this import — not migration 0027 — is what puts the tables in
+# production.
+from . import dimensional as _dimensional  # noqa: E402,F401
 # ⭐ §7j.2 ruling 3 — the Resilience Field. Model-free (it reads sentinel's own
 # table), so it is imported for its ROUTER only, after include_accounts.
 

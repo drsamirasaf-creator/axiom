@@ -16384,3 +16384,84 @@ nothing.
    export path.
 
 **T5 is unblocked.**
+
+# ⭐⭐ §8c · T1 BUILT — THE DIMENSIONAL FOUNDATION (3 Aug)
+
+Foundation only. **No analytics in this lane**, and nothing renders.
+
+## ⭐ WHAT EXISTS NOW
+
+`ax_dimension_member` · `ax_dimension_map` · `ax_dimension_observation`, plus
+`modules/financials/dimensions.py` carrying the vocabulary, the two composition
+rules, the reconciler and the forbidden four.
+
+**One fact table with a `measure` column**, where the source document proposes
+four. Every measure reconciles, statuses and versions identically.
+
+## ⭐⭐ THE §4u-c DEFECT, THIRD INSTANCE — AND I WALKED INTO IT
+
+I wrote migration 0027 first. **It created nothing.** `changeset.py` records that
+new `ax_` tables come from `Base.metadata.create_all` at boot, and the Procfile
+starts gunicorn with **no migration step**. A model imported after
+`include_accounts` is a table that is never made.
+
+⭐ Both mechanisms are kept — 0027 for managed databases, the models for the live
+path — which is the pair `ax_initiative_impact_declarations` already carries.
+**Now asserted by a test that imports the APP, not the model**: importing
+`dimensional` directly would pass regardless of whether `main.py` ever does.
+
+## ⭐⭐ THE RECONCILER, AND THE REFUSAL
+
+`detail + Unallocated = the statement line`, EXACTLY — because the residual is a
+stored member row, not a computed gap, so every chart sums to the company total
+by construction.
+
+`reconcile_across` **REFUSES** two dimension types unless `ax_dimension_map`
+holds a row for the pair. ⭐ **The licence to combine is a table row, not a
+reviewer's memory** — `Company = Segments + Products` is the most consequential
+arithmetic error available in this module.
+
+Detail EXCEEDING the total is `suspected_overlap` — the shape that means a
+subtotal was supplied beside its own components — and the negative residual is
+kept as measured, never clamped.
+
+## ⭐ TWO COMPOSITION RULES, ONE SITE EACH
+
+- `weakest_status()` — a derived result takes the weakest status of its inputs.
+  ⭐⭐ **The first draft returned the UNKNOWN STRING ITSELF** when it ranked
+  weakest, so an invented status would have propagated verbatim into every
+  downstream result. Normalising before comparing is what makes the degrade real
+  rather than merely ranked.
+- `score_confidence()` — a factor AXIOM cannot measure is **excluded and named**,
+  never defaulted to 1.0. §III.4's coverage floor applied to a score: defaulting
+  would RAISE confidence for a company AXIOM knows less about.
+
+## ⭐ THE TEMPLATE — v11 → v12, LONG FORM
+
+One tab (`Segments & Products`) plus a `Data Dictionary` **derived from the
+measure vocabulary**, not a second list.
+
+⭐⭐ **LONG FORM IS WHAT MAKES "PARTIAL DATA IS NEVER AN ERROR" STRUCTURAL.** 30%
+of the data is 30% of the ROWS — a client never sees a column they cannot fill.
+A wide sheet presents every gap as a blank to be explained. `Dimension Type` is a
+COLUMN, so segment and product rows are never adjacent in a way that invites a
+sum. And it is the shape an ERP export lands in, which keeps the deferred ERP
+lane a mapping exercise.
+
+**Prior versions parse unchanged**, asserted: a v11 workbook has no such sheet
+and validates clean.
+
+## ⛔ THE FORBIDDEN FOUR, RECORDED AT THE SITE
+
+`dimensions.FORBIDDEN` names each with its ruling, and tests assert each stays
+refused: no `imputed` status, no gross-up path (asserted **on the AST body, not
+the raw source** — the first draft failed on the docstring that states the rule,
+the §III.9 shape), no probability-across-allocation-methods, no multiplicative
+priority.
+
+## WHAT A SURFACE WOULD NEED — nothing renders yet
+
+An ingest path from the tab to observations; a read endpoint; and the Data
+Quality surface that reads each capability's measure dependencies and renders
+Available / Available-with-qualification / Unavailable-and-here-is-the-measure.
+**None of that is in this lane.**

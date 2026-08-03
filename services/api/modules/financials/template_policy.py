@@ -68,7 +68,11 @@ COMPANY_FAMILY = "AXIOM-COMPANY-TEMPLATE"  # _AXIOM!A1 on the per-company book
 # conventions came to coexist in one field (§7w). ⭐ PRIOR VERSIONS PARSE
 # UNCHANGED — the bump names the sheet a reader is holding, and ingest has
 # accepted any stamped version since 29 Jul.
-VERSION_MAJOR = 11
+# v12 (3 Aug): the dimensional tab — one long-form sheet plus a Data Dictionary.
+# ⭐ PRIOR VERSIONS PARSE UNCHANGED. The tab is OPTIONAL and additive: a v11
+# workbook has no such sheet, which reads as "no dimensional detail supplied" —
+# never as zeroes, and never as an upload error.
+VERSION_MAJOR = 12
 GENERIC_VERSION = f"v{VERSION_MAJOR}"
 COMPANY_VERSION = f"7M-v{VERSION_MAJOR}.0"
 USER_FACING_VERSION = f"v{VERSION_MAJOR}"
