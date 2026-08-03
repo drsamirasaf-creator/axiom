@@ -15953,3 +15953,71 @@ what each reads, not by what it is called.
 4. **The public WACC branch reads the same field** for its equity weight; a raw
    count there drives WACC toward a pure cost of equity — the failure the
    `_debt_book` KeyError above it exists to prevent. No live dataset is public.
+
+# ⭐⭐ §7x · RE-RUN VALUATION HAS NO EFFECT — TWO KEYS NOBODY READS (3 Aug)
+
+DIAGNOSED 3 Aug, **NOT FIXED**. Measured against the live app: the served bundle
+at `axiomdynamics.app` and anonymous (non-persisting) POSTs to production.
+
+## ⭐⭐ 1 · THE FRONTEND SENDS `assumptions.wacc`; THE ENGINE READS `wacc_override`
+
+`ValuationRequest.assumptions` is a **free `dict`**, so the unknown key is
+accepted, dropped, and never reported. Proven live and byte-identical:
+
+```
+baseline                          wacc_used 0.136011   EV 3222.747043
+assumptions.wacc = 0.15           wacc_used 0.136011   EV 3222.747043   <- identical
+assumptions.wacc_override = 0.15  wacc_used 0.15       EV 2826.82819
+```
+
+Row 1 IS the reported screen (13.60%, $3.22B). **The same defect a second time:**
+the frontend sends `monte_carlo.paths`, the engine reads `n_paths` — the echo
+comes back 2000, the default, whatever the slider says.
+
+⭐ **EVERY OTHER CALLER USES THE RIGHT KEY** — `prescience_decision`, `sentinel`,
+`intelligence/engines`, and `valuation/engines` itself. **The valuation page is
+the only caller that spells it `wacc`, and the only one a customer can reach.**
+
+## ⭐ 2 · HYDRATION IS NOT THE CAUSE, AND THE EARLIER FINDING STILL STANDS
+
+The POST handler sets the cards directly (`Ne(t)` in the deployed chunk).
+`GET /valuation/runs` sets `history`, and separately sets `result` **only on a
+dataset change**. The harness lane's "hydrates from /runs" is true of INITIAL
+LOAD — which is why its fixture had to stub the list — and says nothing about the
+button. The display does not move because **the response is identical**.
+
+## ⭐ 3 · THE TWO RECOMPUTE PATHS ARE ONE PATH
+
+Both "Re-run valuation" buttons are `onClick={() => payload && run(payload)}` —
+the same function, payload and endpoint as the 400 ms debounce. **The named bug
+class is not present here.** Two other posters exist and touch only `evByMode`
+(the fixed-payload EV seeder) and the extended basis (`runExtended`).
+
+## ⭐⭐ 4 · SEVEN OF TWELVE FIELDS CANNOT MOVE THE NUMBER, AND THE PAGE SAYS SO
+## ABOUT NONE OF THEM
+
+Effective in `proforma`: `terminal_growth`, `seed`, `sigma_growth`,
+`sigma_margin`, `risk_aversion`. Inert: **`wacc` and `paths` BY DEFECT**;
+horizon, revenue growth, EBIT margin, capex % and NWC % **BY MODE** — legitimate,
+and confirmed at the engine (sending `forecast.revenue_growth` in proforma moves
+nothing, because `working = data` and `auto_forecast` is never called).
+
+⭐⭐ **THE TWO CLASSES ARE INDISTINGUISHABLE ON SCREEN.** B16's `effective_fields`
+discipline — *a field that cannot affect the result must say so at the point of
+editing* — has never been applied to the valuation form, and the WACC box is the
+most consequential input on the page.
+
+## ⚠️ 5 · THE PER-SHARE FORMATTER FIX IS NOT DEPLOYED
+
+Served chunk `/assets/valuation-X5NU-yE9.js` carries the OLD tooltip and no
+per-unit guard; frontend `c0c4eb2` has not reached the edge. **Content settles
+this, not build hashes** (the 31 Jul deploy-path entry) — and the same bundle
+contains `t.wacc=n`, so the mismatched keys are what customers run today.
+
+⭐ **THE ENABLING CONDITION IS THE UNTYPED `assumptions` DICT.** A typed model, or
+a refusal of unknown keys, makes this a 422 on the first press instead of a
+silent no-op. Two keys were wrong and nothing existed to notice.
+
+⚠️ The standing **"confirm in incognito"** rule is **UNSATISFIED** — no browser
+against production in this lane. Not needed for the conclusion (served source
+plus byte-identical API responses settle it), and recorded rather than waved past.
