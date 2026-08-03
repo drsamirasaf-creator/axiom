@@ -16548,3 +16548,65 @@ ebitda_margin`. Asserted by test that no company-level definition appears here.
 need, per period: revenue by segment or product (T1's one measure), then direct
 cost by the same members for the gross level, then a shared pool with at least
 two drivers for allocation sensitivity. **Reported, not seeded.**
+
+# ⭐⭐ §8e · MERIDIAN'S DIMENSIONAL SEED — COVERAGE ASSERTED (3 Aug)
+
+`scripts/seed-dimensional.py`. **30 observations · 5 product lines · 2 periods.**
+Applied live; reconciliation holds exactly.
+
+## ⭐ IT ADDS; IT REPLACES NOTHING
+
+§7o's deletion rule binds a dataset REPLACEMENT. This writes only
+`ax_dimension_observation` and `ax_dimension_member` keyed to ds 45, so no
+derived artefact is invalidated. **Proven by diff before and after:**
+`payload_sha256` unchanged, the payload's own hash unchanged, **both pack
+content hashes unchanged** — the only difference is `dim_rows 0 → 30`.
+
+⭐ **NOT A BOOT-TIME MUTATION.** An explicit, idempotent script with `--plan`,
+`--apply` and `--verify`. Nothing a later boot rewrites.
+
+## ⭐⭐ THE REVERSAL IS THE POINT OF THE SEED
+
+**PL-CTRL is healthy at gross margin and loss-making at allocated EBIT** — 33%
+GM, **−14.06** allocated EBIT in 2024 and **−15.50** in 2025 — because it
+consumes 64% of support and 56% of logistics on 13% of revenue.
+
+*This product looks fine until you charge it for what it consumes* is the finding
+a CFO reacts to, and it exercises the hierarchy end to end. A seed where every
+line is profitable at every level demonstrates only that the arithmetic runs.
+
+## ⭐ THREE GRADES, BECAUSE ONE GRADE DEMONSTRATES NOTHING
+
+**A** direct assignment (commission) · **C** operational driver (support hours,
+logistics movements) · **D** revenue allocation (central admin). The
+differentiation is that the assumption is NAMED, so the demo must show
+assumptions that DIFFER in quality. Sensitivity across the C and D drivers moves
+PL-CTRL's allocation by more than 2×, asserted.
+
+## ⭐⭐ THE RESIDUAL IS MATERIAL ON PURPOSE
+
+Revenue **12.0% / 10.0%** unallocated, direct cost **12.7% / 8.2%**, direct opex
+**82%** — the last because only the directly-assigned commission slice is stored
+and the rest is shared or corporate, which is itself the point the allocation
+machinery then addresses. **A demo where everything allocates cleanly hides the
+residual, which is the honest half.** Asserted positive and >5% everywhere; a
+negative residual would be `suspected_overlap`, a defect state, and is asserted
+absent.
+
+## ⭐ TWO DELIBERATE ABSENCES
+
+`units`, `list_price` and `realised_price` are seeded for NO line, so the margin
+bridge's price and volume effects genuinely declare. And **no fixed/variable
+split** is seeded, so `contribution_profit` returns its `missing_measures`.
+
+⭐⭐ **A NAMED ABSENCE IN PROSE AND AN ABSENCE A CAPABILITY ACTUALLY HITS ARE
+DIFFERENT DEMONSTRATIONS.** The bridge already listed seven effects it cannot
+compute; the seed makes the declaration path render on real data.
+
+## ⚠️ TWO MECHANISMS FOR ONE TABLE DISAGREED ABOUT ITS DEFAULTS
+
+The seed's first run failed: `created_at` NOT NULL. Migration 0027 declares a
+`server_default`; the ORM model declared only a **Python-side** default — so a
+raw-SQL writer against a `create_all`-made table hit a violation the same INSERT
+would have survived against a migration-made one. **T1 built both mechanisms and
+they were not equivalent.** `server_default` added to the ORM.

@@ -16,8 +16,10 @@ The vocabulary, the composition rules and the reconciler live in
 """
 from datetime import datetime
 
+from sqlalchemy.sql import false as sa_false
+
 from sqlalchemy import (Boolean, Column, DateTime, Float, Integer, String,
-                        UniqueConstraint)
+                        UniqueConstraint, func)
 
 from .accounts import Base
 
@@ -53,9 +55,16 @@ class DimensionMember(Base):
     # ⭐⭐ THE RESIDUAL IS A MEMBER, NOT A COMPUTED GAP. One system-owned row per
     # (company, dimension_type) carries the unreconciled remainder, so every
     # chart that sums the dimension sums to the company total BY CONSTRUCTION.
-    is_unallocated = Column(Boolean, nullable=False, default=False)
+    is_unallocated = Column(Boolean, nullable=False, default=False,
+                            server_default=sa_false())
     source = Column(String(40), nullable=False, default="upload")
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    # ⭐ server_default AS WELL AS the Python default. Migration 0027
+    # declares one and the ORM did not, so a raw-SQL writer against a
+    # create_all-made table hit a NOT NULL violation that the same INSERT
+    # would have survived against a migration-made one. Two mechanisms for
+    # one table must not disagree about its defaults.
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow,
+                        server_default=func.now())
 
 
 class DimensionMap(Base):
@@ -82,7 +91,13 @@ class DimensionMap(Base):
     # Weights above 1.0 are a resolution workflow, never a silent normalise.
     weight = Column(Float, nullable=True)
     source = Column(String(40), nullable=False, default="upload")
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    # ⭐ server_default AS WELL AS the Python default. Migration 0027
+    # declares one and the ORM did not, so a raw-SQL writer against a
+    # create_all-made table hit a NOT NULL violation that the same INSERT
+    # would have survived against a migration-made one. Two mechanisms for
+    # one table must not disagree about its defaults.
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow,
+                        server_default=func.now())
 
 
 class DimensionObservation(Base):
@@ -129,4 +144,10 @@ class DimensionObservation(Base):
     # data change — the difference between "the model improved" and "the
     # client's numbers moved".
     calculation_version = Column(String(32), nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    # ⭐ server_default AS WELL AS the Python default. Migration 0027
+    # declares one and the ORM did not, so a raw-SQL writer against a
+    # create_all-made table hit a NOT NULL violation that the same INSERT
+    # would have survived against a migration-made one. Two mechanisms for
+    # one table must not disagree about its defaults.
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow,
+                        server_default=func.now())
