@@ -26,6 +26,53 @@ from .periods import (forecast_periods as _fc_periods, frequency_of as _freq_of,
                       period_span as _period_span, advance as _advance)
 
 
+def _statement_totals(A, co_rev, co_cogs, co_opex):
+    """The total row for every column, TAKEN FROM THE STATEMENT.
+
+    ⭐⭐ NEVER THE SUM OF THE DISPLAYED ROWS. Adding up the visible lines makes
+    an INCOMPLETE decomposition read as complete: the residual is exactly the
+    part that is not on a line, so a summed total silently equals the covered
+    part and calls it the company. This is the same reason `revenue_mix`
+    divides by the statement line rather than by the detail sum — the totals
+    row is what makes `Unallocated / Other` mean something rather than being a
+    row a reader can ignore.
+
+    ⭐ THE COMPANY HIERARCHY IS COMPUTED BY T2, not here. This function selects
+    which level ties to which column and states the ones that cannot.
+    """
+    company = A.margin_hierarchy(revenue=co_rev, direct_cost=co_cogs,
+                                 direct_opex=co_opex)
+    gp = company["gross_profit"]
+    # At company level there is no shared-versus-direct split: every operating
+    # cost is inside `opex`, so `revenue - cogs - opex` IS the company's
+    # operating profit, and that is the figure a fully-allocated set of lines
+    # must tie to.
+    ebit = company["direct_operating_profit"]
+    return {
+        "source": "income_statement",
+        "revenue": {"value": co_rev, "ties": co_rev is not None,
+                    "source": "income_statement.revenue"},
+        "gross_profit": {"value": gp.get("value"), "ties": gp["available"],
+                         "source": "income_statement: revenue less cogs",
+                         "reason": None if gp["available"] else gp.get("unlocks")},
+        # ⭐⭐ THIS COLUMN CANNOT TIE, AND SAYS SO RATHER THAN SHOWING A NUMBER.
+        # Direct operating profit EXCLUDES shared cost by construction, so no
+        # statement line corresponds to it: any figure here would look
+        # reconciled and would not be. Stating it is the honest total.
+        "direct_operating_profit": {
+            "value": None, "ties": False,
+            "reason": ("Direct operating profit excludes shared and corporate "
+                       "cost by construction, so no income-statement line "
+                       "corresponds to it. The lines below sum to less than the "
+                       "company because the shared pool is not charged at this "
+                       "level; it is charged one row down, in allocated EBIT.")},
+        "allocated_ebit": {
+            "value": ebit.get("value"), "ties": ebit["available"],
+            "source": "income_statement: revenue less cogs less opex",
+            "reason": None if ebit["available"] else ebit.get("unlocks")},
+    }
+
+
 def _get_dataset(db: Session, tenant: str, dataset_id: int,
                  scoped_enterprise: int | None = None) -> models.FinancialDataset:
     row = db.get(models.FinancialDataset, dataset_id)
@@ -738,18 +785,45 @@ def profitability_surface(dataset_id: int, db: Session = Depends(get_db),
             co_cogs = (IS.get("cogs") or {}).get(str(p))
             co_opex = (IS.get("opex") or {}).get(str(p))
 
+            rev_panel = A.revenue_by_dimension(rev, co_rev)
+            dopex_panel = A.revenue_by_dimension(dopex, co_opex)
+
+            # ⭐⭐ THE SHARED POOL IS THE STATED RESIDUAL, AND T2 COMPUTED IT.
+            # Direct opex that no line claimed IS the shared and corporate
+            # overhead; `revenue_by_dimension` already returns it as the
+            # `__unallocated__` member, so this reads a number T2 produced
+            # rather than subtracting one here.
+            #
+            # ⭐ WITHOUT THIS, ALLOCATED EBIT WAS UNAVAILABLE FOR EVERY LINE OF
+            # EVERY DATASET: the hierarchy was called with revenue, direct_cost
+            # and direct_opex and never `allocated_opex`, so the deepest level —
+            # the one the whole module builds towards — declared a missing input
+            # forever and the surface drew an em dash.
+            pool = (dopex_panel.get("value") or {}).get(A.UNALLOCATED_MEMBER) \
+                if dopex_panel.get("available") else None
+            # ⭐⭐ REVENUE IS A GRADE D DRIVER AND `allocate` SAYS SO. The method
+            # is a modelling choice, not an observation, so it travels in the
+            # payload with its grade and its prose assumption and the surface
+            # renders both. A silent choice here would be the defect the whole
+            # allocation vocabulary exists to prevent.
+            shared = A.allocate(pool, rev, method="revenue")
+            share_of = shared.get("value") or {}
+
             lines = {}
             for code in rev:
                 lines[code] = A.margin_hierarchy(
                     revenue=rev.get(code), direct_cost=cost.get(code),
-                    direct_opex=dopex.get(code))
+                    direct_opex=dopex.get(code),
+                    allocated_opex=share_of.get(code))
             block["by_period"][p] = {
-                "revenue": A.revenue_by_dimension(rev, co_rev),
+                "revenue": rev_panel,
                 "mix": A.revenue_mix(rev, co_rev),
                 "concentration": A.concentration(rev),
                 "direct_cost": A.revenue_by_dimension(cost, co_cogs),
-                "direct_opex": A.revenue_by_dimension(dopex, co_opex),
+                "direct_opex": dopex_panel,
+                "shared_allocation": dict(shared, pool=pool),
                 "lines": lines,
+                "totals": _statement_totals(A, co_rev, co_cogs, co_opex),
             }
         if len(ordered) >= 2:
             a, b = ordered[-2], ordered[-1]

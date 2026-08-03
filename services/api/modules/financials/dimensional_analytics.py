@@ -17,6 +17,11 @@ from . import ratios as ratio_lib
 
 CALCULATION_VERSION = "t2.1"
 
+# ⭐ ONE SPELLING OF THE RESIDUAL MEMBER. It was written literally at two sites
+# here and a third in the frontend; a consumer that needs to READ the residual —
+# the shared cost pool is exactly that — must not be the fourth copy.
+UNALLOCATED_MEMBER = "__unallocated__"
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # ⭐ ABSENCE DECLARES — the shape every capability returns when it cannot run
@@ -64,7 +69,7 @@ def revenue_by_dimension(detail, company_revenue, statuses=None, tolerance=None)
     if rec["unallocated"] is not None and abs(rec["unallocated"]) > 0:
         # ⭐⭐ THE RESIDUAL TAKES ITS PLACE AMONG THE LINES, so every consumer
         # that sums them reaches the company total by construction.
-        lines["__unallocated__"] = rec["unallocated"]
+        lines[UNALLOCATED_MEMBER] = rec["unallocated"]
     return _ok("revenue_by_dimension", lines,
                (statuses or {}).values() or [D.OBSERVED],
                reconciliation=rec)
@@ -88,7 +93,7 @@ def revenue_mix(detail, company_revenue, statuses=None):
     mix = {k: ratio_lib.share(line_revenue, company_revenue)
            for k, line_revenue in detail.items()}
     if rec["unallocated"]:
-        mix["__unallocated__"] = ratio_lib.share(rec["unallocated"],
+        mix[UNALLOCATED_MEMBER] = ratio_lib.share(rec["unallocated"],
                                                  company_revenue)
     return _ok("revenue_mix", mix, (statuses or {}).values() or [D.OBSERVED],
                reconciliation=rec)

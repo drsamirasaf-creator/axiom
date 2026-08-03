@@ -16710,3 +16710,90 @@ fired has not been tested**; it is recorded as written-but-unexercised rather
 than counted as coverage. Other crawler failures on this run (`/twin` 500, the
 Sentiment tab pending a Lovable Publish, the route sweep) are inherited and
 touch none of this lane's files.
+
+# ⭐⭐ §8d · ALLOCATED EBIT WAS AN EM DASH ON EVERY LINE OF EVERY DATASET (3 Aug)
+
+Report: `docs/reports/allocated-ebit-diagnosis-2026-08-03.md`.
+
+## ⭐⭐ THE THIRD GENERATION OF AN ASSERTION THAT SKIPPED THE PRODUCTION PATH
+
+Three assertions claimed the reversal was real. **None went through the
+endpoint.** The seed's test computed the allocation in its OWN helper and passed
+the result to `margin_hierarchy`; T3's unit test called `margin_hierarchy`
+DIRECTLY with `allocated_opex=`; and the browser harness stubbed the endpoint
+with a **hand-written payload that already contained the answer**.
+
+⭐ **THE THIRD IS THE WORST BECAUSE IT LOOKED LIKE PROOF** — a browser, a real
+page, a rendered figure asserted by content — over a payload nobody's code
+produces. A harness that reproduces the call the endpoint should have made
+measures the reimplementation.
+
+⭐⭐ **THE FIX FOR THAT CLASS IS NOT ANOTHER ASSERTION.**
+`scripts/gen-profitability-fixture.py` RECORDS the harness fixture from the
+endpoint, over rows written through the ORM, and REFUSES to write a recording
+lacking a reversal, a residual or a statement-sourced total. Hand-editing is no
+longer the cheap path and a broken endpoint cannot be recorded as working.
+
+## THE DEFECT, AT THREE LAYERS
+
+T2 was correct — it declared `missing_measures: ["allocated shared opex"]`. The
+ENDPOINT never passed `allocated_opex`, so the deepest level of the hierarchy
+was unavailable everywhere; the SURFACE received the complete declaration and
+rendered `: "—"`, discarding it one character from the screen.
+
+⭐ The shared pool was already computed and already in the payload's
+neighbourhood: `revenue_by_dimension(direct_opex, statement_opex)` returns the
+unclaimed remainder as `__unallocated__`, and **that residual IS the shared and
+corporate cost pool**. It is now distributed by `A.allocate(..., method=
+"revenue")`, whose object carries method, **grade D** and prose assumption.
+
+## ⭐⭐ THE SILENT EM DASH IS NOW UNREPRESENTABLE, NOT MERELY FIXED
+
+`<Figure>` renders the value or the dash WITH the payload's reason, and every
+declining level declares below the table — DERIVED, not hand-picked. The old
+code named contribution profit by hand, so when allocated EBIT began declining
+for every line it said nothing.
+
+`scripts/check-declared-absence.mjs` bans the SHAPE (a conditional whose false
+branch is a bare dash) and verifies its recogniser against the exact line that
+shipped the defect. **Red before: 7 sites. Green after: 0.**
+
+⭐ Two of the seven were subtler than the cells: `money()`/`percent()` rendered
+null as an em dash — an unreachable fallback that reproduced the very defect, so
+they now take `number` — and the Cost Allocation residual used `?? 0`, which
+would have printed "no shared cost" about a page that had not measured it.
+
+## ⭐⭐ TOTALS COME FROM THE STATEMENT, AND ONE COLUMN SAYS IT CANNOT TIE
+
+Every table's total row is the income-statement line, **never the sum of the
+displayed rows** — summing makes an INCOMPLETE decomposition read as complete,
+the same reason `revenue_mix` divides by the statement line. The rows sum to
+$90.00M on the fixture and the statement says $100.00M: **a total computed by
+addition fails the test.**
+
+⭐ **DIRECT OPERATING PROFIT CANNOT TIE BY CONSTRUCTION** — it excludes shared
+cost, so no statement line corresponds to it. The cell reads "does not tie" with
+the reason, rather than a number that would look reconciled. Company gross
+margin is not restated either: it is a registry ratio owned elsewhere, and the
+cell says so.
+
+⚠️ The first browser form of the totals check searched the WHOLE PAGE for
+`$90.00m` and failed on a correct page — that figure is also a legitimate gross
+profit on another line. **A negative assertion must be scoped to the cell it is
+about**; it now reads the last cell of the row naming the statement.
+
+## VERIFIED
+
+1900 passed (was 1889) / 1 skipped / 3 xfailed · 28/28 gates · declared-absence
+guard red-then-green · `tsc` 0 · lint rc=0 · ratchet 819/819 unchanged · browser
+harness 3 modes, 14/14 pinned still pinned. Browser by content: the reversal
+above the strip, allocated EBIT **-$6.00M**, the total **$100.00M**, `does not
+tie`, `Unallocated / Other $100.00M 10.0%`, grade D and its assumption.
+
+⛔ **NO PRODUCTION WRITE.** The fix is entirely in the read path; Meridian's
+rows need no change and the seed was not re-run.
+
+## ⚠️ A COLLISION FOR THE HUMAN TO RESOLVE
+
+**`§8c` is used TWICE** — "T1 BUILT — THE DIMENSIONAL FOUNDATION" and "T3 — THE
+PROFITABILITY SURFACE". Not renumbered here; surfaced rather than auto-resolved.
