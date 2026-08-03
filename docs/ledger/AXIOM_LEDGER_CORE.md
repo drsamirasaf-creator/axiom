@@ -16174,6 +16174,18 @@ ds 45: 1,000,000 → $2,784.74/share. ds 55: 10,000,000 → $10.59/share. ds 48 
 
 # ⛔ §7z · BLOCKING CONDITION — `tsc` IS RED ON FRONTEND MAIN (3 Aug)
 
+> ⭐⭐ **CORRECTED IN PLACE 3 Aug — THE DIAGNOSIS BELOW WAS WRONG, AND THE
+> CONDITION IS CLOSED.** See §7z.1. There was **no migration in flight**. Lovable
+> regenerated `routeTree.gen.ts` and committed the STRICT variant over the
+> canonical `@ts-nocheck` one; `bf5da8c` removed the augmentation and `tsc` is
+> clean at **0 errors**, verified from a clean clone.
+>
+> The text below is kept as written because two of its conclusions survive and
+> are worth more than a tidy record: **read the whole error list before believing
+> its size**, and **a bypass is defensible only when the red is provably
+> inherited**. The bypass at `b3bf30d` was correct on the evidence available. The
+> attribution of the CAUSE was not.
+
 **NOT A DEFECT TO FIX. NOT SOMETHING A LATER LANE MAY PATCH AROUND.**
 
 ## What is red
@@ -16182,7 +16194,7 @@ ds 45: 1,000,000 → $2,784.74/share. ds 55: 10,000,000 → $10.59/share. ds 48 
 **79 of them the `Property 'search' is missing` class** — every `Link` or
 `navigate` to any route carrying a `validateSearch`, not only `/login`.
 
-## The cause — a half-landed TanStack Start migration
+## ~~The cause — a half-landed TanStack Start migration~~ (WRONG — see §7z.1)
 
 Commit **`0107848` ("Work in progress")** added ten lines to `routeTree.gen.ts`:
 
@@ -16224,3 +16236,65 @@ on explicit instruction, having established that **its own files appear nowhere
 in the 90**. That is the only condition under which a bypass is defensible: the
 lane is verified green by every gate that can still run, and the red is provably
 inherited. **A bypass without that evidence is just a disabled gate.**
+
+# ⭐⭐ §7z.1 · §7z's CAUSE WAS WRONG, AND THE GUARD IS NOW WIRED (3 Aug)
+
+## ⭐⭐ 1 · THERE WAS NO MIGRATION
+
+§7z read `declare module '@tanstack/react-start'` in `routeTree.gen.ts`, saw
+`src/router.tsx`, `src/start.ts` and the package in `package.json`, and concluded
+a migration was half-landed across five commits. **All three of those facts are
+just what a TanStack Router project contains.** What actually happened: Lovable
+regenerated the tree and committed the **STRICT** variant over the canonical
+**LOOSE** one (`@ts-nocheck`, no Register block). `bf5da8c` removed it.
+
+⭐ **THE EVIDENCE WAS AVAILABLE AND NOT SOUGHT.** `scripts/check-routetree.mjs`
+already existed, and its docstring says exactly this — that `vite build` rewrites
+the tree into a variant that adds the block. A guard nobody runs is also a guard
+nobody READS.
+
+## ⭐ 2 · VERIFIED FROM A CLEAN CLONE, NOT FROM THE ENVIRONMENT THAT CHANGED IT
+
+`--depth 20` clone of `origin/main` at `bf5da8c`, fresh `bun install`:
+
+| | |
+|---|---|
+| `@ts-nocheck` present, augmentation absent | ✅ |
+| `bunx tsc --noEmit` | ✅ **0 errors** (was 90) |
+| `bun scripts/check-routetree.mjs` | ✅ passes |
+| `ALLOW_ROUTETREE=1` escape | ✅ passes on a poisoned tree |
+
+## ⚠️ 3 · BUT `bun run build` STILL RE-ADDS THE BLOCK — THE ONE CRITERION THAT FAILED
+
+Measured in the clean clone: `bun run build` **rewrites `routeTree.gen.ts` and
+re-adds the augmentation** (line 1285), after which the guard correctly goes red
+and `tsc` reports 18 errors.
+
+⭐⭐ **SO THE TREE CANNOT BE MADE BUILD-STABLE, AND THAT IS PRECISELY WHY THE
+GUARD BELONGS AT COMMIT TIME.** The build will keep regenerating it; the guard
+stands between the build and the commit. `build:preview` already ends with
+`git checkout -- src/routeTree.gen.ts`; plain `build` does not, so a local build
+leaves the tree dirty and the next commit is refused — correctly, and now with a
+message that names the file and the fix.
+
+⚠️ **AND `build:preview`'s AUTO-DISCARD IS A LATENT HAZARD**: a genuine route
+addition regenerated into that tree would be thrown away silently. Not changed
+here; recorded.
+
+## ⭐⭐ 4 · THE GUARD EXISTED AND ENFORCED NOTHING — NOW WIRED, WITH A RED-PROOF
+
+`check:routetree` was in `package.json`, called by **nothing**, and invoked
+`node`, which is not on PATH here (it exited 127 — *command not found*, which
+reads exactly like a pass if the code is not checked). Pre-commit carried a
+**second inline copy** of the rule.
+
+| | |
+|---|---|
+| script | reads a file **or a staged blob on stdin** (`-`); runs under `bun` |
+| pre-commit | pipes `git show :src/routeTree.gen.ts` into it — **one owner for the rule**, staged-content precision kept |
+| CI | new step **before** `typecheck`, so the cause is named in one line instead of buried under ~80 errors |
+
+**Red-proof, on both surfaces:** clean → both pass; augmentation re-added → both
+exit 1; `ALLOW_ROUTETREE=1` on the same poisoned tree → both pass; removed →
+both green. ⭐ **A guard wired without a red-proof is the class this is the
+fourth instance of.**
