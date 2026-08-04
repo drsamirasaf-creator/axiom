@@ -811,6 +811,14 @@ class KpiObjectiveLink(Base):
     flagged_absent = Column(Boolean, default=False, nullable=False)
     created_by = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # ⭐⭐ §4v.1 RULING 1 — REMOVAL IS A REVOKE, NEVER A DELETE (5 Aug).
+    # A CXO saying "this KPI does not serve that objective" IS A DECLARATION,
+    # with an actor and a date. The removal is INFORMATION, not the absence of
+    # it — and a DELETE would store the one thing certainly wrong: that nobody
+    # ever considered the question. NULL means live, so every existing row
+    # stays live at migration time.
+    revoked_at = Column(DateTime, nullable=True)
+    revoked_by = Column(Integer, nullable=True)
     __table_args__ = (UniqueConstraint("company_id", "kpi_key", "goal_key",
                                        name="uq_kpi_objective_link"),)
 
@@ -828,6 +836,14 @@ class KpiInitiativeLink(Base):
     flagged_absent = Column(Boolean, default=False, nullable=False)
     created_by = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # ⭐⭐ §4v.1 RULING 1 — REMOVAL IS A REVOKE, NEVER A DELETE (5 Aug).
+    # A CXO saying "this KPI does not serve that objective" IS A DECLARATION,
+    # with an actor and a date. The removal is INFORMATION, not the absence of
+    # it — and a DELETE would store the one thing certainly wrong: that nobody
+    # ever considered the question. NULL means live, so every existing row
+    # stays live at migration time.
+    revoked_at = Column(DateTime, nullable=True)
+    revoked_by = Column(Integer, nullable=True)
     __table_args__ = (UniqueConstraint("company_id", "kpi_key", "initiative_id",
                                        name="uq_kpi_initiative_link"),)
 
@@ -857,6 +873,14 @@ class GoalInitiativeLink(Base):
     flagged_absent = Column(Boolean, default=False, nullable=False)
     created_by = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # ⭐⭐ §4v.1 RULING 1 — REMOVAL IS A REVOKE, NEVER A DELETE (5 Aug).
+    # A CXO saying "this KPI does not serve that objective" IS A DECLARATION,
+    # with an actor and a date. The removal is INFORMATION, not the absence of
+    # it — and a DELETE would store the one thing certainly wrong: that nobody
+    # ever considered the question. NULL means live, so every existing row
+    # stays live at migration time.
+    revoked_at = Column(DateTime, nullable=True)
+    revoked_by = Column(Integer, nullable=True)
 
 
 class KrInitiativeLink(Base):
@@ -881,6 +905,28 @@ class KrInitiativeLink(Base):
     flagged_absent = Column(Boolean, default=False, nullable=False)
     created_by = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # ⭐⭐ §4v.1 RULING 1 — REMOVAL IS A REVOKE, NEVER A DELETE (5 Aug).
+    # A CXO saying "this KPI does not serve that objective" IS A DECLARATION,
+    # with an actor and a date. The removal is INFORMATION, not the absence of
+    # it — and a DELETE would store the one thing certainly wrong: that nobody
+    # ever considered the question. NULL means live, so every existing row
+    # stays live at migration time.
+    revoked_at = Column(DateTime, nullable=True)
+    revoked_by = Column(Integer, nullable=True)
+
+
+def live_links(q, model):
+    """Filter a link query to the LIVE declarations — §4v.1 ruling 1.
+
+    ⭐⭐ THE COLUMN IS INERT WITHOUT THIS. Adding `revoked_at` and leaving every
+    reader unfiltered means a revoked link still renders: the retraction stored
+    and ignored, which is worse than not storing it at all.
+
+    ⭐ ONE HELPER, NOT A FILTER REPEATED AT EACH CALL SITE. A reader that forgets
+    the predicate is indistinguishable from one that never had it, and there are
+    four tables that now need the same clause.
+    """
+    return q.filter(model.revoked_at.is_(None))
 
 
 class Department(Base):
@@ -4645,6 +4691,15 @@ def kpi_links(company_id: int, kpi_id: int, include_absent: bool = False,
 
     oq = db.query(KpiObjectiveLink).filter_by(company_id=company_id, kpi_key=key)
     iq = db.query(KpiInitiativeLink).filter_by(company_id=company_id, kpi_key=key)
+    # ⭐⭐ §4v.1 RULING 1 — A REVOKED LINK IS NOT A CURRENT CONNECTION. This is
+    # the display path the KPI destination reads, so it is filtered here first.
+    # ⛔ REVOKED IS NOT `flagged_absent`, AND `include_absent` MUST NOT SHOW IT.
+    # `flagged_absent` means the template stopped mentioning a link — an
+    # omission nobody asserted. A revocation is a CXO stating the link is wrong,
+    # with their name and the date on it. Folding the two would let
+    # "?include_absent=1" resurrect a declaration somebody deliberately retracted.
+    oq = live_links(oq, KpiObjectiveLink)
+    iq = live_links(iq, KpiInitiativeLink)
     if not include_absent:
         oq = oq.filter(KpiObjectiveLink.flagged_absent.is_(False))
         iq = iq.filter(KpiInitiativeLink.flagged_absent.is_(False))
@@ -13254,6 +13309,29 @@ def _ensure_ax_columns(engine):
     # yesterday's behaviour exactly and nothing needs rewriting.
     _add("ax_kpi_plan", "direction",
          "direction VARCHAR(16) NOT NULL DEFAULT 'higher_better'")
+    # ⭐⭐ §4v.1 RULING 1 — the four link tables gain revocation columns, matching
+    # B10's ax_initiative_line_links, which already had them while its four
+    # siblings did not.
+    #
+    # ⛔ NULLABLE, DELIBERATELY. A NOT NULL DEFAULT would read as "revoked at
+    # migration time" for every existing row — Meridian's 41 live KPI→objective
+    # declarations silently retracted by a schema change. NULL means live.
+    #
+    # ⭐⭐ WRITTEN OUT LITERALLY, AND THE LOOP THAT REPLACED THESE EIGHT LINES WAS
+    # REVERTED. `check-model-columns.py` reads `_add(` call sites TEXTUALLY, with
+    # a regex that requires a string-literal table name — its own docstring warns
+    # that "a migration written any other way" is invisible to it. A four-line
+    # loop was tidier and made the gate report all eight columns as unmigrated;
+    # measured, it went red. ⛔ TIDIER CODE THAT BLINDS A GUARD IS THE TRADE THIS
+    # CODEBASE REFUSES, and the guard was right both times.
+    _add("ax_kpi_objective_links", "revoked_at", "revoked_at TIMESTAMP")
+    _add("ax_kpi_objective_links", "revoked_by", "revoked_by INTEGER")
+    _add("ax_kpi_initiative_links", "revoked_at", "revoked_at TIMESTAMP")
+    _add("ax_kpi_initiative_links", "revoked_by", "revoked_by INTEGER")
+    _add("ax_goal_initiative_links", "revoked_at", "revoked_at TIMESTAMP")
+    _add("ax_goal_initiative_links", "revoked_by", "revoked_by INTEGER")
+    _add("ax_kr_initiative_links", "revoked_at", "revoked_at TIMESTAMP")
+    _add("ax_kr_initiative_links", "revoked_by", "revoked_by INTEGER")
     try:                                     # abstention stores score NULL — drop the NOT NULL
         col = {c["name"]: c for c in _inspect(engine).get_columns("ax_assessment_responses")}
         if "score" in col and not col["score"].get("nullable", True):
