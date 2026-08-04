@@ -18850,3 +18850,91 @@ LAYOUT instead of through EDGES.**
 
 ⭐ Auto-layout also means **a link declared elsewhere appears without anyone
 moving anything.** A canvas would drift from the model it claims to show.
+
+# ⭐⭐ §7o.1 · THE LINK LAYERS SEEDED — AND WHY THE CHAIN HAD REGRESSED (5 Aug)
+
+## ⛔ THE CHAIN DID NOT BREAK. IT WAS OVERWRITTEN.
+
+CORE records §7o's chain **complete at five hops** (31 Jul, `9055f0d`). Measured
+5 Aug on Meridian: **hops 3, 4 and 5 were ALL ZERO** — no KR→initiative link, no
+KR carrying a `kpi_key`, and **zero initiative→line links in the entire database.**
+
+⭐⭐ **`core/seed_meridian.reseed()` DELETES departments, objectives, KRs, KPIs
+and initiatives** and rewrites its own nine-department demo. Later lanes re-seeded
+Meridian with a **richer seven-department, four-period structure that never
+carried the links.** ⛔ **RUNNING `reseed()` TO "RESTORE" THE CHAIN WOULD HAVE
+DESTROYED FIVE LANES OF WORK** — the dimensional seed, the 41 KPI→objective
+links, capacity, avoidability, segments and the authority grants. **The links were
+added to the current structure instead.**
+
+## ⭐ WRITE PATHS — AND THE ONE THAT DOES NOT EXIST
+
+| layer | path |
+|---|---|
+| KR → initiative | ⭐ `_set_initiative_links()` — the production writer |
+| initiative → line | ⭐ `initiative_lines.declare()` — B10's writer |
+| **KR → KPI** | ⛔⭐ **NO WRITE PATH EXISTS ANYWHERE** |
+
+⭐⭐ **`KeyResult.kpi_key` is assigned in exactly ONE place in the codebase —
+`core/seed_meridian.py:279` — and NOWHERE in the product.** `PATCH
+/key-results/{id}` does not accept it and the OKR reconciliation only PROPAGATES
+an existing value, so **a null stays null forever.** That is why 0 of 82 carried
+one. The field is set directly by the seed and **the missing writer is REPORTED,
+not quietly invented.**
+
+## SEEDED — AND WHAT WAS DELIBERATELY NOT
+
+    KR → KPI          54 linked   ⭐ 28 left unmeasured
+    KR → initiative   41 linked   ⭐ 41 left unresourced
+    initiative → line  2 declared, revenue, 0.35 + 0.25
+
+⭐⭐ **THE DECLARED TOTAL IS 0.60 — 40% UNDECLARED, BY CONSTRUCTION.** Two
+initiatives contend for the SAME line, so proportional allocation is exercised;
+**a single-linked line cannot distinguish "split correctly" from "took
+everything", and a total of 1.00 would be the fudge §7o warns about.**
+
+## ⭐ COVERAGE, NOT NARRATIVE — ALL EIGHT STATES EXIST
+
+| state | n |
+|---|---|
+| KR **with** a measuring KPI / **without** | 54 / ⭐ **28** |
+| KR **with** an initiative / **without** | 41 / ⭐ **41** |
+| ⭐ objective with **no** key result | **1** (seeded; Meridian had none) |
+| ⭐ KPI serving **no** objective | **8** — unchanged, as instructed |
+| initiative → statement line | 2 |
+| revocations seeded | ⛔ **0** |
+
+## ⭐ THE CHAIN, END TO END
+
+    hop1 sentiment 2,340 · hop2 initiative 13 · hop3 KR 41
+    hop4 KPI 54 · hop5 statement line 2      ⭐ RESOLVES
+
+## PER-DEPARTMENT GRAPH — FOR THE PRESENTATION LANE
+
+| department | obj | KR | KPI | ini | **nodes** | **edges** |
+|---|---|---|---|---|---|---|
+| Executive Management | 5 | 10 | 6 | 2 | **23** | **23** |
+| Finance and Accounting | 7 | 14 | 7 | 2 | **30** | **28** |
+| Operations | 7 | 14 | 8 | 2 | **31** | **28** |
+| Sales & Marketing | 8 | 14 | 7 | 1 | **30** | **26** |
+| **Information Technology** | 5 | 10 | 7 | 2 | **24** | **24** |
+| Supply Chain and Logistics | 5 | 10 | 7 | 2 | **24** | **24** |
+| Human Resources | 5 | 10 | 7 | 2 | **24** | **24** |
+| **TOTAL** | 42 | 82 | 49 | 13 | **186** | **177** |
+
+⭐ **Largest department is 31 nodes** — a layered DAG layout is comfortable at
+this size, which supports §4v.1 ruling 4.
+
+## §7o INVARIANTS — ASSERTED, NOT ASSUMED
+
+**Pack hashes byte-identical.** **Statement blocks byte-identical** (income
+statement, balance sheet, cash flow, hashed before and after). **KR count
+unchanged.** Objectives 41 → 42, the one bare objective, deliberate. **Nothing
+deleted, no boot hook, `--plan` before `--apply`.**
+
+⭐ **§III.9 FIRED A SEVENTH TIME** — `"revoked_at" not in SRC` went red on the
+seed's OWN DOCSTRING stating the rule. Converted to an AST read, which is also
+the tighter claim: prose mentioning the column is harmless, **an assignment is
+the thing forbidden.**
+
+**2092 passed** (from 2080), 29 gates non-zero 0.
