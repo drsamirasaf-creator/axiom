@@ -18106,3 +18106,74 @@ and mean it. That is a ruling.
 
 ⛔ **Required status checks are therefore NOT wired on either repo.** Requiring a
 red check blocks every push immediately.
+
+# ⭐⭐ §8v · THE EXIT CODE FIXED — AND CI IS STILL NOT GREEN (4 Aug)
+
+## THE FIX
+
+`check-period-labels-published.py` returned **1 whenever no frontend checkout
+existed**, regardless of the backend half passing. It now **exits on the half it
+was asked to run**, and NAMES the half that did not:
+
+    ✓ emitter cross-check: 6 emitters, all mapped. BACKEND HALF ENFORCED.
+    ⚠ FRONTEND HALF NOT RUN — no checkout at …/src, so 0 fetch sites were
+      scanned. This run asserts nothing about the frontend.
+
+⭐ The original comment was right that **zero sites is not all sites**. The
+answer was never to fail; it was to **say which half ran**, in the output a
+reader sees. ⛔ `AXIOM_FRONTEND_OPTIONAL` is removed from this script — it let a
+caller downgrade the whole check to a skip, and setting it on the enforced step
+would have weakened a guard rather than fixed it.
+
+**What each caller now asserts** (exit codes measured without a pipe):
+
+| caller | asserts | rc |
+|---|---|---|
+| CI, no frontend checkout | the emitter cross-check only, and says so | **0** |
+| frontend pre-push hook (both checkouts) | both halves, 8 fetch sites | **0** |
+| known positive — publishers neutralised | 8 of 8 sites drop their labels | **1** |
+
+⭐ THE KNOWN POSITIVE MATTERED. A first attempt stripped `setPeriodLabels` from
+`period.ts` and reported green — proving nothing, because the publishers at the
+FETCH SITES are `publishPeriods`/`setPeriodLabels` there, not in the helper.
+
+## ⛔ REQUIRED STATUS CHECKS ARE **NOT** WIRED — THE PREMISE WAS FALSIFIED
+
+The dispatch said "now that CI can be green". **CI went from red to red.** The
+fix cleared its step, and the run advanced to the NEXT failure:
+
+    ✗ NO CORPUS — exiting non-zero rather than reporting every assumption
+      in bounds.                                   (exit code 2)
+
+`check-assumption-bounds.py` reads `DATABASE_PUBLIC_URL` **or** a corpus cache.
+⭐⭐ **THAT CACHE IS `~/.axiom-cache/ds.json` — UNTRACKED AND MACHINE-LOCAL.**
+CI has neither, so the guard is structurally red there.
+
+⚠️ **AND IT INDICTS THIS SESSION'S OWN REPORTING.** Every lane has reported
+"29/29 gates green". That was true **on this machine only**: the sweep passes
+because a local artefact exists that CI never has. The claim was never false,
+but it was narrower than it read.
+
+⛔ **So required status checks stay unwired on BOTH repos**, for exactly the
+reason §8u gave: requiring a red check blocks every push immediately — and here
+it would block both repos at once. **Wiring them against red CI would have been
+the foot-gun the dispatch was written to avoid.**
+
+## ⚠️ AND A CONSEQUENCE WORTH KNOWING BEFORE THEY ARE WIRED
+
+Required status checks apply to **direct pushes**, not only to merges: a freshly
+pushed commit has no check runs, so the push is rejected. **Wiring them ends
+direct-to-main pushes and makes every lane a pull request.** That is a workflow
+ruling, not a settings change.
+
+## THE TWO PROBE COMMITS STAY, AND HERE IS WHY
+
+`c396cf3` (frontend) and axiom's equivalent are empty commits that proved the
+rulesets permit an ordinary push. **Removing them requires rewriting `main`, and
+the rulesets now refuse a force-push — which is the protection working.**
+
+⭐⭐ **The only way to remove them is to disable the ruleset, rewrite, and
+re-enable — which is precisely the "temporarily lift the guard because it is
+inconvenient" move that makes a guard negotiable.** They are empty, they carry
+their purpose in their message, and they cost one line of history each. **The
+protection is worth more than the tidiness.**
