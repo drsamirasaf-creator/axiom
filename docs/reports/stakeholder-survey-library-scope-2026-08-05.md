@@ -287,3 +287,175 @@ intervention move the score?) has no representation.
    "reject"?
 4. **Does an assessment axis link to an objective** — the edge that would close
    the cycle.
+
+---
+
+# Addendum — star ratings on proposals, ideas and issues (ruled 5 Aug)
+
+**Report only.** Measured on `aa36048`.
+
+## 8 · Where a rating attaches — ⭐⭐ one object type does NOT cover all three
+
+The queue holds three things with **three different identity schemes**, and the
+difference decides everything:
+
+| source | table | identity | survives re-derivation? |
+|---|---|---|---|
+| **analytics-derived** | `ax_recommendation_dispositions` | ⭐ `fingerprint` = `sha256(move + sorted levers)[:16]` | **only if the move and levers are unchanged** |
+| **document-derived** | `ax_document_proposals` | ⭐ `fingerprint` = `sha256(company:kind:quadrant:normalised title)[:32]` | ⛔ **NO — the title is in the hash** |
+| **an idea / an issue** | becomes an `Initiative` (durable `id`, `ref_code`) | a row id | yes |
+
+⭐⭐ **TWO OF THE THREE ARE RE-DERIVED, NOT STORED.** `ax_document_proposals`
+holds **19 rows globally** and is regenerated per docset; `RecommendationDisposition`
+exists *precisely because* the recommendation itself does not persist — it carries
+`first_seen_at`, `last_seen_at` and **`times_reissued`** to pin a human decision to
+a thing that keeps coming back.
+
+⛔ **SO A RATING ON A DOCUMENT PROPOSAL DIES WHEN SOMEBODY REWORDS THE TITLE.**
+The fingerprint includes the normalised title, so re-running the analysis after an
+edit mints a different key and **forty ratings silently become zero ratings on a
+"new" proposal.** That is not a rendering bug — it is the same defect class as
+`FinancialDataset`: a pointer to something whose content can change underneath it.
+
+### The consequence, stated as a ruling owed
+
+**Either** ratings attach only to things with durable identity (ideas and issues
+promoted to a real row), **or** the fingerprint stops including the mutable text.
+⭐ **The second is the smaller change and the more honest one** — a proposal whose
+wording is polished is the same proposal — **but it is a ruling, and changing a
+fingerprint scheme re-keys every existing disposition.**
+
+⭐ `ax_csf_proposals` is a fourth shape and **not part of this**: it has no
+`company_id`, being a child of an initiative's CSF. It should be excluded
+explicitly rather than discovered later.
+
+## 9 · The floor composes with ranking — ⛔ and it is not a display rule
+
+The assessment engine already distinguishes **three** suppression states, and the
+third is the one that binds here:
+
+| state | meaning |
+|---|---|
+| `no_responses` | nobody rated. A participation fact. |
+| `below_anonymity_floor` | rated, but too few to publish. A privacy fact. |
+| ⭐⭐ `complement_inference` | **cleared the floor and hidden anyway**, because another slice's concealment would be reversible by subtraction |
+
+⭐⭐ **THE RATING CANNOT BE DISPLAYED AT ALL BELOW THE FLOOR — NOT EVEN AS AN
+INPUT TO A RANK.** This is the sharp point. If a sub-floor average is hidden from
+the page but still used to order the list, **the ordering leaks it**: a reader who
+knows the neighbours' scores can bound the hidden one, and with a few items can
+often recover it. **A rank is a publication.**
+
+So a sub-floor item must be **ranked as unrated**, not ranked by its hidden mean —
+and ⛔ **`complement_inference` applies to ratings too**: suppressing one item's
+rating while publishing the rest of a small set can make it derivable from a
+published overall.
+
+⭐ **"A 5.0 from three people must not outrank a 4.4 from forty" is therefore not
+the main risk — it is the mild one.** With KFLOOR = 3, a 5.0 from three is *at*
+the floor and publishable; the ranking question is real but secondary. **The
+governing rule is that below the floor there is no number to rank by at all.**
+
+⭐ **The count is always shown**, including when the average is withheld — the
+count is a participation fact and is not what the floor protects.
+
+## 10 · What the list ranks by today
+
+`list_initiatives` (`accounts.py:6472`) sorts by a **seven-part key**, in order:
+
+    1  rejected last              2  current_priority  high → medium → low
+    3  active before terminal     4  ranked before unranked
+    5  `rank` within the band     6  created_at        7  ref_code sequence
+
+⭐ **`rank` is a CLIENT-SET manual ordering within a priority band**, and
+`current_priority` dominates it. **Rating is not in this key and cannot simply be
+appended** — inserted below `current_priority` it would never reorder anything a
+CXO would notice; inserted above it, **it would override a human's explicit
+priority with a crowd average.**
+
+⛔ **RULING OWED: does a rating outrank a set priority, or sort within it?**
+
+**What else consumes this order:** the sort is computed inside `list_initiatives`
+and is **not persisted**, so nothing downstream depends on it — the department
+slice re-sorts the same way, and `rank` is the only stored ordering. ⭐ **Changing
+the sort therefore changes one surface, not a chain** — which is the good news
+here.
+
+## 11 · Dispersion — a candidate finding, and the floor mostly forbids it
+
+*4.5 overall but 2.1 from the department that would deliver it* is the more useful
+statement, and the machinery for it exists: `AssessmentResponse` already carries
+**`department` and `seniority`**, inherited from the participant, for exactly this
+reason.
+
+⛔ **BUT THE FLOOR DOES NOT PERMIT IT AT THAT GRAIN, IN GENERAL.** A rating sliced
+by department needs **KFLOOR raters per department**, not per item. Meridian's
+assessment already demonstrates the problem at this grain: Quality at n=2 is
+below the floor and Strategy at n=3 is hidden anyway by complement inference.
+⭐ **A proposal rated by forty people across seven departments averages under six
+each — most slices would be suppressed, and the one that matters most (the
+delivering department) is often the smallest.**
+
+**What it would need:** a department on the rating, KFLOOR enforcement per slice,
+and the three suppression states rendered distinctly — plus a decision about
+whether a *withheld* delivering-department score may still be flagged as
+"divergent" without publishing it. ⭐ **That last one is the interesting question
+and I do not think it has an obvious answer**: saying "the delivering department
+disagrees" while withholding the number is either the honest half-statement or a
+leak, depending on how many departments there are.
+
+**Recorded as a candidate. Not a build.**
+
+## 12 · "Anyone may rate" — access, population and cycle binding
+
+**Assessors today are not a general population.** The path is:
+
+    Participant (roster, keyed by lowercased email)
+      → AssessmentInvite (one cycle, single-use `jti`, `revoked_at`)
+      → participant_ref minted at redemption ('P3')
+      → AssessmentResponse carries participant_ref, never the email
+
+⭐ **Anonymity is structural, not a setting**: in an anonymous cycle **no endpoint
+returns the ref↔email mapping**, and `alt_email` is documented as
+**DELIVERY-ONLY, never an identity or dedup key.**
+
+⛔ **"ANYONE MAY RATE" DOES NOT FIT THIS MODEL, AND THE MISMATCH IS THE FINDING.**
+Every existing anonymous response is anchored to **an invited, single-use
+capability**. That is what makes "n = 40" mean forty people. **A rating open to
+anyone has no such anchor** — and without one:
+
+- **the count is not trustworthy**, so the k-floor guards nothing. ⭐ *A floor over
+  a count that can be inflated is decoration* — and the floor is the thing
+  protecting respondents.
+- **one person may rate repeatedly** unless something binds the act to an identity,
+  which is exactly what anonymity is meant to remove.
+
+⭐ **The narrowest reading that preserves the floor: "anyone" means any
+authenticated member of the company plus any holder of a live invite** — a
+population that is countable and single-use. **A genuinely public rating needs a
+different protection than KFLOOR**, and that is a ruling.
+
+### Cycle binding
+
+`AssessmentResponse.cycle_id` is **NOT NULL** — every response belongs to a cycle,
+and a participant submits once per cycle, immutable after submit.
+
+⭐⭐ **A PROPOSAL RATING SHOULD NOT BE CYCLE-BOUND, AND THIS IS A REAL DIVERGENCE.**
+A proposal's life is not a survey's: it is raised, rated, decided, delivered —
+possibly across several cycles, possibly between them. Forcing `cycle_id` would
+make a proposal raised between cycles unratable, and would reset its rating each
+cycle.
+
+⛔ **But dropping the cycle drops what makes the floor computable at a point in
+time.** The workable shape is **a rating with its own timestamp and no cycle**,
+with the floor evaluated over the rating's own population — **which is a second
+anonymity regime, not a reuse of the first.** ⭐ **That is the largest hidden cost
+in this ruling, and it is worth stating before it is built.**
+
+## Rulings owed (added to the four above)
+
+5. ⭐ **Does a rating attach to a fingerprint, or only to durable rows?** — and if
+   the former, does the fingerprint stop including mutable text.
+6. ⭐ **Does a rating outrank a set priority, or sort within it?**
+7. ⭐ **Who is "anyone"** — and if it is genuinely public, what replaces KFLOOR.
+8. **Is a rating cycle-bound?** If not, it needs its own anonymity regime.
