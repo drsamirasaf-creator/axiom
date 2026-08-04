@@ -17985,3 +17985,68 @@ bypass this item exists to close is precisely the one still open. Two ways, both
 the human's: **make it public**, or **GitHub Pro**. The backend is now protected;
 the frontend is not, and the local pre-push hook remains its only guard —
 bypassed by anything pushing another way.
+
+# ⭐⭐ §8t · THE FULL REVENUE & PROFITABILITY STRUCTURE, SCOPED (4 Aug)
+
+REPORT ONLY. Full scope:
+`docs/reports/revenue-profitability-full-structure-scope-2026-08-04.md`.
+
+## ⚠️ IT IS NOT FIFTEEN TABS — THE DOCUMENT CARRIES TWO LISTS
+
+The dispatch's "fifteen" is the FIRST spec (7 + 8). **A later addendum in the
+same file supersedes it with 11 + 12**, adding Customers & Cohorts, Pipeline &
+Backlog, Variance Analysis, Pricing Intelligence, Customer Profitability, Cost
+Structure, Pricing & Margin, Capacity & Cost-to-Serve — and **dropping Cost
+Allocation, which is built and shipping today.**
+
+**Union: 24 unique names. The one-entry ruling collapses the four that appear on
+both sides → ⭐⭐ 20 TABS ON ONE PAGE.**
+
+⭐ **MEASURED, NOT REASONED: 20 DO NOT FIT A STRIP.** The harness measures the
+current strip at 1080×42px for SIX tabs — 180px each, one row. Twenty need
+~3 600px, **3.3 rows** at a 1400px viewport, and §7r-S4 already measured seven
+wrapping at 1024px. The structure that serves them is a design decision this
+lane was forbidden to make; the measurement only says the flat strip is out.
+
+## ⭐⭐ THE GAP IS SMALLER THAN 4-OF-15 SUGGESTS — SIXTH CONSECUTIVE LANE
+
+**Four tabs ship; roughly six more are largely built under names not on the
+strip.** `dimension_type` is a COLUMN, so **Segments and Segment Profitability
+need no code at all — only a seed**. Forecasts, Scenarios, Executive Insights
+and Data Quality all have working machinery at company grain or inline.
+
+⛔ Genuinely empty: **Pipeline & Backlog (zero files mention it)** and
+**Customers & Cohorts** (`cohort` appears once, in an unrelated comment).
+⛔ **No PVM engine exists** — only KPI-level variance; T2's bridge computes mix
+and within-line and names price and volume as not computable.
+
+## ⭐⭐ THE PATTERN IN THE RESPONSE-FUNCTION TEST
+
+**Descriptions survive; optima do not.** Every tab that would recommend a price,
+a term or a credit limit fails §8h·2; every tab that describes what happened, or
+what a DECLARED constraint implies, passes. Pipeline survives because empirical
+conversion is observed history; churn splits — retention curves survive,
+churn-risk scoring does not.
+
+## THE TOTAL, AS THE USER ASKED FOR IT
+
+> **13 lanes · 6 template versions (v15–v20) · 8 seed extensions**, plus the
+> frontend for 20 tabs.
+
+⭐ **The cheapest four lanes need NO template change and NO new data**:
+navigation structure, the segment seed, avoidability, variance decomposition and
+the data-quality tab. They take the surface from 4 visible tabs to roughly 10.
+⚠️ One lane is blocked and not by us — working capital waits on Meridian's
+company-level balances (§8p).
+
+## FORBIDDEN, AND TWO NEW INSTANCES
+
+Already ruled: fully allocated per-customer profit (R1), "unprofitable customer"
+(§8r·4), price and credit optima (R2/§8k). ⭐ **NEW:** the document asks for a
+**"probability of break-even within horizon"** and a **"probability of remaining
+profitable across allocation methods"** — both are probabilities over AXIOM'S
+OWN MODELLING CHOICES, which §8a's forbidden four already refuses.
+
+⚠️ **AND A RULING OWED: the later list drops Cost Allocation, which ships.**
+Dropping a shipped tab because a later document omits it would be following a
+document over a product.
