@@ -43,6 +43,13 @@ jobs:
       # backend that no frontend fetch ever publishes — and it originates in THIS
       # repo. The frontend scan inside it skips (see below); the cross-check does
       # not.
+      # ⭐⭐ EXIT CODE FIXED 4 Aug (CORE §8v). This returned 1 whenever no
+      # frontend checkout existed — regardless of the backend half passing — so
+      # CI was red on main for three lanes and a REQUIRED STATUS CHECK was
+      # impossible: requiring an always-red check blocks every push. It now
+      # exits on the half it was asked to run, and NAMES the half that did not.
+      # ⛔ AXIOM_FRONTEND_OPTIONAL is deliberately NOT set here. It downgraded
+      # the whole check to a skip, which weakens a guard rather than fixing it.
       - name: period_labels emitter cross-check (backend half — enforced)
         run: python scripts/check-period-labels-published.py
       # ⭐ THE FOLLOWING GATE DOES NOT ENFORCE ANYTHING ON THIS RUNNER, AND SAYING

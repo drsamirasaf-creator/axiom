@@ -231,27 +231,32 @@ def main():
         return 1
 
     if not os.path.isdir(os.path.join(FRONTEND, "src")):
-        # ⭐ ZERO SITES IS NOT ALL SITES. Reporting "8 of 8 publish" and
-        # "0 of 0 publish" with the same tick is how a gate that never ran
-        # reads as a gate that passed.
-        # Be precise about WHICH half ran. The emitter cross-check above is
-        # complete and passed — it reads only this repo. It is the frontend scan
-        # that has nothing to scan. Reporting both as "skipped" would understate
-        # the check that just ran; reporting both as "passed" would overstate the
-        # one that did not.
-        print(f"  ✓ emitter cross-check: {len(KNOWN_EMITTERS)} emitters, all mapped.")
-        print(f"  SKIPPED — frontend scan needs a checkout at {FRONTEND}/src. "
-              f"That half proved nothing (see the pre-push hook).")
-        # ⭐ A MISSING FRONTEND IS A FAILURE UNLESS SOMEONE SAYS OTHERWISE. This
-        # returned 0 — green, over zero files — which is the exact shape the
-        # coverage floor exists to forbid, and the floor never ran because the
-        # skip returned first. Set AXIOM_FRONTEND_OPTIONAL=1 to permit it, which
-        # makes "this run enforced nothing" an explicit statement in the CI step
-        # rather than a silent tick.
-        if os.environ.get("AXIOM_FRONTEND_OPTIONAL") != "1":
-            return 1
+        # ⭐⭐ THE BACKEND HALF RAN AND PASSED, SO THIS EXITS 0 — ruled 4 Aug.
+        # It used to return 1, which made CI red on main for three lanes and
+        # made a REQUIRED STATUS CHECK impossible: requiring a check that is
+        # always red blocks every push. The exit code was the defect, not the
+        # code it guards.
+        #
+        # ⭐⭐ AND THE GREEN IS NOT ALLOWED TO READ AS FULL COVERAGE. The
+        # original comment here was right about the hazard — "zero sites is not
+        # all sites", and a tick over an unrun half is how a gate that never ran
+        # reads as a gate that passed. The answer is not to fail; it is to SAY
+        # WHICH HALF RAN, every time, in the output a reader sees.
+        #
+        # ⛔ `AXIOM_FRONTEND_OPTIONAL` IS GONE. It existed to let a caller
+        # downgrade the whole check to a skip, and setting it on the enforced
+        # step would have weakened a guard rather than fixed it. The halves are
+        # now separate facts and neither is downgradable.
+        print(f"  ✓ emitter cross-check: {len(KNOWN_EMITTERS)} emitters, all "
+              f"mapped. BACKEND HALF ENFORCED.")
+        print(f"  ⚠ FRONTEND HALF NOT RUN — no checkout at {FRONTEND}/src, so "
+              f"0 fetch sites were scanned. This run asserts nothing about the "
+              f"frontend. That half is enforced by the frontend repo's "
+              f"pre-push hook, which has both checkouts.")
         return 0
+
     findings, checked = scan_frontend()
+    print(f"  ✓ emitter cross-check: {len(KNOWN_EMITTERS)} emitters, all mapped.")
     for rel, line, fn, url in findings:
         print(f"  {rel}:{line}  {fn}() fetches a period_labels payload and never "
               f"publishes it\n      {url}")
