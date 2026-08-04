@@ -18050,3 +18050,59 @@ OWN MODELLING CHOICES, which §8a's forbidden four already refuses.
 ⚠️ **AND A RULING OWED: the later list drops Cost Allocation, which ships.**
 Dropping a shipped tab because a later document omits it would be following a
 document over a product.
+
+# ⭐⭐ §8u · PROTECT MAIN ON optimization-anchor — THE GAP §8s LEFT OPEN (4 Aug)
+
+GitHub Pro active on `drsamirasaf-creator` from 4 Aug, so the endpoint that
+returned *"Upgrade to GitHub Pro or make this repository public"* now answers.
+
+**`protect-main`, ruleset id `20378776`, ACTIVE** — same shape as axiom's
+`20368701`: `deletion` + `non_fast_forward` on `~DEFAULT_BRANCH`. Shape read
+back from axiom's ruleset and matched field for field rather than retyped.
+
+## ⭐ VERIFIED BY DOING, AS THE AXIOM LANE WAS
+
+| | |
+|---|---|
+| ordinary push | ✅ `5faeba3..c396cf3  main -> main` |
+| force-push | ⛔ `GH013: Repository rule violations found` · `! [remote rejected] HEAD~1 -> main (push declined due to repository rule violations)` |
+
+## ⚠️ THIS CLOSES §8s's GAP — AND ONLY PART OF WHAT IT SOUNDS LIKE
+
+§8s recorded the gap as open *specifically because* `optimization-anchor` is the
+repo **Lovable pushes to**, and Lovable never runs the local pre-push hook. That
+route is now covered against **history rewriting**.
+
+⛔ **FORCE-PUSH PROTECTION DOES NOT STOP A BAD COMMIT — ONLY A REWRITTEN
+HISTORY.** `b24c951` is the proof: it landed cleanly by an ordinary push,
+carrying an unformatted file that held lint red on main for three lanes. This
+ruleset would not have stopped it, and nothing in this lane claims otherwise.
+**The thing that catches a bad commit is a required status check, and that is
+item 3.**
+
+## ⭐⭐ STATUS CHECKS: NOT REQUIRED, AND MY OWN §8s DIAGNOSIS WAS INCOMPLETE
+
+§8s said CI is red because `check-period-labels-published.py` "exits 1 when its
+frontend half cannot run in a single-repo job". True, but it omitted that **the
+escape already exists and CI already uses it — on a different step.**
+
+`ci.yml` invokes the same script twice:
+
+| step | env | rc with no frontend |
+|---|---|---|
+| `period_labels emitter cross-check (backend half — enforced)` | none | **1** |
+| `TS-side period gates (SKIP ACKNOWLEDGED …)` | `AXIOM_FRONTEND_OPTIONAL=1` | **0** |
+
+Reproduced locally with `AXIOM_FRONTEND=/nonexistent`: **rc=1 and rc=0.**
+
+⭐ **SO IT CAN BE MADE TO PASS IN A SINGLE-REPO CONTEXT, AND THE MECHANISM IS
+ALREADY WRITTEN.** The "backend half — enforced" step wants only the emitter
+cross-check, which reads this repo alone and passes — but the script returns 1
+whenever the frontend is absent, regardless of which half the caller wanted.
+**The exit code is the defect, not the code it guards.** ⛔ **NOT FIXED HERE**,
+per the dispatch — the options are to set the same env on that step (which would
+weaken it to a skip) or to give the script a way to run the backend half alone
+and mean it. That is a ruling.
+
+⛔ **Required status checks are therefore NOT wired on either repo.** Requiring a
+red check blocks every push immediately.
