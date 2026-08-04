@@ -164,6 +164,31 @@ COST_POOLS = {
 # surface has a real "supply this to unlock that" to render. A named absence in
 # prose and an absence a capability actually HITS are different demonstrations
 # — the second exercises the declaration path.
+# ⭐⭐ SEGMENTS ARE THE SAME CAPABILITY OVER `dimension_type`, AND THAT IS WHY
+# THIS IS A SEED AND NOT A LANE. T1 made `dimension_type` a COLUMN rather than a
+# table per type, so every T2/T3 capability already runs on segments — the only
+# thing missing was rows. Two tabs from one seed.
+#
+# ⛔ AND THEY ARE PARALLEL TO PRODUCTS, NEVER ADDITIVE. `reconcile_across`
+# refuses to combine two dimension types unless `ax_dimension_map` holds a row,
+# because segment and product decompose THE SAME revenue. This seed writes NO
+# mapping row, so the refusal stands and is asserted.
+SEGMENTS = {
+    "SG-IND":  {"name": "Industrial", "share": {2022: 0.46, 2023: 0.45,
+                                                2024: 0.44, 2025: 0.43},
+                "gm": {2022: 0.44, 2023: 0.44, 2024: 0.44, 2025: 0.45}},
+    "SG-INFRA": {"name": "Infrastructure", "share": {2022: 0.27, 2023: 0.28,
+                                                     2024: 0.30, 2025: 0.32},
+                 "gm": {2022: 0.41, 2023: 0.40, 2024: 0.38, 2025: 0.36}},
+    "SG-AFTER": {"name": "Aftermarket", "share": {2022: 0.15, 2023: 0.15,
+                                                  2024: 0.14, 2025: 0.15},
+                 "gm": {2022: 0.53, 2023: 0.54, 2024: 0.55, 2025: 0.56}},
+}
+# ⭐ The segment story is INDEPENDENT of the product story and reaches the same
+# conclusion from a different cut: Infrastructure gains share while its margin
+# thins, Aftermarket holds share at a rising margin. A reader who switches the
+# selector sees a different decomposition, not the same numbers relabelled.
+
 SEEDED_MEASURES = ("revenue", "direct_cost", "direct_opex", "units")
 # ⭐ ONE DECLARED ABSENCE SURVIVES (§7o). `units` is now seeded — T4.3 needs it
 # for contribution per unit and for the capacity constraint — but PRICES stay
@@ -270,6 +295,76 @@ def capacity_rows(year):
                      "measure": "maximum_sales_units", "value": u[code] * 1.30,
                      "unit_of_measure": "units"})
     return rows
+
+
+# ⭐⭐ AVOIDABILITY — WHAT ACTUALLY LEAVES IF A LINE IS DISCONTINUED (T5.1).
+# Per pool per line, DECLARED. Ruling §8r·2: an explicit 0 is an answer; a blank
+# is not. Every pool below carries a number, so nothing declines for want of a
+# declaration and the corrective renders its QUANTIFIED form.
+#
+# ⭐ The shape is what a controller would actually answer: the two driver pools
+# are largely avoidable (stop serving the line, stop the support and the
+# freight), the directly-assigned commission is wholly avoidable, and corporate
+# overhead is not avoidable at all — it is the definition of stranded.
+AVOIDABLE_SHARE = {
+    "Customer Support": 0.70,
+    "Logistics": 0.55,
+    "Sales Commission": 1.00,
+    "Corporate Overhead": 0.00,
+    "Direct Materials": 1.00,
+}
+NOTICE_MONTHS = {"Customer Support": 3.0, "Logistics": 6.0,
+                 "Sales Commission": 0.0, "Corporate Overhead": 0.0,
+                 "Direct Materials": 0.0}
+
+
+def avoidability_rows():
+    """One declaration per pool per line per period.
+
+    ⭐ The AVOIDABLE AMOUNT is a share of what that pool CHARGES THAT LINE, not
+    of the pool — a line is only ever asked about its own charge.
+    """
+    out = []
+    for year in PERIODS:
+        sh = shares_for(year)
+        alloc = shared_allocation(year, sh)
+        by_pool = {"sales_commission": "Sales Commission",
+                   "customer_support": "Customer Support",
+                   "logistics": "Logistics"}
+        for key, label in by_pool.items():
+            spread = alloc.get(key)
+            if not spread or not spread.get("available"):
+                continue
+            for code, charged in (spread.get("value") or {}).items():
+                out.append({"period": year, "line_code": code, "pool": label,
+                            "avoidable_amount": charged * AVOIDABLE_SHARE[label],
+                            "notice_period_months": NOTICE_MONTHS[label],
+                            "capacity_released": None,
+                            "capacity_reusable": "unknown"})
+        # ⭐ Corporate overhead is charged by revenue share and NONE of it is
+        # avoidable — the declaration that makes stranded cost real.
+        st = STATEMENT[year]
+        pool_total = st["opex"] * POOL_SHARE_OF_OPEX["Corporate Overhead"]
+        denom = sum(sh.values())
+        for code in PRODUCTS:
+            out.append({"period": year, "line_code": code,
+                        "pool": "Corporate Overhead",
+                        "avoidable_amount": 0.0, "notice_period_months": 0.0,
+                        "capacity_released": None, "capacity_reusable": "no"})
+        del pool_total, denom
+    return out
+
+
+def segment_rows():
+    """Revenue and direct cost per segment per period."""
+    out = []
+    for year in PERIODS:
+        st = STATEMENT[year]
+        for code, spec in SEGMENTS.items():
+            rev = st["revenue"] * spec["share"][year]
+            out.append((year, code, "revenue", rev))
+            out.append((year, code, "direct_cost", rev * (1.0 - spec["gm"][year])))
+    return out
 
 
 def _rows():
@@ -478,23 +573,27 @@ def apply_seed():
     rows = _rows()
     with eng.begin() as c:
         member_id = {}
-        for code, spec in PRODUCTS.items():
+        # ⭐ SEGMENTS AND PRODUCTS SHARE THE MEMBER TABLE, distinguished by
+        # `dimension_type`. No mapping row is written, so `reconcile_across`
+        # keeps refusing to combine them — asserted in the tests.
+        for dtype, spec_map in (("product", PRODUCTS), ("segment", SEGMENTS)):
+          for code, spec in spec_map.items():
             got = c.execute(text("""SELECT id FROM ax_dimension_member
-                                    WHERE company_id=:co AND dimension_type='product'
+                                    WHERE company_id=:co AND dimension_type=:dt
                                       AND code=:code"""),
-                            {"co": COMPANY_ID, "code": code}).scalar()
+                            {"co": COMPANY_ID, "dt": dtype, "code": code}).scalar()
             if got is None:
                 got = c.execute(text("""
                     INSERT INTO ax_dimension_member
                       (company_id, dimension_type, member_key, code, name,
                        is_unallocated, source, created_at)
-                    VALUES (:co,'product',:key,:code,:name,false,'seed',now())
+                    VALUES (:co,:dt,:key,:code,:name,false,'seed',now())
                     RETURNING id"""),
-                    {"co": COMPANY_ID, "key": uuid.uuid4().hex,
+                    {"co": COMPANY_ID, "dt": dtype, "key": uuid.uuid4().hex,
                      "code": code, "name": spec["name"]}).scalar()
             member_id[code] = got
         n = 0
-        for (year, code, measure, value) in rows:
+        for (year, code, measure, value) in rows + segment_rows():
             c.execute(text("""
                 INSERT INTO ax_dimension_observation
                   (company_id, dataset_id, member_id, period, frequency,
@@ -519,6 +618,7 @@ def apply_seed():
         before = _json.dumps(data.get("income_statement"), sort_keys=True)
         data["cost_behaviour"] = [pl for y in PERIODS for pl in cost_pools(y)]
         data["capacity"] = [r for y in PERIODS for r in capacity_rows(y)]
+        data["avoidability"] = avoidability_rows()
         after = _json.dumps(data.get("income_statement"), sort_keys=True)
         assert before == after, "the statements moved — refusing to write"
         c.execute(text("UPDATE financial_datasets SET data = CAST(:d AS jsonb) "

@@ -557,3 +557,57 @@ def test_the_variable_cost_status_is_allocated_because_a_shared_pool_contributes
     judgement made here."""
     from services.api.modules.financials import managerial as MG
     assert MG.variable_cost_status(S.cost_pools(2025), 2025) == "allocated"
+
+
+# ── 10 · segments — the same capability over dimension_type ────────────────
+
+def test_segments_reconcile_against_the_statement_like_products_do():
+    """⭐⭐ A SEED, NOT A LANE. T1 made `dimension_type` a COLUMN, so every T2/T3
+    capability already runs on segments — the only thing missing was rows."""
+    rows = S.segment_rows()
+    for year in S.PERIODS:
+        detail = {c: v for (y, c, m, v) in rows if y == year and m == "revenue"}
+        r = A.revenue_by_dimension(detail, S.STATEMENT[year]["revenue"])
+        assert r["available"]
+        assert sum(r["value"].values()) == pytest.approx(
+            S.STATEMENT[year]["revenue"], abs=1e-9)
+        assert r["value"]["__unallocated__"] > 0
+
+
+def test_the_segment_story_differs_from_the_product_story():
+    """⭐ A different CUT, not the same numbers relabelled. Infrastructure gains
+    share while its margin thins; Aftermarket holds share at a rising margin."""
+    first, last = S.PERIODS[0], S.PERIODS[-1]
+    inf = S.SEGMENTS["SG-INFRA"]
+    assert inf["share"][last] > inf["share"][first]
+    assert inf["gm"][last] < inf["gm"][first]
+    aft = S.SEGMENTS["SG-AFTER"]
+    assert aft["gm"][last] > aft["gm"][first]
+
+
+def test_segment_and_product_totals_must_not_be_combined():
+    """⛔⭐⭐ THE REFUSAL SURVIVES THE SEED. Segment and product decompose the
+    SAME revenue, so summing them double-counts the company. `reconcile_across`
+    refuses unless `ax_dimension_map` holds a row — and this seed writes none."""
+    r = D.reconcile_across("segment", "product", mapping_exists=False,
+                           detail={"a": 1.0}, company_revenue=2.0)
+    assert r["status"] == D.REFUSED_PARALLEL
+    assert r["company_total"] is None and r["detail_total"] is None
+    assert "parallel decompositions" in r["reason"]
+
+
+def test_the_seed_writes_no_dimension_map_row():
+    """⭐ The refusal is only meaningful while no mapping exists. If the seed
+    ever writes one, this fails and the ruling gets re-read rather than
+    silently lapsing.
+
+    ⭐⭐ IT LOOKS FOR THE SQL, NOT THE WORD — §III.9, the fifth instance this
+    session. The seed NAMES `ax_dimension_map` in a comment precisely to explain
+    why it writes none, and a text scan reads that sentence as the violation it
+    is denying."""
+    import re
+    code = "\n".join(l for l in open(_PATH, encoding="utf-8").read().split("\n")
+                     if not l.lstrip().startswith("#"))
+    assert not re.search(
+        r"(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+ax_dimension_map", code, re.I), (
+        "the seed writes a dimension-map row — the parallel refusal would lapse")

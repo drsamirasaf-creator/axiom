@@ -133,6 +133,12 @@ def _constrained_mix(M, capacity_rows, period, contributions, units, pools):
     return plan, move
 
 
+def _avoid(M, rows, period, code, allocated_charge):
+    """The declared avoidability for one line, or None. ⭐ Wiring only."""
+    a = M.avoidability(rows, allocated_charge, period, code)
+    return a.get("value") if a.get("available") else None
+
+
 def _company_cost(cogs, opex):
     """The statement's total operating cost. ⭐ In `managerial`, not here — the
     endpoint's AST guard forbids arithmetic and the rule survived this lane."""
@@ -1117,6 +1123,9 @@ def profitability_surface(dataset_id: int, db: Session = Depends(get_db),
     # company-level period facts, not dimensional observations, and the Cost
     # Behaviour sheet collects them at pool grain (CORE §8l).
     cb_pools = data.get("cost_behaviour") or []
+    # ⭐⭐ T5.1's DECLARATION. Where it exists the §22 corrective quantifies;
+    # where it does not it states its premise and asks for the column.
+    avoid_rows = data.get("avoidability") or []
     by_type = {}
     for obs, mem in rows:
         by_type.setdefault(mem.dimension_type, {}) \
@@ -1216,7 +1225,14 @@ def profitability_surface(dataset_id: int, db: Session = Depends(get_db),
                     code: M.covers_variable_cost(
                         (contributions[code] or {}).get("value"),
                         (lines[code]["allocated_ebit"] or {}).get("value"),
-                        line=names.get(code, code))
+                        line=names.get(code, code),
+                        avoidable=(_avoid(M, avoid_rows, p, code,
+                                          share_of.get(code)) or {}).get("avoidable"),
+                        stranded=(_avoid(M, avoid_rows, p, code,
+                                         share_of.get(code)) or {}).get("stranded"))
+                    for code in rev},
+                "avoidability": {
+                    code: M.avoidability(avoid_rows, share_of.get(code), p, code)
                     for code in rev},
                 "totals": _statement_totals(A, co_rev, co_cogs, co_opex),
             }
