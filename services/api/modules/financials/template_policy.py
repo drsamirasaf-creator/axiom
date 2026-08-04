@@ -82,7 +82,11 @@ COMPANY_FAMILY = "AXIOM-COMPANY-TEMPLATE"  # _AXIOM!A1 on the per-company book
 # engine token `cost_behaviour`, which the naming resolver could not fix because
 # it maps tokens to columns the WORKBOOK CONTAINS and no such column existed.
 # The extension defines the client-facing names; the decline vocabulary follows.
-VERSION_MAJOR = 13
+# v14 (4 Aug, T5.1): the Cost Avoidability sheet — what actually leaves if a
+# line is discontinued. ⭐ PRIOR VERSIONS PARSE UNCHANGED, fifth time on this
+# discipline: the sheet is OPTIONAL and additive, and a v13 workbook has none,
+# which reads as "no avoidability declared" and never as an upload error.
+VERSION_MAJOR = 14
 GENERIC_VERSION = f"v{VERSION_MAJOR}"
 COMPANY_VERSION = f"7M-v{VERSION_MAJOR}.0"
 USER_FACING_VERSION = f"v{VERSION_MAJOR}"
@@ -352,3 +356,43 @@ WORKING_CAPITAL_COLUMNS = [
 # ⭐ ALREADY COLLECTED AND ALREADY PARSED — no new field is needed for the
 # charge itself, only for the balances it is charged on.
 FUNDING_RATE_ROW = "Pre-Tax Cost of Debt"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐⭐ T5.1 — COST AVOIDABILITY (v14). THE DECLARATION, PER POOL PER LINE.
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ⭐⭐ RULING 2 (CORE §8r): BLANK IS NOT A DECLARATION; AN EXPLICIT ZERO IS. A
+# client entering 0 has told you nothing disappears. A blank treated as zero
+# avoidable is `or 0` ON THE INPUT THAT DECIDES WHETHER A LINE SHOULD BE EXITED,
+# and it would make every line's stranded cost 100% of its allocated share —
+# reproducing the corrective's unstated premise, computed and therefore
+# invisible. The hint below says so in the client's own words.
+
+AVOIDABILITY_SHEET_NAME = "Cost Avoidability"
+AVOIDABILITY_HEADER_ROW = 4
+AVOIDABILITY_REUSE_ANSWERS = ("yes", "no", "unknown")
+
+AVOIDABILITY_COLUMNS = [
+    ("Period", "The period this row belongs to. Same labels as the statement "
+               "sheets."),
+    ("Frequency", "annual, quarterly or monthly. Must match the statements."),
+    ("Line Code", "The product or segment code this row is about — the same "
+                  "code you use on the Segments & Products sheet."),
+    ("Cost Pool", "The pool from your Cost Behaviour sheet, spelled the same "
+                  "way."),
+    ("Avoidable Amount", "How much of this pool's charge to this line would "
+                         "actually STOP BEING SPENT if you discontinued the "
+                         "line. Enter 0 if none of it would — that is an "
+                         "answer. Leaving it blank is not, and AXIOM will say "
+                         "so rather than assume."),
+    ("Notice Period (months)", "How long before that saving starts. A contract "
+                               "you cannot exit for six months is not avoidable "
+                               "this year."),
+    ("Capacity Released", "What the line frees up if it stops — hours, space, "
+                          "headcount. Leave blank if nothing is freed."),
+    ("Capacity Re-usable?", "yes, no or unknown. Whether that freed capacity "
+                            "could be sold to someone else. AXIOM never assumes "
+                            "an answer to this."),
+    ("Notes", "Optional. Never imported as data."),
+]

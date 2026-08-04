@@ -169,7 +169,13 @@ def test_the_corrective_fires_when_a_line_is_negative_at_ebit_but_positive_at_co
     s = v["statement"].lower()
     assert "covers its own variable cost" in s
     assert "allocated" in s
-    assert "remov" in s or "moves" in s          # what discontinuing would do
+    # ⭐⭐ CHANGED BY RULING 1 (§8r). This asserted the sentence said what
+    # discontinuing "would remove" — a CONCLUSION resting on the unsupplied
+    # premise that none of the allocated cost disappears with the line. It now
+    # asserts the sentence NAMES that premise and asks for the declaration,
+    # which is the property the ruling actually cares about.
+    assert "assumes none of that cost disappears" in s
+    assert v["assumes_nothing_avoidable"] is True
 
 
 def test_the_corrective_does_not_fire_when_the_line_loses_money_on_every_unit():

@@ -37,8 +37,8 @@ def test_the_version_is_bumped():
     """⭐ A NEW SHEET IS A NEW TEMPLATE, and the stamp is what tells a reader
     which sheet they are holding. It is NOT a gate — §7.37 — and nothing below
     tests it as one."""
-    assert policy.VERSION_MAJOR == 13
-    assert policy.GENERIC_VERSION == "v13"
+    assert policy.VERSION_MAJOR == 14
+    assert policy.GENERIC_VERSION == "v14"
 
 
 # ── 2 · cost behaviour, at the ruled grain ─────────────────────────────────

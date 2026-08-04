@@ -278,6 +278,7 @@ def build_template(standard: str) -> bytes:
 
     _dimensional_sheets(wb)
     _cost_behaviour_sheets(wb)
+    _avoidability_sheet(wb)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -289,6 +290,7 @@ def build_template(standard: str) -> bytes:
 # sentence cannot drift apart.
 COST_BEHAVIOUR_SHEET = policy.COST_BEHAVIOUR_SHEET_NAME
 CAPACITY_SHEET = policy.CAPACITY_SHEET_NAME
+AVOIDABILITY_SHEET = policy.AVOIDABILITY_SHEET_NAME
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -671,4 +673,49 @@ def _cost_behaviour_sheets(wb):
     for m in policy.CAPACITY_MEASURES:
         dd[f"A{r}"] = m
         dd[f"B{r}"] = policy.CAPACITY_MEASURE_HELP[m]
+        r += 1
+
+
+def _avoidability_sheet(wb):
+    """What actually leaves if a line is discontinued — declared, never inferred.
+
+    ⭐⭐ CORE §8l·4 AND §8r·2. Which shared cost survives an exit is a fact about
+    contracts and org structure, not something to derive from an allocation. The
+    sheet collects the declaration; a blank declines rather than defaulting.
+    """
+    from openpyxl.workbook.defined_name import DefinedName
+
+    lw = wb["Lists"] if "Lists" in wb.sheetnames else wb.create_sheet("Lists")
+    start = (lw.max_row or 0) + 2
+    for i, ans in enumerate(policy.AVOIDABILITY_REUSE_ANSWERS):
+        lw.cell(row=start + i, column=9, value=ans)
+    ref = (f"'Lists'!$I${start}:$I$"
+           f"{start + len(policy.AVOIDABILITY_REUSE_ANSWERS) - 1}")
+    wb.defined_names.add(DefinedName("REUSABLE", attr_text=ref))
+
+    ws = _long_form_sheet(
+        wb, AVOIDABILITY_SHEET, policy.AVOIDABILITY_COLUMNS,
+        policy.AVOIDABILITY_HEADER_ROW,
+        ("Cost avoidability — optional, and partial is fine",
+         "One row per cost pool per line. AXIOM uses this to say what would "
+         "ACTUALLY be saved by discontinuing a line, rather than assuming the "
+         "allocated cost either disappears or does not. Enter 0 where nothing "
+         "would be saved — that is an answer; a blank is not."),
+        numeric_cols={"Avoidable Amount", "Notice Period (months)",
+                      "Capacity Released"})
+    col = [l for l, _h in policy.AVOIDABILITY_COLUMNS].index(
+        "Capacity Re-usable?") + 1
+    dv = DataValidation(type="list", formula1="=REUSABLE", allow_blank=True)
+    ws.add_data_validation(dv)
+    dv.add(f"{get_column_letter(col)}{policy.AVOIDABILITY_HEADER_ROW + 1}:"
+           f"{get_column_letter(col)}{policy.AVOIDABILITY_HEADER_ROW + 200}")
+
+    dd = wb["Data Dictionary"]
+    r = (dd.max_row or 1) + 2
+    _style_header(dd[f"A{r}"], AVOIDABILITY_SHEET)
+    _style_header(dd[f"B{r}"], "What it means")
+    r += 1
+    for label, hint in policy.AVOIDABILITY_COLUMNS:
+        dd[f"A{r}"] = label
+        dd[f"B{r}"] = hint
         r += 1

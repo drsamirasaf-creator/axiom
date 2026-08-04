@@ -74,13 +74,13 @@ def v10_data(v9_data):
 
 # ── the version discipline ──────────────────────────────────────────────────
 def test_the_version_bumped_and_all_three_strings_agree():
-    # ⭐ v13 (4 Aug): cost behaviour + capacity (T4.1). The four strings
+    # ⭐ v14 (4 Aug): cost avoidability (T5.1). The four strings
     # are pinned TOGETHER so a bump cannot move one and leave the others —
     # which is what this test is for, not the number itself.
-    assert policy.VERSION_MAJOR == 13
-    assert policy.GENERIC_VERSION == "v13"
-    assert policy.COMPANY_VERSION == "7M-v13.0"
-    assert policy.USER_FACING_VERSION == "v13"
+    assert policy.VERSION_MAJOR == 14
+    assert policy.GENERIC_VERSION == "v14"
+    assert policy.COMPANY_VERSION == "7M-v14.0"
+    assert policy.USER_FACING_VERSION == "v14"
 
 
 def test_the_new_rows_are_optional_on_every_path():

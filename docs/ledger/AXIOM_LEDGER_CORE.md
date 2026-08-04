@@ -17833,3 +17833,81 @@ receivables, inventory and payables are `not supplied` even at COMPANY grain
 (§8p), and a per-customer receivable that reconciles to no company balance has
 nothing to check it against. ⭐ T5.1 is the only tier here that needs no new
 data source — only a declaration.
+
+# ⭐⭐ §8r · FOUR AVOIDABILITY RULINGS (4 Aug), THEN T5.1 BUILT
+
+Rulings first. Report: `docs/reports/t5-1-avoidability-2026-08-04.md`.
+
+## ⭐⭐ RULING 1 · THE §22 CORRECTIVE STATES ITS ASSUMPTION NOW
+
+*"The company would be worse off, not better"* rests on the premise that **none
+of the allocated cost disappears with the line**. Three rulings already in force
+decide this: absence declares, the assumption travels with the number, and an
+allocated figure never renders without its method.
+
+⛔ **LEAVING IT UNSTATED IS NOT A POSITION; IT IS THE DEFECT CONTINUING.** The
+sentence states the assumption and asks for the declaration. Wording is
+editorial.
+
+## ⭐⭐ RULING 2 · BLANK IS NOT A DECLARATION; AN EXPLICIT ZERO IS
+
+A client entering **0** has told you nothing disappears — compute on it. A
+**blank** column treated as zero avoidable is `or 0` **on the input that decides
+whether a line should be exited**, and it would make every line's stranded cost
+100% of its allocated share — **reproducing ruling 1's premise, this time
+computed and therefore invisible**. Blank declines and names the column.
+
+⭐ Bulk declaration per pool is a convenience, not a principle.
+
+## ⭐ RULING 3 · NO HORIZON — STRANDED COST IS A STANDING ANNUAL AMOUNT
+
+The multi-period form starts discounting, and **discounting is
+`prescience_decision`'s**. Choosing a horizon pulls the capability across the
+ownership boundary the no-horizon form never touches — the same boundary the mix
+optimiser held by reporting contribution and never enterprise value. **Exit
+economics to be discounted enters the move library and is valued once, there.**
+
+## ⛔ RULING 4 · "UNPROFITABLE CUSTOMER" NEVER RENDERS
+
+Deriving it from allocated EBIT was already out; **the label is refused even
+when correctly derived.** It is a verdict on a relationship and will be acted on
+faster than its qualifications are read — the line R2 draws between a
+descriptive ratio and a decision estimate, applied to a WORD. Show contribution
+less cost-to-serve; let the reader name it.
+
+# ⭐⭐ T5.1 — AVOIDABILITY BUILT
+
+## THE DECLARATION, PER POOL PER LINE
+
+**Cost Avoidability** sheet (v13 → v14): Period · Frequency · Line Code · Cost
+Pool · **Avoidable Amount** · **Notice Period (months)** · **Capacity Released**
+· **Capacity Re-usable?** · Notes. Prior versions parse unchanged; the sheet is
+optional and additive, fifth time on that discipline.
+
+## WHAT IS COMPUTED, AND WHAT IS REFUSED
+
+✅ **stranded = allocated − avoidable** — the complement of a declaration is not
+an inference · exit economics · redistribution through T2's own allocator ·
+time-phasing from the notice period.
+
+⛔ Never inferred: **the avoidable share itself**, **whether freed capacity is
+re-sold**, **whether customers of an exited line take others with them**.
+`Capacity Re-usable?` COLLECTS the client's answer rather than assuming one.
+
+## ⭐⭐ THE CORRECTIVE, IN TWO STATES
+
+**Without a declaration** it names its own premise and asks for the column:
+*"…AXIOM assumes none of that cost disappears with the line until you say
+otherwise."*
+
+**With one** it quantifies: *"…would save 240 of avoidable cost and leave 610
+stranded on the lines that remain. Against 53 of contribution lost, the company
+would be 187 better off."* ⭐ **AND THE CONCLUSION CAN FLIP** — the same line,
+same figures, opposite advice, decided by a number only the client holds. That
+is the whole reason ruling 1 exists.
+
+## VERIFIED
+
+See the report for counts and hashes. No margin outside `ratios.py`, no status
+outside `weakest_status`, no arithmetic in the endpoint. Meridian carries no
+declaration — reported, not seeded.

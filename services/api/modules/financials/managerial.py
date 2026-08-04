@@ -390,12 +390,27 @@ def contribution_operating_leverage(contribution, ebit):
 # ⭐⭐ 3 · THE §22 CORRECTIVE — THE MOST VALUABLE SENTENCE THE MODULE PRODUCES
 # ═══════════════════════════════════════════════════════════════════════════
 
-_COVERS = (
+_AV_SHEET = policy.AVOIDABILITY_SHEET_NAME
+
+# ⭐⭐ RULING 1 (CORE §8r). The old sentence ended "the company would be worse
+# off, not better" — a conclusion resting on the premise that NONE of the
+# allocated cost disappears with the line. Nobody supplied that premise. It now
+# STATES it and asks for the declaration; where the declaration exists it
+# quantifies instead, and the conclusion can come out the other way.
+_COVERS_UNDECLARED = (
     "{line} covers its own variable cost. It contributes {contribution} before "
     "any share of fixed and shared cost, and it is negative at allocated EBIT "
-    "({ebit}) only because of the share it is charged. Discontinuing it would "
-    "remove that contribution and move its allocated share onto the lines that "
-    "remain — the company would be worse off, not better."
+    "({ebit}) only because of the share it is charged. Whether discontinuing it "
+    "would help depends on how much of that share would actually stop being "
+    "spent — and AXIOM assumes none of that cost disappears with the line until "
+    "you say otherwise. Fill the 'Avoidable Amount' column on the "
+    "'{sheet}' sheet to see the net effect."
+)
+_COVERS_DECLARED = (
+    "{line} covers its own variable cost, contributing {contribution}. "
+    "Discontinuing it would save {avoidable} of avoidable cost and leave "
+    "{stranded} stranded on the lines that remain. Against the contribution "
+    "lost, the company would be {net} {direction}."
 )
 _DOES_NOT_COVER = (
     "{line} does not cover its own variable cost: it contributes "
@@ -405,7 +420,8 @@ _DOES_NOT_COVER = (
 )
 
 
-def covers_variable_cost(contribution, allocated_ebit, line="This line"):
+def covers_variable_cost(contribution, allocated_ebit, line="This line",
+                         avoidable=None, stranded=None):
     """Does the line earn money on every unit it sells?
 
     ⭐⭐ THE FINDING T3 CANNOT MAKE. A fully-allocated loss is the figure the
@@ -416,11 +432,32 @@ def covers_variable_cost(contribution, allocated_ebit, line="This line"):
         return _needs("covers_variable_cost",
                       {_column(_CB_SHEET, "Cost Behaviour")})
     covers = contribution > 0
-    fmt = _COVERS if covers else _DOES_NOT_COVER
     out = _ok("covers_variable_cost", covers, [D.DIRECTLY_DERIVED])
-    out["statement"] = fmt.format(
+    ebit = "—" if allocated_ebit is None else f"{allocated_ebit:,.1f}"
+    if not covers:
+        out["statement"] = _DOES_NOT_COVER.format(
+            line=line, contribution=f"{contribution:,.1f}")
+        out["assumes_nothing_avoidable"] = False
+        return out
+    if avoidable is None:
+        # ⭐ THE PREMISE, NAMED. It is not that the sentence was wrong — it is
+        # that its certainty was unearned, and the reader could not tell.
+        out["statement"] = _COVERS_UNDECLARED.format(
+            line=line, contribution=f"{contribution:,.1f}", ebit=ebit,
+            sheet=_AV_SHEET)
+        out["assumes_nothing_avoidable"] = True
+        return out
+    econ = exit_economics(contribution, avoidable, stranded)
+    net = (econ.get("value") or {}).get("net")
+    better = (econ.get("value") or {}).get("better_off")
+    out["statement"] = _COVERS_DECLARED.format(
         line=line, contribution=f"{contribution:,.1f}",
-        ebit="—" if allocated_ebit is None else f"{allocated_ebit:,.1f}")
+        avoidable=f"{avoidable:,.1f}",
+        stranded="—" if stranded is None else f"{stranded:,.1f}",
+        net="—" if net is None else f"{abs(net):,.1f}",
+        direction="better off" if better else "worse off")
+    out["assumes_nothing_avoidable"] = False
+    out["exit_economics"] = econ
     return out
 
 
@@ -714,3 +751,95 @@ def cash_conversion_cycle_by_line(receivable_days, inventory_days,
                ratio_lib.cycle_days(receivable_days, inventory_days,
                                     payable_days),
                [D.OBSERVED, D.DIRECTLY_DERIVED])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐⭐ 8 · AVOIDABILITY (T5.1) — WHAT ACTUALLY LEAVES IF A LINE IS DISCONTINUED
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ⛔ CORE §8l·4 AND §8r·2. The avoidable share is DECLARED, never inferred. What
+# may be computed from that declaration is its complement and the arithmetic
+# around it — a complement is not an inference.
+
+_AVOIDABLE_COLUMN = _column(_AV_SHEET, "Avoidable Amount")
+
+
+def avoidability(declarations, allocated_charge, period=None, line_code=None):
+    """Avoidable and stranded for one line, from the client's declaration.
+
+    ⭐⭐ BLANK DECLINES; AN EXPLICIT ZERO COMPUTES (ruling 2). Treating a blank
+    as zero avoidable is `or 0` on the input that decides whether a line should
+    be exited, and it would make EVERY line's stranded cost 100% of its
+    allocated share — reproducing the corrective's unstated premise, computed
+    and therefore invisible.
+    """
+    if allocated_charge is None:
+        return _needs("avoidability", {_column(_CB_SHEET, "Amount")})
+    rows = [d for d in (declarations or [])
+            if (period is None or d.get("period") in (None, period))
+            and (line_code is None or d.get("line_code") in (None, line_code))]
+    if not rows:
+        return _needs("avoidability", {_AVOIDABLE_COLUMN})
+    avoidable = 0.0
+    for row in rows:
+        amount = row.get("avoidable_amount")
+        if amount is None:
+            return _needs("avoidability", {_AVOIDABLE_COLUMN})
+        avoidable = _sum(avoidable, amount)
+    if avoidable is None:
+        return _needs("avoidability", {_AVOIDABLE_COLUMN})
+    if avoidable > allocated_charge:
+        # ⭐ A declaration larger than the charge would produce NEGATIVE
+        # stranded cost — a line whose exit saves more shared cost than it was
+        # ever charged. That is a data error the client can fix.
+        out = _needs("avoidability", {_AVOIDABLE_COLUMN})
+        out["unlocks"] = (
+            f"the avoidable amounts declared for this line add to "
+            f"{avoidable:,.1f}, and only {allocated_charge:,.1f} of shared cost "
+            f"was charged to it — correct one of them so the declaration fits "
+            f"inside the charge")
+        return out
+    stranded = _sum(allocated_charge, -avoidable)
+    return _ok("avoidability", {"avoidable": avoidable, "stranded": stranded,
+                                "allocated_charge": allocated_charge},
+               [D.OBSERVED])
+
+
+def exit_economics(contribution, avoidable, stranded=None):
+    """What the company gains or loses by discontinuing the line.
+
+    ⛔ RULING 3: NO HORIZON. A standing annual amount, undiscounted. The
+    multi-period form starts discounting, and discounting belongs to the move
+    library — the same boundary the mix optimiser held by reporting contribution
+    and never enterprise value.
+    """
+    if avoidable is None:
+        return _needs("exit_economics", {_AVOIDABLE_COLUMN})
+    if contribution is None:
+        return _needs("exit_economics", {_column(_CB_SHEET, "Cost Behaviour")})
+    net = _sum(avoidable, -contribution)
+    return _ok("exit_economics",
+               {"contribution_lost": contribution, "cost_saved": avoidable,
+                "stranded": stranded, "net": net, "better_off": net > 0,
+                "basis": "one period, undiscounted"},
+               [D.OBSERVED, D.DIRECTLY_DERIVED])
+
+
+def avoidable_this_year(avoidable, notice_period_months):
+    """How much of the saving lands in the first year, given the notice period.
+
+    ⭐ PHASING IS NOT DISCOUNTING. This says WHEN the saving starts, not what it
+    is worth today — the distinction ruling 3 turns on.
+    """
+    if avoidable is None:
+        return _needs("avoidable_this_year", {_AVOIDABLE_COLUMN})
+    if notice_period_months is None:
+        return _needs("avoidable_this_year",
+                      {_column(_AV_SHEET, "Notice Period (months)")})
+    months = max(0.0, min(12.0, 12.0 - notice_period_months))
+    out = _ok("avoidable_this_year",
+              ratio_lib.term_financing_cost(avoidable, 1.0, months,
+                                            days_in_year=12.0),
+              [D.OBSERVED, D.DIRECTLY_DERIVED])
+    out["basis"] = "undiscounted"
+    return out
