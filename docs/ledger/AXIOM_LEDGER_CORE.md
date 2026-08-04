@@ -18801,3 +18801,52 @@ MODEL — and the whole argument of item 1 is that it must be one.**
 4. **The empty KR layer**: seed KR→KPI and KR→initiative links, or ship a map
    whose middle layer is visibly isolated? ⭐ **The second is more honest and
    may be the better demo** — but it is a choice.
+
+# ⭐⭐ §4v.1 · THE STRATEGY MAP — FOUR RULINGS (5 Aug)
+
+Answers the four §4v left open. Recorded before any build.
+
+## ⭐⭐ RULING 1 · REMOVAL IS A REVOKE, NEVER A DELETE
+
+The four link tables gain `revoked_at`, matching `ax_initiative_line_links`.
+
+⛔ **A DELETE WOULD BE THE FIRST DESTROYED DECLARATION IN THIS CODEBASE.**
+
+⭐⭐ **AND THE REASON IS SHARPER THAN CONSISTENCY.** A CXO saying *"this KPI does
+not serve that objective"* **is itself a declaration**, with an actor and a date.
+**The removal is INFORMATION, not the absence of information.** A DELETE stores
+the one thing that is certainly wrong: that nobody ever considered the question.
+
+Same discipline as `DepartmentAuthority` (*"revocation is a timestamp, not a
+deletion"*) and as B10's own table, which already had it while its four siblings
+did not.
+
+## ⭐ RULING 2 · LAYOUT IS PER-USER
+
+⭐ **Two people may prefer different arrangements of the same true model without
+either being wrong — because layout carries NO MEANING.**
+
+⛔ **Per-department would make one person's preference everyone's view, which
+begins to read as a claim** — and the whole point of §4v item 1 is that only
+links are claims.
+
+⛔ **NOT `ax_dataset_prefs`** — it is `(company, dataset, key, value)`, and a
+strategy map belongs to a department and a person, not to an upload.
+
+## ⭐⭐ RULING 3 · DECLARING A LINK IS A DISTINCT PERMISSION FROM OVERRIDING A FIGURE
+
+`can_author` governs **changing a supplied number**. Declaring that a KPI serves
+an objective is **structural** — it changes what the model says, not what a
+figure reads.
+
+⭐ **SAME HOLDER TODAY**, and recorded as **its own permission** so the two can
+diverge later **without a migration**. ⛔ **Platform staff refused in both.**
+
+## ⭐ RULING 4 · CONSTRAINED HIERARCHY, AUTO-LAID-OUT
+
+⭐⭐ **On a free canvas POSITION BECOMES MEANING**, and the picture would carry
+information the data does not — **the two-surfaces failure arriving through
+LAYOUT instead of through EDGES.**
+
+⭐ Auto-layout also means **a link declared elsewhere appears without anyone
+moving anything.** A canvas would drift from the model it claims to show.
