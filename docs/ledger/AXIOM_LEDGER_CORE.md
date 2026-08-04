@@ -18249,3 +18249,84 @@ No guard was weakened to a skip. `check-period-labels-consumed` still returns 1
 bare and still relies on CI's `AXIOM_FRONTEND_OPTIONAL=1` — the same defect,
 mitigated rather than fixed, and left because the dispatch named one script.
 **Wiring the twelve absent gates into CI is a lane, not a line.**
+
+# ⭐⭐ §7u.2 · THE 8 OUT-OF-BOUNDS VALUES, ADJUDICATED (4 Aug) — REPORT ONLY
+
+Full working: `docs/reports/assumption-bounds-adjudication-2026-08-04.md`.
+**No data changed. No bound changed.** Every access was a read.
+
+## THERE ARE NOT EIGHT FINDINGS. THERE IS ONE FINDING, EIGHT TIMES.
+
+Same field, same value, same ceiling, same tenant, **one byte-identical
+assumption block**, all written 16 July. All 8 **inactive**, all
+**`enterprise_id IS NULL`** — confirming A2.
+
+    size_premium = 0.2  vs  (0.0, 0.10)   datasets 8–15, tenant 6cf5c223
+
+⭐ `tax_rate = 1059.0` was **my planted known positive** in a scratch `DS_CACHE`
+during `eb89ee8`. **It is not in the corpus and never was.**
+
+## ⭐ CLASSIFICATION: A DATA ERROR. NOT §7w, NOT A NARROW BOUND.
+
+**Not a unit collision.** §7w shows as a value in the WRONG convention; a
+percent-into-decimal slip stores `20.0`. **`0.2` is a correctly-formed decimal.**
+
+**Not a narrow bound.** Corpus `size_premium` takes four values —
+**0.018 ×2, 0.02 ×1, 0.03 ×19, 0.2 ×8**. ⭐ **The next-highest observation is
+0.03**: the breach is 6.7× it. Platform default is 0.03. Published size premia
+top out near 6%.
+
+**Two readings, and neither can be settled.** `size_premium`/`specific_risk_premium`/`dlom`
+are adjacent everywhere, and the stored value **is exactly `dlom`'s 0.2** in the
+same block — *or* it is a deliberate extreme test input (27 runs in one day, then
+nothing). ⛔ **`original_filename` is null on all 8 — provenance was never
+recorded.** Both readings are the same class, so the classification holds.
+
+## REACHABILITY: CONSUMED THEN, UNREACHABLE NOW
+
+It **did** move a figure — the 27 runs carry **ke 0.3800, wacc 0.2641**; the same
+block at 0.03 gives **ke 0.2100, wacc 0.1579**, so stored WACC is ~67% high. But
+every customer path filters `enterprise_id=company_id` and these are **NULL**:
+0 packs, 0 report issues, 0 active datasets, 0 assumption edits, 0 stale marks.
+⭐ **Orphaned, not live.** ⛔ **NONE is on the real client (`a5d150fb`), which has
+zero breaches.**
+
+## ⭐⭐ THE BOUND RESTS ON LESS THAN IT CLAIMS — THE σ_RO SHAPE AGAIN
+
+`ASSUMPTION_BOUNDS` is a bare literal in `engines.py:241`, **not in the §7u
+registry**: no version, no `basis`, not pinned by the pack.
+
+The comment and its test call the bounds **"calibrated against the live corpus —
+8 of 321, 2.5%."** ⭐⭐ **That is not a calibration; it is a consistency check on
+a prior.** The corpus holds exactly one incident, so *"2.5%, every trip the known
+incident"* restates *"the eight I already knew about."* **A4 found this exact
+shape in σ_RO.**
+
+- **house prior with real basis** — `size_premium` (published premia ~6%), in a
+  CODE COMMENT, unregistered; `specific_risk_premium` by association only
+- ⛔ **unexamined defaults** — the other eight ceilings. **None has ever fired,
+  and corpus maxima sit at 0.12–0.42 of ceiling.**
+- **structural floors** — `share_price`, `shares_outstanding`
+
+⛔ **AND THE INSTRUMENT CANNOT SEE §7w.** `shares_outstanding` has **no ceiling**;
+the corpus spans **100 to 12,500,000 — 125,000× — all "in_bounds."** The one unit
+defect that reached a rendered figure is invisible by construction.
+
+## GATING: 0 BOUND CORRECTIONS, 2 RULINGS OWED
+
+⭐ **No bound is shown wrong by the corpus.** And ⛔ **gating is downstream of
+giving CI a corpus** (§8w): a `return 1` today would fail on this laptop only —
+`eb89ee8`'s defect pointed the other way.
+
+| clearing the 8 | data touched |
+|---|---|
+| correct the values | ⛔ 8 live writes; the 27 runs would then contradict their own inputs |
+| delete the orphans | ⛔ destructive; loses the only surviving record |
+| ⭐ **allowlist by id, reason recorded** | **none** — recommended |
+
+**Rulings owed: (1)** which option clears the 8 — including "none, leave it a
+reporter"; **(2)** whether `ASSUMPTION_BOUNDS` moves into the §7u registry with a
+per-bound basis, forcing the eight defaults to be grounded or labelled priors.
+
+⛔ **NOT a ruling: `absent` must never fail the gate.** 97 of 396 field-values are
+absent and the absences are STRUCTURAL.
