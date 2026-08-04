@@ -17911,3 +17911,77 @@ is the whole reason ruling 1 exists.
 See the report for counts and hashes. No margin outside `ratios.py`, no status
 outside `weakest_status`, no arithmetic in the endpoint. Meridian carries no
 declaration — reported, not seeded.
+
+# ⭐⭐ §8s · RELIABILITY: G2, STAGING, PROTECTED MAIN (4 Aug)
+
+## 1 · G2 — ⛔ THE MEASUREMENT PATH ITSELF IS NOW CLOSED
+
+⭐⭐ **THE RAILWAY CLI HAS NO BACKUP OR RESTORE COMMAND AT ALL.** `railway
+volume` offers list/add/delete/update/detach/files/browse/attach — nothing about
+backups. GraphQL is the only path to them.
+
+⭐⭐ **AND THE GRAPHQL API NOW REFUSES THIS CLIENT: HTTP 403, Cloudflare
+`error code: 1010`** — a browser-signature block, **not an auth failure**. Tried
+both hosts (`backboard.railway.com` / `.app`) × `Bearer` and raw. The SAME token
+authenticates fine through the CLI, which presents a signature Cloudflare
+accepts.
+
+⛔ **NOT WORKED AROUND.** Spoofing a browser signature is both an alternative
+driver and detection evasion. Retried once as dispatched; identical. **Stopped.**
+
+⚠️ **THIS IS A REGRESSION FROM 4b2ccf9.** Then the API ANSWERED — it returned
+the pgBackRest catalog error, which is how ten failures were characterised. Now
+the request never reaches the API. **G2 was blocked on a failing restore; it is
+now blocked on not being able to ASK.** Backups-since-2-Aug: unknown, because
+the catalogue cannot be read.
+
+## 2 · STAGING — MEASURED, NOT PROVISIONED
+
+| | |
+|---|---|
+| project | `intelligent-gentleness` |
+| environments | **one — `production`** |
+| services | `web`, `Postgres` |
+| spend, month to date | **$2.75** (period 29 Jul – 29 Aug) |
+| estimated for the period | **$4.65** |
+| soft / hard limit | **not set** |
+
+⭐ Railway bills **resource usage, not environments**, so a staging environment
+is not a line item — it is a second `web` + second `Postgres` + a second volume,
+roughly **doubling** the above. At current levels that is **~$5–9/month**, and
+it scales with what staging actually runs rather than with its existence.
+
+⭐⭐ **THE FRONTEND CANNOT TARGET IT WITHOUT A CODE CHANGE.**
+`src/lib/api.ts` line 10:
+
+    export const API_BASE = "https://web-production-0e3de.up.railway.app";
+
+**A hard-coded constant, not an environment variable.** Staging needs it read
+from a build-time variable first; until then every build points at production
+regardless of where it is deployed. **Reported; nothing provisioned.**
+
+## 3 · PROTECTED MAIN — WIRED WHERE IT IS FREE
+
+⭐ **`axiom` IS PUBLIC**, so rulesets are available on the free plan — the
+endpoint returned an empty list rather than 403. Created **`protect-main`**
+(id `20368701`, **active**) on the default branch: **block deletion** and
+**block non-fast-forward**.
+
+⭐ **VERIFIED BY DOING, NOT ASSERTED:** an ordinary push succeeded
+(`a033f86..3ed2440`); a force-push was refused with **`GH013: Repository rule
+violations found`**.
+
+⛔ **NOT WIRED: required status checks. CI IS RED ON MAIN** —
+`check-period-labels-published.py` exits 1 because its FRONTEND half cannot run
+in a single-repo CI job ("SKIPPED — needs a checkout at …/optimization-anchor").
+Requiring a red check would block every push immediately. **The check's exit
+code is the defect, not the code it guards.**
+
+## ⚠️ THE REPO THAT NEEDS PROTECTING IS THE ONE THAT CANNOT HAVE IT
+
+`optimization-anchor` is **PRIVATE** → rulesets return *"Upgrade to GitHub Pro
+or make this repository public."* **That is the repo Lovable pushes to**, so the
+bypass this item exists to close is precisely the one still open. Two ways, both
+the human's: **make it public**, or **GitHub Pro**. The backend is now protected;
+the frontend is not, and the local pre-push hook remains its only guard —
+bypassed by anything pushing another way.
