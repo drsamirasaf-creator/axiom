@@ -642,6 +642,67 @@ class RecommendationDisposition(Base):
     times_reissued = Column(Integer, default=0, nullable=False)
 
 
+class Issue(Base):
+    """§4u.1 ruling 4 — a state of the world somebody named. NOT a proposal.
+
+    ⭐⭐ IT HAS NO `reject`. An issue you decline is still true, so the states are
+    open | addressed | accepted, and `accepted` means the company has chosen to
+    live with it rather than that it was dismissed. The vocabulary lives in
+    `issues.ISSUE_STATES`; this column only stores it.
+
+    ⭐ `department_id` IS THE DEPARTMENT THE ISSUE IS ABOUT, not the department
+    of whoever raised it — the second would be an attribution nobody made, and
+    the respondent is anonymous in an anonymous cycle.
+    """
+    __tablename__ = "ax_issues"
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    title = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String(16), default="open", nullable=False)   # open|addressed|accepted
+    department_id = Column(Integer, index=True, nullable=True)
+    # ⭐ THE RESPONSE, NOT THE PROMOTION. An initiative raised against an issue
+    # ANSWERS it; the issue persists, linked, and moves to `addressed`. A
+    # proposal says do this thing; an issue says this is wrong and someone must
+    # decide what to do about it.
+    initiative_id = Column(Integer, index=True, nullable=True)
+    created_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    status_changed_by = Column(Integer, nullable=True)
+    status_changed_at = Column(DateTime, nullable=True)
+    status_note = Column(Text, nullable=True)
+
+
+class IssueComment(Base):
+    """A DECLARED grouping — this comment is that finding.
+
+    ⭐⭐ DECLARED, NEVER DERIVED. Clustering free text would be inference, and the
+    codebase's one inference-by-name path (`KeyResult.kpi_key`) is NULL on all 82
+    rows. Someone asserts that two comments are the same friction, and the
+    assertion carries their name and the date, exactly as B10 requires.
+
+    ⭐ REMOVAL IS A REVOKE (§4v.1 ruling 1). Detaching a comment is a claim too —
+    "this is not the same finding" — and a DELETE would destroy it.
+    """
+    __tablename__ = "ax_issue_comments"
+    __table_args__ = (UniqueConstraint("issue_id", "cycle_id", "participant_ref",
+                                       "item_id", name="uq_issue_comment"),)
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    issue_id = Column(Integer, index=True, nullable=False)
+    # The comment is identified the way the assessment identifies it — by cycle,
+    # pseudonymous ref and item. ⛔ NEVER by email: an anonymous cycle never
+    # exposes the ref->email mapping, and an issue must not become the join that
+    # does.
+    cycle_id = Column(Integer, index=True, nullable=False)
+    participant_ref = Column(String(64), nullable=False)
+    item_id = Column(Integer, nullable=False)
+    declared_by = Column(Integer, nullable=True)
+    declared_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+    revoked_by = Column(Integer, nullable=True)
+
+
 class OrgGoal(Base):
     """§4o Organizational Goal, parsed from the client template's 'Organizational
     Goals' sheet. Keyed to the FinancialDataset snapshot (dataset_id) so each
@@ -6899,7 +6960,173 @@ def list_proposals(company_id: int, member=Depends(_summary_access), db=Depends(
             "thread": {"id": t.id, "type": t.type, "title": t.title, "linked_ref": t.linked_ref},
             "suggested_title": p.suggested_title,
             "suggested_linked_item_code": p.suggested_item_code})
-    return {"company_id": company_id, "proposals": out}
+    # ⭐⭐ ISSUES TRAVEL IN THE SAME QUEUE AND KEEP THEIR OWN VOCABULARY.
+    # Sharing a queue must not mean sharing dispositions — that would be the
+    # `type` column by another route, and the whole reason this object is
+    # separate is that an issue cannot be rejected.
+    from . import issues as _iss
+    iss_rows = []
+    for iss in db.query(Issue).filter_by(company_id=company_id).all():
+        n = len(_iss.live_only(db.query(IssueComment)
+                                 .filter_by(company_id=company_id, issue_id=iss.id).all()))
+        iss_rows.append(_iss.queue_row(iss, n_comments=n,
+                                       department_scoped=iss.department_id is not None))
+    iss_rows.sort(key=_iss.rank_key)
+    return {"company_id": company_id, "proposals": out, "issues": iss_rows,
+            # ⭐ NAMED SO A SURFACE CANNOT REACH FOR THE WRONG ONE BY DEFAULT.
+            "issue_states": list(_iss.ISSUE_STATES),
+            "proposal_dispositions": list(_iss.RECOMMENDATION_DISPOSITIONS)}
+
+
+class IssueIn(BaseModel):
+    title: str
+    description: str | None = None
+    department_id: int | None = None
+
+
+class IssueStatusIn(BaseModel):
+    status: str
+    note: str | None = None
+
+
+class IssueCommentIn(BaseModel):
+    cycle_id: int
+    participant_ref: str
+    item_id: int
+
+
+class IssueInitiativeIn(BaseModel):
+    title: str | None = None
+    owner_name: str | None = None
+    department_id: int | None = None
+
+
+@router.get("/companies/{company_id}/issues")
+def list_issues(company_id: int, member=Depends(_summary_access), db=Depends(get_db)):
+    """Issues, ranked. ⛔ A RANK IS A PUBLICATION — see `issues.rank_key`."""
+    from . import issues as _iss
+    rows = []
+    for iss in db.query(Issue).filter_by(company_id=company_id).all():
+        n = len(_iss.live_only(db.query(IssueComment)
+                                 .filter_by(company_id=company_id, issue_id=iss.id).all()))
+        r = _iss.queue_row(iss, n_comments=n,
+                           department_scoped=iss.department_id is not None)
+        r["initiative_id"] = iss.initiative_id
+        rows.append(r)
+    rows.sort(key=_iss.rank_key)
+    return {"company_id": company_id, "issues": rows,
+            "states": list(_iss.ISSUE_STATES), "state_notes": _iss.STATE_NOTE}
+
+
+@router.post("/companies/{company_id}/issues", status_code=201)
+def create_issue(company_id: int, body: IssueIn,
+                 member=Depends(require_company_admin),
+                 user: User = Depends(get_current_user), db=Depends(get_db)):
+    row = Issue(company_id=company_id, title=body.title.strip(),
+                description=body.description, department_id=body.department_id,
+                status="open", created_by=user.id)
+    db.add(row); db.flush()
+    audit(db, user.id, "issue_created", "company", company_id, detail=str(row.id))
+    db.commit()
+    return {"id": row.id, "status": row.status}
+
+
+@router.post("/companies/{company_id}/issues/{issue_id}/comments", status_code=201)
+def attach_comment(company_id: int, issue_id: int, body: IssueCommentIn,
+                   member=Depends(require_company_admin),
+                   user: User = Depends(get_current_user), db=Depends(get_db)):
+    """⭐ THE GROUPING, DECLARED. Somebody asserts these are the same finding."""
+    iss = db.query(Issue).filter_by(id=issue_id, company_id=company_id).first()
+    if iss is None:
+        raise HTTPException(404, "issue not found")
+    existing = (db.query(IssueComment)
+                  .filter_by(company_id=company_id, issue_id=issue_id,
+                             cycle_id=body.cycle_id,
+                             participant_ref=body.participant_ref,
+                             item_id=body.item_id).first())
+    if existing is not None:
+        return {"id": existing.id, "already": True}
+    row = IssueComment(company_id=company_id, issue_id=issue_id,
+                       cycle_id=body.cycle_id, participant_ref=body.participant_ref,
+                       item_id=body.item_id, declared_by=user.id)
+    db.add(row); db.flush(); db.commit()
+    return {"id": row.id, "already": False}
+
+
+@router.post("/companies/{company_id}/issues/{issue_id}/status")
+def set_issue_status(company_id: int, issue_id: int, body: IssueStatusIn,
+                     member=Depends(require_company_admin),
+                     user: User = Depends(get_current_user), db=Depends(get_db)):
+    from . import issues as _iss
+    if body.status not in _iss.ISSUE_STATES:
+        # ⛔ THE REFUSAL NAMES THE VOCABULARY. A caller reaching for `rejected`
+        # is reaching for the recommendation's, and the message says why not.
+        raise HTTPException(422, f"{body.status!r} is not an issue state. An issue "
+                                 f"is {' | '.join(_iss.ISSUE_STATES)} — it cannot "
+                                 f"be rejected, because an issue you decline is "
+                                 f"still true.")
+    iss = db.query(Issue).filter_by(id=issue_id, company_id=company_id).first()
+    if iss is None:
+        raise HTTPException(404, "issue not found")
+    iss.status = body.status
+    iss.status_note = body.note
+    iss.status_changed_by = user.id
+    iss.status_changed_at = datetime.utcnow()
+    db.commit()
+    return {"id": iss.id, "status": iss.status, "note": _iss.STATE_NOTE[iss.status]}
+
+
+@router.post("/companies/{company_id}/issues/{issue_id}/initiative", status_code=201)
+def raise_initiative_for_issue(company_id: int, issue_id: int, body: IssueInitiativeIn,
+                               member=Depends(require_company_admin),
+                               user: User = Depends(get_current_user),
+                               db=Depends(get_db)):
+    """⭐⭐ THE INITIATIVE IS A RESPONSE TO THE ISSUE, NOT THE ISSUE PROMOTED.
+
+    The issue PERSISTS, linked, and moves to `addressed`. A proposal says *do
+    this thing*; an issue says *this is wrong and someone must decide what to do
+    about it* — and the deciding is the initiative, which may later be wrong
+    without the issue ceasing to be true.
+
+    ⭐ THE EVIDENCE TRAVELS. Ten comments naming one friction is the argument for
+    resourcing it, and that argument must survive the transition — so the
+    initiative's description carries the weight and the link back.
+    """
+    from . import issues as _iss
+    iss = db.query(Issue).filter_by(id=issue_id, company_id=company_id).first()
+    if iss is None:
+        raise HTTPException(404, "issue not found")
+    if iss.initiative_id:
+        raise HTTPException(409, "an initiative already answers this issue")
+    n = len(_iss.live_only(db.query(IssueComment)
+                             .filter_by(company_id=company_id, issue_id=issue_id).all()))
+    wb = _iss.weight_block(n=n, department_scoped=iss.department_id is not None)
+    # ⛔ THE EVIDENCE LINE RESPECTS THE FLOOR. A withheld weight must not be
+    # copied into an initiative description, which is not floored at all.
+    ev = (f"Raised from issue #{iss.id}. {n} contributing comment(s) declared."
+          if wb["publishable"] else
+          f"Raised from issue #{iss.id}. Contributing comment count withheld for "
+          f"anonymity at department grain.")
+    ini = Initiative(
+        company_id=company_id,
+        title=(body.title or iss.title)[:300],
+        description=((iss.description or "") + "\n\n" + ev).strip(),
+        source="issue", status="proposed", current_priority="medium",
+        importance="medium", urgency="medium",
+        owner_name=body.owner_name,
+        department_id=body.department_id or iss.department_id,
+        created_by=user.id, type="initiative")
+    db.add(ini); db.flush()
+    iss.initiative_id = ini.id
+    iss.status = "addressed"
+    iss.status_changed_by = user.id
+    iss.status_changed_at = datetime.utcnow()
+    audit(db, user.id, "issue_initiative_raised", "company", company_id,
+          detail=f"issue={iss.id} initiative={ini.id}")
+    db.commit()
+    return {"issue_id": iss.id, "issue_status": iss.status,
+            "initiative_id": ini.id, "weight": n,
+            "weight_block": wb, "evidence": ev}
 
 
 @router.post("/companies/{company_id}/initiatives/proposals/{pid}/adopt", status_code=201)

@@ -119,7 +119,10 @@ def test_every_attributed_model_is_either_a_source_or_named_not_a_decision():
                "Initiative", "ChangesetItem", "DepartmentAuthority",
                "PackRelease", "WatchEvent", "AssumptionEdit",
                "InitiativeLineLink", "InitiativeImpactDeclaration",
-               "AssignedFeedback"}
+               "AssignedFeedback",
+               # ⭐ §4u.1 ruling 4 — accepting an issue is a decision, and the
+               # sharpest kind: a considered position on a thing that stays true.
+               "Issue"}
     unclassified = attributed - carried - set(DR.NOT_A_DECISION)
     assert unclassified == set(), \
         f"attributed but neither carried nor excluded: {sorted(unclassified)}"

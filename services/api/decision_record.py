@@ -458,6 +458,37 @@ def src_assigned_feedback(db, cid):
     return out
 
 
+def src_issue_states(db, cid):
+    """⭐⭐ ACCEPTING AN ISSUE IS A DECISION, AND THE SHARPEST KIND.
+
+    "The company has chosen to live with this" is a considered position on a
+    thing that remains TRUE — an actor, a date and a note against a named
+    friction. ⛔ It is precisely the act that would otherwise vanish: an issue
+    routed through the initiative queue and rejected leaves "dismissed" in a
+    disposition log, which records the opposite of what happened.
+
+    ⭐ ONLY A DECIDED STATE IS CARRIED. `open` is the resting state and nobody
+    decided it, so a bare unaddressed issue is authorship, not a decision.
+    """
+    from .accounts import Issue
+    out = []
+    for i in (db.query(Issue).filter_by(company_id=cid)
+                .filter(Issue.status_changed_at.isnot(None)).all()):
+        if i.status == "open":
+            continue
+        verb = ("accepted — the company has chosen to live with it, and it "
+                "remains true" if i.status == "accepted"
+                else f"addressed by initiative {i.initiative_id}")
+        out.append(_d(
+            "issue_state", i.id, cid=cid, type_=f"issue_{i.status}",
+            decided_at=i.status_changed_at,
+            author=None,
+            actor_user_id=i.status_changed_by,
+            statement=f"issue “{(i.title or '')[:120]}” {verb}",
+            rationale=i.status_note))
+    return out
+
+
 SOURCES = {
     "override": src_overrides,
     "signoff": src_signoffs,
@@ -471,11 +502,18 @@ SOURCES = {
     "line_link": src_line_links,
     "impact_declaration": src_impact_declarations,
     "assigned_feedback": src_assigned_feedback,
+    "issue_state": src_issue_states,
 }
 
 # ⭐ ATTRIBUTED, BUT AUTHORSHIP RATHER THAN DECISION — named with the reason,
 # because a silent omission and a considered exclusion look identical.
 NOT_A_DECISION = {
+    # ⭐ THE GROUPING IS AN ASSERTION, NOT A JUDGEMENT ABOUT THE COMPANY. Saying
+    # two comments name the same friction is editorial work on evidence; the
+    # DECISION is what the company then does about the issue, which `issue_state`
+    # carries. Same reasoning as the four link tables above.
+    "IssueComment": "declaring two comments the same finding is editorial "
+                    "grouping of evidence, not a decision about the company",
     "Objective": "authoring an objective is drafting, not deciding",
     "KeyResult": "same — the DECISION is the initiative or disposition it drives",
     "KpiPlan": "a plan row is a target, not a decision about one",
