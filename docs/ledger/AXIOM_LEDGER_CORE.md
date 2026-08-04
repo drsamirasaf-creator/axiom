@@ -17747,3 +17747,89 @@ resolve, not for me.**
 
 **2014 passed** (was 2000) / 1 skipped / 3 xfailed · 29/29 gates · 14 new tests,
 12 red before.
+
+# ⭐⭐ §8q · THE COST-STRUCTURE TIER, SCOPED (4 Aug)
+
+REPORT ONLY. Full scope:
+`docs/reports/cost-structure-tier-scope-2026-08-04.md`.
+
+## COST-TO-SERVE CONSUMES T2'S ALLOCATOR — AND THE HAZARD IS ELSEWHERE
+
+It is `allocate(service_pool, drivers_by_customer, method="activity_based")` —
+T2's own function, at grade **B**, which nothing has used yet, on the customer
+axis. It DUPLICATES only if it grows its own spreading logic, and there is no
+analytical reason for one.
+
+⛔ **THE REAL HAZARD IS DOUBLE-COUNTING THE POOL, NOT DUPLICATING THE
+OPERATION.** A support pool allocated to PRODUCT lines and also to CUSTOMERS
+charges the same cost twice across two parallel decompositions. T1 already makes
+that structurally impossible — `ax_dimension_map`'s existence is the licence to
+combine two dimension types and `reconcile_across` REFUSES without it — but only
+if cost-to-serve is built on that reconciler rather than beside it.
+
+## ⭐ THE DRIVER VALUE COLUMN IS THE NEAR-MISS
+
+T4.1 already collects `Allocation Driver` and `Driver Value` — the driver's NAME
+and its company TOTAL. Cost-to-serve needs the identical column **counted per
+customer**. A finer grain of a column that exists, not a new concept.
+
+## AVOIDABILITY: WHAT IS DECLARED, AND WHAT MAY BE COMPUTED FROM IT
+
+Declared per pool per line: **Avoidable Amount · Notice Period (months) ·
+Capacity Released · Capacity Re-usable?**
+
+⭐ Computable WITHOUT inference: **stranded = allocated charge − avoidable**
+(the complement of a declaration is not an inference), exit economics, stranded
+redistribution through T2's allocator, and time-phased avoidability from the
+notice period.
+
+⛔ Never inferred: the avoidable share itself, whether freed capacity is re-sold,
+whether customers of an exited line take others with them.
+
+## ⭐⭐ THE §22 CORRECTIVE HAS AN UNSTATED PREMISE, AND IT FAVOURS ONE ANSWER
+
+T4.2 says discontinuing the line "would move its allocated share onto the lines
+that remain — the company would be worse off, not better." **That assumes NONE
+of the allocated cost disappears with the line** — the most favourable possible
+case for keeping it. If 80% were avoidable the conclusion could flip.
+
+The direction is right (allocated cost is predominantly shared, which is why it
+was allocated), but **the certainty is not earned by anything AXIOM has been
+told**. Proposed interim wording states the assumption and asks for the
+declaration; the quantified form waits for T5.1. **Recorded as a finding, not
+acted on — this lane is report-only.**
+
+## RESTRUCTURING: THE BOUNDARY IS CROSSED TWICE, FOR DIFFERENT REASONS
+
+✅ Survives §8h·2: cost saved by a DECLARED action, one-off cost, UNDISCOUNTED
+payback, stranded redistribution, step-fixed crossings.
+⛔ Refused for a RESPONSE: whether service quality falls and customers leave;
+the optimal scale of the cut.
+⛔ Refused for OWNERSHIP: NPV/IRR — enterprise value is `prescience_decision`'s.
+
+⭐ **Conflating the two refusals would let one be argued away with the other's
+counter-argument.** AXIOM reports the economics of a restructuring the client
+has described; it never recommends its size.
+
+## ⛔ TWO PLACES THE DOCUMENT SPECIFIES WHAT AXIOM FORBIDS
+
+1. **§4.3's customer hierarchy ends at "fully allocated profitability, clearly
+   labelled".** R1 stops at allocated EBIT and forbids per-line PBT/NPAT EVEN
+   LABELLED; the customer axis is the same grain question with the same answer.
+2. **§4.4 offers an "Unprofitable customer" classification** — which §22 and
+   §12.1 of the SAME DOCUMENT forbid two hundred lines earlier. **The document
+   contradicts itself**, and the resolution is already ruled: the label may
+   follow from contribution and avoidability, never from allocated profit alone.
+
+## SEQUENCE
+
+**T5.1 avoidability** (Cost Avoidability sheet) — first, because it is the
+smallest declaration with the largest effect and needs no new axis.
+**T5.2 cost-to-serve** — needs the customer axis populated.
+**T5.3 restructuring** — last; most actionable, inputs most contestable.
+
+⚠️ **MERIDIAN BLOCKS UPSTREAM OF ALL OF IT for the customer axis.** Its
+receivables, inventory and payables are `not supplied` even at COMPANY grain
+(§8p), and a per-customer receivable that reconciles to no company balance has
+nothing to check it against. ⭐ T5.1 is the only tier here that needs no new
+data source — only a declaration.
