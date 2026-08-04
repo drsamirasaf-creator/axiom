@@ -228,11 +228,30 @@ def test_the_ceiling_is_respected_and_never_inferred():
 
 def test_the_optimiser_reports_contribution_and_never_enterprise_value():
     """⭐⭐ THE BOUNDARY THAT KEEPS TWO OPTIMISERS SAFE (§8k). A mix decision to
-    be VALUED enters the prescience move library and is valued once, there."""
+    be VALUED enters the prescience move library and is valued once, there.
+
+    ⭐⭐ AN AST READ, EXCLUDING DOCSTRINGS — §III.9. This scanned raw source and
+    went red the moment T4.5 added a docstring saying "the short-term borrowing
+    rate, NOT WACC". A guard that punishes a module for stating the rule it
+    obeys is a guard someone deletes; it now reads the executable body."""
+    import ast
     import inspect
-    src = inspect.getsource(M)
+    tree = ast.parse(inspect.getsource(M))
+    docs = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef)):
+            doc = ast.get_docstring(node, clean=False)
+            if doc:
+                docs.add(doc)
+    executable = "\n".join(
+        ast.unparse(n) for n in ast.walk(tree)
+        if isinstance(n, ast.Constant) and isinstance(n.value, str)
+        and n.value not in docs).lower()
+    names = {n.id.lower() for n in ast.walk(tree) if isinstance(n, ast.Name)}
+    names |= {n.attr.lower() for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
     for banned in ("enterprise_value", "raev", "cvar", "discount_rate", "wacc"):
-        assert banned not in src.lower(), f"{banned!r} in the mix optimiser"
+        assert banned not in executable, f"{banned!r} in a mix optimiser string"
+        assert banned not in names, f"{banned!r} used in the mix optimiser"
 
 
 # ── 6 · the transport plan ─────────────────────────────────────────────────

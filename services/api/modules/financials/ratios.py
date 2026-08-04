@@ -371,3 +371,37 @@ def per_constrained_unit(contribution_per_unit: Number,
     """
     from .engines import _n
     return _n(lambda c, u: c / u, contribution_per_unit, consumption_per_unit)
+
+
+def term_financing_cost(revenue: Number, funding_rate: Number,
+                        days: Number, days_in_year: float = 365.0) -> Number:
+    """Revenue financed for `days` at `funding_rate`. Absence propagates.
+
+    ⭐ THE DIVISION IS BY A CALENDAR CONSTANT, not by a scale, so this is not a
+    margin — but it lives here anyway, with every other division. Putting it in
+    `managerial.py` would make that module a divider and the exemption would be
+    a fact about a regex rather than a decision anyone made.
+
+    ⭐⭐ THE RATE IS THE SHORT-TERM BORROWING RATE (CORE §8l·2), supplied by the
+    caller. This function neither knows nor defaults it: a receivable is
+    short-term working capital, and charging it at the blended long-run cost of
+    capital overstates its cost by the term premium.
+    """
+    from .engines import _n
+    return _n(lambda r, k, d: r * k * (d / days_in_year),
+              revenue, funding_rate, days)
+
+
+def cycle_days(receivable_days: Number, inventory_days: Number,
+               payable_days: Number) -> Number:
+    """Days receivable + days inventory − days payable. Absence propagates.
+
+    ⭐⭐ IT DOES NOT RESTATE `axiom.cash_conversion_cycle`. The registry ratio is
+    the COMPANY figure, built from company-level balances; this is the same
+    ARITHMETIC applied at a per-line grain, where the inputs are different
+    quantities. One owner for the operation; the company figure is still read
+    from the registry and never recomputed.
+    """
+    from .engines import _n
+    return _n(lambda r, i, p: r + i - p,
+              receivable_days, inventory_days, payable_days)

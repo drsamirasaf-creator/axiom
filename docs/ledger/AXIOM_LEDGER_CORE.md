@@ -17644,3 +17644,106 @@ lane was told not to make. **Reported, not done.**
 7 red before · browser 3 modes green · `pools_reconcile` untouched · no margin
 outside `ratios.py`, no status outside `weakest_status`, no arithmetic added to
 the endpoint.
+
+# ⭐⭐ §8p · T4.5 — WORKING CAPITAL, DIMENSIONALLY (4 Aug)
+
+Report: `docs/reports/t4-5-working-capital-2026-08-04.md`. No seed, no template
+sheet built — labels only.
+
+## ⭐⭐ THE SENTENCE THE TIER BUILDS TOWARD, PRODUCED
+
+> *"Control Electronics is profitable on paper and pays in 90 days. Financing
+> that at the company's short-term borrowing rate costs 3.6 — **6.7% of the
+> contribution the line earns**."*
+
+A currency figure alone leaves the reader to work out whether it matters; the
+share of the line's OWN contribution is what makes it actionable.
+
+## ⭐ THE RATE IS ALREADY COLLECTED
+
+`Pre-Tax Cost of Debt` on the Company sheet (`po.cost_of_debt`) — client
+supplied, already parsed. **No new field is needed for the charge itself, only
+for the balances it is charged on.** Absent, the charge declines and names that
+row. ⛔ A zero default would report that money costs nothing to finance, the most
+confident possible wrong answer.
+
+## WHAT IS COMPUTABLE TODAY, AND WHAT IS NOT
+
+| capability | state |
+|---|---|
+| the financing charge | **computable the moment days-outstanding arrive** — the rate is already on file |
+| cash conversion cycle by line | **declines** — receivables, inventory and payables are collected at COMPANY level only |
+| company CCC / DSO / DIO / DPO | **registry-owned; consumed, never restated** |
+
+⭐ THE GRAIN IS THE PROBLEM, NOT THE ARITHMETIC. `bs.receivables`,
+`bs.inventory` and `bs.payables` exist as vocabulary and are `stored` at company
+grain; nothing collects them per line or per customer.
+
+## THE EXTENSION, AS LABELS ONLY — AND MARKED UNBUILT
+
+`WORKING_CAPITAL_COLUMNS` in `template_policy` names a **Working Capital** sheet:
+Period · Frequency · Line Code · **Receivables** · **Inventory** · **Payables** ·
+Agreed Payment Terms (days) · Actual/Plan · Notes.
+
+⭐⭐ **`WORKING_CAPITAL_SHEET_BUILT = False`, and it must stay False until the
+sheet ships.** T4.1's lesson was that a capability cannot decline in a column
+name that does not exist; the inverse hazard is a label that exists in policy
+while the sheet does not, which is a state somebody has to be able to SEE rather
+than infer. A later lane builds the sheet from THIS list rather than a second
+one that drifts.
+
+## ⚠️ §III.9 FIRED THREE TIMES IN ONE LANE
+
+Three separate guards matched SOURCE TEXT and went red on prose that states the
+rule being obeyed:
+
+1. the new boundary test, on the docstring saying "the short-term borrowing
+   rate, **NOT WACC**";
+2. the restatement test, on the docstring saying it does **not** restate
+   `axiom.cash_conversion_cycle`;
+3. **T4.2's existing optimiser test**, which had been green for two lanes and
+   went red the moment T4.5 added a docstring mentioning WACC.
+
+All three now read the AST body with docstrings excluded. ⭐ And the subtraction
+needs `ast.get_docstring(node, clean=False)`: the default DEDENTS, so the
+cleaned text never equals the raw Constant and the exclusion silently removes
+nothing — the guard then fires on the very prose written to explain it.
+
+## ⭐ THE CAPABILITY NAME IS PART OF THE DECLINE VOCABULARY
+
+The first decline read *"...to compute `cash_conversion_cycle_by_line`"* — the
+columns were right and the **verb phrase was an engine token**. `CAPABILITY_
+LABELS` now covers every T4 capability, and a test asserts no decline in the
+module names one.
+
+## BOUNDARIES HELD
+
+⛔ The charge is a **cost, not a valuation** — asserted by AST that it never uses
+`enterprise_value`, `raev`, `npv`, `discount` or `wacc`. A working-capital
+decision to be VALUED enters the move library and is valued once, there (§8k).
+No margin outside `ratios.py` (two new divisions added there). No status outside
+`weakest_status`.
+
+## WHAT A SEED WOULD NEED — NOT SEEDED HERE
+
+Receivables, inventory and payables **per line per period**, plus agreed terms.
+Meridian carries none: its `bs.receivables`, `bs.inventory` and `bs.payables`
+are `not supplied` even at company level, which is why the ratio surface already
+renders *"Quick Ratio — needs of which: Inventory (not supplied)"*. **The
+company-level lines must arrive before the dimensional ones can mean anything.**
+
+## ⚠️ AN UPSTREAM FRONTEND COMMIT, SURFACED NOT MERGED-OVER
+
+Shadow check found `origin/main` AHEAD of local on the frontend: `b24c951`
+"Built Profitability charts" (+ `ed87344`), adding
+`src/components/profitability/charts.tsx`. **Inspected before proceeding:** the
+six tabs are unchanged, every pinned browser needle survives, and the routeTree
+is still the LOOSE variant with `/profitability` registered. This lane is
+backend-only, so local was fast-forwarded and nothing was overwritten. **The
+overlap with §8k's ranked-bar/waterfall specification is for the human to
+resolve, not for me.**
+
+## VERIFIED
+
+**2014 passed** (was 2000) / 1 skipped / 3 xfailed · 29/29 gates · 14 new tests,
+12 red before.

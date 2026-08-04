@@ -629,3 +629,88 @@ REFUSED = {
             "allocated EBIT alone. AXIOM reports the economics; the decision "
             "is management's.")},
 }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐⭐ 7 · WORKING CAPITAL, DIMENSIONALLY (T4.5)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ⭐⭐ THE FINDING: a line that looks profitable and finances itself on the
+# company's balance sheet. Working capital nobody attributed to it is real
+# money, and it is invisible on every panel built so far.
+#
+# ⛔ THE CHARGE IS A COST, NOT A VALUATION. It reports against contribution and
+# margin and never against enterprise value — the same boundary the mix
+# optimiser holds (§8k). A working-capital decision to be VALUED enters the
+# prescience move library and is valued once, there.
+
+_WC_SHEET = policy.WORKING_CAPITAL_SHEET_NAME
+_COMPANY_SHEET = "Company"
+
+
+def term_financing_charge(revenue, days_outstanding, funding_rate,
+                          contribution=None, line="This line"):
+    """What it costs to finance a line's receivables for the days they are out.
+
+    ⭐⭐ THE RATE IS THE SHORT-TERM BORROWING RATE, NOT WACC (CORE §8l·2), and
+    it is the client's own `Pre-Tax Cost of Debt` — already collected, already
+    parsed. AXIOM never infers a borrowing rate; where the row is blank the
+    charge DECLINES and names the row. A zero default would report that money
+    costs nothing to finance, which is the most confident possible wrong answer.
+    """
+    if revenue is None:
+        return _needs("term_financing_charge",
+                      {_column("Income Statement", "Revenue")})
+    if days_outstanding is None:
+        return _needs("term_financing_charge",
+                      {_column(_WC_SHEET, "Receivables")})
+    if funding_rate is None:
+        return _needs("term_financing_charge",
+                      {_column(_COMPANY_SHEET, policy.FUNDING_RATE_ROW)})
+    value = ratio_lib.term_financing_cost(revenue, funding_rate,
+                                          days_outstanding)
+    out = _ok("term_financing_charge", value, [D.OBSERVED, D.DIRECTLY_DERIVED])
+    share = ratio_lib.share(value, contribution) if contribution else None
+    out["share_of_contribution"] = share
+    # ⭐ THE SENTENCE IS THE PRODUCT. A currency figure alone leaves the reader
+    # to work out whether it matters; the share of the line's OWN contribution
+    # is what makes it actionable.
+    if share is None:
+        out["statement"] = (
+            f"{line} carries {days_outstanding:,.0f} days of receivables, which "
+            f"cost {value:,.1f} to finance at the company's short-term "
+            f"borrowing rate.")
+    else:
+        out["statement"] = (
+            f"{line} is profitable on paper and pays in "
+            f"{days_outstanding:,.0f} days. Financing that at the company's "
+            f"short-term borrowing rate costs {value:,.1f} — "
+            f"{share:.1%} of the contribution the line earns.")
+    return out
+
+
+def cash_conversion_cycle_by_line(receivable_days, inventory_days,
+                                  payable_days):
+    """Days receivable + days inventory − days payable, at LINE grain.
+
+    ⭐⭐ IT DOES NOT RESTATE `axiom.cash_conversion_cycle`. The registry owns the
+    COMPANY figure and is read for it; this is the same arithmetic over
+    per-line balances, which are different quantities at a different grain.
+
+    ⭐ ALL THREE ARE COLLECTED AT COMPANY LEVEL AND NONE PER LINE, so on every
+    dataset AXIOM holds today this declines — and it declines naming the columns
+    a client would have to supply rather than the tokens the engine uses.
+    """
+    missing = set()
+    if receivable_days is None:
+        missing.add(_column(_WC_SHEET, "Receivables"))
+    if inventory_days is None:
+        missing.add(_column(_WC_SHEET, "Inventory"))
+    if payable_days is None:
+        missing.add(_column(_WC_SHEET, "Payables"))
+    if missing:
+        return _needs("cash_conversion_cycle_by_line", missing)
+    return _ok("cash_conversion_cycle_by_line",
+               ratio_lib.cycle_days(receivable_days, inventory_days,
+                                    payable_days),
+               [D.OBSERVED, D.DIRECTLY_DERIVED])

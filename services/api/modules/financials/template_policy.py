@@ -283,6 +283,16 @@ CAPABILITY_LABELS = {
     "incremental_margin": "incremental margin",
     "growth_quality": "growth quality",
     "working_capital_intensity": "working-capital intensity",
+    "cash_conversion_cycle_by_line": "the cash conversion cycle for this line",
+    "term_financing_charge": "the cost of financing this line's receivables",
+    "cost_behaviour_coverage": "contribution",
+    "constrained_mix": "the constrained product mix",
+    "transport_plan": "the recommended shift in mix",
+    "contribution_per_constrained_unit": "contribution per unit of the constraint",
+    "break_even": "break-even",
+    "margin_of_safety": "the margin of safety",
+    "contribution_operating_leverage": "operating leverage from contribution",
+    "covers_variable_cost": "whether this line covers its variable cost",
 }
 
 
@@ -297,3 +307,48 @@ def needs_phrase(token):
 
 def capability_phrase(capability):
     return CAPABILITY_LABELS.get(capability, capability)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐⭐ T4.5 — THE WORKING-CAPITAL EXTENSION. LABELS ONLY; NO SHEET IS BUILT.
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ⭐⭐ THE LABELS EXIST BEFORE THE SHEET, DELIBERATELY. T4.1 recorded that a
+# capability cannot decline in a column name that does not exist — the naming
+# resolver maps tokens to columns the WORKBOOK CONTAINS. Working capital needs
+# receivables, inventory and payables AT LINE OR CUSTOMER GRAIN, and no sheet
+# collects them. Declaring the labels here lets the capability decline in the
+# words a client will eventually see, and lets a later lane build the sheet from
+# THIS LIST rather than from a second one that drifts.
+#
+# ⛔ `WORKING_CAPITAL_SHEET_BUILT` is False and must stay False until the sheet
+# ships. A label that exists in policy while the sheet does not is a state
+# somebody has to be able to see, not a thing to infer.
+
+WORKING_CAPITAL_SHEET_NAME = "Working Capital"
+WORKING_CAPITAL_SHEET_BUILT = False
+
+WORKING_CAPITAL_COLUMNS = [
+    ("Period", "The period this row belongs to. Same labels as the statement "
+               "sheets."),
+    ("Frequency", "annual, quarterly or monthly. Must match the statements."),
+    ("Line Code", "The product, segment or customer code this row is about — "
+                  "the same code you use on the Segments & Products sheet."),
+    ("Receivables", "What this line or customer owed you at the period end. "
+                    "Unlocks days sales outstanding and the financing charge."),
+    ("Inventory", "Stock held for this line at the period end. Unlocks days "
+                  "inventory and the cash conversion cycle."),
+    ("Payables", "What you owed suppliers for this line at the period end. "
+                 "Unlocks days payable and completes the cycle."),
+    ("Agreed Payment Terms (days)", "The terms you granted, in days — 30, 60, "
+                                    "90. Optional: it lets AXIOM separate terms "
+                                    "you agreed from days customers actually "
+                                    "take."),
+    ("Actual / Plan", "actual or plan. Defaults to actual."),
+    ("Notes", "Optional. Never imported as data."),
+]
+
+# The company-sheet row that supplies the short-term borrowing rate (§8l·2).
+# ⭐ ALREADY COLLECTED AND ALREADY PARSED — no new field is needed for the
+# charge itself, only for the balances it is charged on.
+FUNDING_RATE_ROW = "Pre-Tax Cost of Debt"
