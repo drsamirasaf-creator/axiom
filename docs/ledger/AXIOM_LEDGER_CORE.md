@@ -18432,3 +18432,87 @@ one-line flip — **but it is a ruling, and worth nothing until CI can reach a
 corpus.** A gate that can only fail on one laptop is `eb89ee8`'s defect reversed.
 
 **2045 passed** (from 2035), 1 skipped, 3 xfailed. 29 gates CI-shaped, 0 non-zero.
+
+# ⭐⭐ §8y · THE DEPARTMENT PAGE CONTRADICTED THE ORG CHART (4 Aug)
+
+Backend `78ed3b7` · frontend `af7e067`.
+
+## ⭐⭐ TWO CONCEPTS, ONE SENTENCE, AND IT DENIED WHAT THE PAGE SHOWED
+
+Meridian → Structure → Information Technology, on ONE screen:
+
+    Accountable: Sofia Ianni (Chief Technology Officer)
+    "No CXO is assigned to this department, so there is no one to sign off."
+
+**`Department.head_name` is who RUNS it. `ax_department_authority` is who may
+SIGN FOR it.** Both lines were ours, both true of different things — and a reader
+cannot tell whether the org chart is wrong, the page is wrong, or the head was
+quietly removed.
+
+`authority_note()` states both without either denying the other, and the head now
+travels as `head_name`/`head_title` FIELDS so no surface parses prose:
+
+    Sofia Ianni (Chief Technology Officer) runs this department;
+    nobody yet holds sign-off authority for it.
+
+⛔ **AND `never_assigned` IS NO LONGER SPOKEN AS `vacant`.** A post nobody has
+held and a post someone left are different facts; only the second has a date.
+`department_state` always distinguished them — **the sentence flattened them.**
+
+## ⭐ WHY AUTHORITY WAS EMPTY — NOT A BROKEN GRANT PATH
+
+**Zero rows was CORRECT, from two structural facts:**
+
+1. ⭐ **MERIDIAN HAD ZERO MEMBERSHIPS.** `grant_department` needs a `user_id`;
+   the panel builds candidates from `/companies/{id}/roster`. **Nobody to grant
+   to** — the panel rendered and offered an empty list.
+2. ⭐ **THE ONLY PERSON WHO OPENS MERIDIAN IS PLATFORM STAFF**, refused by BOTH
+   `post_grant` and `grant_department` — deliberately, because granting is how
+   authoring is obtained.
+
+The endpoints work. **The path had simply never been exercisable there.**
+
+## THE SEED — THROUGH THE PRODUCTION WRITER
+
+⭐⭐ **`grant_department()`, NOT INSERTs.** Direct rows would bypass the
+self-grant and platform-staff refusals and seed **a state the UI cannot create** —
+a demo of sign-off working in a configuration no customer could reach.
+
+**IT + Finance hold; five left unheld and NAMED in the script** — a department
+with no holder cannot be signed off by anyone including the admin, **and that
+refusal is the other half of the demonstration.**
+
+⛔ Seeded users are `password_hash=None`, `link_only=True` — identities that hold
+authority, **not logins**. The script refuses unless company id AND name match
+(**it fired once, correctly, before any write**) and contains no destructive verb.
+
+**§7o HOLDS: both Meridian pack hashes byte-identical before and after.**
+
+## ⭐⭐ THE CEO'S CARD — HONEST ABSENCE, DISHONESTLY RENDERED
+
+**The absence is real.** Cycle 37 (the only one with `sentiment_available`)
+covers six departments by alias — Finance 13, Operations 10, Sales & Marketing 9,
+Technology 7, Supply Chain 6, HR 3 — and **Executive Management is not among
+them. It was not surveyed.**
+
+⛔ **BUT THE CARD TOLD IT THE WRONG STORY.** `grey = !sen || sen.below_floor ||
+!sen.rag` collapsed THREE states into one dash labelled **"insufficient
+responses"** — the WITHHELD story told to a department that never responded, the
+exact collapse `cei-band.ts` forbids and which the CEI chip on the SAME CARD
+already avoids.
+
+⭐ **THE DISCRIMINATOR WAS ALREADY IN THE PAYLOAD**: `sentiment.n`. `n === 0` is
+absence, `0 < n < KFLOOR` is suppression. Now "None" / *"no responses from this
+department in this cycle"*.
+
+## BROWSER PROOF — AND ITS LOAD CONTROL EARNED ITS PLACE
+
+⭐⭐ **THE FIRST RUN PASSED TWO ASSERTIONS AGAINST AN EMPTY BODY.** Every check is
+"the bad sentence is absent", and **on a blank page they all pass** — green over
+zero content. `active-company.ts` is a SESSION-ONLY store with **no localStorage
+key**, so priming storage seated the token and not the company.
+
+⛔ **The fix was to seat the company through the switcher as a user does, NOT to
+weaken the assertions.** Final: **0 failures**, 7 org cards, both departments.
+
+**2061 passed** (from 2045), 29 gates non-zero 0, typecheck + lint clean.
