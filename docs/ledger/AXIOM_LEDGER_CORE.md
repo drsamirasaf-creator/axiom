@@ -18614,3 +18614,190 @@ step.
 ⛔ **G2 IS NOT CLOSED.** *An untested backup is a hypothesis* — AXIOM now holds a
 **smaller** one: the backups exist, are scheduled, and the restore path
 demonstrably runs. **Whether what it produces serves is still unknown.**
+
+# ⭐⭐ §4v · THE DEPARTMENTAL STRATEGY MAP — DESIGN (5 Aug)
+
+**Design entry. Nothing built, no schema changed.** Measured live on Meridian.
+
+## ⭐⭐ 1 · TWO STATE KINDS, AND ONLY ONE IS A CLAIM
+
+| | **LAYOUT** | **LINKS** |
+|---|---|---|
+| what it is | presentation | ⭐ **the model** |
+| node position, collapse, zoom, hidden kinds | ✅ | — |
+| an edge between an objective and a KPI | — | ✅ **a declared linkage** |
+| governed by | nothing | ⭐ **B10/B11 — declared, never inferred** |
+| carries an actor | no | ⭐ **`created_by` + `created_at`** |
+| where it lives today | ⛔ **NOWHERE** | ⭐ **four existing link tables** |
+
+⭐ **Drawing an edge is an assertion a CXO is making, and it must land as a row
+with their name on it.** A cosmetic-only map lets the picture and the data
+disagree — the two-surfaces-one-concept class.
+
+### ⛔ THE REMOVAL HALF IS NOT REPRESENTABLE TODAY — AND THIS NEEDS A RULING
+
+The dispatch says *"an edge they remove revokes one."* **It cannot, as the
+tables stand:**
+
+| table | `revoked_at`? |
+|---|---|
+| `ax_initiative_line_links` (B10) | ⭐ **YES** |
+| `ax_kpi_objective_links` | ⛔ **NO** |
+| `ax_kpi_initiative_links` | ⛔ **NO** |
+| `ax_goal_initiative_links` | ⛔ **NO** |
+| `ax_kr_initiative_links` | ⛔ **NO** |
+
+⭐⭐ **B10's OWN TABLE FOLLOWS THE REVOKE DISCIPLINE AND THE FOUR THE MAP WOULD
+EDIT DO NOT.** Removing an edge there is a **DELETE**, which destroys the
+declaration, its declarer and its date — the exact loss `DepartmentAuthority`
+avoids with *"revocation is a timestamp, not a deletion."*
+
+⛔ **A schema change is out of scope here. RULING OWED: does the map's revoke
+add `revoked_at` to four tables, or is edge removal refused until it does?**
+Shipping a DELETE would be the first place this codebase destroys a declaration.
+
+### ⭐ WHERE LAYOUT SHOULD LIVE — ALSO A RULING
+
+There is **no layout store and no graph library** (`package.json` carries no
+reactflow / dagre / elk / cytoscape). `ax_dataset_prefs` is
+`(company, dataset, key, value)` — **dataset-scoped, which is the wrong grain**;
+a strategy map belongs to a department, not to an upload.
+
+⛔ **RULING OWED: is layout PER-USER or PER-DEPARTMENT?** Shared layout is a
+second thing the CXO authors; per-user layout means two people describing the
+same strategy see different pictures. **Neither is obviously right.**
+
+## ⭐⭐ 2 · WHAT ALREADY EXISTS — THE OVERLAP IS LARGE
+
+**Eighth lane to find work under a name nobody searched.**
+
+⭐⭐ **`causal_map.py` (a682e23) ALREADY BUILDS A LABELLED GRAPH OVER THESE
+TABLES.** `build()` returns `edges`, `nodes`, per-label counts — and:
+
+    isolated = [{"node": n, "absent": "no declared relationship reaches this node"}]
+
+⭐ **ITEM 3'S REQUIREMENT IS ALREADY IMPLEMENTED**, with the reasoning recorded:
+*"ABSENCE DECLARES. A map that silently omits an unconnected node tells a reader
+the company has no such driver."*
+
+| exists | missing |
+|---|---|
+| four link tables, `source`/`flagged_absent`/`created_by`/`created_at` | **department scoping** on the map |
+| the edge builder, three labels, every edge carries its basis | ⛔ **any WRITE path — the map is read-only** |
+| isolated-node computation | layout, and a graph renderer |
+| `can_author` — the full authority rule | node destinations (§4) |
+
+⭐ **Meridian's 41 `kpi_objective_links` are ALL `source='in_app'` with a
+`created_by` on every row and ZERO `flagged_absent`.** The declared-link
+machinery is not theoretical — **it is already being used through the product.**
+
+## ⭐⭐ 3 · UNCONNECTED KPIs — MEASURED, AND THE PREMISE CORRECTED
+
+| department | KPIs | objectives | KRs | initiatives | KPI→obj | ⭐ **UNLINKED** |
+|---|---|---|---|---|---|---|
+| Executive Management | 6 | 5 | 10 | 2 | 6 | **0** |
+| Finance and Accounting | 7 | 7 | 14 | 2 | 6 | **1** |
+| Operations | 8 | 7 | 14 | 2 | 6 | **2** |
+| Sales & Marketing | 7 | 7 | 14 | 1 | 5 | **2** |
+| **Information Technology** | **7** | **5** | **10** | **2** | **6** | ⭐ **1** |
+| Supply Chain and Logistics | 7 | 5 | 10 | 2 | 6 | **1** |
+| Human Resources | 7 | 5 | 10 | 2 | 6 | **1** |
+| **MERIDIAN** | **49** | **41** | **82** | 15 | 41 | ⭐⭐ **8** |
+
+⭐ **The dispatch says IT has 7 KPIs and 3 objectives. The 7 is right; the
+objective count is 5** — 2 Amber and 3 Green, unarchived. Reported rather than
+adopted.
+
+### ⛔ AND TWO LAYERS OF THE MAP ARE EMPTY
+
+| edge | Meridian | global |
+|---|---|---|
+| KPI → objective | **41** | 148 |
+| KPI → initiative | **41** | 41 |
+| goal → initiative | ⛔ **0** | 3 |
+| KR → initiative | ⛔ **0** | ⛔ **0** |
+| initiative → statement line (B10) | ⛔ **0** | ⛔⭐ **0 — built, never used** |
+| ⭐ KRs carrying a `kpi_key` | ⛔ **0 of 82** | — |
+
+⭐⭐ **THE MAP AS SPECIFIED IS objectives → KRs → KPIs → initiatives, AND THE
+KR LAYER HAS NO EDGES AT ALL.** Every one of Meridian's 82 key results is
+unlinked in both directions. **A map rendered today would show KRs as a row of
+isolated nodes** — which is honest, and is also the finding.
+
+## ⭐ 4 · DRILL-DOWN — NO NODE KIND HAS A DESTINATION TODAY
+
+| node | where it renders | addressable? |
+|---|---|---|
+| objective | `target-state.tsx`, `dashboard.tsx`, `department.$deptId.tsx` via `OkrPanels` | ⛔ **no route, no deep link** |
+| key result | same panels | ⛔ **no** |
+| KPI | ⭐ `KpiDrillDown` — an **inline expander** at `department.$deptId.tsx:704` | ⛔ **not addressable** |
+| initiative | `initiatives.tsx` (list), `initiative-impact.tsx` | ⛔ **`validateSearch` carries `create`, not an id** |
+
+⭐⭐ **"No card is a dead end" is currently FALSE FOR ALL FOUR.** Every node kind
+is a panel inside a larger page; none can be linked to. The work is four
+destinations (or four deep-link params) — **and it is the largest unbuilt piece
+in this design, larger than the graph itself.**
+
+## ⭐ 5 · WHO MAY EDIT — THE RULE EXISTS AND NEEDS NO INVENTION
+
+`can_author()` already encodes exactly the three refusals:
+
+| actor | verdict |
+|---|---|
+| the department's authority holder (`ax_department_authority`) | ⭐ **may edit** — IT and Finance are seeded (§8y) |
+| a viewer | read-only; no grant → `department_authority` returns **False** |
+| ⭐ **a CXO of ANOTHER department** | ⛔ **refused** — no cross-department authoring |
+| ⭐⭐ **an admin with no department authority** | ⛔ **REFUSED** — *"may GRANT authority but never exercise it"* |
+| ⭐⭐ **platform staff** | ⛔ **REFUSED EXPLICITLY**, despite the operator bypass |
+
+⭐ **Five of Meridian's seven departments have no holder, so on those the map is
+read-only for everyone — including the admin.** That is the granting rule
+working, not a gap.
+
+### ⛔ BUT ONE RULING IS OWED, AND IT IS NOT SMALL
+
+`can_author` governs **overriding a displayed figure** (§4x). **Declaring that a
+KPI serves an objective is a different act** — it changes structure, not a
+number, and it is not obvious that the two require the same permission.
+`TARGET_SCOPES` is `("department",)` and the function refuses anything else.
+
+⛔ **RULING OWED: is linkage-editing the same authority as figure-overriding?**
+Assuming yes is convenient and may well be right — **it is still a decision,
+and this entry does not make it.**
+
+## ⭐⭐ 6 · PRESENTATION — RECOMMEND THE CONSTRAINED HIERARCHY
+
+⭐ **RECOMMENDED: a constrained, auto-laid-out hierarchy that the CXO adjusts
+within — NOT a free canvas.** Four reasons:
+
+1. ⭐⭐ **THE MODEL IS ALREADY A FOUR-LAYER DAG.** A free canvas admits pictures
+   the model cannot express, and the first thing a user does with one is draw a
+   relationship the schema has no row for.
+2. ⭐⭐ **ON A FREE CANVAS, POSITION BECOMES MEANING.** Two boxes side by side
+   read as related. **The picture then carries information the data does not —
+   precisely the two-surfaces-one-concept failure item 1 exists to prevent**, and
+   it would arrive through layout rather than through edges.
+3. ⭐ **AUTO-LAYOUT MEANS A NEW DECLARED LINK APPEARS WITHOUT ANYONE MOVING
+   ANYTHING.** A link declared elsewhere in the product shows up here
+   immediately. **On a canvas it would land at (0,0) or nowhere**, and the map
+   would silently drift from the model it claims to show.
+4. ⭐ **IT IS LESS CODE.** A layered DAG layout over ≤30 nodes is a sort and a
+   column assignment; a canvas is drag, snap, collision, undo, persistence and
+   z-order — and the persistence is the ruling from §1 nobody has made.
+
+⛔ **THE HONEST COST:** auto-layout reflows when the graph changes, which is
+disorienting. **Mitigation: order nodes by a stable key so a reflow moves only
+what changed.** A free canvas trades that for a worse problem.
+
+⭐ **A free canvas is a document tool. A constrained map stays a VIEW OF THE
+MODEL — and the whole argument of item 1 is that it must be one.**
+
+## ⛔ RULINGS OWED — FOUR, NONE DECIDED HERE
+
+1. ⭐⭐ **Edge removal**: add `revoked_at` to four tables, or refuse removal?
+   **A DELETE would be the first destroyed declaration in this codebase.**
+2. **Layout scope**: per-user or per-department?
+3. ⭐ **Is linkage-editing the same authority as figure-overriding?**
+4. **The empty KR layer**: seed KR→KPI and KR→initiative links, or ship a map
+   whose middle layer is visibly isolated? ⭐ **The second is more honest and
+   may be the better demo** — but it is a choice.
