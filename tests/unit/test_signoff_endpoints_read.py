@@ -89,7 +89,15 @@ def test_signoff_endpoint_reports_vacant_unsigned_and_signed(env, client):
     r = client.get(f"/companies/{CO}/departments/{hr.id}/signoff", headers=_auth(tok))
     assert r.status_code == 200
     assert r.json()["state"] == "vacant"
-    assert "not an unsigned dashboard" in r.json()["note"]
+    # ⭐ ACROSS THE WIRE, THE DISTINCTION IS CARRIED BY FIELDS, not by a phrase.
+    # This pinned "not an unsigned dashboard"; the copy changed on 4 Aug because
+    # the sentence also denied the department had a head while the page showed
+    # one. `authority` and `state` are what a client reads.
+    assert r.json()["authority"] in ("vacant", "never_assigned")
+    assert r.json()["signed"] is False
+    assert "sign-off authority" in r.json()["note"]
+    # the head travels as its own field so no client parses the sentence
+    assert "head_name" in r.json()
 
     grant_department(s, CO, fin.id, user_id=CFO_UID, granted_by=ADMIN_UID,
                      role_label="CFO"); s.commit()

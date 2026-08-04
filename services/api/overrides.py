@@ -709,19 +709,65 @@ def signoff_state(db, company_id, department_id):
             "authority": dep_state["state"],
         }
     if dep_state["state"] in ("vacant", "never_assigned"):
+        dep = db.get(Department, department_id)
         return {
             "state": "vacant", "signed": False,
             "authority": dep_state["state"],
             "since": dep_state.get("since"),
             "reason": dep_state.get("reason"),
-            # Named explicitly so no surface has to infer it from a null.
-            "note": ("No CXO is assigned to this department, so there is no one "
-                     "to sign off. This is not an unsigned dashboard."),
+            # ⭐⭐ THE HEAD TRAVELS AS A FIELD, NOT ONLY INSIDE THE SENTENCE.
+            # A surface must never parse prose to learn who runs a department —
+            # that is how the two concepts got conflated in the first place.
+            "head_name": getattr(dep, "head_name", None),
+            "head_title": getattr(dep, "head_title", None),
+            "note": authority_note(dep_state["state"], dep=dep,
+                                   since=dep_state.get("since"),
+                                   reason=dep_state.get("reason")),
         }
     return {
         "state": "unsigned", "signed": False, "authority": dep_state["state"],
         "note": "Assigned but not yet signed off.",
     }
+
+
+def authority_note(state: str, *, dep=None, since=None, reason=None) -> str:
+    """The sentence a human reads when nobody may sign for a department.
+
+    ⭐⭐ WHY IT IS A FUNCTION NOW. It said "No CXO is assigned to this
+    department, so there is no one to sign off" while the very same page rendered
+    "Accountable: Sofia Ianni (Chief Technology Officer)". Both lines were true of
+    DIFFERENT THINGS — `Department.head_name` is who RUNS the department,
+    `ax_department_authority` is who may SIGN FOR it — and the copy denied the
+    first while the page displayed it. A reader cannot tell from that whether the
+    org chart is wrong, the page is wrong, or the head was quietly removed.
+
+    ⭐ THE TWO FACTS ARE NAMED SEPARATELY IN ONE SENTENCE, so neither reads as a
+    correction of the other.
+
+    ⛔ AND `never_assigned` IS NO LONGER SPOKEN AS `vacant`. A post nobody has
+    ever held and a post someone left are different organisational facts; only
+    the second has a date. `department_state` always distinguished them — it was
+    the sentence that flattened them.
+    """
+    head = getattr(dep, "head_name", None)
+    title = getattr(dep, "head_title", None)
+    who = f"{head} ({title})" if head and title else head
+
+    if state == "vacant":
+        when = ""
+        if since:
+            try:
+                when = f" since {datetime.fromisoformat(since).strftime('%d %b %Y')}"
+            except (TypeError, ValueError):
+                when = ""
+        tail = (f"sign-off authority for it has been vacant{when}"
+                if when else "sign-off authority for it is vacant")
+    else:
+        tail = "nobody yet holds sign-off authority for it"
+
+    if who:
+        return f"{who} runs this department; {tail}."
+    return ("This department has no head recorded, and " + tail + ".")
 
 
 def _attestation_line(sig) -> str:
@@ -1264,3 +1310,22 @@ def audit_rows(db, company_id: int, include_superseded: bool = True) -> list[dic
             "supersession_kind": o.supersession_kind,
         })
     return out
+
+
+def _signoff_payload_for_test(*, state, dep, since=None, reason=None):
+    """⭐ THE SAME BRANCH THE ENDPOINT TAKES, over a supplied department.
+
+    A test that rebuilt this dict itself would assert about its own
+    reimplementation rather than the production path — the defect CORE records
+    as "a harness invokes the production path". This exposes the branch instead
+    of copying it.
+    """
+    return {
+        "state": "vacant", "signed": False,
+        "authority": state,
+        "since": since,
+        "reason": reason,
+        "head_name": getattr(dep, "head_name", None),
+        "head_title": getattr(dep, "head_title", None),
+        "note": authority_note(state, dep=dep, since=since, reason=reason),
+    }

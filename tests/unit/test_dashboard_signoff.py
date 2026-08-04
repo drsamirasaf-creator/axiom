@@ -162,8 +162,17 @@ def test_signed_unsigned_and_vacant_are_distinguishable_not_a_boolean(env):
     v = signoff_state(s, CO, hr.id)
     assert v["state"] == "vacant" and v["signed"] is False
     assert v["authority"] == "never_assigned"
-    assert "no one to sign off" in v["note"]
-    assert "This is not an unsigned dashboard." in v["note"]
+    # ⭐ THE PROPERTY, NOT THE OLD WORDING. This pinned "no one to sign off",
+    # which was half of the contradiction fixed 4 Aug: the sentence denied the
+    # department had anybody while the page displayed its head. What must hold
+    # is that the note distinguishes a MISSING GRANT from an UNSIGNED
+    # dashboard, and that it never denies a head the surface is rendering.
+    assert "sign-off authority" in v["note"]
+    assert "yet" in v["note"].lower(), "a never-granted post must read as not-yet"
+    # ⛔ AND IT MUST NOT DENY A HEAD. Both departments here are never_assigned,
+    # so their notes are legitimately identical; vacant-vs-never_assigned is
+    # asserted in test_authority_vs_head.py against a department that HAS a head.
+    assert "No CXO is assigned to this department" not in v["note"]
 
     # UNSIGNED — assigned, but no signature yet.
     _grant(s, fin)
