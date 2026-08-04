@@ -373,8 +373,8 @@ def test_the_22_corrective_fires_on_the_seeds_own_numbers():
     fired = []
     for year in S.PERIODS:
         st = S.STATEMENT[year]
-        rev = {c: st["revenue"] * S.SHARE[year][c] for c in S.PRODUCTS}
-        vc = MG.variable_cost_by_line(_pools(year), year, rev)
+        rev, observed = _observed(year)
+        vc = MG.variable_cost_by_line(_pools(year), year, rev, observed=observed)
         _r, _dc, do, alloc = _lines(year)
         for c in S.PRODUCTS:
             h = A.margin_hierarchy(revenue=rev[c], direct_cost=_dc[c],
@@ -397,9 +397,8 @@ def test_the_constrained_ranking_reorders_against_a_revenue_ranking():
     ranked by contribution per unit of the CONSTRAINT it comes last."""
     from services.api.modules.financials import managerial as MG
     year = S.PERIODS[-1]
-    st = S.STATEMENT[year]
-    rev = {c: st["revenue"] * S.SHARE[year][c] for c in S.PRODUCTS}
-    vc = MG.variable_cost_by_line(_pools(year), year, rev)
+    rev, observed = _observed(year)
+    vc = MG.variable_cost_by_line(_pools(year), year, rev, observed=observed)
     u = S.units_for(year)
     per_hour = {}
     for c in S.PRODUCTS:
@@ -430,9 +429,8 @@ def test_the_transport_plan_is_material_and_deterministic():
     changes between runs is one a reader stops believing."""
     from services.api.modules.financials import managerial as MG
     year = S.PERIODS[-1]
-    st = S.STATEMENT[year]
-    rev = {c: st["revenue"] * S.SHARE[year][c] for c in S.PRODUCTS}
-    vc = MG.variable_cost_by_line(_pools(year), year, rev)
+    rev, observed = _observed(year)
+    vc = MG.variable_cost_by_line(_pools(year), year, rev, observed=observed)
     u = S.units_for(year)
     lines = {}
     for c in S.PRODUCTS:
@@ -468,3 +466,94 @@ def test_one_declared_absence_survives():
     assert "realised_price" in S.DELIBERATELY_ABSENT
     r = A.margin_bridge({"a": 1.0}, {"a": 0.4}, {"a": 1.0}, {"a": 0.38})
     assert "price" in r["not_computable"]
+
+
+# ── 9 · T4.4 — the observation is honoured, and nothing else moves ─────────
+
+def _observed(year):
+    st = S.STATEMENT[year]
+    rev = {c: st["revenue"] * S.SHARE[year][c] for c in S.PRODUCTS}
+    gm = S.margins_for(year)
+    return rev, {
+        "direct_cost": {c: rev[c] * (1 - gm[c]) for c in S.PRODUCTS},
+        "direct_opex": {c: st["opex"] * S.DIRECT_OPEX_POOL
+                        * S.DIRECT_OPEX_SPLIT[c] for c in S.PRODUCTS},
+    }
+
+
+def test_the_contribution_ratio_now_differs_by_line_on_meridian():
+    """⭐⭐ THE MEASURED DEFECT, MEASURED FIXED. Every line reported 0.354476
+    because the ratio had no per-line term. It now follows the observed direct
+    cost: the 32%-gross-margin line lands well below the 60% one."""
+    from services.api.modules.financials import managerial as MG
+    rev, observed = _observed(2025)
+    vc = MG.variable_cost_by_line(S.cost_pools(2025), 2025, rev, observed=observed)
+    ratios = {c: MG.contribution(rev[c], vc[c])["ratio"] for c in S.PRODUCTS}
+    assert len({round(r, 9) for r in ratios.values()}) == len(S.PRODUCTS)
+    assert ratios["PL-CTRL"] < ratios["PL-SERV"], ratios
+
+
+def test_allocated_ebit_does_not_move():
+    """⭐⭐ THE FIX IS TO CONTRIBUTION ONLY. Allocated EBIT is built from the
+    hierarchy and the shared allocation, neither of which this lane touched — so
+    the reversal, the trend and every finding derived from them are unchanged.
+    """
+    for year in S.PERIODS:
+        rev, dc, do, alloc = _lines(year)
+        for c in S.PRODUCTS:
+            h = A.margin_hierarchy(revenue=rev[c], direct_cost=dc[c],
+                                   direct_opex=do[c], allocated_opex=alloc[c])
+            assert h["allocated_ebit"]["available"]
+    # the reversal is still PL-CTRL's alone, and still develops
+    series = []
+    for year in S.PERIODS:
+        rev, dc, do, alloc = _lines(year)
+        h = A.margin_hierarchy(revenue=rev["PL-CTRL"], direct_cost=dc["PL-CTRL"],
+                               direct_opex=do["PL-CTRL"],
+                               allocated_opex=alloc["PL-CTRL"])
+        series.append(h["allocated_ebit"]["value"])
+    assert all(b < a for a, b in zip(series, series[1:]))
+    assert series[0] > 0 > series[-1]
+
+
+def test_the_22_corrective_still_fires_on_the_corrected_figures():
+    from services.api.modules.financials import managerial as MG
+    rev, observed = _observed(2025)
+    vc = MG.variable_cost_by_line(S.cost_pools(2025), 2025, rev, observed=observed)
+    _r, dc, do, alloc = _lines(2025)
+    h = A.margin_hierarchy(revenue=rev["PL-CTRL"], direct_cost=dc["PL-CTRL"],
+                           direct_opex=do["PL-CTRL"], allocated_opex=alloc["PL-CTRL"])
+    con = MG.contribution(rev["PL-CTRL"], vc["PL-CTRL"])
+    assert h["allocated_ebit"]["value"] < 0 < con["value"]
+    cov = MG.covers_variable_cost(con["value"], h["allocated_ebit"]["value"],
+                                  line="PL-CTRL")
+    assert cov["value"] is True
+    assert "covers its own variable cost" in cov["statement"]
+
+
+def test_meridian_still_produces_no_inverse_case_and_that_is_reported():
+    """⭐⭐ ITEM 3, ANSWERED HONESTLY. The fix makes the inverse case REACHABLE —
+    a line whose observed variable cost exceeds its revenue is now expressible —
+    but Meridian does not contain one: every line's gross margin comfortably
+    exceeds its direct opex plus its share of the variable pools. Producing one
+    would need a seed change, which this lane was told not to make."""
+    from services.api.modules.financials import managerial as MG
+    negative = []
+    for year in S.PERIODS:
+        rev, observed = _observed(year)
+        vc = MG.variable_cost_by_line(S.cost_pools(year), year, rev,
+                                      observed=observed)
+        for c in S.PRODUCTS:
+            if MG.contribution(rev[c], vc[c])["value"] < 0:
+                negative.append((year, c))
+    assert negative == [], (
+        "Meridian now HAS an inverse case — update this test and the report")
+
+
+def test_the_variable_cost_status_is_allocated_because_a_shared_pool_contributes():
+    """⭐ Customer Support is shared and semi-variable, so its variable half is
+    allocated — and one allocated operand makes the whole figure allocated,
+    however observed the direct pools are. That is `weakest_status`, not a
+    judgement made here."""
+    from services.api.modules.financials import managerial as MG
+    assert MG.variable_cost_status(S.cost_pools(2025), 2025) == "allocated"

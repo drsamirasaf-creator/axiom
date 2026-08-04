@@ -17572,3 +17572,75 @@ rendering on real data. §7o asks for a deliberate absence, not a particular one
 **1988 passed** (was 1976) / 1 skipped / 3 xfailed · 29/29 gates · 12 new tests ·
 browser 3 modes green, 14/14 pinned still pinned · `tsc` 0 · lint rc=0 ·
 ratchet 819/819.
+
+# ⭐⭐ §8o · T4.4 — THE DIRECT-OR-SHARED COLUMN IS HONOURED (4 Aug)
+
+Report: `docs/reports/t4-4-direct-or-shared-2026-08-04.md`.
+
+## ⭐⭐ THE ALLOCATION DEFECT WAS INSIDE THE ALLOCATION MODULE
+
+`variable_cost_by_line` spread EVERY variable pool by revenue, so
+
+    contribution_i = rev_i − V·rev_i/Σrev = rev_i·(1 − V/Σrev)
+
+had **no per-line term at all**: all five Meridian lines reported **0.354476**.
+T4.1 collects `Direct or Shared`; T4.2 ignored it. **A direct pool's per-line
+split is OBSERVED** — `direct_cost` differs by gross margin, 32% on PL-CTRL
+against 60% on PL-SERV — and re-allocating that observed figure by revenue
+**replaces an observation with an assumption**, which is the defect this module
+exists to prevent, occurring inside the module.
+
+## ⚠️ THE MATCH IS NOT AN EQUALITY, AND THE FIRST VERSION'S WAS
+
+A pool's Amount is the **company** figure; the observed per-line measure covers
+only the lines the client attributed. On Meridian that is **757.03 against
+684.34** — the unallocated tenth. Requiring equality failed on the very first
+real pool, and would fail on **every dataset that has a residual, which is every
+dataset**.
+
+⭐ The rule is **the largest observed measure that does not EXCEED the pool**,
+with a **floor at half**: "largest that fits" alone paired a 40-total measure
+with a 123 pool — 32% observed, 68% unallocated — and called that the pool's
+split. Below half the residual outweighs the observation and the claim is no
+longer credible, so the pool declines, which is what a mislabelled `direct`
+should do. ⭐ Each observed measure is **consumed once**: two direct pools both
+taking `direct_cost` would charge one observation twice.
+
+## STATUS: OBSERVED FOR DIRECT, ALLOCATED FOR SHARED
+
+`variable_cost_status` returns the weakest through `weakest_status` — the one
+site (§8a). On Meridian it is **allocated**, because Customer Support is shared
+and semi-variable: one allocated operand makes the whole figure allocated
+however observed the direct pools are.
+
+## EVERY FIGURE THAT MOVED, ON MERIDIAN 2025
+
+| line | contribution before | after | ratio before | after |
+|---|---|---|---|---|
+| PL-DRIVE | 147.70 | **187.04** | 0.3345 | **0.4235** |
+| PL-AUTO | 124.63 | **132.79** | 0.3345 | **0.3564** |
+| PL-CTRL | 64.62 | **53.49** | 0.3345 | **0.2769** |
+| PL-SERV | 46.16 | **71.99** | 0.3345 | **0.5217** |
+| PL-SPARE | 32.31 | **42.79** | 0.3345 | **0.4430** |
+
+Distinct ratios: **1 → 5**. ⭐ **The re-derived corrective: PL-CTRL contributes
+53.49, not 64.62** — the earlier figure was computed on the wrong basis.
+
+⭐ **ALLOCATED EBIT AND THE STATEMENTS DO NOT MOVE.** The hierarchy and the
+shared allocation were untouched, so the reversal (+18.63 → −13.57), the trend
+and every finding derived from them are unchanged — asserted.
+
+## ⭐ THE INVERSE §22 CASE IS NOW REACHABLE — BUT MERIDIAN HAS NONE
+
+A line whose observed variable cost exceeds its revenue is now expressible, and
+a unit test builds one. **Meridian contains no such line:** every gross margin
+comfortably exceeds direct opex plus the variable share. Producing one needs a
+SEED change — a line whose direct cost alone outruns its revenue — which this
+lane was told not to make. **Reported, not done.**
+
+## VERIFIED
+
+**2000 passed** (was 1988) / 1 skipped / 3 xfailed · 29/29 gates · 12 new tests,
+7 red before · browser 3 modes green · `pools_reconcile` untouched · no margin
+outside `ratios.py`, no status outside `weakest_status`, no arithmetic added to
+the endpoint.

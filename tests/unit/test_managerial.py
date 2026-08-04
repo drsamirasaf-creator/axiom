@@ -312,3 +312,104 @@ def test_no_pools_at_all_declines_rather_than_reporting_zero_variable_cost():
     its variable cost, which is the strongest possible false reassurance."""
     cov = M.pools_reconcile([], 2025, company_cost=1000.0)
     assert cov["available"] is False
+
+
+# ── 9 · T4.4 — a direct pool's split is OBSERVED, not allocated ────────────
+
+OBSERVED_LINES = {
+    # gross margins differ: THIN 30%, FAT 60% — the observation the old code
+    # discarded by re-allocating the company total by revenue
+    "direct_cost": {"THIN": 420.0, "FAT": 160.0},
+    "direct_opex": {"THIN": 30.0, "FAT": 10.0},
+}
+REVENUE = {"THIN": 600.0, "FAT": 400.0}
+
+
+def test_a_direct_pool_uses_the_observed_per_line_figures():
+    """⭐⭐ THE DEFECT THIS LANE FIXES, AT ITS ROOT. `direct_cost` is OBSERVED per
+    line and differs by gross margin. Re-allocating the company total by revenue
+    replaces an observation with an assumption — the allocation defect this
+    whole module exists to prevent, occurring inside the module."""
+    pools = [{"period": 2025, "pool": "Direct Materials", "amount": 580.0,
+              "behaviour": "variable", "direct_or_shared": "direct"}]
+    vc = M.variable_cost_by_line(pools, 2025, REVENUE, observed=OBSERVED_LINES)
+    assert vc["THIN"] == pytest.approx(420.0)
+    assert vc["FAT"] == pytest.approx(160.0)
+    # revenue allocation would have given 348 / 232 — the observation, discarded
+    assert vc["THIN"] != pytest.approx(348.0)
+
+
+def test_the_contribution_ratio_stops_being_identical_across_lines():
+    """⭐⭐ THE MEASURED SYMPTOM. On Meridian every line reported 0.354476,
+    because contribution_i = rev_i·(1 − V/Σrev) has no per-line term at all.
+    Either every line covered its variable cost or none did, which made the
+    inverse §22 case arithmetically unreachable."""
+    pools = [{"period": 2025, "pool": "Direct Materials", "amount": 580.0,
+              "behaviour": "variable", "direct_or_shared": "direct"}]
+    vc = M.variable_cost_by_line(pools, 2025, REVENUE, observed=OBSERVED_LINES)
+    ratios = {c: M.contribution(REVENUE[c], vc[c])["ratio"] for c in REVENUE}
+    assert len(set(round(r, 9) for r in ratios.values())) == 2, ratios
+    assert ratios["FAT"] > ratios["THIN"]
+
+
+def test_the_inverse_case_becomes_reachable():
+    """⭐⭐ ITEM 3 OF T4.3, WHICH THE ARITHMETIC FORBADE. A line whose observed
+    direct cost exceeds its revenue is negative at contribution while its
+    neighbour is positive — the case where "volume will not fix it" is the true
+    sentence, and it could not exist before this fix."""
+    observed = {"direct_cost": {"THIN": 640.0, "FAT": 160.0}}
+    pools = [{"period": 2025, "pool": "Direct Materials", "amount": 800.0,
+              "behaviour": "variable", "direct_or_shared": "direct"}]
+    vc = M.variable_cost_by_line(pools, 2025, REVENUE, observed=observed)
+    thin = M.contribution(REVENUE["THIN"], vc["THIN"])
+    fat = M.contribution(REVENUE["FAT"], vc["FAT"])
+    assert thin["value"] < 0 < fat["value"]
+    cov = M.covers_variable_cost(thin["value"], -50.0, line="THIN")
+    assert cov["value"] is False
+    assert "does not cover" in cov["statement"].lower()
+
+
+def test_a_direct_pool_with_no_matching_observation_declines():
+    """⭐ A pool that CLAIMS to be direct must be traceable to an observed
+    per-line measure. Falling back to revenue allocation would silently restore
+    the defect for exactly the pools most likely to be mislabelled.
+
+    ⭐⭐ AND THE MATCH NEEDS A FLOOR, NOT JUST A CEILING. "Largest that fits"
+    alone paired this 123 pool with a 40-total measure — 32% observed, 68%
+    unallocated — and called it the pool's observed split. An observation that
+    explains less than half the pool is not that pool."""
+    pools = [{"period": 2025, "pool": "Mystery", "amount": 123.0,
+              "behaviour": "variable", "direct_or_shared": "direct"}]
+    vc = M.variable_cost_by_line(pools, 2025, REVENUE, observed=OBSERVED_LINES)
+    assert vc == {}, "a direct pool with no observation was allocated anyway"
+
+
+def test_a_shared_pool_still_allocates_by_its_method():
+    """⭐ Shared cost has no per-line observation by definition, so it allocates
+    — carrying the method and grade the vocabulary requires."""
+    pools = [{"period": 2025, "pool": "Corporate", "amount": 100.0,
+              "behaviour": "variable", "direct_or_shared": "shared"}]
+    vc = M.variable_cost_by_line(pools, 2025, REVENUE, observed=OBSERVED_LINES)
+    assert vc["THIN"] == pytest.approx(60.0)
+    assert vc["FAT"] == pytest.approx(40.0)
+
+
+def test_the_status_is_observed_for_direct_and_allocated_for_shared():
+    """⭐⭐ A DIRECT POOL CARRIES THE STATUS OF AN OBSERVATION; A SHARED ONE THE
+    STATUS OF ITS METHOD. Contribution takes the WEAKEST of its inputs, through
+    `weakest_status` — the one site, per §8a."""
+    direct = [{"period": 2025, "pool": "Direct Materials", "amount": 580.0,
+               "behaviour": "variable", "direct_or_shared": "direct"}]
+    shared = [{"period": 2025, "pool": "Corporate", "amount": 100.0,
+               "behaviour": "variable", "direct_or_shared": "shared"}]
+    assert M.variable_cost_status(direct, 2025) == "observed"
+    assert M.variable_cost_status(shared, 2025) == "allocated"
+    # one shared pool among directs makes the whole figure allocated
+    assert M.variable_cost_status(direct + shared, 2025) == "allocated"
+
+
+def test_contribution_carries_the_status_of_its_variable_cost():
+    c = M.contribution(1000.0, 600.0, variable_status="allocated")
+    assert c["data_status"] == "allocated"
+    c = M.contribution(1000.0, 600.0, variable_status="observed")
+    assert c["data_status"] in ("observed", "directly_derived")

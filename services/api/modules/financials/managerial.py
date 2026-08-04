@@ -175,41 +175,140 @@ def pools_reconcile(pools, period, company_cost):
     return _ok("cost_behaviour_coverage", declared, [D.OBSERVED])
 
 
-def variable_cost_by_line(pools, period, revenue_by_line):
+# ⭐ A rounding allowance on the comparison. Nothing here matches on equality —
+# see `_observed_split` for why equality was the wrong test.
+_MATCH_TOLERANCE = 0.005
+
+# ⭐⭐ AN OBSERVATION MUST EXPLAIN MORE THAN HALF THE POOL TO BE ITS SPLIT.
+# Without a floor, "largest that fits" matched a 40-total measure to a
+# 123 pool — 32% observed and 68% left unallocated — and called that the pool's
+# observed split. Below half, the residual is larger than the observation and
+# the claim that this measure IS the pool is no longer credible; the pool
+# declines instead, which is what a mislabelled `direct` should do.
+_MATCH_FLOOR = 0.50
+
+
+def _observed_split(pool, observed, consumed=()):
+    """The per-line figures a DIRECT pool is traceable to, or None.
+
+    ⭐⭐ A DIRECT POOL'S SPLIT IS OBSERVED, NOT ALLOCATED. `direct_cost` is
+    recorded per line and differs by gross margin — 32% on one line against 60%
+    on another. Re-allocating the company total by revenue REPLACES THAT
+    OBSERVATION WITH AN ASSUMPTION, which is the allocation defect this module
+    exists to prevent, occurring inside the module.
+
+    ⭐⭐ THE MATCH IS NOT AN EQUALITY, AND THE FIRST VERSION'S WAS. A pool's
+    Amount is the COMPANY figure; the observed per-line measure covers only the
+    lines the client attributed, and the difference is the residual — 757.03
+    against 684.34 on Meridian, the unallocated tenth. Requiring the totals to
+    be equal would have failed on EVERY dataset that has a residual, which is
+    every dataset. The rule is: the LARGEST observed measure that does not
+    EXCEED the pool, because a measure larger than the pool cannot be part of
+    it. The shortfall stays unallocated, exactly as the revenue residual does —
+    it belongs to no line, so no line is charged for it.
+
+    ⭐ AND EACH OBSERVED MEASURE IS CONSUMED ONCE. Two direct pools both
+    matching `direct_cost` would charge one observation twice, which is the
+    double-counting the reconciler exists to make structurally impossible.
+    """
+    amount = pool.get("amount")
+    if amount is None or not observed:
+        return None
+    best_name, best_total = None, None
+    for measure, by_line in observed.items():
+        if not by_line or measure in consumed:
+            continue
+        total = _sum(*[v for v in by_line.values()])
+        if total is None or total <= 0:
+            continue
+        if total > amount * (1.0 + _MATCH_TOLERANCE):
+            continue                     # larger than the pool: not part of it
+        if total < amount * _MATCH_FLOOR:
+            continue                     # explains too little to BE the pool
+        if best_total is None or total > best_total:
+            best_name, best_total = measure, total
+    if best_name is None:
+        return None
+    return best_name, dict(observed[best_name])
+
+
+def _is_direct(pool):
+    return (pool.get("direct_or_shared") or "").strip().lower() == "direct"
+
+
+def variable_cost_status(pools, period):
+    """`observed` if every variable pool is direct, `allocated` if any is shared.
+
+    ⭐⭐ THE STATUS IS COMPOSED BY `weakest_status` AND NOWHERE ELSE (§8a). A
+    direct pool carries the status of an observation; a shared one carries the
+    status of its allocation method, and one allocated operand makes the whole
+    figure allocated however many observed ones sit beside it.
+    """
+    statuses = []
+    for pool in pools or []:
+        if pool.get("period") is not None and pool.get("period") != period:
+            continue
+        split = split_pool(pool)
+        if not split.get("available"):
+            continue
+        if not (split.get("value") or {}).get("variable"):
+            continue
+        statuses.append(D.OBSERVED if _is_direct(pool) else D.ALLOCATED)
+    if not statuses:
+        return None
+    return D.weakest_status(*statuses)
+
+
+def variable_cost_by_line(pools, period, revenue_by_line, observed=None):
     """Variable cost per line for one period, from the cost-behaviour pools.
 
-    ⭐⭐ IT LIVES HERE, NOT IN THE ENDPOINT. Summing allocated amounts across
-    pools is arithmetic, and the surface's AST guard exists to keep arithmetic
-    out of the endpoint. The rule survived this lane rather than being widened
-    for it.
+    ⭐⭐ DIRECT POOLS USE THE OBSERVATION; SHARED POOLS ALLOCATE. That is the
+    whole of T4.4. Before it, every variable pool was spread by revenue, so
+    contribution_i = rev_i·(1 − V/Σrev) had NO PER-LINE TERM: every line
+    reported the same contribution ratio — 0.354476 across all five of
+    Meridian's — and either all of them covered their variable cost or none did.
+    The inverse §22 case was arithmetically unreachable.
 
-    ⭐ THE POOLS ARE AT POOL GRAIN AND THE ANSWER IS NEEDED AT LINE GRAIN, so
-    the variable part of each pool is ALLOCATED through T2's own `allocate`,
-    which carries the method and its grade. Splitting a pool here and spreading
-    it by hand would be a second allocator.
+    ⭐ IT LIVES HERE, NOT IN THE ENDPOINT. Summing allocated amounts across
+    pools is arithmetic, and the surface's AST guard exists to keep arithmetic
+    out of the endpoint.
 
     ⭐⭐ A POOL THAT DECLINES TAKES THE WHOLE PERIOD WITH IT. A partial variable
-    cost understates cost and OVERSTATES contribution — and contribution is the
-    figure this tier exists to put beside a loss. An overstatement there argues
-    for keeping a line that should go, which is worse than declining.
+    cost understates cost and OVERSTATES contribution — the figure this tier
+    exists to put beside a loss. An overstatement there argues for keeping a
+    line that should go, which is worse than declining.
     """
     from .dimensional_analytics import allocate
     if not pools:
         return {}
-    total = {}
-    for pool in pools:
-        if pool.get("period") is not None and pool.get("period") != period:
-            continue
+    total, consumed = {}, set()
+    # ⭐ LARGEST POOL FIRST, so a big pool cannot be starved of its observation
+    # by a small one that also fits. Deterministic: ties break on the name.
+    ordered = sorted((p for p in pools
+                      if p.get("period") is None or p.get("period") == period),
+                     key=lambda p: (-(p.get("amount") or 0.0),
+                                    p.get("pool") or ""))
+    for pool in ordered:
         split = split_pool(pool)
         if not split.get("available"):
             return {}
         variable = (split.get("value") or {}).get("variable")
         if not variable:
             continue
-        spread = allocate(variable, revenue_by_line, method="revenue")
-        if not spread.get("available"):
-            return {}
-        for code, amount in (spread.get("value") or {}).items():
+        if _is_direct(pool):
+            match = _observed_split(pool, observed, consumed=consumed)
+            if match is None:
+                # the pool claims to be direct and nothing observed accounts
+                # for it — declining beats inventing a spread
+                return {}
+            measure, spread_value = match
+            consumed.add(measure)
+        else:
+            spread = allocate(variable, revenue_by_line, method="revenue")
+            if not spread.get("available"):
+                return {}
+            spread_value = spread.get("value") or {}
+        for code, amount in spread_value.items():
             total[code] = _sum(total.get(code) or 0.0, amount)
     return total
 
@@ -218,14 +317,21 @@ def variable_cost_by_line(pools, period, revenue_by_line):
 # 2 · CONTRIBUTION AND ITS DEPENDENTS
 # ═══════════════════════════════════════════════════════════════════════════
 
-def contribution(revenue, variable_cost):
-    """Revenue less variable cost — what the line earns on every unit it sells."""
+def contribution(revenue, variable_cost, variable_status=None):
+    """Revenue less variable cost — what the line earns on every unit it sells.
+
+    ⭐ THE VARIABLE COST'S STATUS TRAVELS WITH IT. A contribution built on an
+    allocated variable cost is an allocated figure however observed the revenue
+    was, and `_ok` composes that through `weakest_status` — the one site.
+    """
     if revenue is None:
         return _needs("contribution", {_column("Income Statement", "Revenue")})
     if variable_cost is None:
         return _needs("contribution", {_column(_CB_SHEET, "Cost Behaviour")})
     value = revenue - variable_cost
-    out = _ok("contribution", value, [D.OBSERVED, D.DIRECTLY_DERIVED])
+    out = _ok("contribution", value,
+              [D.OBSERVED, D.DIRECTLY_DERIVED,
+               variable_status or D.DIRECTLY_DERIVED])
     out["ratio"] = ratio_lib.margin(value, revenue)
     return out
 

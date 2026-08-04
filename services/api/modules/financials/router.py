@@ -1148,8 +1148,16 @@ def profitability_surface(dataset_id: int, db: Session = Depends(get_db),
             # ⭐ COVERAGE FIRST. Partial classification overstates contribution,
             # and contribution is the figure the §22 corrective argues from.
             coverage = M.pools_reconcile(cb_pools, p, _company_cost(co_cogs, co_opex))
-            variable_by_line = (M.variable_cost_by_line(cb_pools, p, rev)
-                                if coverage["available"] else {})
+            # ⭐⭐ THE OBSERVED PER-LINE MEASURES TRAVEL WITH THE POOLS (T4.4).
+            # A pool marked `direct` is traceable to one of these and uses it;
+            # re-allocating an observed figure by revenue discards the
+            # observation, which is the defect this module exists to prevent.
+            observed = {m: meas.get(m) for m in ("direct_cost", "direct_opex")
+                        if meas.get(m)}
+            variable_by_line = (
+                M.variable_cost_by_line(cb_pools, p, rev, observed=observed)
+                if coverage["available"] else {})
+            variable_status = M.variable_cost_status(cb_pools, p)
             rev_panel = A.revenue_by_dimension(rev, co_rev)
             dopex_panel = A.revenue_by_dimension(dopex, co_opex)
 
@@ -1179,7 +1187,8 @@ def profitability_surface(dataset_id: int, db: Session = Depends(get_db),
             contributions = {}
             for code in rev:
                 contributions[code] = M.contribution(
-                    rev.get(code), variable_by_line.get(code))
+                    rev.get(code), variable_by_line.get(code),
+                    variable_status=variable_status)
                 lines[code] = A.margin_hierarchy(
                     revenue=rev.get(code), direct_cost=cost.get(code),
                     direct_opex=dopex.get(code),
