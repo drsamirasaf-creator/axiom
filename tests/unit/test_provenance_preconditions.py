@@ -169,15 +169,22 @@ def test_executed_mode_is_recorded_separately_from_requested_mode(auth, dataset_
     assert run.provenance["executed_mode"] != run.mode
 
 
-def test_the_three_registry_versions_are_pinned_on_the_run(auth, dataset_id):
-    """§7s.1 pins three versioned artefacts; a run must say which it used."""
+def test_every_registry_version_is_pinned_on_the_run(auth, dataset_id):
+    """§7s.1 pins the versioned artefacts; a run must say which it used.
+
+    ⭐ DERIVED, NOT RESTATED — changed 4 Aug. The literal set went red when
+    §7u.2 registered `assumption_bounds`, while `v == A.versions()` on the line
+    above had already proved the run captured it. The restated set could only
+    ever disagree with the registry it was checking.
+    """
     from services.api.modules.financials import assumptions as A
     r = auth.post("/api/v1/valuation/run",
                   json={"dataset_id": dataset_id, "mode": "proforma"})
     with _db() as db:
         v = db.get(ValuationRun, r.json()["id"]).provenance["registry_versions"]
     assert v == A.versions()
-    assert set(v) == {"platform_defaults", "methodological", "seeds"}
+    # ⛔ FLOOR, so an empty registry cannot satisfy the equality above.
+    assert len(v) >= 4 and "assumption_bounds" in v
 
 
 def test_company_assumptions_are_captured_as_values_not_as_a_pointer(auth, dataset_id):

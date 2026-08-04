@@ -28,6 +28,50 @@ from services.api.modules.financials.engines import (  # noqa: E402
 CACHE = os.environ.get("DS_CACHE") or os.path.join(
     os.path.expanduser("~"), ".axiom-cache", "ds.json")
 
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐⭐ THE ADJUDICATED BREACHES — §7u.2, 4 Aug.
+#
+# ⛔ NOT CORRECTED AND NOT DELETED, and both refusals are the ruling.
+# Correcting the stored values would leave 27 valuation runs contradicting
+# their own inputs; deleting the datasets would destroy the only surviving
+# record of the incident, and `original_filename` is null on all eight so the
+# source workbook is already gone. An allowlist is the only option that touches
+# no stored value.
+#
+# WHAT THEY ARE: eight datasets written on 16 July on the operator's own tenant,
+# carrying one byte-identical assumption block whose `size_premium` is 0.2 —
+# exactly `dlom`'s value in the same block, against a corpus whose next-highest
+# observation is 0.03. All eight are INACTIVE with `enterprise_id IS NULL`, so
+# every customer path (which filters on `enterprise_id`) excludes them: zero
+# packs, zero report issues, zero edits, zero stale marks.
+#
+# ⭐ KEYED BY (dataset id, field) AND MATCHED ON THE VALUE TOO — never
+# "ignore this dataset". A blanket dataset entry would silently absorb a
+# DIFFERENT field going out of bounds later, which is the shape that turns an
+# allowlist into a blind spot. If the stored value changes, the entry stops
+# matching and the breach is reported as new.
+# ═══════════════════════════════════════════════════════════════════════════
+_ADJUDICATION = ("§7u.2 4 Aug — historical artefact of a 16 Jul test run on the "
+                 "operator's own tenant; inactive, enterprise_id NULL, no "
+                 "customer path. Not corrected (27 runs would contradict their "
+                 "inputs) and not deleted (loses the record).")
+ADJUDICATED = {(did, "size_premium"): (0.2, _ADJUDICATION)
+               for did in range(8, 16)}
+
+
+def is_adjudicated(did, field, f):
+    """True only if this exact dataset, field AND stored value were adjudicated.
+
+    ⭐ THE VALUE IS PART OF THE KEY. An allowlist that forgives a field rather
+    than a finding grants standing permission for that field to be wrong.
+    """
+    try:
+        key = (int(did), field)
+    except (TypeError, ValueError):
+        return False
+    entry = ADJUDICATED.get(key)
+    return entry is not None and f.get("value") == entry[0]
+
 
 def load():
     """Live DB if the lane env is sourced, else the durable cache.
@@ -87,6 +131,7 @@ def main():
     per_field = collections.Counter()
     state_totals = collections.Counter()
     flagged = collections.defaultdict(list)
+    adjudicated_hits, new_hits = [], []
     for did in sorted(ds, key=lambda x: int(x) if str(x).isdigit() else 0):
         r = assumption_audit(ds[did])
         for name, f in r["fields"].items():
@@ -94,6 +139,9 @@ def main():
         for name in r["breaching"]:
             per_field[name] += 1
             flagged[name].append((did, r["fields"][name]))
+            hit = (did, name, r["fields"][name])
+            (adjudicated_hits if is_adjudicated(did, name, r["fields"][name])
+             else new_hits).append(hit)
 
     total = sum(state_totals.values())
     print("  THREE STATES, counted separately")
@@ -114,10 +162,39 @@ def main():
         print(f"  ⭐ {name}: {n} dataset(s) out of bounds  "
               f"[{lo}, {'unbounded' if hi is None else hi}]")
         for did, f in flagged[name][:10]:
+            tag = "  [ADJUDICATED §7u.2]" if is_adjudicated(did, name, f) else ""
             print(f"       dataset {did}: value {f['value']} — {f['direction']} "
-                  f"{f['bound_crossed']}")
+                  f"{f['bound_crossed']}{tag}")
+
+    # ⭐⭐ THE ALLOWLIST IS REPORTED, NOT APPLIED SILENTLY. An entry that stops
+    # matching — a value edited, a dataset re-activated — drops OUT of
+    # `adjudicated` and INTO `new`, where it is visible. A blanket
+    # "ignore datasets 8-15" would have swallowed that.
+    print(f"\n  ADJUDICATED (§7u.2, 4 Aug): {len(adjudicated_hits)} of "
+          f"{len(ADJUDICATED)} allowlisted entries matched")
+    stale = [k for k in ADJUDICATED
+             if k not in {(int(d), n) for d, n, _f in adjudicated_hits}]
+    if stale:
+        print(f"     ⭐ {len(stale)} allowlisted entr(ies) NO LONGER BREACH: "
+              f"{sorted(stale)}")
+        print("       The allowlist is now broader than the corpus. Retire the "
+              "stale entries rather than leaving standing permission behind.")
+    print(f"  NEW, UNADJUDICATED BREACHES: {len(new_hits)}")
+    for did, name, f in new_hits:
+        print(f"     ⭐ dataset {did}: {name} = {f['value']} — not covered by "
+              f"the §7u.2 allowlist")
+    if not new_hits:
+        print("     none — every breach in this corpus has been adjudicated")
+
     print()
     print("  Reports only. No stored value is modified by this script.")
+    # ⛔ STILL RETURNS 0 ON A BREACH, AND THAT IS UNCHANGED BY THE ALLOWLIST.
+    # §7u.2 ruled the allowlist; it did NOT rule that this becomes a gate. With
+    # the 8 adjudicated the corpus is clean, so flipping `new_hits` to a
+    # non-zero exit is now a one-line change — but it is a RULING, and it is
+    # worth nothing until CI can reach a corpus at all (§8w). A gate that can
+    # only fail on one laptop is the defect eb89ee8 removed, pointed the other
+    # way.
     return 0
 
 

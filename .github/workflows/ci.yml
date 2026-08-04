@@ -145,6 +145,58 @@ jobs:
       # shipped this year.
       - name: export coverage
         run: python scripts/check-export-coverage.py
+      # ═══════════════════════════════════════════════════════════════════
+      # ⭐⭐ THE TWELVE THAT WERE NEVER HERE — wired 4 Aug (CORE §8x).
+      #
+      # Measured at eb89ee8: 17 of 29 gates were in this file and TWELVE WERE
+      # NOT — including check-no-internal-identifiers.py, written in the very
+      # session that counted them. None of the twelve was absent because it
+      # COULD NOT run: every one exits 0 on a runner with no database, no
+      # frontend checkout and no corpus. ⭐ THEY WERE SIMPLY NEVER ADDED, and
+      # "29/29 gates green" was a claim about one laptop for as long as that
+      # was true. A test now derives the gate list from scripts/check-*.py and
+      # fails if this file misses one, so the gap cannot silently reopen.
+      # ═══════════════════════════════════════════════════════════════════
+      # ── run in full here; nothing external needed ──────────────────────
+      - name: no internal identifiers on a rendered key
+        run: python scripts/check-no-internal-identifiers.py
+      - name: no silent test-account counting
+        run: python scripts/check-customer-counts.py
+      - name: guard coupling (a write behind a guard)
+        run: python scripts/check-guard-coupling.py
+      - name: no seat caps, in either shape
+        run: python scripts/check-no-seat-caps.py
+      - name: pilot viewer is read-only
+        run: python scripts/check-pilot-viewer-readonly.py
+      - name: plain subscript ratchet
+        run: python scripts/check-plain-subscript.py
+      # ⭐ RUNS THE BACKEND HALF IN FULL. Its 16 green capability claims are
+      # resolved against live symbols here; only the deep-link half needs the
+      # frontend routeTree, and it NAMES that half as unverified rather than
+      # counting it as a pass.
+      - name: comparison matrix (capability half — enforced)
+        run: python scripts/check-comparison-matrix.py
+      # ⭐⭐ EXIT CODE FIXED 4 Aug. This returned 2 with no frontend checkout —
+      # a failure on a condition it does not guard — which is why wiring it
+      # before the fix would have made CI permanently red. It now runs the
+      # capability half here, names the marking half as NOT RUN, and still
+      # fails if the capability shipped while the exception stands.
+      - name: in-development marking (capability half — enforced)
+        run: python scripts/check-in-development-marking.py
+      # ── structural control only; the live half needs a database or the app.
+      # ⭐ THESE ARE NOT SKIPS. Each runs its own known-positive control in
+      # full — planting the defect it exists to catch and requiring itself to
+      # go red — and then STATES that the live rows were not consulted. The
+      # control is the half that can run on a runner; a green here means the
+      # detector works, NOT that production agrees with it.
+      - name: single active dataset (control; live rows not consulted)
+        run: python scripts/check-single-active-dataset.py
+      - name: showcase dataset (control; live rows not consulted)
+        run: python scripts/check-showcase-dataset.py
+      - name: ownership agreement (control; live rows not consulted)
+        run: python scripts/check-ownership-agreement.py
+      - name: prospect routes (control; live app not fetched)
+        run: python scripts/check-prospect-routes.py
       - run: pytest -q
       # Proves the tests guarding the assessment read path are not vacuous, by
       # reintroducing a plausible defect per test and requiring each to fail.

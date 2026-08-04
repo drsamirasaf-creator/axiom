@@ -346,12 +346,23 @@ def test_the_dataset_is_frozen_by_value_not_by_id(published):
     assert ds["payload_sha256"] == payload_hash(ds["payload"])
 
 
-def test_the_three_registry_versions_and_the_other_pinned_classes(published):
-    """⭐ PIN EVERY VERSION THAT CAN CHANGE A RENDERED NUMBER, not merely data."""
+def test_every_registry_version_and_the_other_pinned_classes(published):
+    """⭐ PIN EVERY VERSION THAT CAN CHANGE A RENDERED NUMBER, not merely data.
+
+    ⭐⭐ DERIVED FROM `A.versions()`, NOT RESTATED — changed 4 Aug. This pinned
+    the literal set {platform_defaults, methodological, seeds} and went red when
+    §7u.2 registered a FOURTH artefact, even though the freeze had captured it
+    correctly. ⛔ A test naming the artefacts it expects fails on a NEW one being
+    pinned, which is the opposite of what it is for: the property is "the freeze
+    captures every version the registry publishes", and that is now what it says.
+    """
+    from services.api.modules.financials import assumptions as A
     frozen, _ = _frozen(published)
     v = frozen["versions"]
-    assert set(v["assumptions_registry"]) == {"platform_defaults",
-                                              "methodological", "seeds"}
+    assert set(v["assumptions_registry"]) == set(A.versions()), \
+        "the freeze does not capture every registry artefact"
+    assert len(v["assumptions_registry"]) >= 4, \
+        "the artefact count collapsed — an empty set would pass the line above"
     for key in ("template_version", "banding_constants",
                 "forecast_method_set", "ratio_registry"):
         assert key in v, f"{key} is not pinned"

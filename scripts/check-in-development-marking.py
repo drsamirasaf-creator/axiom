@@ -94,16 +94,42 @@ def main():
     print("  ✓ control: the existence recogniser fires on a real signature and "
           "stays silent on prose")
 
+    # ⭐ THE BACKEND HALF IS THIS REPOSITORY'S AND RUNS UNCONDITIONALLY. Whether
+    # the capability exists is answerable here, with or without a frontend
+    # checkout, so it is measured BEFORE the checkout is consulted.
+    exists, evidence = capability_exists()
+
     if frontend_missing():
-        # ⭐ NOT A PASS. A missing checkout is an unmeasured claim, and this
-        # guard exists precisely so the claim is never unmeasured.
-        print(f"  ✗ {MARKED_FILE} not found under {FE} — the marking cannot be "
-              f"verified, so this is a refusal, not a green.")
-        return 2
+        # ⭐⭐ EXIT CODE FIXED 4 Aug (§8x) — the third application of the shape
+        # ruled at 94a7ce0 and eb89ee8. This returned 2, which is a FAILURE ON A
+        # CONDITION IT DOES NOT GUARD: the gate guards whether the marking and
+        # the capability agree, not whether a SIBLING REPOSITORY happens to be
+        # checked out beside this one. CI has no `optimization-anchor` checkout,
+        # so wiring it while it returned 2 would have made CI permanently red.
+        #
+        # ⛔ AND IT IS NOT WEAKENED TO A SKIP. The half that CAN run still runs
+        # and is reported below; the half that cannot is NAMED, and the output
+        # states plainly that it asserts nothing about the marking. A silent
+        # exit 0 here would be green over zero files — the other defect.
+        print(f"  ⚠ MARKING HALF NOT RUN — {MARKED_FILE} not found under {FE}.")
+        print(f"  capability built: {exists}"
+              f"{'  (' + evidence + ')' if exists else ''}")
+        print("  This run asserts NOTHING about whether the in-development "
+              "marking is present. It is not a green: set AXIOM_FRONTEND to a "
+              "checkout to make it one.")
+        if exists:
+            # ⭐ ONE THING IS STILL DECIDABLE WITHOUT THE FRONTEND. If the
+            # capability has SHIPPED, CORE §4z.1's stated exception should be
+            # retired whatever the marking says — and that is this repository's
+            # fact, so it is still enforced.
+            print("\n  ✗ THE CAPABILITY IS BUILT, so §4z.1's in-development "
+                  "exception should be RETIRED.\n    That is decidable here "
+                  "and does not need the frontend.")
+            return 1
+        return 0
 
     src = open(os.path.join(FE, MARKED_FILE), encoding="utf-8").read()
     marked = MARKER_ATTR in src and all(w in src for w in MARKER_WORDS)
-    exists, evidence = capability_exists()
 
     print(f"  marking present : {marked}")
     print(f"  capability built: {exists}{'  (' + evidence + ')' if exists else ''}")

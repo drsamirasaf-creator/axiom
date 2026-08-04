@@ -13,13 +13,68 @@ from services.api.modules.financials import assumptions as A
 
 # ── three artefacts, not one ────────────────────────────────────────────────
 
-def test_three_artefacts_not_one():
-    """⭐ A single version string suffices only if all three are versioned as one
-    artefact, and they are not: they have different lifetimes and different rules
-    about who may change them."""
+def test_artefacts_are_versioned_separately_not_as_one():
+    """⭐ A single version string suffices only if every artefact is versioned as
+    one, and they are not: they have different lifetimes and different rules
+    about who may change them.
+
+    ⭐ FOUR SINCE 4 Aug (§7u.2). `assumption_bounds` joined because a stored
+    `validation.assumptions` verdict records which ceiling a value was judged
+    against, and a pack pinning the value without the ceiling does not reproduce
+    the verdict.
+    """
     v = A.versions()
-    assert set(v) == {"platform_defaults", "methodological", "seeds"}
-    assert len(set(v.values())) == 3, "each artefact carries its own version"
+    assert set(v) == {"platform_defaults", "methodological", "seeds",
+                      "assumption_bounds"}
+    assert len(set(v.values())) == len(v), "each artefact carries its own version"
+
+
+def test_the_bounds_artefact_is_pinned_but_not_value_swept():
+    """⛔ RANGES ARE NOT COMPUTE-PATH VALUES. `registered_values()` is matched BY
+    VALUE against constants found in the code; folding bound endpoints into it
+    would let an unrelated tuple constant match a bound and count as registered
+    — weakening a value-keyed guard to buy a tidier table."""
+    assert "assumption_bounds" in A.versions(), "the pack must pin the ceilings"
+    reg = A.registered_values()
+    for field in A.ASSUMPTION_BOUNDS_REGISTRY:
+        assert field not in reg, \
+            f"{field}'s range leaked into the value-keyed coverage set"
+
+
+def test_every_ceiling_states_its_class_and_its_basis():
+    """⭐⭐ THE §7u.2 CORRECTION. The bounds carried a comment claiming they were
+    'calibrated against the live corpus'. Counting how many corpus values trip a
+    ceiling you already chose is a CONSISTENCY CHECK ON A PRIOR, not a
+    calibration — the same shape as the function name A4 corrected. Every entry
+    must now say which it is."""
+    allowed = {"house_prior", "declared_prior", "structural_floor"}
+    for field, e in A.ASSUMPTION_BOUNDS_REGISTRY.items():
+        assert e.get("class") in allowed, f"{field} has no stated class"
+        assert e.get("basis"), f"{field} has no stated basis"
+        assert e.get("governs"), f"{field} does not say what it governs"
+        lo, hi = e["value"]
+        assert hi is None or hi > lo, f"{field}'s ceiling is not above its floor"
+
+
+def test_a_declared_prior_does_not_claim_to_be_measured():
+    """⛔ THE WORD IS THE POINT. A ceiling recorded as a prior must not describe
+    itself as calibrated, measured or fitted — that is how `_calibrate_sigma`
+    misled for weeks."""
+    for field, e in A.ASSUMPTION_BOUNDS_REGISTRY.items():
+        if e["class"] != "declared_prior":
+            continue
+        basis = e["basis"].lower()
+        for overclaim in ("calibrated", "fitted", "derived from the corpus"):
+            assert overclaim not in basis, \
+                f"{field}'s basis claims '{overclaim}' while classed a prior"
+
+
+def test_the_engine_table_is_derived_from_the_registry_not_restated():
+    """⭐ ONE SOURCE OF TRUTH. A ceiling changed in the engine without its basis
+    moving with it is the state §7u.2 ended."""
+    from services.api.modules.financials.engines import ASSUMPTION_BOUNDS
+    assert ASSUMPTION_BOUNDS == A.assumption_bounds()
+    assert set(ASSUMPTION_BOUNDS) == set(A.ASSUMPTION_BOUNDS_REGISTRY)
 
 
 def test_company_assumptions_are_not_in_the_registry():

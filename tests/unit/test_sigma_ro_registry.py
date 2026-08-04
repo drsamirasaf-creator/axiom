@@ -80,15 +80,54 @@ def test_calibrate_sigma_IS_GONE_and_the_new_name_does_not_assert_estimation():
 
 
 def test_no_caller_still_uses_the_old_name():
-    """⭐ A rename that leaves a caller is a NameError waiting for a branch."""
-    import subprocess
-    # ⭐ --include=*.py: the first version matched a stale .pyc and reported
-    # compiled bytecode as a live caller.
-    out = subprocess.run(
-        ["grep", "-rn", "--include=*.py", "_calibrate_sigma",
-         os.path.join(ROOT, "services"), os.path.join(ROOT, "scripts")],
-        capture_output=True, text=True).stdout
-    live = [ln for ln in out.splitlines() if "RENAMED FROM" not in ln]
+    """⭐ A rename that leaves a caller is a NameError waiting for a branch.
+
+    ⭐⭐ §III.9, SIXTH OCCURRENCE — CONVERTED FROM A TEXT SCAN 4 Aug. This was
+    `grep -rn _calibrate_sigma` over services/ and scripts/, filtered by a
+    "RENAMED FROM" marker. It went red the moment §7u.2's comments CITED the old
+    name to explain why "calibrated" was the wrong word for the assumption
+    bounds — punishing the prose that states the rule, which is the exact defect
+    §III.9 records.
+
+    ⛔ AND IT IS NOT WEAKENED BY THE CHANGE. A CALLER is a Name, an Attribute or
+    a runtime string — never a `#` comment, which the parser discards outright.
+    Reading the AST tightens the claim: it now asserts nobody CALLS the old name,
+    rather than that nobody MENTIONS it.
+    """
+    import ast
+    OLD = "_calibrate_sigma"
+    live = []
+    for base in (os.path.join(ROOT, "services"), os.path.join(ROOT, "scripts")):
+        for d, dirs, names in os.walk(base):
+            dirs[:] = [x for x in dirs if x != "__pycache__"]
+            for n in names:
+                if not n.endswith(".py"):
+                    continue
+                p = os.path.join(d, n)
+                try:
+                    tree = ast.parse(open(p, encoding="utf-8").read())
+                except (SyntaxError, OSError):
+                    continue
+                docs = set()
+                for node in ast.walk(tree):
+                    if isinstance(node, (ast.Module, ast.FunctionDef,
+                                         ast.AsyncFunctionDef, ast.ClassDef)):
+                        # ⭐ clean=False: the default DEDENTS, so subtracting the
+                        # cleaned text removes nothing. Cost three lanes.
+                        doc = ast.get_docstring(node, clean=False)
+                        if doc:
+                            docs.add(doc)
+                for node in ast.walk(tree):
+                    hit = (isinstance(node, ast.Name) and node.id == OLD) or \
+                          (isinstance(node, ast.Attribute) and node.attr == OLD) or \
+                          (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                           and node.name == OLD) or \
+                          (isinstance(node, ast.Constant)
+                           and isinstance(node.value, str)
+                           and OLD in node.value and node.value not in docs)
+                    if hit:
+                        live.append(f"{os.path.relpath(p, ROOT)}:"
+                                    f"{getattr(node, 'lineno', '?')}")
     assert not live, f"the old name still has callers:\n{chr(10).join(live)}"
 
 

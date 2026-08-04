@@ -122,12 +122,23 @@ def control():
 
 def main():
     print("§7u ASSUMPTION REGISTRY — coverage guard\n")
-    print("  versions pinned by §7s.1 (THREE, not one):")
-    for k, v in versions().items():
+    # ⭐ COUNTED, NOT SPELLED OUT. This line read "(THREE, not one)" and printed
+    # FOUR the moment assumption_bounds was registered — a hard-coded number in
+    # the output of a guard whose whole subject is hard-coded numbers.
+    vs = versions()
+    print(f"  versions pinned by §7s.1 ({len(vs)}, not one):")
+    for k, v in vs.items():
         print(f"     {k:<20} {v}")
     n = sum(len(t) for _, t in ARTEFACTS.values())
-    print(f"\n  registered: {n} across 3 artefacts, "
+    print(f"\n  registered: {n} value(s) across {len(ARTEFACTS)} value artefact(s), "
           f"plus {len(DIVERGENT)} divergent identifiers")
+    # ⛔ AND THE FOURTH ARTEFACT IS DELIBERATELY NOT IN THAT COUNT.
+    # `assumption_bounds` holds RANGES, not compute-path values, and folding its
+    # endpoints into the value-keyed coverage set would let an unrelated tuple
+    # constant match a bound and count as registered. It is pinned by §7s.1
+    # (above) without being swept for coverage (below).
+    print(f"  assumption_bounds is PINNED but not value-swept — see "
+          f"assumptions.py (ranges, not compute-path constants)")
 
     ok = control()
     print("\n  KNOWN-POSITIVE CONTROL")

@@ -18330,3 +18330,105 @@ per-bound basis, forcing the eight defaults to be grounded or labelled priors.
 
 ⛔ **NOT a ruling: `absent` must never fail the gate.** 97 of 396 field-values are
 absent and the absences are STRUCTURAL.
+
+# ⭐⭐ §8x · THE TWELVE ABSENT GATES, WIRED (4 Aug)
+
+Full working: `docs/reports/ci-gate-wiring-2026-08-04.md`.
+
+## ⭐⭐ NOT ONE OF THE TWELVE WAS ABSENT BECAUSE IT COULD NOT RUN
+
+Measured `env -i`, empty `$HOME`, `AXIOM_FRONTEND` at a nonexistent path, exit
+codes read **without a pipe**: **all twelve exit 0.** Eleven were simply NEVER
+ADDED — including `check-no-internal-identifiers.py`, written in the very lane
+that counted the gap. **The twelfth had an exit-code defect.**
+
+⭐ **AND THE "NEEDS A DATABASE" REASON WAS MOSTLY WRONG.** Four gates were assumed
+to need one; all four carry a **structural control** that plants the defect they
+exist to catch and requires themselves to go red. That runs fully on a runner.
+Only the **live-row** comparison needs a database, and each says so.
+
+## THE ONE FIX — THIRD APPLICATION OF THE RULED SHAPE
+
+`check-in-development-marking.py` returned **2** with no frontend checkout. ⛔ **A
+failure on a condition it does not guard**: it guards whether a marking and a
+capability agree, not whether a sibling repo is checked out beside it.
+
+⛔ **NOT WEAKENED TO A SKIP.** The capability half is THIS repo's and now runs
+first, unconditionally. The marking half is named NOT RUN and the output states it
+**"asserts NOTHING… It is not a green."** ⭐ **And one violation is still enforced
+without the frontend** — a SHIPPED capability means §4z.1's exception should be
+retired, decidable here, still `return 1`. A failed control still returns 2.
+
+## ⭐⭐ WHAT CI ENFORCES NOW
+
+| | eb89ee8 | after |
+|---|---|---|
+| in `ci.yml` | 17/29 | ⭐ **29/29** |
+| enforce fully | ~13 | ⭐ **19** |
+| enforce a half, name the other | 4 | **7** |
+| assert nothing, and say so | 0 | **3** |
+| non-zero on a clean runner | — | **0** |
+
+⭐ **26 of 29 do real work, against ~13 before.** The 3 that assert nothing —
+`assumption-bounds` (no corpus), `no-ts-period-format`, `period-labels-consumed`
+— each SAY SO instead of printing a tick.
+
+⭐ **THE GAP CANNOT SILENTLY REOPEN.** `test_ci_gate_wiring.py` derives gates from
+`scripts/check-*.py` and invocations from `ci.yml`'s text, with a floor so an
+empty list cannot pass vacuously. **Neither half is a hand-maintained roster.**
+
+## ⛔ REQUIRED STATUS CHECKS — READY, NOT ENABLED
+
+Green on a clean runner; no gate fails on a condition it does not guard; ruleset
+`20368701` active. **The blocker is no longer technical.** Requiring checks ends
+direct-to-main and makes every lane a PR — **a workflow ruling not yet made.**
+
+## A CORPUS IN CI — SHAPE ONLY, NOT BUILT
+
+**A · committed fixture** ⛔ customer data, and it goes stale SILENTLY — the
+`FinancialDataset` defect in a new place. **B · read-only DB secret** ⛔ a fork PR
+could exfiltrate it. **C · synthetic from the seeds** ⭐ safe, but contains only
+what the seeds produce, and the gate exists for stored data that will never
+re-ingest. **Proposed if asked: C per push (LABELLED synthetic) + B nightly only,
+never on PRs.**
+
+## §7u.2 ITEM 7 — BOUNDS REGISTERED AS `7u-ab.1`, FOURTH PINNED ARTEFACT
+
+`engines.py` now DERIVES its table. ⛔ **The word "calibrated" is corrected**: it
+was a consistency check on a prior — the `_calibrate_sigma` shape (A4/B22).
+
+**1 house_prior · 9 declared_prior (EIGHT NEVER FIRED, maxima at 0.12–0.42 of
+ceiling) · 2 structural_floor.** ⛔ **The §7w blind spot is RECORDED, not
+patched**: `shares_outstanding` has no ceiling, the corpus spans 100 to
+12,500,000 all "in_bounds", and a magnitude ceiling is not obviously right.
+Bounds are **pinned but not value-swept** — folding range endpoints into a
+value-keyed set would let an unrelated tuple constant count as registered.
+
+### THREE STALE CLAIMS FOUND DOING IT
+
+- the registry guard printed **"(THREE, not one)"** while printing four, and a
+  hard-coded "across 3 artefacts" — ⭐ *a hard-coded number in the output of a
+  guard whose subject is hard-coded numbers*
+- `test_pack_freeze` / `test_provenance_preconditions` pinned the LITERAL set and
+  went red on a **correctly pinned** fourth artefact. ⭐ **A test naming what it
+  expects fails when a new one is pinned — the opposite of its purpose.** Both
+  now derive from `A.versions()`, with a floor.
+- ⭐ **§III.9, SIXTH OCCURRENCE** — `test_no_caller_still_uses_the_old_name` was a
+  grep and went red because §7u.2's comments CITED `_calibrate_sigma` to explain
+  the correction. Converted to an AST read (`clean=False`). ⛔ **This TIGHTENS
+  it**: a caller is never a `#` comment, so it now asserts nobody CALLS the old
+  name rather than nobody MENTIONS it.
+
+## §7u.2 ITEM 8 — THE 8 ALLOWLISTED
+
+**Not corrected, not deleted.** ⭐ **Keyed by (dataset id, field) AND the stored
+VALUE** — never "ignore this dataset", which would absorb a different field going
+wrong later. The sweep splits adjudicated from new and **reports STALE allowlist
+entries as standing permission left behind.** Measured: **8 of 8 matched, 0 new.**
+
+⛔ **STILL RETURNS 0, AND THE ALLOWLIST DID NOT CHANGE THAT.** §7u.2 ruled the
+allowlist, not that this becomes a gate. The corpus is now clean so it is a
+one-line flip — **but it is a ruling, and worth nothing until CI can reach a
+corpus.** A gate that can only fail on one laptop is `eb89ee8`'s defect reversed.
+
+**2045 passed** (from 2035), 1 skipped, 3 xfailed. 29 gates CI-shaped, 0 non-zero.

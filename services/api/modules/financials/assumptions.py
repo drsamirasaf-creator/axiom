@@ -236,6 +236,192 @@ SEEDS = {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
+# ARTEFACT 4 · ASSUMPTION BOUNDS — the admissible range of a CLIENT-SET value
+#
+# ⭐⭐ REGISTERED 4 Aug (§7u.2). These lived as a bare dict literal in
+# `engines.py` with no version, no basis and no pack pin, while a comment above
+# them claimed they were "calibrated against the live corpus — 8 of 321
+# field-values, 2.5%, every trip the one known incident".
+#
+# ⭐⭐ THAT WAS NOT A CALIBRATION. Counting how many corpus values trip a ceiling
+# you already chose does not derive the ceiling from anything — it is a
+# CONSISTENCY CHECK ON A PRIOR. And the corpus holds exactly ONE incident, so
+# "2.5%, every trip the known incident" restates "the eight I already knew
+# about". ⛔ THE SAME SHAPE AS `_calibrate_sigma`, whose name asserted a
+# calibration it did not perform (B22, A4). A word that overstates the evidence
+# is a claim in the code, and it is corrected here rather than repeated.
+#
+# ⭐ SO EVERY CEILING NOW STATES ITS CLASS, and most of them are priors:
+#   house_prior        — grounded in something outside this corpus, cited
+#   declared_prior     — a chosen ceiling; NEVER EXERCISED, and it says so
+#   structural_floor   — excludes impossible values; asserts NOTHING about size
+#
+# ⭐ `observed` records the corpus maximum as a FRACTION OF THE CEILING, measured
+# 4 Aug over 33 datasets. It is evidence about the bound's slack, NOT its basis —
+# a ceiling no value has ever approached has not been tested by this corpus.
+#
+# ⛔ BOUNDS ARE DELIBERATELY EXCLUDED FROM `registered_values()`. That set is
+# matched BY VALUE against compute-path constants, and folding range endpoints
+# into it would let an unrelated tuple constant match a bound and count as
+# registered — weakening a value-keyed guard to buy a tidier table.
+# ═══════════════════════════════════════════════════════════════════════════
+ASSUMPTION_BOUNDS_VERSION = "7u-ab.1"
+
+ASSUMPTION_BOUNDS_REGISTRY = {
+    # ── the two that reach cost of equity in ABSOLUTE terms ───────────────
+    # ⭐ THE TIGHTEST CEILINGS, DELIBERATELY. `engines.py::_wacc_detail` ADDS
+    # these to Ke rather than scaling by them, so an order-of-magnitude slip
+    # moves Ke by tens of points rather than fractions. That is exactly how one
+    # tenant's stored valuations came to carry a 26.4% WACC against 15.8% at a
+    # corpus-typical premium.
+    "size_premium": {
+        "value": (0.0, 0.10),
+        "class": "house_prior",
+        "governs": "small-company premium added to the relevered cost of equity",
+        "basis": "Published size premia (CRSP decile / valuation-handbook "
+                 "breakdowns) top out near 6% for the smallest deciles. 10% is "
+                 "already generous against that literature, and the ceiling "
+                 "bounds the CLAIM rather than the company: a value above it is "
+                 "reported, never refused.",
+        "observed": "corpus max 0.03 excluding the adjudicated breach = 0.30 of "
+                    "ceiling; the breach itself sits at 2.00 of ceiling",
+        "consumed_by": "financials/engines.py::_wacc_detail",
+    },
+    "specific_risk_premium": {
+        "value": (0.0, 0.10),
+        "class": "declared_prior",
+        "governs": "company-specific risk premium added to the relevered cost "
+                   "of equity",
+        "basis": "⭐ NO EXTERNAL GROUNDING. It shares size_premium's ceiling by "
+                 "ASSOCIATION — the two are added together at the same site — "
+                 "but the ~6% literature is about SIZE premia and says nothing "
+                 "about company-specific risk. Recorded as a prior so the "
+                 "borrowed justification is visible instead of implied.",
+        "observed": "corpus max 0.03 = 0.30 of ceiling; NEVER EXERCISED",
+        "consumed_by": "financials/engines.py::_wacc_detail",
+    },
+    # ── ceilings that have never fired ────────────────────────────────────
+    "tax_rate": {
+        "value": (0.0, 0.60),
+        "class": "declared_prior",
+        "governs": "effective tax rate applied to EBIT and to the debt shield",
+        "basis": "⭐ A CHOSEN CEILING, not a measured one. Above 60% no major "
+                 "jurisdiction's combined statutory rate applies, so a higher "
+                 "value is far more likely a percent-for-decimal slip than a "
+                 "real rate — but no source was consulted when it was set.",
+        "observed": "corpus max 0.25 = 0.42 of ceiling; NEVER EXERCISED",
+        "consumed_by": "financials/engines.py::_wacc_detail, ::run",
+    },
+    "risk_free_rate": {
+        "value": (0.0, 0.20),
+        "class": "declared_prior",
+        "governs": "risk-free rate in CAPM",
+        "basis": "⭐ A CHOSEN CEILING. 20% exceeds any developed-market "
+                 "long-bond yield in the modelling period; no source was "
+                 "consulted when it was set.",
+        "observed": "corpus max 0.07 = 0.35 of ceiling; NEVER EXERCISED",
+        "consumed_by": "financials/engines.py::_wacc_detail",
+    },
+    "market_risk_premium": {
+        "value": (0.0, 0.15),
+        "class": "declared_prior",
+        "governs": "equity market risk premium in CAPM",
+        "basis": "⭐ A CHOSEN CEILING. Surveyed MRPs cluster at 4–7%; 15% is "
+                 "roughly double the top of that range. Not derived from a "
+                 "cited survey.",
+        "observed": "corpus max 0.06 = 0.40 of ceiling; NEVER EXERCISED",
+        "consumed_by": "financials/engines.py::_wacc_detail",
+    },
+    "cost_of_debt": {
+        "value": (0.0, 0.30),
+        "class": "declared_prior",
+        "governs": "pre-tax cost of debt in WACC",
+        "basis": "⭐ A CHOSEN CEILING covering distressed borrowing without "
+                 "admitting a decimal slip. Not derived from a spread series.",
+        "observed": "corpus max 0.09 = 0.30 of ceiling; NEVER EXERCISED",
+        "consumed_by": "financials/engines.py::_wacc_detail",
+    },
+    "dlom": {
+        "value": (0.0, 0.50),
+        "class": "declared_prior",
+        "governs": "discount for lack of marketability on the private equity "
+                   "value",
+        "basis": "⭐ A CHOSEN CEILING. Restricted-stock and pre-IPO studies "
+                 "commonly land in the 20–35% range; 50% bounds the tail "
+                 "without citing a specific study.",
+        "observed": "corpus max 0.20 = 0.40 of ceiling; NEVER EXERCISED",
+        "consumed_by": "valuation/engines.py",
+    },
+    "beta": {
+        "value": (0.0, 4.0),
+        "class": "declared_prior",
+        "governs": "equity beta for a public company",
+        "basis": "⭐ A ROUND NUMBER. It excludes a negative beta and an obvious "
+                 "slip; it is not derived from an observed beta distribution.",
+        "observed": "corpus max 1.2 = 0.30 of ceiling; NEVER EXERCISED",
+        "consumed_by": "financials/engines.py::_wacc_detail",
+    },
+    "unlevered_industry_beta": {
+        "value": (0.0, 4.0),
+        "class": "declared_prior",
+        "governs": "unlevered industry beta, relevered for a private company",
+        "basis": "⭐ A ROUND NUMBER, shared with `beta` for symmetry rather than "
+                 "for a reason. An unlevered beta is bounded ABOVE by its "
+                 "levered counterpart, so 4.0 is looser here than there.",
+        "observed": "corpus max 1.3 = 0.33 of ceiling; NEVER EXERCISED",
+        "consumed_by": "financials/engines.py::_wacc_detail",
+    },
+    "target_debt_to_equity": {
+        "value": (0.0, 5.0),
+        "class": "declared_prior",
+        "governs": "target D/E used to relever beta and to weight WACC",
+        "basis": "⭐ A CHOSEN CEILING, and the loosest in the table relative to "
+                 "what is observed. 5.0 admits an 83% debt-financed capital "
+                 "structure.",
+        "observed": "corpus max 0.6 = 0.12 of ceiling; NEVER EXERCISED",
+        "consumed_by": "financials/engines.py::_wacc_detail",
+    },
+    # ── floors that assert nothing about magnitude ────────────────────────
+    # ⛔ AND THIS IS WHERE THE INSTRUMENT IS BLIND. §7w was two units in one
+    # field: a raw share count entered where the engine read millions, and the
+    # per-share figure came out a million times small. NEITHER of these has a
+    # ceiling, the corpus spans 100 to 12,500,000 shares — 125,000x — and every
+    # one of those values is reported "in_bounds". ⭐ THE ONE UNIT DEFECT THAT
+    # REACHED A RENDERED FIGURE IS INVISIBLE TO THIS TABLE BY CONSTRUCTION.
+    # A magnitude ceiling here is not obviously right — share counts genuinely
+    # span orders of magnitude — so this is RECORDED, not silently patched.
+    "share_price": {
+        "value": (0.0, None),
+        "class": "structural_floor",
+        "governs": "quoted share price for a public company",
+        "basis": "Excludes a negative price. ⭐ ASSERTS NOTHING ABOUT MAGNITUDE, "
+                 "and no ceiling is claimed.",
+        "observed": "corpus 22–25; no ceiling to compare against",
+        "consumed_by": "financials/engines.py::_wacc_detail",
+    },
+    "shares_outstanding": {
+        "value": (1.0, None),
+        "class": "structural_floor",
+        "governs": "share count used for per-share figures",
+        "basis": "Excludes zero and negative counts. ⭐ ASSERTS NOTHING ABOUT "
+                 "MAGNITUDE — see the §7w note above; this field's known defect "
+                 "is a UNIT collision, which a range cannot detect.",
+        "observed": "corpus 100–12,500,000, a 125,000x spread, all in_bounds",
+        "consumed_by": "valuation/engines.py (value per share)",
+    },
+}
+
+
+def assumption_bounds() -> dict:
+    """`{field: (lo, hi)}` — the shape `engines.ASSUMPTION_BOUNDS` exposes.
+
+    ⭐ ONE SOURCE OF TRUTH. `engines.py` derives its table from this so a ceiling
+    cannot be changed in the engine without moving the registered basis with it.
+    """
+    return {k: e["value"] for k, e in ASSUMPTION_BOUNDS_REGISTRY.items()}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # ⭐ THE SEVEN DIVERGENT IDENTIFIERS — six overloaded names, one real key.
 # Recorded so the collision cannot be recreated by a reader who sees only
 # numbers. Measured swap magnitudes are in
@@ -359,11 +545,18 @@ ARTEFACTS = {
 
 
 def versions() -> dict:
-    """The three versions §7s.1 pins. NOT one string — see the module docstring."""
+    """The versions §7s.1 pins. NOT one string — see the module docstring.
+
+    ⭐ FOUR SINCE 4 Aug. `assumption_bounds` joined because a stored result's
+    `validation.assumptions` block records which ceiling a value was judged
+    against, and a pack pinning the value without the ceiling does not reproduce
+    the verdict.
+    """
     return {
         "platform_defaults": PLATFORM_DEFAULTS_VERSION,
         "methodological": METHODOLOGICAL_VERSION,
         "seeds": SEEDS_VERSION,
+        "assumption_bounds": ASSUMPTION_BOUNDS_VERSION,
     }
 
 

@@ -227,31 +227,26 @@ def balance_audit(data: dict) -> dict:
 
 
 # ── assumption bounds ───────────────────────────────────────────────────────
-# ⭐ BOUNDS ARE MEASURED, NOT CHOSEN HERE. They come from the Part B enumeration
-# and were calibrated against the live corpus: 8 of 321 field-values trip, 2.5%,
-# and every trip is the one known incident. A bound flagging a third of the
-# corpus would be the wrong bound; one flagging nothing would not be a bound.
-# Do not re-derive them without re-measuring the hit rate.
+# ⭐⭐ THE TABLE MOVED TO THE §7u REGISTRY ON 4 Aug, AND THE WORD "CALIBRATED"
+# WENT WITH IT. This block used to read "BOUNDS ARE MEASURED, NOT CHOSEN HERE —
+# calibrated against the live corpus: 8 of 321 field-values trip, 2.5%, and every
+# trip is the one known incident."
 #
-# ⭐ THE TWO PREMIA CARRY THE TIGHTEST CEILINGS DELIBERATELY. engines.py adds them
-# in ABSOLUTE terms to cost of equity, so an order-of-magnitude slip moves Ke by
-# tens of points rather than fractions — which is exactly how one live customer's
-# stored valuations came to be roughly half what a corpus-typical premium gives.
-# Published size premia top out near 6%; 10% is already generous.
-ASSUMPTION_BOUNDS = {
-    "tax_rate":                (0.0, 0.60),
-    "risk_free_rate":          (0.0, 0.20),
-    "market_risk_premium":     (0.0, 0.15),
-    "cost_of_debt":            (0.0, 0.30),
-    "dlom":                    (0.0, 0.50),
-    "size_premium":            (0.0, 0.10),
-    "specific_risk_premium":   (0.0, 0.10),
-    "beta":                    (0.0, 4.0),
-    "unlevered_industry_beta": (0.0, 4.0),
-    "target_debt_to_equity":   (0.0, 5.0),
-    "share_price":             (0.0, None),
-    "shares_outstanding":      (1.0, None),
-}
+# ⛔ THAT WAS NOT A CALIBRATION. Counting how many corpus values trip a ceiling
+# already chosen does not derive the ceiling from anything; it is a CONSISTENCY
+# CHECK ON A PRIOR. And the corpus holds exactly one incident, so "2.5%, every
+# trip the known incident" restates "the eight I already knew about". The same
+# shape as `_calibrate_sigma`, whose name asserted a calibration it never
+# performed (A4/B22) — see §7u.2 and the adjudication report.
+#
+# ⭐ EVERY CEILING NOW CARRIES ITS CLASS AND ITS BASIS in
+# `assumptions.ASSUMPTION_BOUNDS_REGISTRY`: two priors with real external
+# grounding, eight declared priors that have NEVER FIRED, and two structural
+# floors that assert nothing about magnitude. Derived here rather than restated,
+# so a ceiling cannot move without its basis moving with it.
+from .assumptions import assumption_bounds as _assumption_bounds  # noqa: E402
+
+ASSUMPTION_BOUNDS = _assumption_bounds()
 
 
 def assumption_audit(data: dict) -> dict:
