@@ -18177,3 +18177,75 @@ re-enable — which is precisely the "temporarily lift the guard because it is
 inconvenient" move that makes a guard negotiable.** They are empty, they carry
 their purpose in their message, and they cost one line of history each. **The
 protection is worth more than the tidiness.**
+
+# ⭐⭐ §8w · THE MACHINE-LOCAL GATE CLASS, SWEPT (4 Aug)
+
+## THE FIX — SAME SHAPE AS 94a7ce0
+
+`check-assumption-bounds.py` returned **2** when no corpus was reachable. It now
+reports what it did not check and **exits 0**:
+
+    ⚠ NOT RUN — no corpus reachable (no DATABASE_PUBLIC_URL, no cache at …).
+    This run swept 0 datasets and asserts NOTHING about assumption bounds. It is
+    not a pass: source scripts/lane-env.sh, or run scripts/pull-corpus.py …
+
+⭐ **IT WAS FAILING ON A CONDITION IT DOES NOT GUARD.** The gate guards
+assumption bounds, not corpus reachability.
+
+**Exit codes, measured without a pipe:**
+
+| context | source | rc |
+|---|---|---|
+| CI shape — no env, empty `$HOME` | none | **0**, states NOT RUN |
+| local, cache only | `~/.axiom-cache/ds.json`, 36 datasets | **0** |
+| `DATABASE_PUBLIC_URL` set | live database, 33 datasets | **0** |
+
+## ⛔ AND THE KNOWN POSITIVE FOUND SOMETHING BIGGER: IT IS NOT A GATE
+
+A corpus with `company.tax_rate = 1059.0` against a bound of `0.0..0.6`
+**exits 0**. The script has exactly two `return` paths and **both are 0**; it
+prints *"Reports only. No stored value is modified by this script."*
+
+⭐⭐ **IT IS A REPORTER, NOT A GATE — and before this fix its ONLY non-zero exit
+was the one condition it does not guard.** It finds **8 out-of-bounds values on
+the real corpus today** and has never failed on one. Making it fail is a RULING,
+not a fix: those values are real production data, and failing would make CI
+permanently red on data nobody has adjudicated. ⭐ **Its name and its place in a
+"29/29 gates" count overstate it.**
+
+## ⭐⭐ THE SWEEP — 12 OF 29 GATES READ SOMETHING CI DOES NOT HAVE
+
+Derived from the AST (`os.environ.get`, `expanduser`, sibling paths):
+
+| gate | reads | CI-like rc | what it silently skips |
+|---|---|---|---|
+| `check-assumption-bounds` | `DATABASE_PUBLIC_URL`, `DS_CACHE`, `$HOME` | 0 | **all 36 datasets** — now stated |
+| `check-period-labels-published` | `AXIOM_FRONTEND` | 0 | frontend half — **stated** (94a7ce0) |
+| `check-period-labels-consumed` | `AXIOM_FRONTEND`, `_OPTIONAL` | **1** | fails unless CI sets the flag; CI does |
+| `check-no-ts-period-format` | `AXIOM_FRONTEND` | 0 | **the entire TS scan**, on one line of output |
+| `check-in-development-marking` | `AXIOM_FRONTEND` | **2** | ⚠ not wired into CI at all |
+| `check-comparison-matrix` | `AXIOM_DEMO_BASE`, `AXIOM_FRONTEND` | — | not in CI |
+| `check-db-client`, `check-model-columns` | DB / git | 0 | model-columns reads git and genuinely runs |
+| `check-ownership-agreement`, `check-showcase-dataset`, `check-single-active-dataset` | `DATABASE_*` | 0 | **not in CI at all** |
+| `check-prospect-routes` | `AXIOM_APP_BASE` | — | not in CI |
+
+## ⭐⭐ WHAT "29/29 GREEN" MEANS IN CI
+
+**17 of the 29 gates are wired into `ci.yml`. TWELVE ARE NOT IN CI AT ALL** —
+including `check-no-internal-identifiers.py`, **written this session** (§7r-S5)
+and never added to the workflow.
+
+Of the 17 that are wired, **four report a stated non-run** without a corpus or a
+frontend checkout. So CI genuinely enforces roughly **13 of 29**, and the local
+sweep enforces more only because this machine has a database URL, a corpus cache
+and a sibling checkout.
+
+⭐ **"29/29 gates green" was always a claim about this laptop.** It is now
+falsifiable: every gate that cannot reach its input says so in its own output.
+
+## ⛔ WHAT WAS NOT DONE
+
+No guard was weakened to a skip. `check-period-labels-consumed` still returns 1
+bare and still relies on CI's `AXIOM_FRONTEND_OPTIONAL=1` — the same defect,
+mitigated rather than fixed, and left because the dispatch named one script.
+**Wiring the twelve absent gates into CI is a lane, not a line.**

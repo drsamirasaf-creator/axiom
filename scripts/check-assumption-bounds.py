@@ -61,9 +61,27 @@ def load():
 def main():
     ds, src = load()
     if not ds:
-        print("✗ NO CORPUS — exiting non-zero rather than reporting every "
-              "assumption in bounds.")
-        return 2
+        # ⭐⭐ IT REPORTS WHAT IT DID NOT CHECK AND EXITS 0 — ruled 4 Aug, the
+        # same shape as `check-period-labels-published.py` at 94a7ce0.
+        #
+        # It returned 2, which is a FAILURE ON A CONDITION IT DOES NOT GUARD:
+        # this gate guards assumption bounds, not whether a corpus is reachable.
+        # The corpus lives in the live database or in a cache at
+        # ~/.axiom-cache/ds.json — untracked and MACHINE-LOCAL — so CI has
+        # neither and the gate was structurally red there while passing here.
+        # Every lane that reported "29/29 gates green" was true on one machine.
+        #
+        # ⭐⭐ AND IT MUST NOT CLAIM A PASS IT DID NOT EARN. The old comment on
+        # `load()` is still right — returning None rather than {} is what stops
+        # a sweep of zero datasets reporting every assumption in bounds. The
+        # answer is not to fail; it is to SAY WHICH HALF RAN, in the output a
+        # reader sees, exactly as the period-labels gate now does.
+        print("  ⚠ NOT RUN — no corpus reachable "
+              f"(no DATABASE_PUBLIC_URL, no cache at {CACHE}).")
+        print("  This run swept 0 datasets and asserts NOTHING about assumption "
+              "bounds. It is not a pass: source scripts/lane-env.sh, or run "
+              "scripts/pull-corpus.py to write the cache, to make it one.")
+        return 0
     print(f"ASSUMPTION BOUNDS SWEEP — {len(ds)} datasets, source: {src}\n")
 
     per_field = collections.Counter()
