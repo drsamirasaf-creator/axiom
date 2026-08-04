@@ -18938,3 +18938,58 @@ the tighter claim: prose mentioning the column is harmless, **an assignment is
 the thing forbidden.**
 
 **2092 passed** (from 2080), 29 gates non-zero 0.
+
+# ⭐⭐ §4u.1 · THE SURVEY LIBRARY AND RATINGS — EIGHT RULINGS (5 Aug)
+
+Answers the eight left open by `docs/reports/stakeholder-survey-library-scope-2026-08-05.md`.
+
+## ⭐⭐ 1 · EXTERNALS GET THEIR OWN PER-GROUP SCORE, NOT THE CEI
+
+They answer **10 relationship questions**; the CEI is a **13-axis composite**.
+⛔ **ONE NAME OVER TWO QUANTITIES IS THE FAILURE ALREADY RULED AGAINST TWICE.**
+**Named distinctly. Per group, never pooled** — averaging a regulator with a
+customer describes nobody.
+
+## ⭐ 2 · EXTERNAL QUESTIONS ARE NOT CODED TO THE 13 AXES
+
+The library codes all 260 to the shared spine. ⛔ **That coding is BOOKKEEPING
+UNTIL SOMEONE AVERAGES IT IN, AND NOTHING WOULD PREVENT THAT.** The coding is
+dropped rather than left as a standing invitation.
+
+## ⭐ 3 · FOUR INTERNAL GROUPS PLUS A CLIENT-CHOSEN SUBSET OF EXTERNALS
+
+Engineering cost is flat past the first group, so this defers content and nothing
+else. ⛔ **A CLIENT HANDED THIRTY GETS TWENTY-EIGHT SUPPRESSED ROWS THAT READ AS A
+BROKEN PRODUCT; a client choosing two gets two live ones.** The floor is
+methodological and not client-settable, so the answer is fewer groups, never a
+lower floor.
+
+## ⭐⭐ 4 · ISSUES ARE A DISTINCT OBJECT
+
+*"Approvals take three weeks"* **cannot be rejected** — rejecting it records
+inaction as *"considered and dismissed."* ⛔ **A `type` COLUMN LEAVES ISSUES
+SHARING `reject`, WHICH IS THE DEFECT ITSELF.**
+
+## ⭐ 5 · THE AXIS→OBJECTIVE EDGE IS DECLARED, B10-STYLE, AND BUILT AFTER ISSUES
+
+⛔ **Never inferred.** `KeyResult.kpi_key` was to be matched by normalised text
+and is **NULL ON ALL 82 ROWS** — inference-by-name produces nothing. Sequenced
+behind issues because the thing an axis links *through* is a finding.
+
+## ⭐ 6 · THE PROPOSAL FINGERPRINT DROPS MUTABLE TEXT
+
+`_fingerprint` hashes the normalised **title**, so rewording mints a new key and
+its ratings vanish. ⭐ **Re-keys existing dispositions — WITH A STATED MIGRATION**,
+not silently.
+
+## ⭐ 7 · RATING SORTS BELOW `current_priority`, AND RENDERS PROMINENTLY
+
+⛔ **A crowd average must not override a human's explicit priority.** The
+prominence is on the CARD, not in the ORDER — so the signal is visible without
+reordering a CXO's queue underneath them.
+
+## ⭐ 8 · RATERS ARE AUTHENTICATED MEMBERS PLUS LIVE-INVITE HOLDERS
+
+⭐⭐ **THIS KEEPS THE COUNT ANCHORED.** A floor over an inflatable count is
+decoration. **Ratings are NOT cycle-bound and carry their own regime** — a
+proposal's life is not a survey's.
