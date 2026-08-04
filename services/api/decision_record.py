@@ -489,6 +489,29 @@ def src_issue_states(db, cid):
     return out
 
 
+def src_axis_links(db, cid):
+    """⭐⭐ DECLARING WHAT ADDRESSES AN ASSESSMENT AXIS IS A DECISION — the same
+    class as B10's line links, and the III.4 guard said so before anyone argued.
+
+    "Our weak Operational Excellence is what this objective is for" is a person
+    asserting a causal claim about their own business. It is the claim on which
+    every "did the intervention move the score" reading afterwards rests, and
+    without it that reading has no premise at all.
+    """
+    from .accounts import AxisObjectiveLink
+    out = []
+    for l in (db.query(AxisObjectiveLink).filter_by(company_id=cid)
+                .filter(AxisObjectiveLink.revoked_at.is_(None)).all()):
+        out.append(_d(
+            "axis_link", l.id, cid=cid, type_="axis_objective_declared",
+            decided_at=l.declared_at, author=l.declared_by_label,
+            actor_user_id=l.declared_by,
+            statement=(f"objective {l.obj_key} declared to address assessment "
+                       f"axis {l.l1_code}"),
+            rationale=l.note))
+    return out
+
+
 SOURCES = {
     "override": src_overrides,
     "signoff": src_signoffs,
@@ -503,6 +526,7 @@ SOURCES = {
     "impact_declaration": src_impact_declarations,
     "assigned_feedback": src_assigned_feedback,
     "issue_state": src_issue_states,
+    "axis_link": src_axis_links,
 }
 
 # ⭐ ATTRIBUTED, BUT AUTHORSHIP RATHER THAN DECISION — named with the reason,

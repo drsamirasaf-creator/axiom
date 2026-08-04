@@ -703,6 +703,41 @@ class IssueComment(Base):
     revoked_by = Column(Integer, nullable=True)
 
 
+class AxisObjectiveLink(Base):
+    """§4u.1 ruling 5 — the assessment axis an objective is meant to address.
+
+    ⭐⭐ THE RETURN EDGE. §7o's chain runs sentiment → initiative → KR → KPI →
+    statement line, which is a CHAIN. A low Operational Excellence score reaches
+    an intervention and nothing reports back whether the intervention moved the
+    score. This edge is what makes the walk a cycle.
+
+    ⛔ DECLARED, NEVER INFERRED. Matching an axis title to objective text would be
+    inference, and this codebase's one inference-by-name path — `KeyResult.kpi_key`
+    — is NULL ON ALL 82 ROWS because nothing ever wrote it.
+
+    ⭐ KEYED BY `obj_key`, NOT AN OBJECTIVE ROW ID. Objectives are snapshot-scoped
+    and every re-upload mints new rows; the four existing link tables already key
+    this way for the same reason.
+
+    ⭐ REMOVAL IS A REVOKE (§4v.1 ruling 1). "This objective is not what addresses
+    that axis" is a claim, with an actor and a date.
+    """
+    __tablename__ = "ax_axis_objective_links"
+    __table_args__ = (UniqueConstraint("company_id", "l1_code", "obj_key",
+                                       name="uq_axis_objective_link"),)
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    l1_code = Column(String(40), index=True, nullable=False)
+    obj_key = Column(String(64), index=True, nullable=False)
+    source = Column(String(16), default="in_app", nullable=False)
+    declared_by = Column(Integer, nullable=True)
+    declared_by_label = Column(String(160), nullable=True)
+    declared_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    note = Column(Text, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+    revoked_by = Column(Integer, nullable=True)
+
+
 class OrgGoal(Base):
     """§4o Organizational Goal, parsed from the client template's 'Organizational
     Goals' sheet. Keyed to the FinancialDataset snapshot (dataset_id) so each
@@ -6999,6 +7034,125 @@ class IssueInitiativeIn(BaseModel):
     title: str | None = None
     owner_name: str | None = None
     department_id: int | None = None
+
+
+class AxisLinkIn(BaseModel):
+    l1_code: str
+    obj_key: str
+    note: str | None = None
+
+
+@router.get("/companies/{company_id}/axis-links")
+def list_axis_links(company_id: int, member=Depends(_summary_access), db=Depends(get_db)):
+    """Every axis, its declared objectives, and ⭐ THE AXES NOBODY HAS LINKED.
+
+    ⭐⭐ AN UNLINKED AXIS IS THE FINDING. A company scoring badly on an axis that
+    no objective addresses is precisely what a CXO needs to see, and a list that
+    showed only the linked ones would report the opposite.
+    """
+    from . import axis_objective as AO
+    latest = cycle_with_published_results(db, company_id)
+    axes = {}
+    if latest is not None:
+        _idm, l1_title = _l1_maps(db, latest.framework_id)
+        axes = dict(l1_title)
+    rows = AO.live_only(db.query(AxisObjectiveLink)
+                          .filter_by(company_id=company_id).all())
+    by_axis = {}
+    for r in rows:
+        by_axis.setdefault(r.l1_code, []).append(r)
+    _t, obj_rows, _l = _objective_rows(db, company_id)
+    by_key = {o["obj_key"]: o for o in obj_rows}
+    out = []
+    for code, title in sorted(axes.items()):
+        links = by_axis.get(code, [])
+        out.append({
+            "l1_code": code, "title": title,
+            "objectives": [{
+                "obj_key": l.obj_key,
+                "objective": (by_key.get(l.obj_key) or {}).get("objective"),
+                "resolvable": l.obj_key in by_key,
+                "declared_by": l.declared_by,
+                "declared_by_label": l.declared_by_label,
+                "declared_at": l.declared_at,
+            } for l in links],
+            "linked": bool(links),
+            # ⭐ NAMED, NOT LEFT AS AN EMPTY LIST A READER MUST INTERPRET.
+            "absent_note": (None if links else
+                            "No objective is declared to address this axis."),
+        })
+    return {"company_id": company_id, "axes": out,
+            "unlinked": [a["l1_code"] for a in out if not a["linked"]]}
+
+
+@router.post("/companies/{company_id}/axis-links", status_code=201)
+def declare_axis_link(company_id: int, body: AxisLinkIn,
+                      member=Depends(require_company_admin),
+                      user: User = Depends(get_current_user), db=Depends(get_db)):
+    """⭐ DECLARED BY THE DEPARTMENT'S AUTHORITY HOLDER, not by an admin.
+
+    The objective's own department decides what addresses its axis; §4v.1 ruling
+    3 keeps this permission separate from `can_author`, and platform staff are
+    refused in both.
+    """
+    from . import axis_objective as AO
+    _t, obj_rows, _l = _objective_rows(db, company_id)
+    obj = next((o for o in obj_rows if o["obj_key"] == body.obj_key), None)
+    if obj is None:
+        raise HTTPException(404, "objective not found in the active dataset")
+    dept_id = obj.get("department_id")
+    if not AO.may_declare(db, company_id, user, department_id=dept_id):
+        raise HTTPException(
+            403, "Declaring what addresses an assessment axis is the department "
+                 "authority holder's act. Platform staff are refused, and an "
+                 "admin may grant authority but never exercise it.")
+    existing = (db.query(AxisObjectiveLink)
+                  .filter_by(company_id=company_id, l1_code=body.l1_code,
+                             obj_key=body.obj_key, revoked_at=None).first())
+    if existing is not None:
+        return {"id": existing.id, "already": True}
+    row = AxisObjectiveLink(
+        company_id=company_id, l1_code=body.l1_code, obj_key=body.obj_key,
+        source="in_app", declared_by=user.id,
+        declared_by_label=(user.name or user.email or ""), note=body.note)
+    db.add(row); db.flush()
+    audit(db, user.id, "axis_link_declared", "company", company_id,
+          detail=f"{body.l1_code}->{body.obj_key}")
+    db.commit()
+    return {"id": row.id, "already": False}
+
+
+@router.get("/companies/{company_id}/cycle-closure")
+def cycle_closure(company_id: int, member=Depends(_summary_access), db=Depends(get_db)):
+    """⭐⭐ DOES THE CYCLE CLOSE? Hop by hop, counted, with the break named.
+
+    ⛔ THE COUNTS ARE MEASURED, NOT ASSERTED. Each hop is a query; a hop that
+    returns zero is reported as a break rather than omitted, because a walk that
+    skips a broken hop reports a closed cycle over a gap.
+    """
+    from . import axis_objective as AO
+    from .initiative_lines import InitiativeLineLink
+    n_axis = len(AO.live_only(db.query(AxisObjectiveLink)
+                                .filter_by(company_id=company_id).all()))
+    counts = {
+        "axis": n_axis,
+        "objective": n_axis,     # the same declared edge, seen from the other end
+        "initiative": db.query(GoalInitiativeLink).filter_by(
+            company_id=company_id).filter(
+            GoalInitiativeLink.revoked_at.is_(None)).count()
+        or db.query(Initiative).filter_by(company_id=company_id).count(),
+        "key_result": db.query(KrInitiativeLink).filter_by(
+            company_id=company_id).filter(
+            KrInitiativeLink.revoked_at.is_(None)).count(),
+        "kpi": db.query(KeyResult).filter_by(
+            company_id=company_id, archived=False).filter(
+            KeyResult.kpi_key.isnot(None)).count(),
+        "statement_line": db.query(InitiativeLineLink).filter_by(
+            company_id=company_id).filter(
+            InitiativeLineLink.revoked_at.is_(None)).count(),
+        "axis_again": n_axis,
+    }
+    return {"company_id": company_id, **AO.walk(counts)}
 
 
 @router.get("/companies/{company_id}/issues")
