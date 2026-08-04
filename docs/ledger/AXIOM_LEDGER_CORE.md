@@ -141,7 +141,7 @@ stochastic engine is no longer blocked on a false premise.**)
 | B5 | **§7u (b)** per-company stored assumptions | Deferred, not dropped. |
 | B6 | ~~Grant/revoke admin UI~~ | ⭐ **ALREADY BUILT — verified 31 Jul.** `DepartmentAuthorityPanel.tsx`, mounted at `routes/team.tsx`, POSTs grant AND revoke. §7.9 corrected. |
 | ~~G1~~ | ⭐⭐ **CLOSED — backups exist and are scheduled** | Workspace moved to **PRO** (`maxBackupsCount` 0 → 10). DAILY/WEEKLY/MONTHLY configured with 6/27/89-day retention; first backup taken, 249 MB. ⭐ **RPO total → 24h**, the platform's finest offering. |
-| **G2** | ⭐⭐ **RESTORE STILL UNTESTED — pending a clock, no longer blocked** | ⭐ `volumeInstancePITRRestore` fails on an uninitialised pgBackRest catalog, 6 identical attempts; the in-place mutation was NOT called. **Retest after the first scheduled backup (11:11 UTC).** Fidelity baseline captured: 97 tables, 34,753 rows, 20 packs with hashes. ⭐⭐ **RTO remains UNMEASURED — not estimated.** |
+| **G2** | ⭐⭐ **PARTIALLY CLOSED 4 Aug — the restore PATH works; a restored volume has still never BOOTED** | ⭐⭐ Cause found by Railway support: **PITR had never been enabled**, so the pre-flight pgBackRest probe found no WAL archive bucket and aborted on an empty `repo1-s3-key`. **The ten failures were that** — not `sourceRepoPath`, not the timestamps. PITR now enabled; **archive window observed growing 35s → 5½ min**, so WAL segments reach the bucket. A snapshot restore **staged successfully** without altering the running volume, then was **discarded — production untouched**. ⛔ **STILL UNPROVEN: that a restored volume BOOTS AND SERVES** — needs a restore into a SEPARATE service, started. ⭐⭐ **RTO UNMEASURED — not an upper bound.** See §8z. |
 | ~~G4~~ | ⭐⭐ **CLOSED — the gunicorn arbiter restarts a hung worker** | Detection in 120–180s via the uvicorn heartbeat, which stalls exactly when the event loop blocks and NOT for slow threadpool work. Proven against a real hung-but-alive worker, and a 30s sync sweep at 3x the timeout survived. ⭐ Residual: a wedged CONTAINER is alerted in 30 min, not restarted. |
 | **G2, G5, G6** | ⭐⭐ **RELIABILITY LAUNCH GATES — precede any relaunch carrying paying customers** || ~~G3~~ | ⭐ **CLOSED — external availability monitoring** | GitHub Actions probe every 30 min from OUTSIDE Railway; alerts to a labelled GitHub issue that emails the owner. Detection ≤30 min, down from unbounded. |
 | ~~G13~~ | ⭐⭐ **BUILT — Stripe `livemode` persisted, backfilled and guarded** | Both surfaces carry the flag, taken from the signed EVENT and never derived from the key. ⭐⭐ **BASELINE: 0 live-mode paying, 4 test-mode, 7 never subscribed, 0 unresolved** — every prior count reported 4. |
@@ -18516,3 +18516,101 @@ key**, so priming storage seated the token and not the company.
 weaken the assertions.** Final: **0 failures**, 7 org cards, both departments.
 
 **2061 passed** (from 2045), 29 gates non-zero 0, typecheck + lint clean.
+
+# ⭐⭐ §8z · G2 PARTIALLY CLOSES — THE RESTORE PATH WORKS (4 Aug)
+
+**Ledger entry. Nothing was built and no code changed.**
+
+## ⭐⭐ 1 · THE CAUSE — FOUND BY RAILWAY SUPPORT, AND IT WAS NEITHER GUESS
+
+**PITR HAD NEVER BEEN ENABLED.** The pre-flight pgBackRest probe therefore found
+**no WAL archive bucket** and aborted on an **empty `repo1-s3-key`**.
+
+⭐⭐ **THAT IS WHAT THE TEN FAILURES WERE.** Not `sourceRepoPath`, and not the
+target timestamps — the two candidates this ledger had in play. §8.G2b spanned
+four attempts across three timestamps covering the whole retention window
+precisely to eliminate the timestamp hypothesis; it did eliminate it, and the
+real cause was a setting **no field in the API exposes**.
+
+⭐ **§8.G2b's refusal to name a second cause was right.** It recorded the
+31 Jul inference as DISPROVEN and left the cause **UNDETERMINED** rather than
+substituting another guess. **The answer came from the party that can see the
+setting, and it matched neither standing hypothesis.** A confident second guess
+would have sent this lane somewhere else for another two days.
+
+## ⭐ 2 · WHAT IS PROVEN BY DOING
+
+| | |
+|---|---|
+| PITR | ⭐ **ENABLED** |
+| WAL reaching the bucket | ⭐⭐ **archive window observed growing 35 s → 5½ min** |
+| snapshot restore | ⭐ **INITIATED from the dashboard and STAGED SUCCESSFULLY** |
+| the running volume | ⛔ **NOT ALTERED** — the staged change was **DISCARDED** |
+| production | ⭐ **UNTOUCHED** |
+
+⭐ **The growing archive window is the load-bearing observation.** A restore path
+that merely stops erroring proves the probe found *something*; a window that
+**grows** proves WAL segments are actually arriving. **The first is configuration,
+the second is output** — and this ledger's standing rule is that G1 closed on
+output, not on configuration.
+
+## ⛔ 3 · WHAT IS NOT PROVEN — AND IT IS THE HALF G2 ASKS
+
+⭐⭐ **THAT A RESTORED VOLUME BOOTS AND SERVES HAS NOT BEEN SHOWN.**
+
+Staging a restore proves the catalog is readable and the operation is accepted.
+It does **not** prove the resulting volume contains a database that **starts**,
+passes its own consistency recovery, and answers a query.
+
+**THE REMAINING TEST, stated so it cannot drift:** ⭐ **restore into a SEPARATE
+SERVICE and START IT.** Not in place, and not staged-then-discarded — a distinct
+service brought up against the restored volume, serving.
+
+⛔ **UNTIL THAT RUNS, AXIOM STILL HOLDS A PARTIAL HYPOTHESIS.** The mechanism
+that failed ten times now succeeds; **what it produces has never been booted.**
+
+## ⭐⭐ 4 · RTO — UNMEASURED. NOT AN UPPER BOUND.
+
+**There is elapsed wall-clock time from this session, and it is NOT an RTO.**
+
+⭐⭐ **THE CLOCK WAS RUNNING ON A STAGED CHANGE AWAITING CONFIRMATION, NOT ON
+WORK IN PROGRESS.** Nothing was restoring during most of it. Reporting that
+figure — even hedged as *"at most"* — would publish a number that **mostly
+measures when somebody looked back at the screen.**
+
+⭐ **An upper bound is a claim, and this one would be about human attention
+rather than about the platform.** RTO is recorded as **UNMEASURED**, exactly as
+§8.G2b and the 31 Jul entry recorded it, and for the same reason: **a guessed RTO
+is a hypothesis about a hypothesis.**
+
+**RPO is unaffected and remains as measured** — bounded by the DAILY cadence at
+**24 h worst case**, the platform's finest offering.
+
+## ⭐ 5 · THE PLAN LABEL — AN OPEN CORE QUESTION, CLOSED
+
+⭐⭐ **THE WORKSPACE IS `PRO` IN RAILWAY'S SYSTEMS.** The API returning **`TEAM`**
+is a **labelling inconsistency on their side** and **does not affect PITR** or
+any backup entitlement.
+
+⭐ **This closes it as a question rather than leaving it standing.** CORE recorded
+`plan: PRO` at 31 Jul alongside `maxBackupsCount: 10`; a later `TEAM` reading was
+a live discrepancy between two of their own surfaces, and an unresolved
+plan-label mismatch is exactly the kind of thing that gets re-investigated at the
+worst moment. **It is answered, by the party that can see both systems.**
+
+## ⭐⭐ 6 · G2 — PARTIALLY CLOSED, AND THE REMAINDER IS NAMED
+
+| | |
+|---|---|
+| **the restore path** | ⭐ **CLOSES** — cause identified, PITR enabled, WAL flowing, a restore staged |
+| **a restored volume boots and serves** | ⛔ **DOES NOT CLOSE** |
+| **RTO** | ⭐⭐ **UNMEASURED** |
+
+⭐ **This is the first movement on G2 in three lanes**, and it moved because the
+blocker was escalated to the only party who could see the setting — not because
+of another attempt from this side, which §8.G2b had already ruled out as the next
+step.
+
+⛔ **G2 IS NOT CLOSED.** *An untested backup is a hypothesis* — AXIOM now holds a
+**smaller** one: the backups exist, are scheduled, and the restore path
+demonstrably runs. **Whether what it produces serves is still unknown.**
