@@ -54,8 +54,20 @@ jobs:
             exit 1
           fi
 
+      # ⭐⭐ PLAYWRIGHT WAS NEVER INSTALLED, AND THAT IS WHY THIS JOB HAS NEVER
+      # CHECKED ANYTHING. `auth-regression.py` drives a real browser — the
+      # sidebar shape can only be read from a rendered page — and this step
+      # installed `httpx requests`, so every run died on
+      # "ERROR: playwright not installed" AFTER the configuration guard had
+      # already passed.
+      # ⛔ THE GUARD ABOVE REFUSES TO PASS SILENTLY WHEN UNCONFIGURED, so the
+      # job looked correctly wired and correctly failing. It was failing on its
+      # own missing dependency, which is an INSTRUMENT failure reported as a
+      # finding — the shape §III.11 exists to name.
       - name: Install
-        run: pip install -q httpx requests
+        run: |
+          pip install -q httpx requests playwright
+          python3 -m playwright install --with-deps chromium
 
       - name: Crawl the demo
         env:
