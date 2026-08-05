@@ -18994,8 +18994,14 @@ reordering a CXO's queue underneath them.
 decoration. **Ratings are NOT cycle-bound and carry their own regime** — a
 proposal's life is not a survey's.
 
-# ⭐⭐ §4z.2 · THE IN-DEVELOPMENT EXCEPTION IS RETIRED — AND THE GUARD THAT
+# ⭐⭐ §4z.3 · THE IN-DEVELOPMENT EXCEPTION IS RETIRED — AND THE GUARD THAT
 # SHOULD HAVE CLOSED IT NEVER FIRED (5 Aug)
+
+⚠️ **NUMBERED §4z.3, NOT §4z.2 — THE FOURTH DUPLICATE-SECTION COLLISION THIS
+ERA.** §4z.2 is already the rename entry (2 Aug). ⛔ **AND §4z.1 IS ITSELF USED
+TWICE** — the viewer's tier mark and the "What is AXIOM?" tabs — which predates
+this lane and is reported rather than silently renumbered, because moving a
+section moves every citation to it.
 
 ## ⭐ THE EXCEPTION ENDED EXACTLY AS WRITTEN
 
