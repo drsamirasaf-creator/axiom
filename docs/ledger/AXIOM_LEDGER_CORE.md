@@ -19438,3 +19438,39 @@ those three and nothing else.
 ⛔ **NO NEW TABLE, NO NEW VOCABULARY, NO SEED.** The invite/claim flow has never
 run in production and sends an outbound email; ⭐ **that is a separate
 authorization and was not taken.**
+
+# ⭐⭐ §8s.1 · REQUIRED STATUS CHECKS — THE RECOVERY PATH, RECORDED FIRST (5 Aug)
+
+⛔ **NAMED BEFORE IT IS NEEDED, NOT DURING AN OUTAGE.** Required checks apply to
+DIRECT pushes, so the tool that authors most frontend commits cannot land work
+that fails CI. That is the point. It also means:
+
+⭐⭐ **LOVABLE CANNOT FIX A RED MAIN IT DID NOT CAUSE.** Its own fix push is
+blocked by the same failing check, and it pushes through the GitHub API where no
+local hook — and no local override — exists.
+
+## THE RECOVERY PATH, IN ORDER
+
+1. ⭐ **Push the fix from a local clone.** `.githooks/pre-push` runs the same
+   steps CI does (derived from `ci.yml` by `scripts/ci-steps.py`, one owner), so
+   a green local hook is strong evidence the push will land. **This is the normal
+   route and needs no special permission.**
+2. ⭐ **If the fix cannot pass the failing check** — because the check itself is
+   wrong, as `/what-is-axiom` was for two days — **correct the check.** A stale
+   assertion is a defect in the gate, and §III.11 exists because that shape has
+   now cost two lanes.
+3. ⛔ **Only then, the human-authorised bypass:** the repository admin
+   temporarily unticks the required check, lands the fix, and re-ticks it.
+   **Recorded here so it is a decision with a name on it rather than a panic.**
+   ⭐ It is the LAST option because an untick that is never re-ticked is
+   indistinguishable from never having enabled the checks.
+
+⛔ **AND A RED MAIN NOW STOPS BOTH LANES, NOT ONE.** Before this, a lane could
+still land locally while main was red — which is how ten commits landed on a red
+main. **That was the defect, and removing it raises the cost of leaving a gate
+stale.** The gate must be fixed promptly, by whoever notices.
+
+## ⭐ THE SEQUENCE IS FIXED
+
+**Green run first, enable second.** Enabling against a red main is not a safety
+improvement, it is an outage: every push is blocked, including the correct ones.
