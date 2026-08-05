@@ -485,6 +485,10 @@ class InitiativeAssignment(Base):
     invited_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     accepted_at = Column(DateTime, nullable=True)
     revoked_at = Column(DateTime, nullable=True)
+    # ⭐ §4v.1 — A REVOCATION IS A DECLARATION AND DECLARATIONS CARRY ACTORS.
+    # `revoked_at` alone records that it happened and never who did it, which is
+    # the one question asked when somebody loses write access unexpectedly.
+    revoked_by = Column(Integer, nullable=True)
 
 
 class InitiativeCSF(Base):
@@ -7788,6 +7792,27 @@ def _is_company_admin(db, user, company_id):
     return bool(m and m.role == "admin" and m.status == "active")
 
 
+def may_revoke_leadership(*, leader_user_id, actor_user_id: int,
+                          actor_is_admin: bool) -> bool:
+    """Who may end an initiative's leadership — ⭐ §7e, and stepping down counts.
+
+    ⭐⭐ TODAY THE ONLY REVOKE IS `reassign-leader`, WHICH FORCES A REPLACEMENT.
+    So "X stepped down and nobody took over" is unrecordable, and the workaround
+    is to invite a placeholder — which writes a leadership declaration nobody made.
+
+    ⛔ A LEADER MAY NOT REVOKE ANOTHER'S, and may not assign at all: both assign
+    paths are admin-gated, so the self-grant route is closed structurally rather
+    than by a check inside the body.
+
+    ⭐ `leader_user_id` IS NULL UNTIL THE INVITE IS CLAIMED. Nobody can match a
+    null, so a pending invite is admin-revocable only — the comparison must never
+    be allowed to succeed by both sides being None.
+    """
+    if actor_is_admin:
+        return True
+    return leader_user_id is not None and leader_user_id == actor_user_id
+
+
 def _leader_or_admin(company_id, iid, user, db):
     """The central 7e-D boundary: a company admin, or the initiative's ACTIVE
     leader, may perform leader-scoped writes (status/rag/csf-status/notes) —
@@ -8047,6 +8072,7 @@ def reassign_leader(company_id: int, iid: int, body: AssignLeaderIn,
     cur = _active_assignment(db, iid)
     if cur:
         cur.status = "revoked"; cur.revoked_at = datetime.utcnow()   # write access ends now
+        cur.revoked_by = user.id                                     # ⭐ §4v.1 — who ended it
         _ini_event(db, ini, user.id, "leader_revoked", cur.invited_email, None, "reassigned")
     a, token = _create_assignment(db, ini, company_id, body.email, body.name,
                                   body.note, body.grant_viewer_access, user.id)
@@ -8056,6 +8082,58 @@ def reassign_leader(company_id: int, iid: int, body: AssignLeaderIn,
     send_lead_invite(a.invited_email, a.invited_name, user.name, ini.ref_code, ini.title,
                      _company_name(db, company_id), token)
     return _assignment_out(a)
+
+
+class RevokeLeaderIn(BaseModel):
+    note: str | None = None
+
+
+@router.post("/companies/{company_id}/initiatives/{iid}/revoke-leader")
+def revoke_leader(company_id: int, iid: int, body: RevokeLeaderIn,
+                  user: User = Depends(get_current_user), db=Depends(get_db)):
+    """End this initiative's leadership WITHOUT naming a successor — ⭐ §7e.
+
+    ⭐⭐ THE GAP THIS CLOSES: `reassign-leader` is the only existing revoke, and it
+    requires a replacement email. A company whose leader has left had no way to
+    say so except by inviting somebody — writing a leadership declaration nobody
+    made, which is exactly the fabrication B10/B11 refuse elsewhere.
+
+    ⭐ A LEADER MAY END THEIR OWN, because leaving is their own fact. An admin may
+    end anyone's. ⛔ Nobody may assign — that stays admin-only, so this cannot be
+    composed into a self-grant.
+
+    ⛔ AND IT MINTS NOTHING. No successor, no invite email, no token. The
+    initiative is left with no leader, which is a true and reportable state.
+    """
+    ini = db.get(Initiative, iid)
+    if not ini or ini.company_id != company_id:
+        raise HTTPException(404, "initiative not found")
+    cur = _active_assignment(db, iid)
+    if not cur:
+        # ⭐ NOT A 404. The initiative exists and has no leader — the state the
+        # caller wanted is already the state, and reporting "not found" would
+        # send them looking for a missing initiative.
+        raise HTTPException(409, "This initiative has no leader or pending invite.")
+    if not may_revoke_leadership(leader_user_id=cur.leader_user_id,
+                                 actor_user_id=user.id,
+                                 actor_is_admin=_is_company_admin(db, user, company_id)):
+        raise HTTPException(403, "Only this initiative's leader or a company admin "
+                                 "may end this assignment.")
+    cur.status = "revoked"
+    cur.revoked_at = datetime.utcnow()
+    cur.revoked_by = user.id                       # ⭐ §4v.1 — the actor, always
+    stepped_down = cur.leader_user_id == user.id
+    _ini_event(db, ini, user.id,
+               "leader_stepped_down" if stepped_down else "leader_revoked",
+               cur.invited_email, None, body.note)
+    audit(db, user.id, "leader_stepped_down" if stepped_down else "leader_revoked",
+          "company", company_id, detail=f"{ini.ref_code} {cur.invited_email}")
+    db.commit()
+    # ⭐ THE VACANCY IS THE ANSWER, stated rather than implied by an empty body.
+    return {"initiative_id": iid, "leader": None, "vacant": True,
+            "stepped_down": stepped_down,
+            "note": "This initiative now has no leader. Only a company admin may "
+                    "write to it until one is assigned."}
 
 
 @router.get("/companies/{company_id}/initiatives/{iid}/assignment")
@@ -8417,10 +8495,14 @@ def list_milestones(company_id: int, iid: int, member=Depends(_summary_access), 
 
 @router.put("/companies/{company_id}/initiatives/{iid}/milestones")
 def put_milestones(company_id: int, iid: int, body: MilestonesPut,
-                   member=Depends(require_company_admin),
                    user: User = Depends(get_current_user), db=Depends(get_db)):
-    """Admin bulk-reconcile milestones by id (update kept, add new, delete omitted)."""
-    ini = _get_company_initiative(db, company_id, iid)
+    """Bulk-reconcile milestones by id (update kept, add new, delete omitted).
+
+    ⭐ §7e — an admin OR THIS INITIATIVE'S ACTIVE LEADER. Milestones are the
+    leader's own execution record; requiring an admin to move a date made the
+    leader a reporter of work rather than an owner of it.
+    """
+    ini, _role = _leader_or_admin(company_id, iid, user, db)
     if len(body.milestones) > 40:
         raise HTTPException(422, "at most 40 milestones")
     existing = {m.id: m for m in db.query(InitiativeMilestone).filter_by(initiative_id=iid).all()}
@@ -8490,10 +8572,12 @@ def list_actions(company_id: int, iid: int, member=Depends(_summary_access), db=
 
 @router.put("/companies/{company_id}/initiatives/{iid}/actions")
 def put_actions(company_id: int, iid: int, body: ActionsPut,
-                member=Depends(require_company_admin),
                 user: User = Depends(get_current_user), db=Depends(get_db)):
-    """Admin bulk-reconcile action items by id (lightweight — no deps, no time tracking)."""
-    ini = _get_company_initiative(db, company_id, iid)
+    """Bulk-reconcile action items by id (lightweight — no deps, no time tracking).
+
+    ⭐ §7e — an admin OR THIS INITIATIVE'S ACTIVE LEADER, and only on this one.
+    """
+    ini, _role = _leader_or_admin(company_id, iid, user, db)
     if len(body.actions) > 100:
         raise HTTPException(422, "at most 100 action items")
     existing = {a.id: a for a in db.query(InitiativeAction).filter_by(initiative_id=iid).all()}
@@ -8537,11 +8621,15 @@ def list_blockers(company_id: int, iid: int, member=Depends(_summary_access), db
 
 @router.put("/companies/{company_id}/initiatives/{iid}/blockers")
 def put_blockers(company_id: int, iid: int, body: BlockersPut,
-                 member=Depends(require_company_admin),
                  user: User = Depends(get_current_user), db=Depends(get_db)):
-    """Admin bulk-reconcile blockers. `resolved` toggles the resolved_at stamp; a
-    freshly-resolved blocker stamps now, a re-opened one clears it."""
-    ini = _get_company_initiative(db, company_id, iid)
+    """Bulk-reconcile blockers. `resolved` toggles the resolved_at stamp; a
+    freshly-resolved blocker stamps now, a re-opened one clears it.
+
+    ⭐⭐ §7e — an admin OR THIS INITIATIVE'S ACTIVE LEADER. ⛔ A leader who could
+    not RAISE A BLOCKER had to escalate to an admin to report being blocked, which
+    is the delay the blocker exists to surface.
+    """
+    ini, _role = _leader_or_admin(company_id, iid, user, db)
     if len(body.blockers) > 50:
         raise HTTPException(422, "at most 50 blockers")
     existing = {b.id: b for b in db.query(InitiativeBlocker).filter_by(initiative_id=iid).all()}
@@ -14177,6 +14265,10 @@ def _ensure_ax_columns(engine):
     _add("ax_goal_initiative_links", "revoked_by", "revoked_by INTEGER")
     _add("ax_kr_initiative_links", "revoked_at", "revoked_at TIMESTAMP")
     _add("ax_kr_initiative_links", "revoked_by", "revoked_by INTEGER")
+    # ⭐ §7e — the revoking actor on initiative leadership. Written as a LITERAL
+    # call, not a loop: scripts/check-model-columns.py reads these sites textually
+    # and requires a string-literal table name, so a loop is invisible to it.
+    _add("ax_initiative_assignments", "revoked_by", "revoked_by INTEGER")
     try:                                     # abstention stores score NULL — drop the NOT NULL
         col = {c["name"]: c for c in _inspect(engine).get_columns("ax_assessment_responses")}
         if "score" in col and not col["score"].get("nullable", True):

@@ -19362,3 +19362,79 @@ publication, and this is that rule holding against data rather than against a
 fixture.
 
 **§7o holds** — pack hashes and all three statement blocks byte-identical.
+
+# ⭐⭐ §7e · INITIATIVE LEADERSHIP — TWO RULINGS, AND A CORRECTED PREMISE (5 Aug)
+
+⛔ **§7e A–E IS CITED SEVEN TIMES IN `accounts.py` AND APPEARS NOWHERE IN CORE OR
+ARCHIVE.** `InitiativeAssignment` says *"Leadership of one initiative (7e-C)"*;
+`Initiative.rag` says *"leader-writable (7e-D)"*; the thread primitive says 7e-A;
+the signed-action ledger says 7e-E. **Not one of those sections is in the ledger.**
+
+⭐⭐ **THAT DANGLING REFERENCE IS THE ROOT CAUSE OF THE PREVIOUS DISPATCH.** A lane
+told to build a per-initiative leadership grant searched the ledger, found no §7e,
+searched the code for `owner_name` and `raci`, and concluded the concept did not
+exist. **The subsystem was fully built and entirely unrecorded.** This section
+records it.
+
+## ⭐⭐ RULING 1 · THE CANONICAL NAME IS **LEADER**
+
+Four words have been naming one idea:
+
+| word | what it actually is | grants anything? |
+|---|---|---|
+| ⭐ **leader** | `ax_initiative_assignments.leader_user_id`, resolved by `_leader_or_admin` | ⭐⭐ **YES — the only one of the four** |
+| `Initiative.owner_name` | a free-text `String(200)`, 15 of 24 initiatives populated | ⛔ no |
+| RACI **Accountable** | `ax_initiative_raci`, free-text `party` — deliberately, so an external auditor may be Consulted | ⛔ no |
+| "Project Manager" | ⭐ **a label a tutorial uses.** Never a column, never a check | ⛔ no |
+
+⭐ **THE MAPPING IS THE RULING.** All four resolve to `ax_initiative_assignments`.
+`owner_name` is a caption; **Accountable answers for the outcome, the leader does
+the work**, and they may legitimately be different people — the RACI seed
+demonstrates exactly that on A6 and the surface must keep showing it.
+
+⛔ **"Project Manager" IS A TEACHING WORD, NOT A MODEL WORD.** Tutorials may say
+it; ⭐ **no column, capability, endpoint or test may.** A word that exists only in
+prose cannot rot into a second mechanism.
+
+## ⭐⭐ RULING 2 · PROJECT MANAGER IS NOT DISTINCT FROM INITIATIVE LEADERSHIP
+
+**One concept, one table.** A separate PM grant would put two people on one
+execution record with **no rule for disagreement** — the two-owners class this
+ledger already names. ⛔ **The ruling is not that a second grant would be
+redundant. It is that a second grant would be UNDECIDABLE.**
+
+⭐ And a second table would have been the durable kind of wrong: per-initiative,
+user-backed and revocable, i.e. **indistinguishable from the right one at review**,
+diverging only once both had rows.
+
+## ⭐⭐ WHY THE PREVIOUS DISPATCH WAS WRONG — AND WHY IT LOOKED RIGHT
+
+It instructed building `InitiativePM` **while the table existed**, on a scope
+report that searched `owner_name` and `raci` and **never searched `assignment` or
+`leader`**. ⭐ **Fourteenth lane to find work under a name nobody searched**, and
+the second correction to the same B21 report (`fbfb1b3` → `d544bdb` → `4ecb9e7`).
+
+⭐⭐ **BUT THE SEARCH IS ONLY HALF THE CAUSE. `ax_initiative_assignments` HAS ZERO
+ROWS.** Every status, zero — the invite email, the `jti` claim, the
+reassign-revokes-the-incumbent path and the 403 have **never executed against real
+data**. Meanwhile 15 of 24 initiatives carry an `owner_name` string that grants
+nothing, which is what the product has actually been using to express ownership.
+
+⛔ **A NEVER-ASSIGNED ROLE AND A NONEXISTENT ONE ARE INDISTINGUISHABLE FROM THE
+SURFACE.** Nobody has held it, so nothing renders, so the concept reads as absent.
+⭐ **This is the known-positive rule (§III.11) at the level of a subsystem rather
+than an assertion: a mechanism that has never fired has not been tested, and its
+absence from every screen is not evidence about the schema.**
+
+## WHAT THE LEADER MAY DO — measured, not recalled
+
+**Already, before this lane** — `_leader_or_admin`, 5 endpoints: `rag`,
+`leader-status`, `csfs/{cid}/status`, `csfs/{cid}/propose-text`, `cadence-update`.
+
+⭐ **The gap was three endpoints wide, not a role wide** — `put_milestones`,
+`put_actions`, `put_blockers`, all `require_company_admin`. This lane converts
+those three and nothing else.
+
+⛔ **NO NEW TABLE, NO NEW VOCABULARY, NO SEED.** The invite/claim flow has never
+run in production and sends an outbound email; ⭐ **that is a separate
+authorization and was not taken.**
