@@ -156,15 +156,18 @@ def main():
         print("  This run asserts NOTHING about whether the in-development "
               "marking is present. It is not a green: set AXIOM_FRONTEND to a "
               "checkout to make it one.")
-        if exists:
-            # ⭐ ONE THING IS STILL DECIDABLE WITHOUT THE FRONTEND. If the
-            # capability has SHIPPED, CORE §4z.1's stated exception should be
-            # retired whatever the marking says — and that is this repository's
-            # fact, so it is still enforced.
-            print("\n  ✗ THE CAPABILITY IS BUILT, so §4z.1's in-development "
-                  "exception should be RETIRED.\n    That is decidable here "
-                  "and does not need the frontend.")
-            return 1
+        # ⭐⭐ THE "CAPABILITY SHIPPED → RETIRE THE EXCEPTION" RETURN IS GONE,
+        # AND ITS REMOVAL IS THE POINT. While §4z's exception STOOD, a built
+        # capability with no frontend checkout was decidable here and worth
+        # failing on: it meant the marking should come down. The exception was
+        # retired on 5 Aug and the marking IS down, so "capability built" is now
+        # the ordinary resting state of this repository.
+        #
+        # ⛔ LEAVING IT WOULD MAKE CI RED FOREVER ON A RESOLVED CONDITION — a
+        # guard failing on something that is no longer wrong, which is the same
+        # class as failing on a condition it does not guard (94a7ce0, eb89ee8).
+        # Without the frontend there is no marking to compare against, so there
+        # is nothing to contradict and nothing to report but the absence.
         return 0
 
     src = open(os.path.join(FE, MARKED_FILE), encoding="utf-8").read()
