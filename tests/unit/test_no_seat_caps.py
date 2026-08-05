@@ -10,6 +10,16 @@ provisioned `assessor_cap` from the Stripe plan line.
 """
 import ast
 import os
+import tempfile
+
+# ⭐⭐ THIS MODULE SET NO DATABASE_URL AT ALL, so it ran against whichever
+# database an earlier-imported module had already put in the environment —
+# `setdefault` is a no-op once anything else has set it. Alone it reached a
+# schema with no `enterprises` table and failed; in a full run it inherited a
+# temp DB somebody else had created and passed. ⛔ WHICH DATABASE THIS MODULE
+# TESTED WAS DECIDED BY COLLECTION ORDER.
+os.environ.setdefault("DATABASE_URL",
+                      "sqlite:///" + tempfile.mktemp(prefix="noseat-", suffix=".db"))
 
 import pytest
 

@@ -120,6 +120,13 @@ def test_every_attributed_model_is_either_a_source_or_named_not_a_decision():
                "PackRelease", "WatchEvent", "AssumptionEdit",
                "InitiativeLineLink", "InitiativeImpactDeclaration",
                "AssignedFeedback",
+               # ⭐ §7e — ENDING a leadership is a decision; HOLDING one is not.
+               # The model was excluded wholesale as "assignment follows the
+               # approval already carried", which is true of the grant and not of
+               # the revoke — and least of all of a self-revoke, which follows no
+               # approval at all. Carried via `leadership_revocation`, which
+               # returns revoked rows only.
+               "InitiativeAssignment",
                # ⭐ §4u.1 ruling 4 — accepting an issue is a decision, and the
                # sharpest kind: a considered position on a thing that stays true.
                "Issue",

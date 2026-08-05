@@ -7994,6 +7994,42 @@ def _renumber_band(db, company_id, band):
         i.rank = pos
 
 
+def _leader_block(db, iid: int) -> dict:
+    """Who leads this initiative, and who has been invited to — ⭐ §7e.
+
+    ⛔ A REVOKED LEADER MUST STOP BEING PUBLISHED. The name on the page is what a
+    reader takes to be the person who may write; leaving it there after the
+    revoke says the opposite of what the grant now does.
+
+    ⭐ `leader` IS THE ACTIVE HOLDER ONLY. `leader_pending` carries an invite that
+    has been sent and not claimed — a real state that is neither a leader nor a
+    vacancy, and the one a handover sits in.
+    """
+    rows = (db.query(InitiativeAssignment)
+              .filter(InitiativeAssignment.initiative_id == iid,
+                      InitiativeAssignment.status != "revoked",
+                      InitiativeAssignment.revoked_at.is_(None)).all())
+    active = next((r for r in rows if r.status == "active"), None)
+    pending = next((r for r in rows if r.status == "invited"), None)
+
+    def _label(r):
+        if r is None:
+            return None
+        if r.leader_user_id:
+            u = db.get(User, r.leader_user_id)
+            if u is not None and (u.name or u.email):
+                return u.name or u.email
+        return r.invited_name or r.invited_email
+
+    # ⭐⭐ THE ID, NOT ONLY THE LABEL. "Initiatives I lead" matched the leader
+    # string against the user's name with `.includes()` — inference-by-name, the
+    # one mechanism this codebase has already measured to zero (`KeyResult.
+    # kpi_key`, null on all 82 rows). §7e made the leader user-backed precisely
+    # so the comparison can be an id.
+    return {"leader": _label(active), "leader_pending": _label(pending),
+            "leader_user_id": getattr(active, "leader_user_id", None)}
+
+
 def _initiative_rollups(db, ini):
     """The execution roll-ups for one initiative: derived progress, CSF-derived RAG,
     the effective RAG (manual override wins, labelled), open-blocker count, the next
@@ -8022,7 +8058,15 @@ def _initiative_rollups(db, ini):
             "next_milestone": ({"title": nxt.title, "target_date": nxt.target_date}
                                if nxt else None),
             "cadence": _cadence_status(db, ini),
-            "rating": _rating_summary(db, ini.id)}
+            "rating": _rating_summary(db, ini.id),
+            # ⭐⭐ §7e — THE CANONICAL LEADER, PUBLISHED. Three readers asked for
+            # this key and nothing emitted it, so each rendered as empty data
+            # rather than as an error: the register's leader column always fell
+            # through to "—", and "Initiatives I lead" could never list a row.
+            # ⭐ INVITED IS A THIRD STATE, NOT A LEADER. Publishing an unclaimed
+            # invite here would name somebody who cannot yet write; publishing
+            # nothing would hide a pending handover.
+            **_leader_block(db, ini.id)}
 
 
 def _create_assignment(db, ini, company_id, email, name, note, grant, actor_id):

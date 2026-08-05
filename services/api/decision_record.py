@@ -534,6 +534,53 @@ def src_raci(db, cid):
     return out
 
 
+def src_leadership_revocations(db, cid):
+    """⭐⭐ ENDING SOMEONE'S LEADERSHIP IS A DECISION. Holding it is not.
+
+    This table was excluded wholesale as *"assignment follows the approval already
+    carried"* — ⭐ TRUE OF THE GRANT, which trails an approved initiative, and
+    NOT TRUE OF THE REVOCATION. The exclusion was keyed to a MODEL while the model
+    carries two acts with opposite decision-status, so half of it was covered by a
+    reason written about the other half.
+
+    ⛔ AND THE SELF-REVOKE IS THE CASE THAT BREAKS IT OUTRIGHT. Nobody approved it
+    upstream; there is no earlier decision for it to follow. "The leader stepped
+    down and nobody took over" is exactly the act that would otherwise vanish —
+    the reasoning that carried `Issue` in.
+
+    ⭐ LIVE ASSIGNMENTS ARE NOT RETURNED. A current leader is a state of the world;
+    listing them would put every serving leader into a record of decisions taken.
+    """
+    from .accounts import Initiative, InitiativeAssignment
+    out = []
+    inis = {i.id: i for i in db.query(Initiative).filter_by(company_id=cid).all()}
+    rows = db.query(InitiativeAssignment).filter(
+        InitiativeAssignment.company_id == cid,
+        InitiativeAssignment.revoked_at.isnot(None)).all()
+    for r in rows:
+        ini = inis.get(r.initiative_id)
+        who = r.invited_name or r.invited_email or f"user {r.leader_user_id}"
+        # ⭐⭐ STEPPED DOWN AND WAS REMOVED ARE OPPOSITE FACTS ABOUT THE SAME TWO
+        # COLUMNS. Only comparing the actor to the holder says which, and a
+        # record that flattened them would report a resignation as a dismissal.
+        stepped = (r.revoked_by is not None
+                   and r.leader_user_id is not None
+                   and r.revoked_by == r.leader_user_id)
+        verb = "Stepped" if stepped else "Removed"
+        ref = getattr(ini, "ref_code", None) or r.initiative_id
+        out.append(_d(
+            "leadership_revocation", r.id, cid=cid,
+            type_="leadership_revoked",
+            decided_at=r.revoked_at,
+            author=_name(db, r.revoked_by),
+            statement=(f"{verb} down from leading {ref}" if stepped
+                       else f"{verb} {who} as leader of {ref}"),
+            rationale=r.note,
+            linked={"initiative_id": r.initiative_id, "ref_code": ref,
+                    "assignment_id": r.id}))
+    return out
+
+
 def src_placements(db, cid):
     """⭐⭐ PLACING AN ITEM ON THE URGENT/IMPORTANT MATRIX IS A DECISION.
 
@@ -573,6 +620,8 @@ SOURCES = {
     "axis_link": src_axis_links,
     "raci": src_raci,
     "placement": src_placements,
+    # ⭐ §7e — the ENDING of a leadership. The grant stays out; see the docstring.
+    "leadership_revocation": src_leadership_revocations,
 }
 
 # ⭐ ATTRIBUTED, BUT AUTHORSHIP RATHER THAN DECISION — named with the reason,
@@ -601,7 +650,6 @@ NOT_A_DECISION = {
                    "DECISION is what the pilot's own results lead the company to "
                    "do, not who was given read access to them",
     "AssessmentInvite": "an invitation is access administration",
-    "InitiativeAssignment": "assignment follows the approval already carried",
     "StrategicMove": "a move in the library is an option, not a decision to take it",
     "FrontierJob": "job bookkeeping",
     "PilotCompany": "commercial lifecycle, not a company's own decision",

@@ -301,8 +301,24 @@ def test_the_release_record_names_who_what_to_whom_and_when(cid):
 def test_the_release_record_is_shaped_for_the_decision_record(cid):
     """⭐ It belongs in the Decision Record's store when that exists, so it is
     written in a shape that can be READ FROM THERE: a company-scoped,
-    actor-attributed, timestamped event with a stable event_type."""
+    actor-attributed, timestamped event with a stable event_type.
+
+    ⭐⭐ IT MAKES ITS OWN RELEASE. This asserted `rows` while creating none, so it
+    passed only because the test immediately above it had left one behind — and
+    failed the moment it was run alone or selected by `-k`. ⛔ A TEST THAT DEPENDS
+    ON A NEIGHBOUR'S SIDE EFFECT IS NOT TESTING WHAT ITS NAME SAYS: reorder the
+    module, delete the neighbour, or run one test, and it reports on a state
+    nobody set up.
+
+    Not collection order, not the module-level DATABASE_URL — the whole module
+    passes in isolation. The dependency is intra-module and one test wide.
+    """
+    _recipient(cid, "shape@example.com", scope="board")
+    pid = _publish(cid, "2025-08-31")
     with _db() as db:
+        D.release(db, db.get(P.Pack, pid), actor_user_id=7,
+                  actor_label="Shape Test", scope="board")
+        db.commit()
         rows = D.release_record(db, cid)
     assert rows
     for r in rows:
