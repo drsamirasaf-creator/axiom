@@ -7539,10 +7539,27 @@ def _csf_out(x):
 
 # ── Project Execution Suite: child payloads, derived progress + CSF→RAG rollup ──
 def _milestone_out(m):
+    # ⭐⭐ THE EVIDENCE STATE TRAVELS WITH THE ROW, computed in one place. A
+    # surface deriving "complete by assertion" from status and achievement
+    # itself would drift from the rule the moment either changes.
+    ev = milestone_evidence_state(
+        status=m.status, criterion=m.criterion, achievement=m.achievement,
+        predates=bool(m.predates_criterion),
+        achievement_revoked=m.achievement_revoked_at is not None)
     return {"id": m.id, "initiative_id": m.initiative_id, "title": m.title,
             "target_date": m.target_date, "status": m.status,
             "owner_name": m.owner_name, "position": m.position,
-            "created_at": m.created_at}
+            "created_at": m.created_at,
+            "criterion": m.criterion,
+            # ⛔ A REVOKED ACHIEVEMENT IS NOT RETURNED AS ONE. The row keeps it
+            # (§4v.1 — revoked, never deleted); the surface must not read it as
+            # current evidence.
+            "achievement": (None if m.achievement_revoked_at else m.achievement),
+            "achieved_by": m.achieved_by,
+            "achieved_at": m.achieved_at,
+            "achievement_revoked": m.achievement_revoked_at is not None,
+            "predates_criterion": bool(m.predates_criterion),
+            "evidence": ev}
 
 
 def _action_out(a):
