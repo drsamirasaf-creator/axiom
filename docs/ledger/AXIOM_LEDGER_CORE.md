@@ -19181,3 +19181,115 @@ exception generalising, which that entry explicitly warned against.
 ⭐ **An assignment is a DECLARATION WITH AN ACTOR**, so it inherits `revoked_at`
 and **§4v.1's reader-sweep obligation** — which is the real cost, not the schema.
 ⛔ **Not built in this lane.**
+
+# ⭐⭐ §5b · ASK AXIOM'S FAIR-USE ALLOWANCE — RULED 5 Aug
+
+## ⭐⭐ 1 · A METER ON CONSUMPTION, NOT A CAP ON PEOPLE
+
+**Ask AXIOM carries a fair-use allowance PER COMPANY, not per user.**
+
+⭐⭐ **UNLIMITED USERS IS UNAFFECTED AND REMAINS TRUE.** §5a struck caps on
+**people** — full members, viewers, assessment participants per cycle — and that
+strike stands entire. **This is consumption of a metered resource**, and the two
+are different kinds of thing:
+
+| | struck by §5a | ruled here |
+|---|---|---|
+| what is bounded | ⛔ **how many PEOPLE may use it** | ⭐ **how much RESOURCE is consumed** |
+| scales with | headcount | questions asked |
+| the objection | a company rationing its own team | none — the resource has a unit cost |
+| adding a person | ⛔ used to cost money | ⭐ **still costs nothing** |
+
+⭐ **THE TEST THAT SEPARATES THEM: does adding one more person, who asks nothing,
+cost anything?** Under §5a's struck caps, yes. Under this allowance, **no.** That
+is the whole distinction, and it is why both can hold at once.
+
+### ⛔ WHAT THE 27th GATE MUST BE TAUGHT — RECORDED, NOT BUILT
+
+`check-no-seat-caps.py` refuses two shapes: **enforcement keyed to a headcount**,
+and **a per-head or per-block price**. ⭐ **A per-company consumption meter is
+neither** — it counts questions, not people, and its price is per unit of
+resource, not per person.
+
+⛔ **BUT THE GATE CANNOT CURRENTLY TELL THEM APART**, and it should not be argued
+with when it fires. It must be taught the distinction explicitly — **the
+discriminator is what the count is OVER** — and `ALLOWED` already carries the
+precedent: `company_slots` is named there precisely because it is not a user cap.
+
+⭐ **A consumption allowance belongs in that same allowlist, by name, with its
+reason** — never by loosening the patterns.
+
+## ⭐ 2 · BEYOND THE ALLOWANCE, USAGE IS INVOICED
+
+**A stated, published price.** ⛔ **NOT a silent degradation**, and ⛔ **NOT a
+hidden meter.** A customer who exceeds the allowance receives an invoice line
+they could have predicted before they started.
+
+## ⭐ 3 · STATED IN THE BROCHURE AND ON THE PRICING PAGE
+
+⭐⭐ **A LIMIT A CLIENT DISCOVERS AT THE MOMENT THEY HIT IT IS A DIFFERENT PRODUCT
+FROM ONE THEY BOUGHT.** The allowance and the overage price are part of the
+commercial terms, and they are published with them.
+
+## ⭐ 4 · AT THE ALLOWANCE, THE SURFACE SAYS SO AND NAMES THE REMEDY
+
+⛔ **Never a quiet failure. Never a degraded answer presented as a full one.**
+`prescience.py` already holds the right instinct — *"a cap is an expected
+end-state, not a failure"* — and this extends it: the message must name **the
+allowance, the position within it, and what to do next.**
+
+## ⛔⭐ 5 · TWO PREREQUISITES, BOTH UNMEASURED — AND THEY BLOCK THE NUMBER
+
+**The allowance cannot be SET until both are answered. They are prerequisites,
+not follow-ons.**
+
+### ⭐⭐ (a) COST PER COMPANY IS REPORTED NOWHERE
+
+Measured 5 Aug: `ax_prescience_usage` stores `calls`, `input_tokens`,
+`output_tokens`, `cache_read_tokens`, `cache_write_tokens` — **and never a cost.**
+**No function in the codebase computes one.** `prescience.py` carries measured
+cost PER QUESTION in a comment ($0.024–$0.035, cache-state dependent); **cost per
+COMPANY is not derived anywhere.**
+
+⛔ **AN ALLOWANCE SET WITHOUT IT IS SET BLIND** — it would be a number chosen to
+sound reasonable rather than one that covers a cost.
+
+### ⭐⭐ (b) NOTHING PRUNES, AND RETENTION IS UNRULED
+
+Measured 5 Aug: **one company holds 12 dataset versions** (enterprise 25;
+Meridian holds 6). The sketch persistence doubled a table. **No retention rule
+exists anywhere.**
+
+⭐ **AN ALLOWANCE PRICED AGAINST AN UNBOUNDED STORE PRICES THE WRONG THING.** The
+cost of a company is not only what it asks — it is what it keeps, and what it
+keeps currently grows without limit.
+
+⛔ **RETENTION IS A RULING NOBODY HAS MADE**, and it must precede the allowance
+rather than follow it.
+
+## ⭐⭐ AND ONE CONTRADICTION, SURFACED RATHER THAN RECORDED AROUND
+
+⛔⭐ **THE PUBLISHED FAIR USE POLICY SAYS THE OPPOSITE OF THIS RULING.**
+`docs/commercial/AXIOM_FAIR_USE_POLICY.md`, drafted 31 Jul and written *"to be
+published as-is"*, opens:
+
+> *"The principle it encodes: AXIOM limits **scope**, not **volume**. Nothing a
+> customer does within the intended scope is ever counted, capped or charged."*
+
+⭐⭐ **THIS RULING COUNTS, BOUNDS AND CHARGES FOR VOLUME.** The two cannot both
+stand. **This is the §5a class again — two individually coherent statements that
+are mutually exclusive** — and the resolution is a ruling rather than a
+measurement, which is what this entry is.
+
+⭐ **THE POLICY IS THEREFORE SUPERSEDED IN ITS VOLUME CLAUSE AND MUST BE
+REWRITTEN BEFORE PUBLICATION.** It has not been published, which is the only
+reason this is cheap. ⛔ **Recorded here so it cannot be published unchanged** —
+its scope clauses (one company per workspace, your users are your own people)
+are unaffected and remain correct.
+
+### ⭐ AND A CAP ALREADY EXISTS IN CODE, UNSTATED
+
+`prescience.py` enforces `DAILY_CAP = 200` **per company today**, plus a global
+ceiling — **a hard refusal, not an invoiced allowance, and published nowhere.**
+⛔ **So the product already does the thing the policy says it never does.** This
+ruling makes that honest; it does not introduce it.
