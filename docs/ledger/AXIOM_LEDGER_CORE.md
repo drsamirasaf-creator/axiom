@@ -18993,3 +18993,75 @@ reordering a CXO's queue underneath them.
 ⭐⭐ **THIS KEEPS THE COUNT ANCHORED.** A floor over an inflatable count is
 decoration. **Ratings are NOT cycle-bound and carry their own regime** — a
 proposal's life is not a survey's.
+
+# ⭐⭐ §4z.2 · THE IN-DEVELOPMENT EXCEPTION IS RETIRED — AND THE GUARD THAT
+# SHOULD HAVE CLOSED IT NEVER FIRED (5 Aug)
+
+## ⭐ THE EXCEPTION ENDED EXACTLY AS WRITTEN
+
+`a264cf0` admitted ONE claim to a prospect-facing page that the platform could
+not back: *"Segment and Product Line Revenue and Profitability Analysis"*,
+admissible **only because it did not assert PRESENT EXISTENCE**, and **bounded to
+that item**.
+
+⭐⭐ **THE CLAIM BECAME TRUE.** T1–T5.1 shipped segment, product-line and customer
+profitability, revenue mix, concentration, the margin bridge, contribution, cost
+allocation with grades and the constrained mix optimiser; Profitability is a
+top-level entry under ANALYZE. **The exception therefore ENDS rather than being
+extended**, and the capability moves into the inventory with everything else that
+exists.
+
+⭐ **THE BOUNDING WORKED.** A stated, item-scoped exception with a written end
+condition is why this closed by rule rather than by anyone's memory.
+
+## ⛔⭐ THE NINTH INSTANCE — A GUARD THAT MISSED ITS OWN CASE
+
+`check-in-development-marking.py` was built to fail in BOTH directions. The second
+— **capability shipped while still marked** — is exactly this case, and it stayed
+green through **T1, T2, the seed, T3, T4.1–T4.5, T5.1 and the consolidation.**
+
+### THE MECHANISM, MEASURED
+
+The recogniser searched for:
+
+    segment_profitability | product_line_profitability
+    /companies/{company_id}/(segment|product-line)-
+
+⭐⭐ **ALL FOUR MATCH ZERO FILES IN `services/api`.** The capability shipped as
+`profitability_surface`, `optimise_mix`, `contribution`, `avoidability` and
+`dimensional_analytics`.
+
+⭐⭐ **AND THE COMMENT EXPLAINS WHY IT WAS BUILT THAT WAY:** *"Deliberately NOT
+the words 'revenue' or 'profitability' — both appear all over a finance product
+and would make this guard fire on prose."* ⛔ **THE PRECAUTION AGAINST A FALSE
+POSITIVE PRODUCED A PERMANENT FALSE NEGATIVE.** Avoiding the true words meant
+avoiding every name the capability would actually be given.
+
+### ⭐⭐ AND THE CONTROL COULD NOT HAVE CAUGHT IT — IT WAS INVENTED
+
+The known positive asserted the regex matched
+
+    "def segment_profitability(db, cid):"
+
+**a string the guard had written itself.** ⭐⭐ **A KNOWN POSITIVE DRAWN FROM THE
+SAME SOURCE AS THE PATTERN PROVES ONLY THAT THE PATTERN MATCHES ITS OWN EXAMPLE.**
+It tested nothing about the world, and it printed a tick on every run.
+
+### THE FIX
+
+Definition SHAPES that exist (`def profitability_surface`, `def optimise_mix`,
+`def avoidability`, …) — keeping the original precaution, since `def
+profitability_surface` cannot occur in prose while the bare word can. ⭐ **AND THE
+CONTROL NOW READS A REAL SIGNATURE OUT OF `router.py`**, so it fails the moment
+the recogniser drifts from the codebase — which is the state it sat in for eight
+lanes.
+
+**Proven red before** (`rc=1`, *"THE CAPABILITY SHIPPED AND IS STILL MARKED"*)
+**and green after.**
+
+## ⭐ ANNUAL PRICING — RULED, AND ABSENT FROM THE APP ENTIRELY
+
+§4d locks **$49,950/yr** and **$119,950/yr**, twelve-month terms including two
+months free. ⛔ **Neither figure, nor "17%", appeared anywhere in the product.**
+Placed directly beneath each monthly price, where a buyer comparing terms is
+already looking.

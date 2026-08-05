@@ -35,15 +35,43 @@ MARKER_ATTR = 'data-in-development="revenue-profitability"'
 # attribute survives, so both are required.
 MARKER_WORDS = ("In development", "not available today")
 
-# ⭐ WHAT WOULD PROVE THE CAPABILITY EXISTS. Deliberately NOT the words
-# "revenue" or "profitability" — both appear all over a finance product and
-# would make this guard fire on prose. These are the shapes the capability would
-# have to take: an endpoint, a module, or a registry ratio.
+# ⭐⭐ WHAT WOULD PROVE THE CAPABILITY EXISTS — REWRITTEN 5 Aug, AND THE OLD
+# FORM IS THE FINDING OF THIS LANE.
+#
+# It read:
+#     r"segment_profitability|product_line_profitability|"
+#     r"/companies/\{company_id\}/(segment|product-line)-"
+# and its comment explained the choice: "Deliberately NOT the words 'revenue' or
+# 'profitability' — both appear all over a finance product and would make this
+# guard fire on prose."
+#
+# ⛔⭐ THE PRECAUTION AGAINST A FALSE POSITIVE PRODUCED A PERMANENT FALSE
+# NEGATIVE. Avoiding "profitability" meant avoiding every name the capability
+# would actually be given. Measured 5 Aug: all four alternatives match ZERO files
+# in services/api. The capability shipped as `profitability_surface`,
+# `optimise_mix`, `contribution`, `avoidability` and `dimensional_analytics`, and
+# the guard stayed green through T1, T2, the seed, T3, T4.1–T4.5, T5.1 and the
+# consolidation — the exact condition it was written to catch.
+#
+# ⭐ THE SHAPES BELOW ARE DEFINITION SITES, NOT WORDS. `def profitability_surface`
+# cannot occur in prose; the bare word can. That keeps the original precaution
+# while naming things that exist.
 EXISTENCE_SIGNALS = (
     (os.path.join(ROOT, "services", "api"), re.compile(
-        r"segment_profitability|product_line_profitability|"
-        r"/companies/\{company_id\}/(segment|product-line)-")),
+        r"def profitability_surface\b|def optimise_mix\b|"
+        r"def contribution_per_constrained_unit\b|def avoidability\b|"
+        r"def _mix_shift_series\b")),
 )
+
+# ⭐⭐ THE CONTROL IS DRAWN FROM THE REPOSITORY, NEVER INVENTED. The old control
+# asserted the recogniser matched the string
+#     "def segment_profitability(db, cid):"
+# which the guard had written itself. The regex matched its own example, and that
+# is ALL it ever proved — a known positive drawn from the same source as the
+# pattern tests nothing about the world. This one reads a real line out of
+# router.py, so the control fails if the codebase's naming moves away from it.
+CONTROL_SOURCE = os.path.join(ROOT, "services", "api", "modules", "financials",
+                              "router.py")
 
 
 def frontend_missing():
@@ -74,8 +102,19 @@ def control():
     the word 'revenue' would fail every file in this product."""
     bad = []
     pat = EXISTENCE_SIGNALS[0][1]
-    if not pat.search("def segment_profitability(db, cid):"):
-        bad.append("the existence recogniser does not fire on a real signature")
+    # ⭐⭐ A REAL SIGNATURE, READ FROM DISK. If nothing in router.py matches, the
+    # recogniser has drifted from the codebase and every verdict below is void —
+    # which is precisely the state this guard sat in for eight lanes.
+    try:
+        real = open(CONTROL_SOURCE, encoding="utf-8").read()
+    except OSError:
+        bad.append(f"control source unreadable: {CONTROL_SOURCE}")
+        real = ""
+    hit = pat.search(real)
+    if not hit:
+        bad.append("the existence recogniser matches NOTHING in router.py — it "
+                   "has drifted from the codebase's own naming, which is how it "
+                   "stayed green through the whole Profitability build")
     if pat.search('"total revenue and profitability of the segment"'):
         bad.append("the existence recogniser fires on ordinary prose — it would "
                    "report the capability as built on any finance page")
@@ -91,8 +130,8 @@ def main():
         for b in bad:
             print(f"      {b}")
         return 2
-    print("  ✓ control: the existence recogniser fires on a real signature and "
-          "stays silent on prose")
+    print("  ✓ control: the existence recogniser fires on a signature READ FROM "
+          "router.py and stays silent on prose")
 
     # ⭐ THE BACKEND HALF IS THIS REPOSITORY'S AND RUNS UNCONDITIONALLY. Whether
     # the capability exists is answerable here, with or without a frontend
