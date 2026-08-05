@@ -73,11 +73,17 @@ MUTATIONS = [
      "    return newest_cycle_regardless_of_results(db, company_id)",
      f"{READ}::test_resolver_selects_the_populated_cycle"),
 
+    # ⭐⭐ RETARGETED ONTO THE BINDING ITSELF. The find string spanned from the
+    # `cycles = ...` assignment THROUGH the `latest = ...` lines, so when
+    # `ea6dfb3` inserted a two-line comment between them the mutant stopped
+    # matching and the gate reported STALE — a mutation that cannot be applied
+    # proves nothing about the test that is supposed to catch it.
+    # ⛔ A MULTI-LINE FIND SPANNING UNRELATED STATEMENTS IS A HOSTAGE TO ANY EDIT
+    # BETWEEN THEM. This one removes exactly the binding whose loss is the defect.
     ("_dept_cei_map loses its `cycles` binding (the live NameError)", ACC,
      "    cycles = (db.query(AssessmentCycle).filter_by(company_id=company_id)\n"
-     "                .order_by(AssessmentCycle.opened_at).all())\n"
-     "    latest = current_cycle_with_responses(db, company_id)\n    if latest is None:\n        return empty",
-     "    latest = current_cycle_with_responses(db, company_id)\n    if latest is None:\n        return empty",
+     "                .order_by(AssessmentCycle.opened_at).all())\n",
+     "",
      f"{READ}::test_dept_cei_map_runs_and_classifies_every_shape"),
 
     ("coverage reverts to keying on the department NAME", ACC,
@@ -97,10 +103,30 @@ MUTATIONS = [
      "    current = _cycle_cei(db, latest) if latest else {}",
      f"{READ}::test_assessment_summary_body_executes"),
 
+    # ⭐⭐ RE-ANCHORED. The two-line `closed = closed_cycles_with_results(...)` /
+    # `latest = closed[-1]...` form was refactored into a single
+    # `cycle_with_published_results(...)` call, so the find string matched nothing
+    # and the mutant reported STALE — second instance in one run.
+    # ⭐ THE EFFECT IS PRESERVED, NOT THE TEXT. The original replaced the two
+    # binding lines with `closed = []` / `latest = None` — i.e. the resolution
+    # yields NOTHING and the body early-returns, which is what the named test
+    # (`..._body_executes`) is there to catch.
+    # ⛔ A FIRST RE-ANCHOR SWAPPED IN THE UNFILTERED RESOLVER INSTEAD. That reads
+    # closer to the label but is a WEAKER mutation, and it SURVIVED — so the test
+    # does not distinguish a filtered resolver from an unfiltered one. Reported,
+    # not smuggled in here: raising it would put the gate over its survivor limit
+    # for a defect this lane did not set out to fix.
+    # ⛔⭐ AND THE FIRST UNIQUE-LOOKING ANCHOR WAS NOT UNIQUE. `    latest =
+    # cycle_with_published_results(db, company_id)` occurs THREE times in
+    # accounts.py, and the replace hit the first — a different function — so the
+    # mutation applied cleanly, changed code nobody was testing, and SURVIVED.
+    # ⭐⭐ A SURVIVING MUTANT AND A MISPLACED ONE ARE INDISTINGUISHABLE IN THE
+    # OUTPUT: both print "survives". The anchor now carries the following line,
+    # which is unique to this function.
     ("_department_sentiment_map stops filtering for results", ACC,
-     "    closed = closed_cycles_with_results(db, company_id)\n    latest = closed[-1] if closed else None\n"
+     "    latest = cycle_with_published_results(db, company_id)\n"
      "    if latest is None or not (latest.snapshot or {}).get(\"sentiment_available\"):",
-     "    closed = []\n    latest = None\n"
+     "    latest = None\n"
      "    if latest is None or not (latest.snapshot or {}).get(\"sentiment_available\"):",
      f"{READ}::test_department_sentiment_map_body_executes"),
 
