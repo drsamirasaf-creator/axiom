@@ -15,6 +15,7 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ACCOUNTS = os.path.join(ROOT, "services/api/accounts.py")
+_SCRIPT = os.path.join(ROOT, "scripts/check-no-seat-caps.py")
 SRC = open(ACCOUNTS, encoding="utf-8").read()
 FE = "/Users/samirasaf/dev/optimization-anchor"
 
@@ -217,3 +218,50 @@ def test_the_matrix_still_says_unlimited():
     """⭐ The row this ruling aligns everything else to."""
     from services.api.comparison_matrix import USERS_INCLUDED
     assert "Unlimited" in USERS_INCLUDED["AXIOM"]
+
+
+# ── the third shape: a cap in PROSE (added 5 Aug) ──────────────────────────
+
+def test_the_guard_reaches_commercial_copy():
+    """⛔⭐ THE GUARD WATCHED ONE PYTHON FILE AND READ ITS AST. The pricing page
+    carried a member cap, a viewer cap, a per-cycle participant cap for BOTH
+    tiers, and a per-seat add-on table — the exact MONETISATION shape this guard
+    already refuses in code. It survived the 1 Aug consequence sweep and this
+    gate, because neither looked at copy.
+
+    ⭐ A cap in prose is the same claim where the guard does not look, and it is
+    the one a customer actually reads.
+    """
+    src = open(_SCRIPT, encoding="utf-8").read()
+    assert "_copy_half" in src, "the guard cannot reach commercial copy"
+    assert "CAP_PROSE" in src
+
+
+def test_the_copy_scan_strips_comments_before_matching():
+    """⭐⭐ §III.9, THE EIGHTH OCCURRENCE — and it fired inside this very guard
+    while it was being written. The corrected copy quotes the struck text in a
+    comment so the strike is legible in the diff, and stakeholder-engagement.tsx
+    records the removed $495-per-50 door in a `//` comment. A scan that reads
+    comments fails the file for documenting its own fix.
+
+    ⛔ BOTH COMMENT FORMS, and a URL's `//` must survive.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("nsc", _SCRIPT)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    assert "10 full members" not in m._strip_comments("{/* 10 full members */}")
+    assert "10 full members" not in m._strip_comments("// 10 full members")
+    assert "10 full members" not in m._strip_comments("/* 10 full members */")
+    # ⭐ a URL is not a comment
+    assert "example.com" in m._strip_comments('href="https://example.com/x"')
+    # ⭐ and live copy still matches
+    assert "10 full members" in m._strip_comments("<div>10 full members</div>")
+
+
+def test_the_copy_half_states_a_non_run_rather_than_passing_quietly():
+    """⭐ The ruled shape (94a7ce0, eb89ee8): this gate guards seat caps, not
+    whether a sibling repo is checked out beside it."""
+    src = open(_SCRIPT, encoding="utf-8").read()
+    assert "COPY HALF NOT RUN" in src
+    assert "asserts" in src

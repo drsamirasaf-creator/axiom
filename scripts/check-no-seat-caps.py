@@ -28,6 +28,7 @@ blast radius.
 """
 import ast
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -182,7 +183,99 @@ def main():
               "the model, and a company slot is not a user seat.")
         return 1
 
-    print("✓ no cap on users, in either shape; company_slots intact")
+    # ═══════════════════════════════════════════════════════════════════
+    # ⭐⭐ THE THIRD SHAPE — A CAP IN PROSE (added 5 Aug).
+    #
+    # ⛔ THIS GUARD WATCHED ONE PYTHON FILE AND READ ITS AST. The pricing page
+    # carried "10 full members · 5 view-only users · 50 assessors per assessment
+    # cycle" for both tiers, plus a per-seat add-on table pricing an extra member
+    # at $100/mo, a viewer at $50/mo and assessors at $495 per 50 — the exact
+    # MONETISATION shape this file already refuses in code. It survived the 1 Aug
+    # consequence sweep and this gate, because neither looked at copy.
+    #
+    # ⭐ A CAP IN PROSE IS THE SAME CLAIM WHERE THE GUARD DOES NOT LOOK — and it
+    # is the one a customer actually reads.
+    #
+    # ⭐⭐ COMMENTS ARE STRIPPED FIRST, AND THAT IS LOAD-BEARING. This file's own
+    # docstring warns that five guards this era banned a token and struck the
+    # prose explaining the rule. The corrected copy quotes the struck text in a
+    # JSX comment so the strike is legible — and a scan that read comments would
+    # fail the very file that records the fix. It happened once during this lane,
+    # to the author's own verification.
+    rc = _copy_half()
+    if rc:
+        return rc
+
+    print("✓ no cap on users, in any of the three shapes; company_slots intact")
+    return 0
+
+
+# ── the prose half ────────────────────────────────────────────────────────
+CAP_PROSE = (
+    (re.compile(r"\b\d+\s+full members\b", re.I), "a member cap in copy"),
+    (re.compile(r"\b\d+\s+view-only users\b", re.I), "a viewer cap in copy"),
+    (re.compile(r"\b\d+\s+assessors?\s+per\b", re.I), "a per-cycle participant cap in copy"),
+    (re.compile(r"additional\s+(full member|view-only user|assessors?)", re.I),
+     "a per-seat add-on priced in copy"),
+    (re.compile(r"\$\s?\d[\d,]*\s*per\s*\d+\s*,?\s*per assessment cycle", re.I),
+     "an overage price in copy"),
+)
+
+
+def _strip_comments(src: str) -> str:
+    """⭐ JSX and block comments removed BEFORE any match. The struck text is
+    quoted in comments deliberately, so the strike is legible in the diff."""
+    src = re.sub(r"\{/\*.*?\*/\}", " ", src, flags=re.S)
+    src = re.sub(r"/\*.*?\*/", " ", src, flags=re.S)
+    # ⭐⭐ AND `//` LINE COMMENTS TOO — §III.9, THE EIGHTH OCCURRENCE, and this
+    # time inside a guard whose OWN docstring warns about it. The first form of
+    # this scan stripped only block comments and fired on
+    # stakeholder-engagement.tsx, where a `//` comment RECORDS that the $495-per-50
+    # door was removed. A guard that reads the note saying "this was struck" and
+    # calls it a breach punishes the fix for being documented.
+    # ⛔ `(?<!:)` so a URL's `//` is not mistaken for a comment.
+    src = re.sub(r"(?<!:)//[^\n]*", " ", src)
+    return src
+
+
+def _copy_half() -> int:
+    fe = os.environ.get("AXIOM_FRONTEND",
+                        "/Users/samirasaf/dev/optimization-anchor")
+    base = os.path.join(fe, "src")
+    if not os.path.isdir(base):
+        # ⭐ THE RULED SHAPE (94a7ce0, eb89ee8): report what did not run and
+        # exit 0. This gate guards seat caps, not whether a sibling repo is
+        # checked out beside it.
+        print(f"  ⚠ COPY HALF NOT RUN — no frontend at {fe}. This run asserts "
+              f"NOTHING about caps in commercial copy.")
+        return 0
+    hits, n = [], 0
+    for d, dirs, names in os.walk(base):
+        dirs[:] = [x for x in dirs if x not in ("node_modules", ".git")]
+        for fn in names:
+            if not fn.endswith((".tsx", ".ts")):
+                continue
+            fp = os.path.join(d, fn)
+            try:
+                txt = _strip_comments(open(fp, encoding="utf-8").read())
+            except OSError:
+                continue
+            n += 1
+            for pat, why in CAP_PROSE:
+                for m in pat.finditer(txt):
+                    hits.append((os.path.relpath(fp, fe),
+                                 txt[:m.start()].count("\n") + 1, why,
+                                 m.group(0)[:60]))
+    print(f"  copy files checked: {n}")
+    if not n:
+        print("✗ zero copy files checked — a broken selector, not a clean result")
+        return 1
+    if hits:
+        print(f"✗ {len(hits)} cap(s) in commercial copy:")
+        for rel, ln, why, txt in hits:
+            print(f"   {rel}:{ln}  [{why}] {txt!r}")
+        return 1
+    print("  ✓ no cap or per-seat price in commercial copy")
     return 0
 
 
