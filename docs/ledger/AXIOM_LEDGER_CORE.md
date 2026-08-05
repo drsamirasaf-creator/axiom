@@ -19293,3 +19293,72 @@ are unaffected and remain correct.
 ceiling — **a hard refusal, not an invoiced allowance, and published nowhere.**
 ⛔ **So the product already does the thing the policy says it never does.** This
 ruling makes that honest; it does not introduce it.
+
+# ⭐⭐ §4u.2 · IDEAS ALREADY EXIST, AND ISSUES ARE SEEDED (5 Aug)
+
+## ⭐⭐ 1 · `ThreadPost.proposal_status` IS THE IDEAS OBJECT — THIRTEENTH LANE
+
+**Measured, not assumed.** A discussion post is flagged as a proposal by **its
+author or an admin** (`flag_proposal`, gated `require_company_member`); the flag
+computes a **cached Haiku title and taxonomy code** so the inbox never re-calls
+the model; and the queue reads it at `list_proposals`.
+
+**Its lifecycle is `flagged → adopted | parked | dismissed`, and `adopted`
+creates an Initiative.** ⭐⭐ **THAT IS "IDEAS FOR ACTION", COMPLETE, UNDER A NAME
+NOBODY SEARCHED.** No Idea object needs minting.
+
+## ⛔ 2 · `CAP_SUBMIT_IDEA` GATES NOTHING
+
+**Zero references outside `permissions.py`.** `flag_proposal` — the one write that
+submits an idea — is gated by `require_company_member`, **not** by the capability
+named for it. ⭐ **A capability constant with no endpoint behind it is a label**,
+and this is one.
+
+## ⭐⭐ 3 · AN IDEA AND AN ISSUE DIFFER IN MORE THAN DISPOSITION
+
+⭐ **AND THE DIFFERENCE IS EXACTLY THE ONE §4u.1 ALREADY RULED ON.**
+
+| | idea (flagged post) | issue |
+|---|---|---|
+| asserts | **a course of action** | **a state of the world** |
+| can be declined? | ⭐ **yes** — `dismissed` is legitimate | ⛔ **no** — it stays true |
+| lifecycle | flagged → adopted / parked / dismissed | open → addressed / accepted |
+| origin | a discussion post someone wrote | comments somebody GROUPED |
+| aggregates by | its own merit | ⭐ **frequency** |
+
+⛔ **SO A `kind` DISCRIMINATOR ON ONE OBJECT WOULD BE THE TYPE-COLUMN SHORTCUT
+§4u.1 REFUSED** — it would leave ideas and issues sharing a disposition
+vocabulary, and *rejecting "approvals take three weeks" does not make approvals
+faster.* **Two objects is correct, and both already exist.**
+
+## ⭐ 4 · SEEDED — COVERAGE, NOT A TIDY PICTURE
+
+**5 issues · 19 comment attachments · 12 ratings**, on Meridian.
+
+⭐⭐ **THE FREQUENCY IS REAL, NOT INVENTED.** Meridian's comments genuinely
+repeat — five people say strategy shifts every quarter, five that nobody can name
+their part in the vision, four that tools are bought to fix process problems.
+**Weight is a count of declarations, not a number chosen to look convincing**, and
+each attachment carries the same `(cycle, participant_ref, item_id)` key the
+product's own attach endpoint uses. ⛔ **Nothing was clustered by text
+similarity.**
+
+Every state is reachable:
+
+    open 3 · addressed 1 · accepted 1
+    rated above the floor · rated BELOW it (withheld) · UNRATED
+    weight published · weight WITHHELD at department grain
+
+### ⭐⭐ AND THE RANK BEHAVES, ON REAL DATA
+
+     4.50  (4, rated)        weight 5             open
+     4.33  (3, rated)        weight 2 WITHHELD    open
+     3.67  (3, rated)        weight 5             addressed
+        —  (2, below_floor)  weight 4             accepted
+        —  (0, unrated)      weight 3             open
+
+⭐ **A WITHHELD 5.0 FROM TWO RATERS SORTS BELOW A PUBLISHED 3.67.** A rank is a
+publication, and this is that rule holding against data rather than against a
+fixture.
+
+**§7o holds** — pack hashes and all three statement blocks byte-identical.
