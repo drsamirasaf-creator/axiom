@@ -19140,3 +19140,44 @@ Added to `verify-axis-objective` (paired probe), `verify-pricing-copy` (6
 patterns) and `verify-features-inventory` (3). ⚠ `verify-authority-vs-head`,
 `verify-pending-state` and `browser-verify` still carry unguarded absence
 assertions — **named, not silently left.**
+
+# ⭐⭐ §4z.4 · RACI, ACCEPTANCE CRITERIA, DEPENDENCY — FOUR RULINGS (5 Aug)
+
+Answers the four left open by
+`docs/reports/raci-criteria-dependency-scope-2026-08-05.md`.
+
+## ⭐ RULING 1 · "NAMED ACCOUNTABILITY ON EVERY INITIATIVE" STANDS — SEED THE OWNERS
+
+⭐⭐ **THE CLAIM IS FALSE ABOUT THE DATA, NOT ABOUT THE CAPABILITY.**
+`Initiative.owner_name` is real; **11 of 15 Meridian initiatives carry none.**
+
+⛔ **SOFTENING IT WOULD UNDERSTATE THE PRODUCT** — §4z.3's own recorded failure
+mode, where an in-development marking outlived the capability. **The fix is the
+data.**
+
+## ⭐⭐ RULING 2 · ACCEPTANCE CRITERIA — BUILD, AND THE CRITERION IS REQUIRED AT CREATION
+
+⭐ **THAT SECOND HALF IS THE WHOLE RULING.** Recorded retrospectively, a criterion
+**describes what happened while reading like evidence** — which is worse than
+nothing, because it is indistinguishable from a standard that was set in advance.
+
+**Same discipline as declared impact and as B10's link: stated BEFORE, never
+after.** Two fields, not one — the **requirement** and the **achievement recorded
+against it**.
+
+## ⭐ RULING 3 · DEPENDENCY — THE CLAIM IS WITHDRAWN
+
+**Eight action items across fifteen initiatives is a line, not a graph.** ⛔ **And
+it would be filled by the same people who have not put an owner on eleven
+initiatives.** *"and dependencies"* comes out of the Execute inventory.
+
+⭐ **NOT "in development" — WITHDRAWN.** §4z.3's bounded marking exists for a
+claim that is coming; this one is not scheduled, and marking it would be the
+exception generalising, which that entry explicitly warned against.
+
+## ⭐ RULING 4 · RACI IS A TABLE, NOT FOUR COLUMNS
+
+**Consulted and Informed are naturally many**, and four columns cannot hold them.
+⭐ **An assignment is a DECLARATION WITH AN ACTOR**, so it inherits `revoked_at`
+and **§4v.1's reader-sweep obligation** — which is the real cost, not the schema.
+⛔ **Not built in this lane.**
