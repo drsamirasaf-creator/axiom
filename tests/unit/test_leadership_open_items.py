@@ -147,6 +147,12 @@ def test_the_rollups_publish_the_leader():
     """⭐ §7e RULED `leader` CANONICAL and the API never emitted it, so three
     readers asked for a key nobody produced and rendered as empty data.
 
+    ⛔ ASSERTED ON `_leader_block`, NOT ON THE ROLL-UPS. The block was first
+    folded into `_initiative_rollups`, which sits on the pack's frozen read path —
+    `check-pack-coverage.py` went red because a pack would then render a leader
+    from an input the freeze does not capture. It is attached in the endpoints
+    instead.
+
     ⛔ ASSERTED ON THE PUBLISHED DICT, NOT ON THE SOURCE TEXT. A first draft
     scanned `_initiative_rollups` for the string literals and went red after the
     fix, because the keys are built in the helper it calls — the guard was
@@ -156,7 +162,7 @@ def test_the_rollups_publish_the_leader():
     with Session(_rollup_engine()) as s:
         ini = _ini(s)
         s.commit()
-        r = A._initiative_rollups(s, ini)
+        r = A._leader_block(s, ini.id)
     assert "leader" in r, "the roll-ups still do not publish a leader"
     assert "leader_pending" in r, \
         "an invited-but-unclaimed leader is a third state and must be visible"
@@ -181,7 +187,7 @@ def test_the_leader_key_reflects_the_live_assignment_only():
             invited_email="lead@example.test", invited_name="Ada Leader",
             jti="j-live"))
         s.commit()
-        live = A._initiative_rollups(s, ini)
+        live = A._leader_block(s, ini.id)
         assert live["leader"] == "Ada Leader", live["leader"]
         assert live["leader_pending"] is None
         assert live["leader_user_id"] == 9, \
@@ -191,7 +197,7 @@ def test_the_leader_key_reflects_the_live_assignment_only():
         row.status = "revoked"
         row.revoked_at = datetime.utcnow()
         s.commit()
-        after = A._initiative_rollups(s, ini)
+        after = A._leader_block(s, ini.id)
     assert after["leader"] is None, \
         f"a revoked leader is still published as {after['leader']!r}"
     assert after["leader_user_id"] is None, "the revoked leader's id still leads"
@@ -217,7 +223,7 @@ def test_a_row_stamped_revoked_but_left_active_is_not_published():
             invited_email="half@example.test", invited_name="Half Revoked",
             jti="j-half", revoked_at=datetime(2026, 8, 5)))
         s.commit()
-        r = A._initiative_rollups(s, ini)
+        r = A._leader_block(s, ini.id)
     assert r["leader"] is None, \
         f"a revoked-at row still leads as {r['leader']!r}"
     assert r["leader_user_id"] is None
@@ -234,6 +240,6 @@ def test_a_pending_invite_is_not_published_as_the_leader():
             invited_email="pending@example.test", invited_name="Pat Pending",
             jti="j-pending"))
         s.commit()
-        r = A._initiative_rollups(s, ini)
+        r = A._leader_block(s, ini.id)
     assert r["leader"] is None, "an unclaimed invite was published as the leader"
     assert r["leader_pending"] == "Pat Pending", r["leader_pending"]

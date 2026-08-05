@@ -6887,6 +6887,7 @@ def list_initiatives(company_id: int, department: int | None = None,
     out = []
     for i in rows:
         d = _ini_out(i)
+        d.update(_leader_block(db, i.id))          # ⭐ §7e — off the frozen path
         d["serves_objectives"] = served.get(i.id, [])
         d["department"] = _dept_out(dept_idx.get(getattr(i, "department_id", None)))
         # Project Execution Suite roll-ups on each row: derived %, effective RAG
@@ -8001,6 +8002,15 @@ def _leader_block(db, iid: int) -> dict:
     reader takes to be the person who may write; leaving it there after the
     revoke says the opposite of what the grant now does.
 
+    ⛔ AND IT IS CALLED FROM THE ENDPOINTS, NOT FROM `_initiative_rollups`.
+    The roll-ups are on the pack's frozen read path, and `check-pack-coverage.py`
+    correctly refused an entry point reading a model the freeze does not capture:
+    a pack rendering the leader from an uncaptured input would show TODAY'S leader
+    on a pack issued in March. ⭐ Whether a pack SHOULD freeze the leader is a
+    real question and a ruling owed — it is plausibly exactly what a board pack
+    wants to preserve — but changing what a pack captures changes every pack hash,
+    which §7o binds, so it is not taken silently here.
+
     ⭐ `leader` IS THE ACTIVE HOLDER ONLY. `leader_pending` carries an invite that
     has been sent and not claimed — a real state that is neither a leader nor a
     vacancy, and the one a handover sits in.
@@ -8058,15 +8068,12 @@ def _initiative_rollups(db, ini):
             "next_milestone": ({"title": nxt.title, "target_date": nxt.target_date}
                                if nxt else None),
             "cadence": _cadence_status(db, ini),
-            "rating": _rating_summary(db, ini.id),
-            # ⭐⭐ §7e — THE CANONICAL LEADER, PUBLISHED. Three readers asked for
-            # this key and nothing emitted it, so each rendered as empty data
-            # rather than as an error: the register's leader column always fell
-            # through to "—", and "Initiatives I lead" could never list a row.
-            # ⭐ INVITED IS A THIRD STATE, NOT A LEADER. Publishing an unclaimed
-            # invite here would name somebody who cannot yet write; publishing
-            # nothing would hide a pending handover.
-            **_leader_block(db, ini.id)}
+            "rating": _rating_summary(db, ini.id)}
+            # ⛔ THE LEADER IS DELIBERATELY NOT HERE — see `_leader_block`. This
+            # function is on the pack's frozen read path (§7 "5 initiatives" ->
+            # initiatives_cockpit), and check-pack-coverage.py went red the moment
+            # it read InitiativeAssignment: a pack rendering a figure from an
+            # uncaptured input would drift when that input moves.
 
 
 def _create_assignment(db, ini, company_id, email, name, note, grant, actor_id):
@@ -8738,6 +8745,7 @@ def initiative_detail(company_id: int, iid: int, member=Depends(_summary_access)
                         else "declared_none" if considered
                         else "not_considered")
     d.update(_initiative_rollups(db, ini))
+    d.update(_leader_block(db, ini.id))            # ⭐ §7e — off the frozen path
     cad = (db.query(InitiativeCadenceUpdate).filter_by(initiative_id=iid)
              .order_by(InitiativeCadenceUpdate.created_at.desc()).all())
     return {"initiative": d,
