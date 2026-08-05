@@ -512,6 +512,28 @@ def src_axis_links(db, cid):
     return out
 
 
+def src_raci(db, cid):
+    """⭐⭐ NAMING WHO IS ACCOUNTABLE IS A DECISION, AND ARGUABLY THE PUREST ONE.
+
+    Every other entry here records a decision ABOUT something — a figure, a link,
+    a disposition. This records who ANSWERS for it. ⭐ A board asking "who owned
+    this" is asking exactly this question, and before RACI the product's only
+    answer was a free-text owner field with no actor and no date behind it.
+    """
+    from .accounts import InitiativeRaci
+    out = []
+    for r in (db.query(InitiativeRaci).filter_by(company_id=cid)
+                .filter(InitiativeRaci.revoked_at.is_(None)).all()):
+        out.append(_d(
+            "raci", r.id, cid=cid, type_=f"raci_{r.role}",
+            decided_at=r.declared_at, author=r.declared_by_label,
+            actor_user_id=r.declared_by,
+            statement=(f"{r.party} declared {r.role.upper()} on initiative "
+                       f"{r.initiative_id}"),
+            rationale=r.note))
+    return out
+
+
 SOURCES = {
     "override": src_overrides,
     "signoff": src_signoffs,
@@ -527,6 +549,7 @@ SOURCES = {
     "assigned_feedback": src_assigned_feedback,
     "issue_state": src_issue_states,
     "axis_link": src_axis_links,
+    "raci": src_raci,
 }
 
 # ⭐ ATTRIBUTED, BUT AUTHORSHIP RATHER THAN DECISION — named with the reason,

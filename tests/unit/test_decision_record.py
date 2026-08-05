@@ -125,7 +125,11 @@ def test_every_attributed_model_is_either_a_source_or_named_not_a_decision():
                "Issue",
                # ⭐ §4u.1 ruling 5 — declaring what addresses an axis is a causal
                # claim about your own business, same class as B10's line links.
-               "AxisObjectiveLink"}
+               "AxisObjectiveLink",
+               # ⭐ §4z.4 ruling 4 — naming who answers for the work is a
+               # decision, and the purest one here: every other entry records a
+               # decision ABOUT something, this records who is answerable.
+               "InitiativeRaci"}
     unclassified = attributed - carried - set(DR.NOT_A_DECISION)
     assert unclassified == set(), \
         f"attributed but neither carried nor excluded: {sorted(unclassified)}"

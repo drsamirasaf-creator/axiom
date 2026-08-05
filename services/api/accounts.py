@@ -110,8 +110,8 @@ def new_cid() -> str:
 # ======================================================================
 from datetime import datetime, timedelta
 
-from sqlalchemy import (Boolean, CheckConstraint, Column, DateTime, Float, Integer, JSON, String,
-                        Text, UniqueConstraint, func)
+from sqlalchemy import (Boolean, CheckConstraint, Column, DateTime, Float, Index,
+                        Integer, JSON, String, Text, UniqueConstraint, func, text)
 
 
 # platform_role: user | staff | super          (staff/super = AXIOM operators)
@@ -593,6 +593,101 @@ def milestone_evidence_state(*, status, criterion, achievement, predates,
     return {"state": "asserted",
             "note": "Marked complete with nothing recorded against its "
                     "criterion — complete by assertion, not by evidence."}
+
+
+# ⭐ THE FOUR ROLES, NAMED IN ONE PLACE. A caller spelling one of them itself is
+# how a fifth role appears.
+RACI_ROLES = ("responsible", "accountable", "consulted", "informed")
+
+
+class InitiativeRaci(Base):
+    """Who is Responsible, Accountable, Consulted or Informed on an initiative.
+
+    ⭐⭐ A TABLE, NOT FOUR COLUMNS (§4z.4 ruling 4). Consulted and Informed are
+    naturally many and Responsible often is; only Accountable is singular. Four
+    columns would force the many into a comma-joined string — un-queryable,
+    un-revocable, and un-attributable, which is three of this codebase's standing
+    objections at once.
+
+    ⭐⭐ ACCOUNTABLE IS EXACTLY ONE, AND THE DATABASE ENFORCES IT. That is the
+    whole point of the model: if accountable can be two, the record means
+    nothing. The index is PARTIAL on `revoked_at IS NULL`, so succession stays
+    possible — handing accountability on is a revoke plus a new row, and the
+    history survives, which a DELETE would destroy.
+
+    ⛔ AN ASSIGNMENT IS A DECLARATION (§4v.1). "This person is no longer
+    accountable" is itself information; it is revoked, never deleted.
+
+    ⭐ `party` IS FREE TEXT, deliberately. RACI names people who may have no
+    account — an external auditor is Consulted, a regulator Informed — and a
+    user_id foreign key would silently exclude exactly the parties the model
+    exists to record.
+    """
+    __tablename__ = "ax_initiative_raci"
+    __table_args__ = (
+        # ⛔ SCOPED TO THE INITIATIVE, NOT THE COMPANY. A unique index on role
+        # alone would allow one accountable per company, which is absurd and
+        # would have looked like it worked.
+        Index("uq_raci_one_accountable", "initiative_id",
+              unique=True,
+              sqlite_where=text("role = 'accountable' AND revoked_at IS NULL"),
+              postgresql_where=text("role = 'accountable' AND revoked_at IS NULL")),
+        CheckConstraint(
+            "role IN ('responsible','accountable','consulted','informed')",
+            name="ck_raci_role"),
+    )
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    initiative_id = Column(Integer, index=True, nullable=False)
+    role = Column(String(16), nullable=False)
+    party = Column(String(200), nullable=False)
+    department_id = Column(Integer, nullable=True)   # ⭐ so a name links onward
+    note = Column(Text, nullable=True)
+    declared_by = Column(Integer, nullable=True)
+    declared_by_label = Column(String(160), nullable=True)
+    declared_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+    revoked_by = Column(Integer, nullable=True)
+
+
+def live_raci(rows):
+    """Assignments that have not been revoked — §4v.1.
+
+    ⭐⭐ ONE HELPER, AND EVERY READER GOES THROUGH IT. The axis-link lane left
+    ~20 read sites unfiltered, correct only because no writer existed yet; this
+    table ships with its writer, so there is no such grace period. A reader that
+    forgets the predicate is indistinguishable from one that never had it.
+    """
+    return [r for r in rows if getattr(r, "revoked_at", None) is None]
+
+
+def raci_grid(rows, owner_name=None):
+    """-> the four lists, plus what is ABSENT.
+
+    ⭐⭐ AN INITIATIVE NOBODY IS ACCOUNTABLE FOR IS THE FINDING. A grid rendering
+    only what exists would report that gap as nothing at all.
+
+    ⭐ AND THE OWNER IS A DIFFERENT CONCEPT FROM THE ACCOUNTABLE. `owner_name`
+    is who RUNS the work; Accountable is who ANSWERS for the outcome. Usually the
+    same person and not necessarily — so both travel, and whether they agree is
+    stated rather than left for a reader to compare two lists.
+    ⛔ Two fields meaning the same thing is the two-owners class; two meaning
+    different things must be distinguishable on screen, which is what the
+    sign-off contradiction was.
+    """
+    live = live_raci(rows or [])
+    out = {r: [x.party for x in live if x.role == r] for r in RACI_ROLES}
+    acc = out["accountable"]
+    out["has_accountable"] = bool(acc)
+    out["owner_name"] = owner_name
+    out["owner_matches_accountable"] = bool(
+        acc and owner_name and acc[0].strip().lower() == owner_name.strip().lower())
+    out["note"] = (
+        None if acc else
+        "No one is accountable for this initiative. Responsible parties may be "
+        "named, but accountability is the single role that cannot be shared, and "
+        "it is unassigned.")
+    return out
 
 
 class InitiativeAction(Base):
@@ -7105,6 +7200,96 @@ class AxisLinkIn(BaseModel):
     l1_code: str
     obj_key: str
     note: str | None = None
+
+
+class RaciIn(BaseModel):
+    role: str
+    party: str
+    department_id: int | None = None
+    note: str | None = None
+
+
+@router.get("/companies/{company_id}/initiatives/{iid}/raci")
+def get_raci(company_id: int, iid: int, member=Depends(_summary_access),
+             db=Depends(get_db)):
+    """The four roles, plus what is ABSENT. Every read goes through `live_raci`."""
+    ini = _get_company_initiative(db, company_id, iid)
+    rows = live_raci(db.query(InitiativeRaci)
+                       .filter_by(company_id=company_id, initiative_id=iid).all())
+    g = raci_grid(rows, owner_name=ini.owner_name)
+    return {"company_id": company_id, "initiative_id": iid, "raci": g,
+            "roles": list(RACI_ROLES),
+            "assignments": [{"id": r.id, "role": r.role, "party": r.party,
+                             "department_id": r.department_id,
+                             "declared_by_label": r.declared_by_label,
+                             "declared_at": r.declared_at} for r in rows]}
+
+
+@router.post("/companies/{company_id}/initiatives/{iid}/raci", status_code=201)
+def declare_raci(company_id: int, iid: int, body: RaciIn,
+                 member=Depends(require_company_admin),
+                 user: User = Depends(get_current_user), db=Depends(get_db)):
+    """The department's authority holder assigns (§4v.1's separate link
+    permission). Platform staff refused: we must never name who is accountable
+    for a customer's work."""
+    from . import axis_objective as AO
+    ini = _get_company_initiative(db, company_id, iid)
+    if body.role not in RACI_ROLES:
+        raise HTTPException(422, f"role must be one of {', '.join(RACI_ROLES)}")
+    party = (body.party or "").strip()
+    if not party:
+        raise HTTPException(422, "a RACI assignment needs a named party")
+    if not AO.may_declare(db, company_id, user,
+                          department_id=getattr(ini, "department_id", None)):
+        raise HTTPException(
+            403, "Assigning RACI is the department authority holder's act. "
+                 "Platform staff are refused, and an admin may grant authority "
+                 "but never exercise it.")
+    if body.role == "accountable":
+        live = live_raci(db.query(InitiativeRaci)
+                           .filter_by(company_id=company_id, initiative_id=iid,
+                                      role="accountable").all())
+        if live:
+            # The database refuses this anyway; the 409 exists so a caller learns
+            # that succession is revoke-then-assign rather than overwrite.
+            raise HTTPException(
+                409, f"{live[0].party} is already accountable. Accountability is "
+                     f"the one role that cannot be shared — revoke it first, "
+                     f"which keeps the handover on the record.")
+    row = InitiativeRaci(company_id=company_id, initiative_id=iid,
+                         role=body.role, party=party,
+                         department_id=body.department_id, note=body.note,
+                         declared_by=user.id,
+                         declared_by_label=(user.name or user.email or ""))
+    db.add(row)
+    db.flush()
+    audit(db, user.id, "raci_declared", "company", company_id,
+          detail=f"{ini.ref_code} {body.role}={party}")
+    db.commit()
+    return {"id": row.id, "role": row.role, "party": row.party}
+
+
+@router.post("/companies/{company_id}/initiatives/{iid}/raci/{raci_id}/revoke")
+def revoke_raci(company_id: int, iid: int, raci_id: int,
+                member=Depends(require_company_admin),
+                user: User = Depends(get_current_user), db=Depends(get_db)):
+    """A timestamp, not a deletion (§4v.1). "No longer accountable" is
+    information."""
+    from . import axis_objective as AO
+    ini = _get_company_initiative(db, company_id, iid)
+    if not AO.may_declare(db, company_id, user,
+                          department_id=getattr(ini, "department_id", None)):
+        raise HTTPException(403, "Revoking RACI is the department authority "
+                                 "holder's act.")
+    row = (db.query(InitiativeRaci)
+             .filter_by(id=raci_id, company_id=company_id, initiative_id=iid)
+             .first())
+    if row is None or row.revoked_at is not None:
+        raise HTTPException(404, "no live assignment with that id")
+    row.revoked_at = datetime.utcnow()
+    row.revoked_by = user.id
+    db.commit()
+    return {"id": row.id, "revoked": True}
 
 
 @router.get("/companies/{company_id}/axis-links")
