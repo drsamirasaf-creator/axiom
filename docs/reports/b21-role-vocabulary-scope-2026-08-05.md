@@ -48,11 +48,52 @@ object for the operator that never existed in the database.
 | **Admin** | ✅ | `Membership.role = "admin"`. Real, enforced 124 times |
 | **Viewer** | ✅ | `Membership.role = "viewer"`. Real but **defined only by what it is not** — one test in the entire codebase reads `role == "viewer"` |
 | **CXO** | ⚠ **partially** | `ax_department_authority` — ⛔ but it governs **sign-off and figure authorship**, not project assignment. It is a *per-department capability*, not a role on the person |
-| **Assessor** | ⚠ **a mechanism, not a role** | `AssessmentInvite` + a single-use `jti`. ⭐ **There is no assessor row and no assessor flag** — the capability IS the link, and it expires. `Participant.roles` is a JSON list on the *roster*, never consulted by any permission check |
+| **Assessor** | ⭐⭐ **A REAL ROLE — CORRECTED** | `ax_participants.roles` carries `assessor`, and `_participant_role_set` **does** consult it, unioned with the admin membership. See the correction below |
 | **Project Manager** | ⛔ **does not exist at all** | `Initiative.owner_name` is a **free-text string**; RACI `party` is **free text** — deliberately, so an external auditor can be Consulted. **Neither is a user, neither grants anything** |
 
 ⭐ **Two of the five are real, one is a per-department capability, one is a link,
 and one is a string.**
+
+---
+
+## ⛔⭐ CORRECTION — A CAPABILITY LAYER ALREADY EXISTS
+
+**This report first asserted that `Participant.roles` is "never consulted by any
+permission check". THAT IS WRONG**, and the correction changes §4 and §7 as well.
+
+`services/api/permissions.py` is a **declarative role→capability matrix**, and
+`accounts.require_capability(cap)` is a live FastAPI dependency that resolves the
+caller's role set through `_participant_role_set` — **admin membership UNION
+`ax_participants.roles` matched by lowercased email** — and enforces against it.
+
+    capabilities  view · take_instrument · submit_idea ·
+                  dispose_recommendations · admin
+    roles         admin (superset) · decision_maker · viewer · assessor
+    call sites    ⭐ 12   (8 in accounts.py, 4 in document_intel.py)
+
+⭐⭐ **SO THE THING §7 RECOMMENDED BUILDING ALREADY EXISTS**, with the shape
+described — one source of truth, a declarative matrix, a stable 403
+`{error, required:[cap]}`, and an explicit refusal for view-only magic links on
+write capabilities. **Twelfth lane to find work under a name nobody searched, and
+the first time it landed in a pushed report.**
+
+⭐ It also means **Assessor is already a role with capabilities**
+(`view` + `take_instrument` + `submit_idea`), and **`decision_maker` is a fifth
+role the ruling did not name.**
+
+### What this changes
+
+| §7 said | corrected |
+|---|---|
+| "the shape is a resolver every write path consults — copy `can_author`" | ⭐ **the resolver exists; the work is EXTENDING it, not designing it** |
+| ~165 sites to re-express | unchanged as a count — but **12 are already done**, and they are the template |
+| Assessor grants nothing new | ⛔ **wrong** — it already grants three capabilities |
+
+⛔ **WHAT REMAINS TRUE:** `require_company_admin` still guards **124** sites
+against `require_capability`'s **12**, so the layer exists and is barely adopted.
+**Project Manager is still absent from both vocabularies.** And the two role sets
+— `Membership.role` and `ax_participants.roles` — are **different vocabularies
+resolved into one union**, which is its own hazard and is not addressed by either.
 
 ---
 
