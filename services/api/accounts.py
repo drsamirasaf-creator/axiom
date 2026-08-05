@@ -7295,8 +7295,11 @@ def list_proposals(company_id: int, member=Depends(_summary_access), db=Depends(
     for iss in db.query(Issue).filter_by(company_id=company_id).all():
         n = len(_iss.live_only(db.query(IssueComment)
                                  .filter_by(company_id=company_id, issue_id=iss.id).all()))
-        iss_rows.append(_iss.queue_row(iss, n_comments=n,
-                                       department_scoped=iss.department_id is not None))
+        stars = [x.stars for x in db.query(ItemRating).filter_by(
+            company_id=company_id, target_kind="issue", target_id=iss.id).all()]
+        iss_rows.append(_iss.queue_row(
+            iss, n_comments=n, department_scoped=iss.department_id is not None,
+            rating=rating_block(stars)))
     iss_rows.sort(key=_iss.rank_key)
     return {"company_id": company_id, "proposals": out, "issues": iss_rows,
             # ⭐ NAMED SO A SURFACE CANNOT REACH FOR THE WRONG ONE BY DEFAULT.
@@ -7544,9 +7547,15 @@ def list_issues(company_id: int, member=Depends(_summary_access), db=Depends(get
     for iss in db.query(Issue).filter_by(company_id=company_id).all():
         n = len(_iss.live_only(db.query(IssueComment)
                                  .filter_by(company_id=company_id, issue_id=iss.id).all()))
+        stars = [x.stars for x in db.query(ItemRating).filter_by(
+            company_id=company_id, target_kind="issue", target_id=iss.id).all()]
         r = _iss.queue_row(iss, n_comments=n,
-                           department_scoped=iss.department_id is not None)
+                           department_scoped=iss.department_id is not None,
+                           rating=rating_block(stars))
         r["initiative_id"] = iss.initiative_id
+        # ⭐ CLICK-THROUGH DATA travels with the row — §4v, no card is a dead end.
+        r["description"] = iss.description
+        r["state_notes"] = _iss.STATE_NOTE
         rows.append(r)
     rows.sort(key=_iss.rank_key)
     return {"company_id": company_id, "issues": rows,

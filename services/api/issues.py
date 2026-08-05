@@ -89,23 +89,29 @@ def rank_key(row: dict):
     """Order for the Issues list — ⭐ AND A RANK IS A PUBLICATION.
 
     ⛔ A SUB-FLOOR ITEM IS RANKED AS UNRATED, NOT BY ITS HIDDEN NUMBER. If a
-    withheld weight still ordered the list, the ORDER would leak it: a reader who
-    knows the neighbours can bound the hidden value, and over a short list often
-    recover it. Ranking by a number you are refusing to show is showing it.
+    withheld average still ordered the list, the ORDER would leak it: a reader
+    who knows the neighbours can bound the hidden value, and over a short list
+    often recover it. Ranking by a number you are refusing to show is showing it.
 
-    ⭐ RATINGS ARE RULED (§4u.1) BUT NOT BUILT, so the primary sort is the
-    issue's WEIGHT — the frequency signal this object exists to carry. The rating
-    slot is reserved and stated rather than silently occupied.
+    ⭐⭐ RATING IS NOW THE PRIMARY SORT (§4u.1 ruling 7). This docstring said the
+    primary sort was WEIGHT, "because ratings are ruled but not built" — they are
+    built now, and a sentence describing the previous behaviour is the silent-rot
+    class this ledger keeps correcting. Weight breaks ties among equals, and is
+    itself only used when publishable.
     """
-    publishable = bool((row.get("weight_block") or {}).get("publishable", True))
+    rb = row.get("rating") or {}
+    rated = bool(rb.get("publishable"))
+    wb_pub = bool((row.get("weight_block") or {}).get("publishable", True))
     return (
-        0 if publishable else 1,                 # unrated sink to the bottom
-        -(row.get("weight") or 0) if publishable else 0,
+        0 if rated else 1,                        # unrated / withheld sink
+        -(rb.get("average") or 0) if rated else 0,
+        -(row.get("weight") or 0) if wb_pub else 0,
         row.get("title") or "",
     )
 
 
-def queue_row(issue, *, n_comments: int, department_scoped: bool = False) -> dict:
+def queue_row(issue, *, n_comments: int, department_scoped: bool = False,
+              rating: dict | None = None) -> dict:
     """One issue, shaped for the queue that already carries proposals.
 
     ⭐⭐ SHARING A QUEUE MUST NOT MEAN SHARING A VOCABULARY. `kind` and `states`
@@ -124,7 +130,9 @@ def queue_row(issue, *, n_comments: int, department_scoped: bool = False) -> dic
         "created_at": getattr(issue, "created_at", None),
         "weight": n_comments,
         "weight_block": wb,
-        # ⭐ RESERVED, NOT SILENTLY OCCUPIED. Ratings are ruled and unbuilt; a
-        # surface must be able to tell "not rated yet" from "rated zero".
-        "rating": None,
+        # ⭐⭐ THE RESERVED SLOT IS NOW FILLED. It carried None while ratings
+        # were ruled but unbuilt; `rating_block` applies the k-floor to the
+        # AVERAGE and never to the count, so an unrated item and a sub-floor one
+        # are distinguishable — and neither reads as "rated zero".
+        "rating": rating,
     }
