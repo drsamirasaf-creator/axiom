@@ -249,7 +249,26 @@ def test_the_matrix_is_SERVED_not_duplicated_in_the_frontend(served):
 # ⭐ PLACEMENT AND REACHABILITY — nine built-but-not-wired instances this era
 # ═══════════════════════════════════════════════════════════════════════════
 
-FE = "/Users/samirasaf/dev/optimization-anchor"
+# ⭐⭐ MACHINE-LOCAL PATH, THE CLASS §8w SWEPT — AND THREE TESTS HERE STILL
+# HARD-FAILED ON IT. `FileNotFoundError` on a developer's home directory is not
+# a finding about the product; on CI there is no frontend checkout at all.
+# ⭐ Overridable, so a runner that HAS both trees still checks them.
+FE = os.environ.get("AXIOM_FRONTEND", "/Users/samirasaf/dev/optimization-anchor")
+
+
+def _fe(rel):
+    """Read a frontend file, or SKIP saying exactly what went unchecked.
+
+    ⭐ THE RULED NON-RUN SHAPE: a guard that cannot reach its input reports what
+    it did not check and does not fail on a condition it does not guard. The
+    three tests below opened the file directly and raised FileNotFoundError,
+    which reads as a defect in the matrix rather than an absent checkout.
+    """
+    path = os.path.join(FE, rel)
+    if not os.path.exists(path):
+        pytest.skip(f"frontend checkout absent — {rel} unchecked "
+                    f"(set AXIOM_FRONTEND to run it)")
+    return open(path, encoding="utf-8").read()
 
 
 PAGE = "src/routes/what-is-axiom.tsx"
@@ -305,14 +324,14 @@ def test_the_PAGE_PATH_MATCHES_THE_NAME_THE_SIDEBAR_GIVES_IT():
 def test_the_OLD_PATH_STILL_RESOLVES():
     """⭐ Removing a path that has been public is indistinguishable, to anyone
     holding the link, from taking the page down."""
-    old = open(os.path.join(FE, "src/routes/how-it-works.tsx"), encoding="utf-8").read()
+    old = _fe("src/routes/how-it-works.tsx")
     assert "redirect" in old and '"/what-is-axiom"' in old
 
 
 def test_the_ROUTE_IS_REGISTERED_IN_THE_ROUTE_TREE():
     """⭐ A route file the tree does not import is a 404 with a component behind
     it. The file existing is not the route existing."""
-    tree = open(os.path.join(FE, "src/routeTree.gen.ts"), encoding="utf-8").read()
+    tree = _fe("src/routeTree.gen.ts")
     assert "'/what-is-axiom'" in tree
     assert "./routes/what-is-axiom" in tree
 
@@ -321,7 +340,7 @@ def test_the_matrix_STATES_a_load_failure_rather_than_VANISHING():
     """⭐⭐ A SILENT NULL IS INDISTINGUISHABLE FROM A GATE. The first version
     swallowed the error and rendered nothing, so a prospect whose fetch failed
     saw exactly what a censored page would show."""
-    c = open(os.path.join(FE, "src/components/ComparisonMatrix.tsx"), encoding="utf-8").read()
+    c = _fe("src/components/ComparisonMatrix.tsx")
     assert ".catch(() => {})" not in c, "the fetch error is swallowed"
     assert "could not be loaded" in c and "not restricted" in c
 
