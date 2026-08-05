@@ -110,7 +110,7 @@ def new_cid() -> str:
 # ======================================================================
 from datetime import datetime, timedelta
 
-from sqlalchemy import (Boolean, Column, DateTime, Float, Integer, JSON, String,
+from sqlalchemy import (Boolean, CheckConstraint, Column, DateTime, Float, Integer, JSON, String,
                         Text, UniqueConstraint, func)
 
 
@@ -528,6 +528,71 @@ class InitiativeMilestone(Base):
     position = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # ⭐⭐ §4z.4 RULING 2 — THE CRITERION IS REQUIRED AT CREATION, AND THAT HALF
+    # IS THE WHOLE RULING. Recorded retrospectively a criterion describes what
+    # happened while reading like evidence, which is worse than nothing because
+    # it is indistinguishable from a standard set in advance.
+    #
+    # ⭐ TWO FIELDS, NOT ONE. `criterion` is the requirement, declared BEFORE.
+    # `achievement` is what was recorded against it AFTER. One field collapsed
+    # into both would make "complete" self-certifying again.
+    criterion = Column(Text, nullable=True)
+    achievement = Column(Text, nullable=True)
+    # ⭐ §4v.1 — recording that a milestone met its criterion is a DECLARATION,
+    # so it carries an actor and a date and is REVOKED, never deleted.
+    achieved_by = Column(Integer, nullable=True)
+    achieved_at = Column(DateTime, nullable=True)
+    achievement_revoked_at = Column(DateTime, nullable=True)
+    achievement_revoked_by = Column(Integer, nullable=True)
+    # ⭐⭐ THE GRANDFATHER FLAG, AND IT IS SET BY THE MIGRATION ONLY. Rows that
+    # existed before the rule cannot retroactively acquire a criterion — that
+    # would be exactly the retrospective recording this ruling forbids. They are
+    # marked, so a reader sees "declared before this was required" rather than a
+    # silent null.
+    # ⛔ THE WRITE PATH MUST NEVER ACCEPT THIS FROM A CALLER, or a structural
+    # rule becomes an opt-out. A test asserts it does not.
+    predates_criterion = Column(Boolean, default=False, nullable=False)
+
+    __table_args__ = (
+        # ⭐⭐ ENFORCED BY THE DATABASE, NOT BY A VALIDATOR. A rule enforced in
+        # the write path alone is bypassed by any direct INSERT — which is how
+        # this codebase once carried a seat cap it had already ruled away.
+        CheckConstraint("predates_criterion = 1 OR criterion IS NOT NULL",
+                        name="ck_milestone_criterion_required"),
+    )
+
+
+def milestone_evidence_state(*, status, criterion, achievement, predates,
+                             achievement_revoked=False):
+    """-> {state, note}. ⭐⭐ "COMPLETE" IS EVIDENCED OR IT IS ASSERTED.
+
+    The brochure claims sign-off is evidenced rather than declared. A milestone
+    marked done with nothing recorded against its criterion is COMPLETE BY
+    ASSERTION, and saying so is the whole value of the field.
+
+    ⭐ A GRANDFATHERED ROW IS NAMED, NOT BLAMED. Nobody was asked for a criterion
+    when it was created, so reporting it as a failure would blame the record for
+    a rule that did not exist yet.
+    """
+    done = str(status or "").lower() in ("done", "complete", "completed")
+    if predates:
+        return {"state": "predates",
+                "note": "Declared before acceptance criteria were required. "
+                        "It carries no criterion, and one cannot be added now "
+                        "without describing what already happened."}
+    if not done:
+        return {"state": "open",
+                "note": "Not yet complete. Its criterion is on record."}
+    # ⛔ A REVOKED ACHIEVEMENT IS NOT EVIDENCE. Otherwise a retracted claim
+    # still certifies the milestone.
+    if achievement and not achievement_revoked:
+        return {"state": "evidenced",
+                "note": "Complete, with an achievement recorded against its "
+                        "criterion."}
+    return {"state": "asserted",
+            "note": "Marked complete with nothing recorded against its "
+                    "criterion — complete by assertion, not by evidence."}
 
 
 class InitiativeAction(Base):
@@ -7959,6 +8024,10 @@ class MilestoneItem(BaseModel):
     target_date: str | None = None
     status: str = "pending"            # pending|done|slipped
     owner_name: str | None = None
+    # ⭐ §4z.4 ruling 2 — the requirement, declared BEFORE.
+    criterion: str | None = None
+    # ⭐ recorded AFTER; the endpoint stamps who and when.
+    achievement: str | None = None
 
 
 class MilestonesPut(BaseModel):
@@ -8026,10 +8095,37 @@ def put_milestones(company_id: int, iid: int, body: MilestonesPut,
             m = existing[item.id]
             m.title, m.target_date, m.status, m.owner_name, m.position = title, td, item.status, own, pos
             m.updated_at = datetime.utcnow()
+            # ⭐ THE ACHIEVEMENT IS A DECLARATION (§4v.1): who recorded it and
+            # when travel with it, and it is stamped only when it FIRST arrives
+            # so a later edit cannot silently re-date somebody else's claim.
+            ach = (item.achievement or "").strip()
+            if ach and ach != (m.achievement or ""):
+                m.achievement = ach
+                m.achieved_by = user.id
+                m.achieved_at = datetime.utcnow()
+            # ⛔ AN EXISTING CRITERION IS NEVER OVERWRITTEN. Editing the standard
+            # after the fact is the retrospective recording this ruling forbids.
+            # A milestone that predates the rule keeps its honest absence.
+            if not m.criterion and not m.predates_criterion:
+                c = (item.criterion or "").strip()
+                if c:
+                    m.criterion = c
             keep.add(item.id)
         else:
+            # ⭐⭐ REQUIRED AT CREATION — §4z.4 ruling 2. The database CHECK is the
+            # real enforcement; this exists so a caller learns WHY rather than
+            # receiving a bare constraint violation.
+            crit = (item.criterion or "").strip()
+            if not crit:
+                raise HTTPException(
+                    422, "A new milestone needs its acceptance criterion — the "
+                         "requirement it must meet, stated BEFORE the work. A "
+                         "criterion recorded afterwards describes what happened "
+                         "while reading like evidence, which is why it is "
+                         "required at creation rather than at completion.")
             db.add(InitiativeMilestone(initiative_id=iid, title=title, target_date=td,
-                                       status=item.status, owner_name=own, position=pos))
+                                       status=item.status, owner_name=own, position=pos,
+                                       criterion=crit))
     for mid, m in existing.items():
         if mid not in keep:
             db.delete(m)
@@ -13705,6 +13801,32 @@ def _ensure_ax_columns(engine):
     # loop was tidier and made the gate report all eight columns as unmigrated;
     # measured, it went red. ⛔ TIDIER CODE THAT BLINDS A GUARD IS THE TRADE THIS
     # CODEBASE REFUSES, and the guard was right both times.
+    # ⭐⭐ §4z.4 RULING 2 — acceptance criteria on milestones.
+    # ⛔ THE COLUMN IS NULLABLE AND THE CHECK LIVES ON THE MODEL, deliberately.
+    # An existing row has no criterion and CANNOT acquire one — that is the
+    # retrospective recording the ruling forbids — so the rule is expressed as
+    # "predates OR criterion", and every row that exists at migration time is
+    # marked as predating it.
+    _add("ax_initiative_milestones", "criterion", "criterion TEXT")
+    _add("ax_initiative_milestones", "achievement", "achievement TEXT")
+    _add("ax_initiative_milestones", "achieved_by", "achieved_by INTEGER")
+    _add("ax_initiative_milestones", "achieved_at", "achieved_at TIMESTAMP")
+    _add("ax_initiative_milestones", "achievement_revoked_at",
+         "achievement_revoked_at TIMESTAMP")
+    _add("ax_initiative_milestones", "achievement_revoked_by",
+         "achievement_revoked_by INTEGER")
+    _add("ax_initiative_milestones", "predates_criterion",
+         "predates_criterion BOOLEAN NOT NULL DEFAULT false")
+    # ⭐ GRANDFATHER EVERY ROW THAT ALREADY EXISTS, once. A row created after
+    # this point carries a criterion or the CHECK refuses it.
+    try:
+        with engine.begin() as conn:
+            conn.execute(_text(
+                "UPDATE ax_initiative_milestones SET predates_criterion = true "
+                "WHERE criterion IS NULL AND predates_criterion = false"))
+    except Exception:
+        pass
+
     _add("ax_kpi_objective_links", "revoked_at", "revoked_at TIMESTAMP")
     _add("ax_kpi_objective_links", "revoked_by", "revoked_by INTEGER")
     _add("ax_kpi_initiative_links", "revoked_at", "revoked_at TIMESTAMP")
