@@ -19071,3 +19071,72 @@ lanes.
 months free. ⛔ **Neither figure, nor "17%", appeared anywhere in the product.**
 Placed directly beneath each monthly price, where a buyer comparing terms is
 already looking.
+
+# ⭐⭐ §III.11 · AN ASSERTION THAT FAILS WHEN EVERYTHING RENDERED (5 Aug)
+
+## THE CLASS
+
+⭐⭐ **A FALSE NEGATIVE IN A HARNESS — the mirror of the two shapes already
+recorded, and the one with no machinery against it.**
+
+| shape | what it does | machinery |
+|---|---|---|
+| assertion passes on a page that never loaded | ships a defect | ⭐ load control |
+| assertion passes against a hand-written stub | ships a defect | ⭐ recorded fixtures |
+| ⭐⭐ **assertion FAILS on a page that rendered perfectly** | **reverts working code** | ⛔ **none, until now** |
+
+## THE INSTANCE
+
+The axis→objective block was reported as never mounting. **Measured layer by
+layer on the served bundle: all five layers TRUE.** Route mounted, component
+mounted, request fired, 200 returned, card painted
+`'OBJECTIVES ADDRESSING THIS AXIS / Launch the platform v2 architecture'`.
+
+⭐⭐ **THE HEADER CARRIES `uppercase`.** `inner_text()` returns RENDERED text;
+`text_content()` returns SOURCE text. The assertion was a **case-sensitive `in`
+against `inner_text()`** — comparing source casing to rendered casing. **It could
+never match, for any data, on any run.**
+
+## ⭐⭐ THE MISSED SIGNAL — A FIX THAT CHANGES NO BEHAVIOUR INDICTS THE DIAGNOSIS
+
+Mid-failure the guard was "relaxed" so the block would render its shell even
+while loading. ⛔ **The relaxation changed nothing, because the guard was already
+correct** — `rows === null` means *not yet answered*, `rows === []` means
+*answered and empty*, and only the first returns null.
+
+⭐ **A CHANGE THAT PRODUCES NO CHANGE IS EVIDENCE THE MODEL IS WRONG.** The
+signal was available and was read as "still broken, try the next thing."
+
+⭐ **AND THE 200s WERE MISREAD THE SAME WAY.** *"The endpoint returned 200 three
+times and the block never mounted"* was recorded as a contradiction. **A
+component that never mounts cannot fire a request from its own effect.** The
+evidence was consistent; the instrument was never suspected because its output
+was a plain `False`.
+
+## THE COST, STATED
+
+**A false positive ships a defect** — and this project has built two mechanisms
+against it. ⭐⭐ **THIS FALSE NEGATIVE REVERTED WORKING CODE AND BURNED A LANE**,
+and there was no mechanism against it at all. **The asymmetry was in the tooling,
+not in the risk.**
+
+## THE MACHINERY — A KNOWN-NEGATIVE, PAIRED
+
+⭐ **A matcher that can never match anything passes EVERY absence assertion in a
+suite.** So each harness now carries a control:
+
+- **known-negative** — a marker that CANNOT exist must be absent
+- ⭐⭐ **paired with a known-positive** — a real marker must be FOUND. *Absence
+  alone proves nothing: a dead selector is absent everywhere.* The pair is what
+  makes the instrument readable.
+- for regex harnesses, the same idea per pattern: **every banned pattern is run
+  against a sample it MUST match**, in memory.
+
+⭐ **AND ASSERT ON A `data-*` PROBE, NOT ON PROSE.** Styling cannot transform an
+attribute. Asserting on rendered text is what cost the lane.
+
+**Audited:** 5 harnesses carried absence assertions and **none** had this control.
+Added to `verify-axis-objective` (paired probe), `verify-pricing-copy` (6
+patterns) and `verify-features-inventory` (3). ⚠ `verify-authority-vs-head`,
+`verify-pending-state` and `browser-verify` still carry unguarded absence
+assertions — **named, not silently left.**
