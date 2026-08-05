@@ -230,3 +230,26 @@ password printed, logged or written.
   dependency. Confirmed pre-existing by stashing this lane's changes.
 - `revoke_assess_invite` records no revoking actor (§5).
 - The three dead frontend keys and the orphaned dialog (§6).
+
+---
+
+## ⛔ Surfaced for your ruling — `origin/main` on the frontend was failing lint
+
+The frontend push was rejected: **10 commits from another session** had landed
+(`f927b94`…`fb60268`, "Changes" / "Work in progress" / "Built Axiom flow
+diagram"), touching `AxiomFlowDiagram.tsx`, `what-is-axiom.tsx` and
+`routeTree.gen.ts`. **No file overlap with this lane**, so the rebase was clean.
+
+⭐⭐ **But `origin/main` itself was failing `bun run lint`** —
+`what-is-axiom.tsx:858:1 Delete ⏎`, a stray blank line, introduced by
+`81e5530`. **Those commits reached `origin/main` without running the pre-push
+hook**, so the gate that exists precisely to catch this never ran.
+
+⛔ **It blocked every push from a local clone, not only mine.** I removed the one
+blank line via `prettier --write` in a **separate commit** (`1b2fac3`), stated as
+not part of this lane, so the §7e work carries none of it and the attribution
+stays clean. **No semantic change; one line.**
+
+⭐ **The ruling owed is not about the blank line.** It is that a push path exists
+which does not run the pre-push gate, so `origin/main` can go red without anyone
+being told — and the next person to push inherits a failure they did not cause.
