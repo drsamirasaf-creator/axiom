@@ -595,6 +595,137 @@ def milestone_evidence_state(*, status, criterion, achievement, predates,
                     "criterion — complete by assertion, not by evidence."}
 
 
+# ⭐⭐ RATINGS AND THE URGENT/IMPORTANT MATRIX — §4u.1 rulings 6–8 and the 5 Aug
+# amendment. Both attach to an idea or an issue by (kind, id) rather than by a
+# foreign key, because the two live in different tables and a rating is the same
+# act either way.
+RATING_TARGETS = ("idea", "issue")
+PLACEMENT_LEVELS = ("low", "high")
+
+
+class ItemRating(Base):
+    """One rater's stars on an idea or an issue.
+
+    ⭐⭐ ANONYMOUS BUT ANCHORED. The row carries no name and no email — but
+    `rater_key` makes one rater one vote, and that is what makes "n = 40" mean
+    forty people. ⛔ A FLOOR OVER AN INFLATABLE COUNT IS DECORATION, and the
+    floor is the thing protecting respondents.
+
+    ⭐ NOT CYCLE-BOUND (§4u.1 ruling 8). A proposal's life is not a survey's:
+    forcing a cycle would make an item raised between cycles unratable and would
+    reset its rating every quarter.
+    """
+    __tablename__ = "ax_item_ratings"
+    __table_args__ = (
+        UniqueConstraint("company_id", "target_kind", "target_id", "rater_key",
+                         name="uq_item_rating_one_per_rater"),
+        CheckConstraint("stars BETWEEN 1 AND 5", name="ck_item_rating_range"),
+        CheckConstraint("target_kind IN ('idea','issue')",
+                        name="ck_item_rating_target"),
+    )
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    target_kind = Column(String(8), nullable=False)
+    target_id = Column(Integer, index=True, nullable=False)
+    # ⭐ 'u:<user_id>' for a member, 'i:<jti>' for a live-invite holder — the two
+    # populations §4u.1 ruling 8 admits, and both are countable and single-use.
+    rater_key = Column(String(80), nullable=False)
+    stars = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class ItemPlacement(Base):
+    """Where a CXO placed an item on the urgent/important matrix.
+
+    ⭐⭐ BOTH AXES DECLARED, NEVER INFERRED. Importance might be derivable from
+    value impact or the objective served; urgency is not — nothing knows deadline
+    pressure that is not already a date. ⛔ AND A DERIVED AXIS BESIDE A DECLARED
+    ONE PRODUCES A MATRIX HALF-GUESSED, with no way for a reader to tell which
+    half, so both are placed by a person.
+
+    ⭐ COARSE ON PURPOSE. The matrix has two positions per axis; a 1–10 scale
+    feeding a four-quadrant decision invites precision nobody can defend.
+
+    ⭐ REVOCABLE (§4v.1) — "this was urgent in March and is not now" is
+    information, and a revoked placement reverts the item to UNPLACED rather than
+    to some previous guess.
+    """
+    __tablename__ = "ax_item_placements"
+    __table_args__ = (
+        CheckConstraint("urgency IN ('low','high')", name="ck_placement_urgency"),
+        CheckConstraint("importance IN ('low','high')", name="ck_placement_importance"),
+        CheckConstraint("target_kind IN ('idea','issue')", name="ck_placement_target"),
+    )
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    target_kind = Column(String(8), nullable=False)
+    target_id = Column(Integer, index=True, nullable=False)
+    urgency = Column(String(8), nullable=False)
+    importance = Column(String(8), nullable=False)
+    note = Column(Text, nullable=True)
+    declared_by = Column(Integer, nullable=True)
+    declared_by_label = Column(String(160), nullable=True)
+    declared_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+    revoked_by = Column(Integer, nullable=True)
+
+
+def rating_block(stars_list):
+    """-> {n, average, publishable, state, note}. The k-floor, applied to an
+    average and never to the count.
+
+    ⭐⭐ THE COUNT IS ALWAYS SHOWN. `assessment_engine.suppression_block` already
+    publishes `n` for a hidden slice deliberately — it is what makes "withheld"
+    credible rather than indistinguishable from silence, and a bare count
+    identifies nobody.
+    """
+    from .assessment_engine import KFLOOR
+    vals = [int(v) for v in (stars_list or [])]
+    n = len(vals)
+    if n == 0:
+        return {"n": 0, "average": None, "publishable": False,
+                "state": "unrated",
+                "note": "No one has rated this yet."}
+    if n < KFLOOR:
+        return {"n": n, "average": None, "publishable": False,
+                "state": "below_floor",
+                "note": f"{n} rating(s) — withheld until {KFLOOR} are in, so a "
+                        f"single voice cannot be identified."}
+    return {"n": n, "average": round(sum(vals) / n, 2), "publishable": True,
+            "state": "rated", "note": None}
+
+
+def rating_rank_key(row):
+    """⭐⭐ A RANK IS A PUBLICATION. A sub-floor mean that still ORDERS the list
+    leaks through the order: a reader who knows the neighbours can bound it, and
+    over a short list often recover it. So anything not publishable sorts to the
+    bottom as UNRATED rather than by its hidden mean.
+    """
+    b = row.get("rating") or {}
+    pub = bool(b.get("publishable"))
+    return (0 if pub else 1,
+            -(b.get("average") or 0) if pub else 0,
+            -(b.get("n") or 0))
+
+
+def placement_block(row):
+    """-> {placed, urgency, importance, quadrant, note}.
+
+    ⛔ AN UNPLACED ITEM IS NOT PLACED AT THE ORIGIN. Rendering it at low/low
+    would assert that somebody judged it unimportant and not urgent, which is the
+    fabrication this rule exists to prevent.
+    """
+    live = row is not None and getattr(row, "revoked_at", None) is None
+    if not live:
+        return {"placed": False, "urgency": None, "importance": None,
+                "quadrant": None,
+                "note": "Unplaced — nobody has judged its urgency or importance "
+                        "yet. It is not low on either axis; it is unjudged."}
+    u, i = row.urgency, row.importance
+    return {"placed": True, "urgency": u, "importance": i,
+            "quadrant": f"{u}-urgency · {i}-importance", "note": None}
+
+
 # ⭐ THE FOUR ROLES, NAMED IN ONE PLACE. A caller spelling one of them itself is
 # how a fifth role appears.
 RACI_ROLES = ("responsible", "accountable", "consulted", "informed")

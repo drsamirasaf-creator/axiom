@@ -534,6 +534,28 @@ def src_raci(db, cid):
     return out
 
 
+def src_placements(db, cid):
+    """⭐⭐ PLACING AN ITEM ON THE URGENT/IMPORTANT MATRIX IS A DECISION.
+
+    It is the judgement that decides what gets resourced, and the 5 Aug
+    amendment made both axes declared precisely so it would have an author. ⭐ A
+    revoked placement is excluded rather than shown as history here — the record
+    carries what is currently asserted, and the row keeps the rest.
+    """
+    from .accounts import ItemPlacement
+    out = []
+    for p in (db.query(ItemPlacement).filter_by(company_id=cid)
+                .filter(ItemPlacement.revoked_at.is_(None)).all()):
+        out.append(_d(
+            "placement", p.id, cid=cid, type_="urgency_importance_placed",
+            decided_at=p.declared_at, author=p.declared_by_label,
+            actor_user_id=p.declared_by,
+            statement=(f"{p.target_kind} {p.target_id} placed "
+                       f"{p.urgency}-urgency / {p.importance}-importance"),
+            rationale=p.note))
+    return out
+
+
 SOURCES = {
     "override": src_overrides,
     "signoff": src_signoffs,
@@ -550,6 +572,7 @@ SOURCES = {
     "issue_state": src_issue_states,
     "axis_link": src_axis_links,
     "raci": src_raci,
+    "placement": src_placements,
 }
 
 # ⭐ ATTRIBUTED, BUT AUTHORSHIP RATHER THAN DECISION — named with the reason,

@@ -129,7 +129,9 @@ def test_every_attributed_model_is_either_a_source_or_named_not_a_decision():
                # ⭐ §4z.4 ruling 4 — naming who answers for the work is a
                # decision, and the purest one here: every other entry records a
                # decision ABOUT something, this records who is answerable.
-               "InitiativeRaci"}
+               "InitiativeRaci",
+               # ⭐ the judgement that decides what gets resourced
+               "ItemPlacement"}
     unclassified = attributed - carried - set(DR.NOT_A_DECISION)
     assert unclassified == set(), \
         f"attributed but neither carried nor excluded: {sorted(unclassified)}"
