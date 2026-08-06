@@ -188,7 +188,7 @@ the URL is never printed.**
 
 ```bash
 python3 -m pytest tests/ -q                       # full suite, ~3m20s
-for f in scripts/check-*.py; do python3 "$f" || echo "FAIL $f"; done   # 26 gates
+for f in scripts/check-*.py; do python3 "$f" || echo "FAIL $f"; done   # 29 gates (5 Aug)
 ```
 
 ⭐ **Run the gate loop in the background.** A foreground 10-minute timeout has
@@ -327,7 +327,8 @@ chat.**
 
 # 5 · THE STANDING LAWS, IN PRACTICE
 
-## Built is not wired — *ten instances*
+## Built is not wired — *eighteen instances* (5 Aug: the cmdk palette, built,
+## shipped in two components, and never mounted app-wide)
 
 ⭐⭐ **A UNIT TEST PROVES A FUNCTION WORKS. IT CANNOT PROVE ANYTHING CALLS IT.**
 
@@ -342,7 +343,7 @@ the page turned out to be **unreachable by its own name** (`/what-is-axiom`
 
 **Tell:** an assertion with no URL in it.
 
-## A guard that matches text will punish stating its own rule — *five instances*
+## A guard that matches text will punish stating its own rule — *eleven instances* (5 Aug)
 
 | banned token | what it actually struck |
 |---|---|
@@ -385,7 +386,8 @@ fact is **unrecoverable, not false** — and effort will not produce it.
 ## Verify behaviour, not the count
 
 ⭐ **A ratchet satisfied without fixing the defect is a spelling check.** The
-frontend lint ratchet is **downward-only at 1047 warnings**; if a lane adds one,
+frontend lint ratchet is **downward-only; the binding ceiling is
+`no-explicit-any` at 819** (1,039 warnings total, 5 Aug); if a lane adds one,
 **fix the warning, do not raise the ceiling.**
 
 ⭐ Related: **a test that pins the MECHANISM blocks every other correct
@@ -497,10 +499,56 @@ Jul rulings · `B15` the features map as a distinct asset.
 | **G5** | ⭐⭐ **OPEN — unprotected `main`, no staging.** A bad commit reaches production behind a local hook only |
 | **G11** load | ⭐ **RECLASSED TO LAUNCH.** No load testing; at a thousand firms the monthly sweep *is* the untested load |
 
+## ⭐⭐ WHERE THE QUEUE LIVES (added 5 Aug)
+
+**CORE §0.1 carries the open queue in priority order, the rulings owed, and what
+is known-red.** Read it before anything else — it exists so you do not have to
+reconstruct the state from commits.
+
+## ⭐ THE INFORMATION ARCHITECTURE CHANGED ON 5 Aug
+
+The app now ships **three sections and 14 sidebar links**, not the older shape
+this file was written against:
+
+    WORKSPACE  My AXIOM ▸ Team · Objectives & KRs · Data Input · Assumptions
+                         · Declared Impact · Pilot viewers · Sync
+    ANALYZE    Structure · Dashboard · Feedback · Profitability · Valuation · Risk & SWOT
+    STRATEGIZE Planning · Optimization · Prescience AI
+    EXECUTE    Projects · Monitoring
+    footer     Course Workspace · What is AXIOM?     (UTILITY is retired)
+
+⭐ **custody-10's door is now labelled "Data Input", not "KPIs"** — the crawler's
+runtime lock moved with it, and `check-sidebar-contract.py` fails if the two ever
+part (§4A.2).
+
+⭐ **Every tab is addressable** — 19 of 19 strips are URL-driven, and a generated
+navigation index of **107 destinations** is guarded by regenerate-and-diff.
+**Regenerate with `python3 scripts/gen-nav-index.py` after any route or tab
+change**, or `check-nav-index.py` fails.
+
+## ⭐ FRONTEND GATES (12 steps, `.github/workflows/ci.yml`)
+
+`ci-steps.py` derives the pre-push hook from that workflow — **one owner**. New
+this session: `check-flow-diagram-links` · `check-hydration-safe-session` ·
+`check-sidebar-contract` · `check-scope-declared` · `check-tabs-addressable` ·
+`check-nav-index`.
+
+⛔ **`bun run build` regenerates `routeTree.gen.ts`.** Restore it before pushing
+(`git checkout -- src/routeTree.gen.ts`) or `check:routetree` blocks you. This
+happens on nearly every lane.
+
 ## Known open items you will trip over
 
-- ⭐ **Demo-rot workflow** needs `AXIOM_CRAWL_BASE_URL`, `AXIOM_CRAWL_EMAIL`,
-  `AXIOM_CRAWL_PASSWORD` or its first scheduled run is red.
+- ⭐⭐ **Demo-rot has NEVER succeeded** — five scheduled runs, zero assertions.
+  1 Aug failed on absent secrets; 2–5 Aug on a **missing playwright install**,
+  fixed 5 Aug. Its secrets are set. ⛔ **No green run exists yet, so its coverage
+  is unproven rather than restored.**
+- ⭐⭐ **Backend CI is RED** on two pre-existing mutation survivors (§0.1).
+- ⭐⭐ **Two divergent copies of `auth-regression.py`** — the **backend one is
+  canonical** and is what `demo-rot` runs; the frontend copy asserts a **weaker**
+  custody-10 (one lock, no tab walk) and runs nowhere.
+- ⭐ **Required status checks gate PR merges, not direct pushes** — measured. A
+  direct push to protected `main` succeeds (§8s.2).
 - ⭐ **§4z's three places:** the viewer experience is built; **the results call
   and the pricing page are not.**
 - ⭐⭐ **A CONTRADICTION IN CORE, UNRESOLVED:** the tier definition caps Business
@@ -579,8 +627,9 @@ merely misinform, it issues instructions.**
 | a custody or routing correction | §2 |
 | a host, repo, plan or secret-location change | §8 |
 
-⭐ **The counts in this document are claims.** "Ten instances", "five
-instances", "26 gates", "1047 warnings", "twelve wrong CORE entries" — each is
+⭐ **The counts in this document are claims.** "Ten instances", "eleven
+instances", "29 gates", "819 / 1,039 warnings", "twelve wrong CORE entries" —
+each is
 measurable, and each will be wrong the moment it is not maintained. **If you
 cannot verify a count while reading, measure it before relying on it.**
 

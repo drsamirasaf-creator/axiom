@@ -19549,3 +19549,361 @@ plan, nor project execution. **It is an input, and inputs now have one door.**
 permanent sidebar entry, and the upload surface remains reachable by walking its
 tab. **The path does not move** — every inbound link resolves, per the precedent
 set by the SWOT and pilot-viewer moves.
+
+# ⭐⭐ §4A.1 · THE IA PROGRAMME AS BUILT — AND THREE CORRECTIONS TO ITS OWN AUDIT (5 Aug)
+
+§4A recorded the rulings **before** the build. This records what shipped, and
+⛔ **three places where the audit that produced those rulings was wrong.**
+
+## WHAT SHIPPED
+
+    WORKSPACE   My AXIOM ▸ Team · Objectives & KRs · Data Input · Assumptions
+                          · Declared Impact · Pilot viewers · Sync
+    ANALYZE     Structure · Dashboard · Feedback · Profitability · Valuation · Risk & SWOT
+    STRATEGIZE  Planning · Optimization (+ Observatory) · Prescience AI
+    EXECUTE     Projects · Monitoring
+    footer      Course Workspace · What is AXIOM?
+
+⭐ **UTILITY IS RETIRED.** Course Workspace and What is AXIOM? are reference
+surfaces, not sections of the argument; they moved to a sidebar **footer**.
+⛔ **Removing the section without rehoming them would have made two live pages
+reachable only by typing a URL**, which this ledger counts as unshipped.
+
+⭐ **Monitoring is assembly.** `/twin` opens on a portfolio view built entirely
+from roll-ups `_initiative_rollups` already returned — RAG, blockers, slipped
+milestones, unowned, overdue reviews. **Nothing computed; it was two clicks deep
+inside a row drawer.**
+
+## ⛔ CORRECTION 1 — `/benchmarking` IS A REDIRECT, AND THERE WERE NEVER FIFTEEN TABS
+
+The audit reported *"a page with fifteen tabs"* and called the SWOT entry
+mislabelled for pointing elsewhere. **Measured:**
+
+- `benchmarking.tsx`'s route component returns `<Navigate to="/risk-analysis"
+  search={{section:"benchmarking"}}/>`. **The destination was right all along.**
+- Its `BenchmarkingSection` is **live** — exported and rendered *by
+  `/risk-analysis`*, below that redirect.
+- ⭐⭐ **Of the fifteen "tabs", ELEVEN ARE `fields: Array<{k: keyof PeerRow;
+  label: string}>` — PEER-ROW FORM INPUTS.** There are **four** tabs.
+
+⭐ **Three derivations in a row were wrong about one file** — wrong location,
+wrong liveness, wrong count — and two of them reached pushed reports.
+
+## ⛔ CORRECTION 2 — THE LENS FILTERS; IT DOES NOT DE-DUPLICATE
+
+§4A ruling 3 predicted the department lens would *"close most of the eight
+duplications."* ⛔ **Measured: it closes none of them.**
+
+⭐⭐ **THE FIVE REMAINING ARE DUPLICATED *DESTINATIONS*. The lens changes how a
+page is FILTERED, not how many places reach it.** They were closed separately
+(§4A.2). What the lens does remove is the reason to build a twelfth destination.
+
+⭐ **And the lens already existed** — `PageScope`, four buckets (A scopable ·
+B enterprise-wide-and-says-why · C composite · N-A no control), 17 of 26 routes
+already declaring one, and `docs/department-scope-audit.md`'s four
+`A (unwired)` leaves **already wired**. The real defect was an **undeclared**
+lens: `/profitability` passed nothing, rendering the empty zone reserved for
+authoring surfaces — indistinguishable from *"nobody decided"*.
+
+## ⛔ CORRECTION 3 — STATEMENTS ARE NOT RENDERED TWICE
+
+`/financial-forecasts` renders `<IncomeStatement pf={proforma}/>`;
+`/scenario-analysis` renders `<StatementTable lines={INCOME_LINES}/>`.
+⭐ **Different components, different inputs, different answers** — a statement
+under a *forecast* against one under a *scenario*. **And Dashboard has no
+statements surface, so "Statements → Dashboard" would BUILD a third render.**
+⛔ **Listed as a duplication on a shape reading — four statement NAMES in two
+files — without checking whether the same thing was rendered.**
+
+# ⭐⭐ §4A.2 · EVERY TAB IS A DESTINATION — ADDRESSABLE, INDEXED, DE-DUPLICATED (5 Aug)
+
+## ⭐ A TAB IS A DESTINATION, AND A DESTINATION NEEDS A URL
+
+Measured: **17 of 18 tab strips were local `useState`**, and two more were
+*seeded* — a cold link landed correctly and a click never wrote the URL, so the
+view on screen could not be shared. **19 of 19 are now driven by the URL.**
+
+⭐ **`useTabParam` is the EXISTING mechanism factored, not a new one** —
+`validateSearch` + `useSearch` + `navigate`, written once instead of nineteen
+times. Two decisions are load-bearing:
+
+- ⭐⭐ **It MERGES into existing search.** A bare `{tab}` would have made
+  `?department=` **vanish on a tab click** — a filter silently dropped.
+- ⭐ **The default is never written.** `/valuation` and `/valuation?tab=valuation`
+  are one destination.
+
+⛔ **The guard found a FOURTH spelling of the pattern** (`search?.tab ?? localTab`)
+written one lane earlier, in `/twin`. **Factoring is what stops the third
+mechanism being born.**
+
+## ⭐ NAVIGATION SEARCH — 107 DESTINATIONS, DERIVED
+
+The `cmdk` palette was **already in production** in `CurrencySelector` and
+`/my-axiom`, never mounted app-wide — ⭐ **the eighteenth lane to find work under
+an unsearched name, and the first where the WIDGET was proven while the FEATURE
+was absent.**
+
+The index is **generated** from the route table and the tab wiring, guarded by
+regenerate-and-diff. ⭐⭐ **Its guard caught twelve broken synonyms on its first
+run — and they exposed a real hole in the generator**, which was missing the
+cross-page tab groups and `/dashboard`'s Set-declared tabs: a third of the app.
+
+⭐ **Synonyms are DECLARED and OWNED** — 61 entries; whoever changes a label owns
+its synonyms in the same commit, enforced by the guard. ⛔ **Nothing inferred:**
+`KeyResult.kpi_key` is null on all 82 rows because inference-by-name produces
+nothing here. **A word with no single good answer is absent rather than pointed
+at the nearest page.**
+
+⭐ **Signposts are excluded by name with reasons, and the exclusion list is itself
+ratcheted** — an exclusion matching nothing is a rule outliving its reason, and it
+caught one immediately.
+
+## ⭐ THE DUPLICATIONS, CLOSED
+
+| concept | owning door | the others |
+|---|---|---|
+| **Issues** | `/cei?tab=issues` (ANALYZE) | `/initiatives?tab=issues` → a **link** |
+| **OKRs** | `/target-state` (Planning) | `/dashboard?tab=objectives` → a link **carrying the lens** |
+| **`/target-state`** | one label | three labels across two groups collapsed |
+
+⭐ **The link carries `?department=`**, so a department opens Planning **already
+filtered**. ⛔ A second department-scoped OKR surface would be the duplication
+returning under another name.
+
+## ⭐⭐ THE UPLOAD DOOR RENAMED, AND ITS LOCK MOVED WITH IT
+
+My AXIOM's tab was labelled **"KPIs"** while `/dashboard?tab=kpis` owns
+measurement. ⛔ **Two concepts on one word is a duplication a reader perceives
+even though the surfaces differ — and a lock pinned to a misleading label
+protects the wrong thing.**
+
+Renamed to **"Data Input"** (the page's own title), and **custody-10's lock (b)
+moved in the same commit**. ⭐ **The tie is now GUARDED:**
+`check-sidebar-contract.py` reads the label `MY_AXIOM_TABS` ships and requires the
+crawler's door-walk to match — **red in both directions, independently.**
+
+# ⭐⭐ §8s.2 · CI, THE HYDRATION CLASS, AND WHAT REQUIRED CHECKS ACTUALLY DO (5 Aug)
+
+## ⭐ THE SSR HYDRATION MISMATCH — FIXED, TEN PINS REMOVED
+
+Six pages carried pinned React #418 failures reading *"Real, pre-existing… ONLY
+WHEN SIGNED IN."* **Two distinct divergences:**
+
+- `useAuth` seeded `useState` from the **mutable module variable**
+  `currentSession`. It starts null, so the first render was usually anonymous —
+  **unless `validateStoredSession` resolved before hydration finished.**
+- `useAuthStatus` was **unconditional**: `authStatus` is seeded at module load
+  from `readStoredToken()`, so the server said `"anonymous"` and the client
+  `"unknown"` **every time.**
+
+⭐⭐ **WHY ONLY CI SAW IT: THE API STUB.** The browser gate replaces the network
+with an instant responder, so the session resolved mid-hydration; against the real
+API over the internet it never did. **The harness made a real race deterministic.**
+
+**Both hooks now use `useSyncExternalStore` with a `getServerSnapshot`, which
+React also uses for the hydration pass** — the first client render equals the
+server's **by construction rather than by winning a race.** ⛔ Not
+`suppressHydrationWarning`, which hides the report and leaves the divergence.
+
+⭐ `serverStatus` returns **`"anonymous"`, not `"unknown"` — it must mirror what
+SSR actually rendered**, not what is philosophically truer.
+
+**Ten pins removed. First green run on `main` since 3 Aug.**
+
+## ⛔ THE NAV CRAWLER HAD NEVER RUN — FIVE SCHEDULED RUNS, ZERO ASSERTIONS
+
+`demo-rot` installed `httpx requests` and **never playwright**, while
+`auth-regression.py` drives a browser. **1 Aug failed on absent secrets; 2–5 Aug
+on the missing dependency** — with the configuration guard passing first, so **the
+job looked correctly wired while failing on its own instrument.**
+
+⭐⭐ **AND THERE ARE TWO DIVERGENT COPIES OF THAT CRAWLER**, asserting **different
+rules**:
+
+| | backend (canonical, run by `demo-rot`) | frontend |
+|---|---|---|
+| custody-10 | ⭐ **two locks** — sidebar entry **and** a runtime walk of the tab | ⛔ **one** — straight to `/data-input` |
+| tests | discoverability | only that the URL renders |
+| runs | daily | ⛔ **nothing** |
+
+⭐ **The backend copy is canonical.** The frontend copy encodes the rule from
+*before* the 2 Aug amendment moved the door. **Merge its operator self-minting
+into the canonical one, then delete it** — recorded as owed.
+
+## ⛔⭐ REQUIRED STATUS CHECKS GATE PR MERGES, NOT DIRECT PUSHES
+
+**Measured, not assumed.** A direct push to protected `main` **succeeded, rc=0**,
+with the remote printing `Required status check "check" is expected.` GitHub
+cannot know a check's result at push time.
+
+⛔ **SO "every Lovable push must pass CI or it does not land" IS FALSE AS
+CONFIGURED.** What is enabled is: `main` cannot be force-pushed or deleted, and a
+**PR** needs a green check to merge. **Lovable pushes directly; its workflow is
+unchanged.**
+
+⭐ **Making CI a real gate on that path means refusing direct pushes entirely**,
+forcing every change through a PR. **That is a workflow change and a ruling owed
+— see §8s.1 for the recovery path, recorded first.**
+
+## ⭐ A RULING OWED: DOES A PACK FREEZE THE LEADER?
+
+`check-pack-coverage.py` went red when the leader block entered
+`_initiative_rollups`, which the pack's *"5 initiatives"* section reaches: **a
+pack would have rendered TODAY'S leader on a pack issued in March.** Attached in
+the endpoints instead. ⭐ **Whether a pack SHOULD freeze the leader is plausibly
+yes — a board pack wants who was accountable — but adding an input class changes
+every pack hash, and §7o binds. Not taken.**
+
+# ⭐⭐ §III.12 · SIX LAWS FROM ONE SESSION'S INSTRUMENT FAILURES (5 Aug)
+
+⭐ **Every one of these was learned from a guard, harness or derivation that
+reported confidently and wrongly.**
+
+## 1 · §III.11'S THIRD CLASS, AND ITS TWO MISSED SIGNALS
+
+An assertion that **fails when everything rendered** reverts working code. Two
+signals were available and misread:
+
+- ⭐⭐ **A FIX THAT CHANGES NO BEHAVIOUR INDICTS THE DIAGNOSIS.** A guard was
+  "relaxed" and nothing changed, because the guard was already correct.
+- ⭐ **A CONTRADICTION IN THE EVIDENCE IS USUALLY THE INSTRUMENT.** *"The endpoint
+  returned 200 three times and the block never mounted"* — **a component that
+  never mounts cannot fire a request from its own effect.**
+
+**Second appearance this session:** the `/what-is-axiom` gate demanded words a
+**ruling** had removed, and kept `main` red for two days.
+
+## 2 · A DEAD SELECTOR PASSES EVERY ABSENCE CHECK
+
+⭐ **A matcher that can never match anything satisfies every absence assertion in
+a suite.** Each absence must be paired with a **known-positive**, and the positive
+must be **read from the world, never invented** — §4z.3's ninth instance was a
+control asserting a regex matched a string the guard had written itself.
+
+## 3 · A SHAPE-MATCHING REGEX CANNOT TELL A TAB FROM A FORM FIELD
+
+⭐⭐ `{ k, label }` matched `fields: Array<{k: keyof PeerRow; label: string}>` —
+**eleven form inputs counted as tabs, in two pushed reports.**
+⭐ **FIX: membership must come from the AUTHORITATIVE list the code itself
+validates against**; labels are *joined onto* keys already known to be tabs, never
+used to decide what a tab is.
+
+## 4 · AN EARLY-RETURN CHECK CANNOT SEE A COMPONENT EXPORTED PAST IT
+
+⭐⭐ `BenchmarkingSection` lives below an unconditional `<Navigate/>` and renders
+inside another route. **Two derivations called it dead code**, and a build lane
+was instructed to delete it.
+⭐ **FIX: ownership comes from where a thing is DECLARED, never from file
+position** — `useSearch({from})` names the owner.
+
+## 5 · A REPEATED SYMPTOM IS EVIDENCE OF A REPEATED OBSERVATION, NOT A REPEATED CAUSE
+
+⭐⭐ Four harness failures produced one confident mechanism — *"one drawer per page
+session"* — and **the pattern was not real**: four different harness bugs.
+⛔ **A mechanism asserted from repetition alone is a story about the observer.**
+
+## 6 · AN EXPERIMENT THAT FAILS TO ELIMINATE A HYPOTHESIS HAS EITHER ELIMINATED IT, OR IS BROKEN
+
+⭐⭐ A fresh-page test written to **eliminate** session state was read as
+**confirming** it. And a CPU-throttling probe found no hydration race — **because
+the probe never stubbed the API**, the one condition that mattered. ⛔ **A
+negative result from an instrument you have not validated is not a result.**
+
+# ⭐⭐ §4B · AXIOM_Architecture_A IS ASPIRATIONAL — INTERNAL ONLY (ruled 5 Aug)
+
+⛔ **IT IS A TARGET ARCHITECTURE, NOT A DESCRIPTION OF THE PRODUCT.** It must not
+appear in the brochure, on the website, or on **any** prospect-facing surface
+without a claims audit marking what ships today against what is planned.
+
+⭐ **THE FAILURE THIS PREVENTS IS SPECIFIC:** a technical buyer asking about a
+component that does not exist. **Same class as the withdrawn brochure proof point
+(§4z) and the in-development block (§4z.3)** — an unbuilt claim on a prospect
+surface — and **the bounded exception with a written end condition is the
+available instrument** if any part of it is to be shown before it exists.
+
+## THE DIVERGENCES FOUND ON INSPECTION, so a later lane need not rediscover them
+
+- **"Real-time" appears three times.** ⛔ AXIOM is deliberately **not** real-time;
+  the pack cadence is **monthly**.
+- **ERP, CRM and BI integrations do not exist.** Ingestion is a **template**;
+  multi-source ingestion is **designed and unbuilt**.
+- **Absent entirely:** XBRL filings · workflow and approvals · notification
+  service · API gateway · disaster recovery (**G2 is partially closed**).
+- **The twelve user-facing modules do not map to the nine pages that exist** —
+  ⭐ and the nav now ships **three sections and 14 sidebar links** (§4A.1), so the
+  mapping is further from the diagram than when the divergence was found.
+
+## ⛔⭐ CORRECTION, MADE BEFORE THE ENTRY WAS FIRST WRITTEN
+
+The divergence list originally read *"correlation and copulas were explicitly
+deferred."* **That is wrong, and it conflates two different mechanisms in two
+different places:**
+
+- ⭐ **EVA distributions carrying mixture and copula methods in separate panels,
+  with an explainer contract, are RULED AND UNBUILT** — not deferred. **Ruled but
+  not built is a commitment outstanding; deferred is a decision not to.**
+- ⭐ **What was DEFERRED is the constrained correlation via Cholesky in the
+  stochastic pro-forma engine.** A different mechanism, in a different place.
+
+⛔ **ONE WRONG CLASSIFICATION IS EVIDENCE THE LIST WAS WRITTEN FASTER THAN IT WAS
+MEASURED**, so the remaining divergences above are recorded as **reported, not
+verified** — each needs checking against the code before it is relied on.
+⭐ **What IS accurate and useful:** the eleven core engines are real, the
+intelligence layer's contents are largely built, and the state kernel is a fair
+description of the dataset/version/pack model — versioned, time-stamped,
+immutable, auditable.
+
+## ⛔ WHAT COULD NOT BE VERIFIED FROM THE REPOSITORY
+
+⭐⭐ **`§7n` DOES NOT EXIST IN CORE OR IN ARCHIVE**, and `AXIOM_Architecture_A` is
+**not in either repository** — it is referenced only in this session's reports.
+**The EVA/copula ruling above is recorded on the user's authority, not derived**,
+and a later lane must not treat it as measured. ⭐ Same class as **§7e A–E**, which
+was cited seven times in code and recorded nowhere until 5 Aug — **a dangling
+reference is what caused a lane to be dispatched to build a table that already
+existed.**
+
+# ⭐⭐ §0.1 · THE OPEN QUEUE, IN PRIORITY ORDER (5 Aug — read this first)
+
+⭐ **Recorded so a new advisor sees the queue without reconstructing it.** Order is
+the user's, not an inference.
+
+| # | item | state |
+|---|---|---|
+| 1 | **Data search** | scoped (`docs/reports/in-app-search-scope-*.md`), **not built**. Needs a new authenticated endpoint honouring tenant, capability, magic-link scope, department, **the k-floor** and the showcase exemption. ⛔ A result naming a suppressed slice defeats the floor; verbatim text is **never** indexed |
+| 2 | **The two statement renders converging** | ⛔ **not a de-duplication** — see §4A.1 correction 3. A build with a forecast-vs-scenario ruling |
+| 3 | **EVA distribution** | ⭐ **ruled and unbuilt** — mixture and copula in separate panels with an explainer contract (§4B) |
+| 4 | **The Gantt as a real chart** | the Schedule tab draws bars; a true timeline axis is unbuilt |
+| 5 | **Voice of Employee per department** | |
+| 6 | **The strategy map** | designed at §4v, ruled at §4v.1, **unbuilt** |
+| 7 | **Stochastic pro forma** with frequency views and interpolation | ⛔ Cholesky correlation **deferred** (§4B) |
+| 8 | **Admin panels** | |
+| 9 | **ROI calculator** | |
+| 10 | **Dictionary** | glossary exists (~400 terms) and is **not searchable** |
+| 11 | **Stakeholder instruments** | ⭐ only employees have ever answered — customer, partner and supplier instruments are **not built**, and the Feedback page says so |
+| 12 | **The Features & Benefits witness** | |
+| 13 | **The Ask AXIOM allowance** (§5b) | ⛔ **cost-per-company and retention are UNMEASURED** — the allowance was ruled without them |
+| 14 | **The pre-launch programme** | §7 audits |
+
+## ⭐ RULINGS OWED (blocking, or nearly)
+
+1. ⭐⭐ **Do required checks become a real gate?** Today they gate PR merges only;
+   making them bind Lovable means **refusing direct pushes to `main`** (§8s.2).
+2. ⭐ **Does a pack freeze the leader?** Adding an input class changes **every pack
+   hash**, and §7o binds (§8s.2).
+3. ⭐ **The crawler merge** — two copies assert two different custody-10 rules and
+   only one runs (§8s.2).
+4. ⭐ **Assessor: standing role or per-cycle?** ⛔ the anonymity floor is at stake.
+5. ⭐ **Is Viewer defined positively**, or does it remain "not admin"?
+6. ⭐⭐ **The tier contradiction** — Business capped at 5 viewers, while §4y rules
+   pilot viewers unlimited and §4z rules unlimited users. **Both cannot be true.**
+
+## ⛔ KNOWN-RED, AND WHY
+
+- ⭐⭐ **Backend CI is RED** on two pre-existing mutation survivors —
+  `test_resolver_selects_the_populated_cycle` and
+  `test_score_is_not_money_and_carries_no_symbol_or_tier` prove nothing about
+  their mutations, and `fail = bool(survived)`. **Its own lane.**
+- ⭐ **`demo-rot` has never once succeeded** — five runs, zero assertions. The
+  playwright install is fixed (5 Aug) but **no green run exists yet**, so its
+  coverage remains **unproven, not restored**.
