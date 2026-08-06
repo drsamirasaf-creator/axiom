@@ -20009,3 +20009,44 @@ contributors can simply be told, with no anonymity traded.**
 anonymous assessor invite**, where no durable address exists. **Opt-in per
 submission, never defaulted on** — the invite's single-use `jti` is what makes
 *n = 40* mean forty, and a default return address would erode it silently.
+
+# ⭐⭐ §4A.3 · THE SYNONYM RULING, AMENDED — SILENCE WAS THE WRONG READING (5 Aug)
+
+**Measured: 7 of 15 words a CFO actually types returned NOTHING** — `revenue`,
+`ebitda`, `debt`, `budget`, `people`, `customers`, `growth`. ⛔ **A 47% miss rate,
+and the missing word included the most common noun in a finance product.**
+
+## ⭐ THE AMENDMENT
+
+**A term with several honest answers returns SEVERAL, ranked.**
+
+⛔ **"Declared, never inferred" was read as "one destination or none", and the
+"or none" was doing the damage.** Refusing to guess is right; refusing to answer
+is not. **"Revenue" has three honest homes** — the profitability lines, the income
+statement, and the benchmark comparison — **and returning nothing was worse than
+returning all three.**
+
+⭐ **WHAT STAYS FORBIDDEN IS UNCHANGED:** pointing a term at a page that merely
+**mentions** it. Every destination added was checked against the code that serves
+it — `DIMENSION_TYPES` carries `customer`, so `customers` points at the
+profitability lines; ⛔ **it does NOT point at Feedback, because no customer has
+ever answered an instrument and the page says so.**
+
+## ⭐⭐ THE GUARD CLASS IT EXPOSES — A GUARD OVER A LIST CANNOT SEE WHAT THE LIST OMITS
+
+`check-nav-index.py` caught **twelve synonyms pointing at nothing** on its first
+run. ⛔ **It could not catch a term with NO synonym at all**, because it only ever
+examined the entries that existed.
+
+⭐ **THE FIX IS A SECOND LIST IN THE OTHER DIRECTION:** `MUST_RESOLVE` — a
+vocabulary that must each return at least one result, failing the build when any
+returns none. **Add a word to it whenever a reader types something and finds
+nothing**; it is the cheapest possible record of a real miss.
+
+⛔ **AND THE STATIC CHECK REIMPLEMENTS THE MATCHING, so it measures itself.** It
+is paired with a browser proof that types the same fifteen words into the shipped
+palette — **the static half catches a missing word at commit time, the live half
+proves the app agrees.**
+
+⭐ **GENERALLY: every ratchet needs its opposite.** A list-of-things-that-must-be-
+valid says nothing about things that should be present and are not.
