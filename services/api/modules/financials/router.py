@@ -592,6 +592,29 @@ def enterprise_profile(dataset_id: int, db: Session = Depends(get_db),
             "created_at": row.created_at}
 
 
+@router.get("/datasets/{dataset_id}/eva-distribution")
+def eva_distribution_surface(dataset_id: int, db: Session = Depends(get_db),
+                             tenant: str = Depends(_tenant),
+                             scoped: int | None = Depends(_scoped)):
+    """§7n — EVA's spread, in two panels that never blend.
+
+    ⭐ A RENDERING JOB OVER COMPLETED WORK. `derive_series` already computes
+    NOPAT and invested capital PER PERIOD; this hands that series and the
+    engine's own WACC to the module and returns what came back. ⛔ It computes
+    no statistic itself and never touches the Monte Carlo kernel.
+    """
+    from ...eva_distribution import eva_distribution as _dist
+    row = _get_dataset(db, tenant, dataset_id, scoped)
+    series = engines.derive_series(row.data)
+    # ⭐ ONE WACC, ONE OWNER — the same call the ratio surface makes, so the
+    # distribution and the headline EVA cannot disagree about the capital charge.
+    try:
+        w = engines.wacc(dict((row.data.get("company") or {}), _debt_book=None))["wacc"]
+    except Exception:
+        w = None
+    return _dist(series.get("ratios") or [], w)
+
+
 @router.get("/datasets/{dataset_id}/derived")
 def derived_series(dataset_id: int, db: Session = Depends(get_db),
                    tenant: str = Depends(_tenant),

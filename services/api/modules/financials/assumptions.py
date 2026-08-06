@@ -29,7 +29,7 @@ first place. Every entry states what it governs. See DIVERGENT below.
 # ═══════════════════════════════════════════════════════════════════════════
 # ⭐ BUMPED for σ_RO (B22). The pack pins this string, so the version is
 # how a reader knows WHICH registry a stored result was frozen against.
-PLATFORM_DEFAULTS_VERSION = "7u-pd.2"
+PLATFORM_DEFAULTS_VERSION = "7u-pd.3"
 
 PLATFORM_DEFAULTS = {
     "terminal_growth": {
@@ -57,6 +57,64 @@ PLATFORM_DEFAULTS = {
     # volatility, and the floor is a DECLARED PRIOR — not a clamp on an estimate.
     # ⭐ Registered so the pack PINS it and a CFO asking where it came from gets
     # "it is our house prior, and here is why" rather than a function name.
+    # ⭐⭐ §7n — THE EVA DISTRIBUTION'S DECLARED PARAMETERS. Statement history
+    # gives DISPERSION in NOPAT and in invested capital, and those are derived
+    # per company. ⛔ IT CANNOT GIVE A DEPENDENCE STRUCTURE: five annual
+    # observations do not identify a copula, so the family and its parameter are
+    # DECLARATIONS and are registered here where the pack pins them.
+    "eva_copula_family": {
+        "value": "gaussian",
+        "governs": "the dependence structure between NOPAT and invested capital "
+                   "in the EVA copula panel — a DECLARED house assumption",
+        "basis": "A dependence family is a claim about tail behaviour, and five "
+                 "annual observations cannot distinguish one from another. The "
+                 "Gaussian family is adopted because it is the weakest such "
+                 "claim available: symmetric, with no tail dependence, so it "
+                 "does not assert that NOPAT and capital intensity move "
+                 "together precisely when it matters most. A CFO who believes "
+                 "they do should argue for a t or Clayton family, and the panel "
+                 "names this one so that argument is possible.",
+        "consumed_by": "eva_distribution.py::eva_distribution",
+    },
+    "eva_copula_rho": {
+        "value": 0.4,
+        "governs": "the correlation parameter of the EVA copula panel — DECLARED",
+        "basis": "Positive because a business under margin pressure typically "
+                 "carries capital longer: receivables age and inventory builds, "
+                 "so a fall in NOPAT tends to accompany a RISE in invested "
+                 "capital, which compounds into EVA through both terms. 0.4 is "
+                 "a moderate mid-market prior, not a fitted value — the same "
+                 "history that gives the dispersions is far too short to "
+                 "estimate a correlation with any usable interval.",
+        "consumed_by": "eva_distribution.py::eva_distribution",
+    },
+    "eva_mixture_regimes": {
+        # ⭐ TUPLES, NOT LISTS. A guard hashes registry values to prove its own
+        # coverage, and every value before this was a scalar — a nested list
+        # raised `unhashable type: 'list'` in a check that had nothing to do
+        # with EVA. The registry's values must stay hashable.
+        "value": (("downside", 0.25, -1.0), ("base", 0.50, 0.0), ("upside", 0.25, 1.0)),
+        "governs": "the weighted regimes of the EVA mixture panel, as "
+                   "(name, weight, shift in NOPAT standard deviations) — DECLARED",
+        "basis": "A mixture answers WHICH WORLD ARE WE IN, and the worlds are a "
+                 "management judgement rather than a measurement. A symmetric "
+                 "quarter/half/quarter at plus and minus one derived standard "
+                 "deviation is the most neutral statement of 'a bad year, a "
+                 "normal year, a good year' available. ⭐ The SHIFT is in units "
+                 "of the company's OWN derived dispersion, so the regimes scale "
+                 "with the business rather than imposing a house magnitude.",
+        "consumed_by": "eva_distribution.py::eva_distribution",
+    },
+    "eva_min_periods": {
+        "value": 3,
+        "governs": "periods of statement history required before an EVA "
+                   "dispersion is derived at all",
+        "basis": "A standard deviation over two observations is the gap between "
+                 "them wearing a statistic's name. Three is the least that can "
+                 "vary, and the panel declares absence below it rather than "
+                 "returning a number nobody should read.",
+        "consumed_by": "eva_distribution.py::eva_distribution",
+    },
     "sigma_ro_floor": {
         "value": 0.15,
         "governs": "real-option volatility when a company's own revenue history "

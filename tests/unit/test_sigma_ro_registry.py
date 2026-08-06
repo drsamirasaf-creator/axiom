@@ -10,6 +10,7 @@ pinned by the pack or inspected by a CFO.
 """
 import ast
 import os
+import re
 
 import pytest
 
@@ -57,9 +58,16 @@ def test_the_two_ABSENCES_are_different_values():
 
 def test_the_platform_defaults_VERSION_was_bumped():
     """⭐ The pack pins this string; it is how a reader knows WHICH registry a
-    stored result was frozen against."""
+    stored result was frozen against.
+    ⭐⭐ AND IT IS ASSERTED AS A CHANGE, NOT AS A LITERAL. Pinning "7u-pd.2"
+    made this test fail on the NEXT legitimate registry addition (§7n's EVA
+    priors, 5 Aug) while saying nothing about whether σ_RO is registered — a
+    test that is stale by construction.
+    """
     from services.api.modules.financials.assumptions import versions
-    assert versions()["platform_defaults"] == "7u-pd.2"
+    v = versions()["platform_defaults"]
+    assert re.fullmatch(r"7u-pd\.\d+", v), v
+    assert v != "7u-pd.1", "the registry was never bumped for σ_RO"
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -1,6 +1,7 @@
 """§7j.2 ruling 2 — the Multiverse tab: the distribution, and where it came from."""
 import ast
 import os
+import re
 
 import pytest
 
@@ -105,7 +106,11 @@ def test_THE_SIGMA_BASIS_TRAVELS_TO_THE_RENDER():
     u = MV.build(None, FULL)["uncertainty_basis"]
     assert u["value"] == 0.15
     assert u["declared_prior"] is True
-    assert u["registry_version"] == "7u-pd.2", "the pinned registry version is absent"
+    # ⭐ The BASIS travels, and the version is asserted as a shape rather than a
+    # literal — a pinned literal fails on the next registry addition while
+    # proving nothing about the basis.
+    assert re.fullmatch(r"7u-pd\.\d+", u["registry_version"] or ""), \
+        "the pinned registry version is absent"
     assert u["basis"] and len(u["basis"]) > 80, "the basis is missing or too thin"
     assert "prior" in u["basis"].lower()
 
