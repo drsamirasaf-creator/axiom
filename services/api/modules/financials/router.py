@@ -632,7 +632,13 @@ def frequency_view(dataset_id: int, view: str | None = None,
     ⭐ `interpolate` defaults to FALSE. The finer view exists only when the CXO
     asks for it, and every figure it produces carries its own status and method.
     """
-    from .... import frequency_views as FVW
+    # ⛔⭐⭐ THREE DOTS, NOT FOUR. This file's package is
+    # `services.api.modules.financials`, so `...` is `services.api` — where
+    # `frequency_views` lives. `....` is `services`, which has no such module,
+    # and the ImportError only fires WHEN THE ENDPOINT IS CALLED because the
+    # import is function-level. Every gate passed and the endpoint had never
+    # once succeeded in production.
+    from ... import frequency_views as FVW
     from . import periods as _PR
     row = _get_dataset(db, tenant, dataset_id, scoped)
     base = _PR.frequency_of(row.data)

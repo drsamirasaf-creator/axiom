@@ -21048,3 +21048,137 @@ now asserts every key it produces is valid at the target grain.
 
 413 numeric leaves across 8 payloads, exact comparison, before the first edit and
 after the last. **Every pre-existing figure identical.**
+
+---
+
+# ⛔⭐⭐ §8p · THE FREQUENCY-VIEW 500 — A CALL-TIME IMPORT AT THE WRONG DEPTH (7 Aug)
+
+Report: `docs/reports/frequency-view-500-2026-08-07.md`. Found by **Sentry**,
+release `265aff5`, production — the first time the monitoring has earned its keep.
+
+## ⭐ 1 · THREE DOTS, NOT FOUR
+
+`services/api/modules/financials/router.py` is in package
+`services.api.modules.financials`. PEP 328 counts the first dot as the current
+package, so `...` is `services.api` — where `frequency_views` lives — and `....`
+is `services`, which has no such module. `GET .../frequency-view` returned **500
+on every call it has ever had.**
+
+## ⛔⭐⭐ 2 · WHY EVERY GATE PASSED, AND IT IS THE PRESCIENCE CLASS AGAIN
+
+**The import is inside the function body**, so Python never runs it until the
+endpoint is called — and nothing called it:
+
+| gate | why it was blind |
+|---|---|
+| 33 unit tests | they import `services.api.frequency_views` **directly**; none goes through the router |
+| browser proof, 3 modes | it **stubs the endpoint at the network layer**, so the backend never ran |
+| route-registration check | proved the path was **registered**, not callable |
+| any import-time smoke test | would also pass — the module and the app both import cleanly |
+
+⭐⭐ **A GREEN BROWSER GATE OVER A STUBBED ENDPOINT SAYS THE SURFACE WORKS. IT
+NEVER SAYS THE ENDPOINT DOES.** The same shape shipped the Prescience tabs.
+
+## ⭐ 3 · THE DEPTH SWEEP, DERIVED
+
+**694 relative imports across 131 files** — `.` 491 · `..` 145 · `...` 57 ·
+`....` 1. Exactly **three** three-dot imports exist, all reaching `services.api`
+from `services.api.modules.*`; two were already right and this was the slip. The
+one remaining `....` (`identity/plans.py:91`) **re-descends** via `.api` and is
+valid, if verbose.
+
+## ⛔⭐⭐ 4 · THE GUARD PASSED ON ITS OWN DEFECT BEFORE IT CAUGHT ANYTHING
+
+`from ... import frequency_views` has **`module=None`** — the name being resolved
+is in `names`, not in `module`. The first draft of `check-relative-imports.py`
+contained `if node.module is None: continue` and therefore **skipped the exact
+statement it was written for.** §III.11, inside the instrument.
+
+⭐ It now resolves each imported NAME against both readings — a submodule on disk,
+or a name bound in the package's `__init__` — and is red-proofed on the shipped
+line.
+
+⭐ **Two instruments, deliberately:** a static resolver that reaches call-time
+imports (the class), and `tests/unit/test_endpoints_reachable.py`, which **calls**
+the four endpoints added this week and asserts **not-500** (a 404 is the proof the
+handler ran). ⛔ The runtime file covers **4 of 17** functions holding deep
+call-time imports and **says so** rather than implying coverage it lacks.
+
+## ⭐ 5 · PROVEN AGAINST PRODUCTION, WITH A PAIRED CONTROL
+
+Before: `/datasets/45/frequency-view` → **500**, `/datasets/45/derived` → **200**.
+Same router, same dataset, same auth path; the only difference is the import.
+
+---
+
+# ⛔⭐⭐ §4v.3 · THE STRATEGY MAP'S EDGES WERE DRAWN AND INVISIBLE (7 Aug)
+
+Report: `docs/reports/strategy-map-edges-2026-08-07.md`.
+
+## ⭐ 1 · A PREMISE CORRECTED: THE GEOMETRIC PROOF **DID** ASSERT THE PAIRS
+
+The dispatch supposed the proof never asserted a line between a declared pair.
+**It did** — `verify-strategy-map.py` takes each line's bounding box and requires
+the two named nodes' centres to sit at **opposite corners**, tolerance 14px. That
+assertion was correct, and it passed while the reader saw nothing.
+
+⭐⭐ **BECAUSE A `<line>` WITH A STROKE EQUAL TO THE BACKGROUND HAS A PERFECTLY
+GOOD BOUNDING BOX.** §III.13 says assert a measurement the wrong implementation
+cannot produce; here the wrong PAINT produces exactly the right GEOMETRY. **Geometry
+is necessary and not sufficient. Pixels were the missing assertion.**
+
+## ⛔⭐⭐ 2 · WHY THEY WERE ABSENT — A FIFTH CATEGORY
+
+Not "never drawn", not "zero opacity", not "outside the viewport", not "a layout
+without paths". **Drawn, correctly positioned, in the colour of the background.**
+
+The dark theme sets `--card: #17231f` and **never overrides `--ink`, which is also
+`#17231f`**. `stroke-ink/25` therefore resolved to the card's own colour.
+
+| theme | best edge contrast anywhere on the canvas | pixels painted |
+|---|---|---|
+| light | 2.72:1 | 6,872 |
+| **dark** | **1.03:1** | 2,718 |
+
+⭐ And the dark block **already remaps every `text-ink` utility** — `.text-ink`,
+`[class*="text-ink/"]`, `.bg-ivory`, `.bg-white`, `.text-pine`. **Stroke is the one
+surface nobody revisited**, because it was the only stroke in the app using `ink`.
+A per-utility override list is a hand list of the same facts, and this was its
+missing entry.
+
+**Fixed** with a `--map-edge` token defined in both themes: **8.79:1 light,
+9.18:1 dark.**
+
+## ⭐ 3 · THE GUARD FOUND TWO MORE OF THE SAME CLASS
+
+`profitability/charts.tsx` drew its **zero baseline** and a **reference line** with
+`var(--ink)` — data-bearing marks, invisible on a dark card. Now `--chart-rule`,
+defined in both themes.
+
+⚠ **The rule is CONTRAST, not overriding.** A first version demanded every stroke
+token appear in `.dark` and flagged `--brass`, a brand gold the theme block
+deliberately holds fixed and which reads at high contrast on dark. **A guard that
+forces a pointless override is churn, and churn is how a guard gets muted.**
+Decorative tokens — gridlines, tick labels — are **exempt by name with a reason**.
+
+## ⭐ 4 · THE FINDING SURVIVES THE FIX
+
+**4 of 18 nodes on the showcase Finance department are connected to nothing**, and
+they stay dashed. The proof asserts the dashed count **equals** the published
+unconnected count and **is not zero** — drawing edges must not make everything look
+connected.
+
+## ⛔ 5 · THE DRILL-DOWN IS INCOMPLETE, AND ONE TYPE IS AFFECTED
+
+| node type | resolves |
+|---|---|
+| objective | **3/3** |
+| **key result** | ⛔ **0/6** |
+| KPI | **7/7** |
+| initiative | **2/2** |
+
+⭐⭐ `/key-result/{kr_key}` reads `/companies/{id}/objectives`, and that payload
+carries **zero `kr_key` values** — the strategy-map handler **attaches them
+itself**. So the map mints links only it can resolve. **Reported, not fixed:** the
+fix is a decision about which endpoint owns `kr_key`, and this lane was called to
+draw the edges.

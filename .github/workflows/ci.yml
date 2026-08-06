@@ -19,6 +19,15 @@ jobs:
       # a binding, 611 tests stayed green, and production returned HTTP 500.
       - name: unbound names (closure-aware; blind to conditional binding)
         run: python scripts/check-unbound-names.py
+      # ⭐⭐ A FUNCTION-LEVEL IMPORT IS INVISIBLE TO EVERY IMPORT-TIME CHECK.
+      # `from .... import frequency_views` shipped at 265aff5 and returned 500 on
+      # every call the endpoint ever had: the module imported cleanly, the app
+      # built cleanly, 33 tests passed because they import the module DIRECTLY,
+      # and the browser proof stubs the endpoint at the network layer so the
+      # backend never ran. This RESOLVES every relative import against the
+      # package tree instead of hoping something executes it.
+      - name: relative imports resolve (incl. call-time)
+        run: python scripts/check-relative-imports.py
       - name: route shadowing
         run: python scripts/check-route-shadowing.py
       # ⭐ A MODEL COLUMN WITHOUT A MIGRATION LINE TAKES EVERY READ OF THAT TABLE
