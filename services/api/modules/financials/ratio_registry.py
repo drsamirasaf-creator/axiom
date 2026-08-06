@@ -101,6 +101,11 @@ ENGINE_FUNCTIONS = {
     "invested_capital": ratio_lib.invested_capital,
     "roic": ratio_lib.roic,
     "eva": ratio_lib.eva,
+    # ⭐ §7r-D's three, EXTRACTED to ratios.py 7 Aug and delegated here. The
+    # registry stays the caller; ratios.py is the owner.
+    "margin": ratio_lib.margin,
+    "asset_turnover": ratio_lib.asset_turnover,
+    "assets_to_equity": ratio_lib.assets_to_equity,
     "wacc_at": None,      # supplied per-call by the caller; see `context`
     "cagr": None,         # window-relative — see the horizon note in the yaml
 }

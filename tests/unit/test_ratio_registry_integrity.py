@@ -279,7 +279,10 @@ def test_r2_engine_functions_are_declared_with_owners(reg):
     # REWRITTEN, NOT RELAXED. Pinning the exact membership is what makes a
     # SIXTH delegation appearing without an owner fail here; loosening it to
     # "at least these" would let an undeclared one in silently.
-    assert set(ef) == {"wacc_at", "cagr", "net_debt", "total_debt",
+    # ⭐ GREW BY THREE ON 7 Aug — §7r-D's factors, extracted to ratios.py and
+    # delegated (ruling A2). The set is pinned so a fourth arrives deliberately.
+    assert set(ef) == {"margin", "asset_turnover", "assets_to_equity",
+                       "wacc_at", "cagr", "net_debt", "total_debt",
                        "invested_capital", "roic", "eva"}, \
         f"declared engine functions: {sorted(ef)}"
     for name, meta in ef.items():

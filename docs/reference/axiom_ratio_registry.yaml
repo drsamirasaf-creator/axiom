@@ -103,6 +103,34 @@ evaluation:
   # way — the registry solved sole ownership for the hardest of its five
   # duplicated quantities by calling the owner, and never wrote down that it had.
   engine_functions:
+    # ⭐⭐ §7r-D's THREE FACTORS — EXTRACTED 7 Aug, not built. They already
+    # computed in this evaluator; moving them to ratios.py and delegating is the
+    # operating_cash_flow shape (§7r-R R2), and building them beside the
+    # registry is what §7r-O forbids.
+    margin:
+      signature: "margin(profit, scale) -> fraction"
+      owner: "services/api/modules/financials/ratios.py::margin"
+      why: "axiom.net_margin is Class A (@0/@1*100) — indistinguishable by any
+        scan from ten other margins, which is exactly why §7r-D held DuPont
+        back. It therefore adds NO new site: `margin` already owns the
+        division, and the x100 stays visible in the formula so
+        `test_percent_ratios_scale_to_percent` keeps working on its own terms."
+      argument: "is.pat over is.revenue, scaled in the formula."
+    asset_turnover:
+      signature: "asset_turnover(revenue, assets) -> times"
+      owner: "services/api/modules/financials/ratios.py::asset_turnover"
+      why: "Class B (@0/avg(@1)) — too bare to search for. The BASIS is the
+        caller's: the formula decides whether assets arrive averaged or
+        period-end, so a ruling cannot hide inside an implementation."
+      argument: "is.revenue over avg(bs.total_assets)."
+    assets_to_equity:
+      signature: "assets_to_equity(assets, equity) -> times"
+      owner: "services/api/modules/financials/ratios.py::assets_to_equity"
+      why: "Class B (avg(@0)/avg(@1)). NOT named `leverage`: that word already
+        means DEBT-to-equity in ratios.py (Hamada relevering), and a second
+        meaning in the module owning the first is the collision class in a
+        variable name. Finance calls this the equity multiplier."
+      argument: "avg(bs.total_assets) over bs.equity — ruling A2, 7 Aug."
     wacc_at:
       signature: "wacc_at(leverage) -> percent"
       owner: "services/api/modules/financials/ratios.py::wacc_at"
@@ -872,7 +900,7 @@ ratios:
     category: Profitability
     tier: core
     headline: true
-    formula: "is.pat / is.revenue * 100"
+    formula: "margin(is.pat, is.revenue) * 100"   # delegated -> ratios.margin (§7r-D, 7 Aug)
     unit: percent
     polarity: higher_better
     basis: point_in_time
@@ -1227,12 +1255,23 @@ ratios:
     category: Solvency
     tier: advanced
     headline: false
-    formula: "avg(bs.total_assets) / avg(bs.equity)"
+    formula: "assets_to_equity(avg(bs.total_assets), bs.equity)"   # A2, 7 Aug: avg assets, PERIOD-END equity
     unit: times
     polarity: context
-    basis: average
-    definition: "Average assets over average equity. The leverage term in
-      DuPont decomposition."
+    # ⭐⭐ FOUNDER RULING A2, 7 Aug — NEITHER `average` NOR `point_in_time`.
+    # The numerator is an average and the denominator is period-end, so either
+    # value would be false about half the quantity. `mixed` is a THIRD value,
+    # added deliberately: measured before choosing — the field has exactly ONE
+    # reader (ratio_registry.explain, pass-through), is enumerated nowhere,
+    # validated nowhere, and rendered by no surface. The precision lives in
+    # `definition`, which a reader actually sees.
+    basis: mixed
+    definition: "AVERAGE total assets over PERIOD-END equity. The leverage term
+      in DuPont decomposition. The two terms sit on different bases
+      deliberately (ruling A2): assets CANCEL against asset_turnover's
+      denominator, so the asset basis never reaches the DuPont identity, while
+      the equity term does — and period-end equity is what makes the product
+      equal axiom.roe exactly."
 
   # --- 6. COVERAGE ----------------------------------------------------------
   - id: axiom.interest_coverage
@@ -1286,7 +1325,7 @@ ratios:
     category: Efficiency
     tier: core
     headline: false   # not in the locked 13
-    formula: "is.revenue / avg(bs.total_assets)"
+    formula: "asset_turnover(is.revenue, avg(bs.total_assets))"   # delegated -> ratios.py
     unit: times
     polarity: higher_better
     basis: average
@@ -1632,7 +1671,10 @@ ratios:
     formula: "axiom.net_margin * axiom.asset_turnover * axiom.financial_leverage"
     unit: percent
     polarity: higher_better
-    basis: average
+    # ⭐ A2 consequence: with period-end equity the product EQUALS axiom.roe,
+    # which R4 fixes as point_in_time. Declaring `average` would contradict
+    # the quantity it reconciles to.
+    basis: point_in_time
     definition: "ROE decomposed into margin, turnover, and leverage."
     display_rule: "Must reconcile to axiom.roe. If it does not, show the
       residual rather than hiding it."
@@ -2339,21 +2381,26 @@ unresolved:
       the reference library. The earlier chat-log specification is superseded
       and is no longer a source."
   - id: dupont_roe_reconciliation
-    status: OPEN
-    question: "dupont_three_step declares basis: average and its display_rule
-      requires reconciliation to axiom.roe, which is basis: point_in_time. On
-      which basis must the two agree?"
-    measured: "7 Aug 2026, showcase dataset, four historical periods. As
-      declared, the residual is +1.4232 / +1.4355 / +1.4004 / +1.3657 (dupont
-      minus roe, percentage points). Recomputing asset_turnover and
-      financial_leverage POINT-IN-TIME makes the residual EXACTLY 0.000000 in
-      every period. The residual is therefore wholly a basis artefact, not an
-      arithmetic defect."
-    note: "⛔ No basis: or headline: field was changed while recording this.
-      The options are: move the two average factors to point_in_time so the
-      identity holds exactly; keep the mixed basis and render the residual as
-      the display_rule already requires; or restate the display_rule to
-      reconcile against an average-basis ROE that does not currently exist."
+    status: RESOLVED
+    ruling: "FOUNDER RULING A2, 7 Aug 2026 — axiom.financial_leverage becomes
+      avg(bs.total_assets) / bs.equity: AVERAGE assets, PERIOD-END equity."
+    rationale: "Assets CANCEL between asset_turnover's denominator and
+      financial_leverage's numerator — (PAT/Rev)(Rev/avgA)(avgA/E) = PAT/E — so
+      the asset basis never touched the identity. Only the EQUITY term survives,
+      and the whole pre-A2 residual was E_end/avg(E), measured at 1.077530 on the
+      showcase dataset."
+    before_after: "financial_leverage 1.5325 -> 1.4223 (exactly 1.4222577562);
+      dupont_three_step 18.9808 -> 17.6151; residual +1.3657 -> 0.000000000000.
+      Four historical periods, all zero. net_margin, asset_turnover and roe
+      UNCHANGED in every period."
+    consequence: "dupont_three_step's basis becomes point_in_time — it EQUALS
+      axiom.roe, which R4 fixes as point_in_time. financial_leverage's basis
+      becomes `mixed`, a third value added deliberately: the field has one
+      reader (ratio_registry.explain, pass-through), is enumerated nowhere and
+      validated nowhere, so the precision lives in `definition`."
+    asserted_by: "tests/unit/test_dupont_identity.py — the residual is ASSERTED
+      zero on all four periods, not recorded. Red-proofed by reverting A2."
+
   - id: payable_days_denominator
     question: "COGS proxy accepted, or hold DPO until is.purchases exists?"
     registry_default: "COGS proxy with the convention stated in the explainer."

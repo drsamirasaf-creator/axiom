@@ -21408,3 +21408,81 @@ returns 107**, because `nav-index.generated.ts` declares its own `NavEntry` TYPE
 and the type's `label:` and `kind: "` fields match it. **The schema was counted as
 a destination.** Corrected in CORE and ONBOARDING with the mechanism recorded, so
 it is not re-derived the same way.
+
+---
+
+# ⭐⭐ §7r-D.2 · DUPONT — EXTRACTED, THEN RULING A2 APPLIED (7 Aug)
+
+Report: `docs/reports/dupont-a2-2026-08-07.md`. §7r-D is **UNBLOCKED AND BUILT**;
+`dupont_roe_reconciliation` is **RESOLVED**.
+
+## ⭐ STAGE 1 · EXTRACTION, PROVEN TO CHANGE NOTHING
+
+The three factors moved into `ratios.py` and the registry became the **caller**
+(§7r-R R2) — the `operating_cash_flow` shape. **20 values across 4 periods
+compared at EXACT equality; 0 moved.**
+
+⭐⭐ **AND ONE FACTOR NEEDED NO NEW OWNER AT ALL.** A first draft added a
+`net_margin()` function; the registry's own integrity test then reported that
+`axiom.net_margin` declared `unit: percent` while its formula no longer showed a
+×100 — **the scaling had been hidden inside the function.** ⛔ The right answer was
+**fewer owners, not a new one**: `margin()` already owns the division, so the
+formula delegates to it and keeps the ×100 visible. **§7r-D's worry was a FOURTH
+site computing a margin; the extraction adds none.**
+
+## ⛔ NAMING — `assets_to_equity`, NOT `leverage`
+
+`leverage` already means **debt-to-equity** in `ratios.py` (`cost_of_debt_at`,
+`cost_of_equity_at`, `wacc_at` — Hamada relevering). The registry's
+`financial_leverage` is **assets over equity**. ⭐ A second meaning of the word
+inside the module owning the first is the collision class in a variable name, so
+the function is named for what it computes and matches the house convention
+(`debt_to_revenue`, `net_debt`, `total_debt`).
+
+## ⭐⭐ STAGE 2 · RULING A2 — EXACTLY ONE NUMBER MOVED
+
+`axiom.financial_leverage` = `avg(bs.total_assets) / bs.equity` — **average
+assets, PERIOD-END equity.**
+
+| | before | after |
+|---|---|---|
+| `financial_leverage` (2025) | 1.5325 | **1.4223** (1.4222577562) |
+| `dupont_three_step` (2025) | 18.9808 | **17.6151** |
+| residual, all four periods | +1.4232 · +1.4355 · +1.4004 · +1.3657 | **0.000000000000** |
+| `net_margin` · `asset_turnover` · `roe` | — | **unchanged in every period** |
+
+⚠ **Two figures in the dispatch are very slightly off and are corrected by
+measurement:** the leverage value is **1.4223** at 4dp (1.4222577562 — the
+dispatch truncated to 1.4222), and the equity-basis factor `E_end/avg(E)` is
+**1.077530**, not 1.07754.
+
+⭐ **WHY THE ASSET BASIS NEVER MATTERED:** `(PAT/Rev)(Rev/avgA)(avgA/E) = PAT/E`.
+The `avgA` terms **cancel**, so the asset basis cannot reach the identity. Only the
+equity term survives — the entire residual was `E_end/avg(E)`.
+
+## ⭐ THE `basis:` FIELD — MEASURED BEFORE CHOOSING
+
+| | measured |
+|---|---|
+| readers of the registry's `basis` | **1** — `ratio_registry.explain`, pass-through |
+| enumerated anywhere | **no** |
+| validated by any guard or test | **no** |
+| rendered by any surface | **no** |
+
+⭐ A third value, **`mixed`**, was therefore added **deliberately and stated** —
+the numerator is an average and the denominator period-end, so either existing
+value would be false about half the quantity. The precision lives in
+`definition:`, which a reader actually sees. Distribution is now
+**64 point_in_time · 12 average · 1 mixed**.
+
+⭐ `dupont_three_step` becomes **point_in_time**: it now *equals* `axiom.roe`, and
+R4 fixes ROE as point_in_time.
+
+## ⭐ ASSERTED, NOT RECORDED
+
+`tests/unit/test_dupont_identity.py` — **7 tests**, the residual asserted zero on
+**all four** periods with a stated 1e-9 tolerance, plus the formula shape, the
+delegation, the basis declarations and absence propagation. Red-proofed by
+reverting A2 and by breaking the delegation.
+
+⛔ **Surface copy untouched** — stating the basis to a reader is a Lovable lane.

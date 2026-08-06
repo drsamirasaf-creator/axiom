@@ -63,7 +63,18 @@ HISTORICAL = {
         "matched only by the broad 7 Aug grep; it is the pointer naming a "
         "deliberately withheld finding, which must stay",
 }
-OVERRIDES = {}
+OVERRIDES = {
+    # ⭐⭐ §III.9, AGAIN, AND IN THIS GUARD'S OWN FIRST HOUR. The three-mode
+    # report documents this gate's red-proof by QUOTING the trigger phrase, and
+    # the gate flagged it — a guard punishing the file that states its rule.
+    # ⛔ The phrase is not an announcement about the repository; it is a test
+    # fixture inside a sentence describing the test. Recorded rather than
+    # reworded, because the report is clearer quoting it and because an override
+    # with a reason is the shape this whole file argues for.
+    ("three-mode-proof-2026-08-07.md", "repository is public"):
+        "the red-proof description — the phrase is quoted as the fixture that "
+        "makes this gate fail, not asserted about the repository",
+}
 
 
 def main():

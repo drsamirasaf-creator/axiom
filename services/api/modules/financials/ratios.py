@@ -90,6 +90,62 @@ def share(part: Number, whole: Number) -> Number:
     return _n(lambda p, w: p / w, part, whole)
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐⭐ THE DUPONT FACTORS — EXTRACTED, NOT BUILT (§7r-D, 7 Aug)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ⭐ THESE ALREADY COMPUTED. The registry evaluator has produced all three since
+# R7 by evaluating their `formula` fields. Moving them here is the
+# `operating_cash_flow` shape — EXTRACTION, with the registry converted to a
+# CALLER (§7r-R R2) — not a second implementation. Building them beside the
+# registry is what §7r-O forbids and what the 14-shape scan cannot see.
+#
+# ⛔ NAMING. `leverage` ALREADY MEANS DEBT-TO-EQUITY in this module —
+# `cost_of_debt_at`, `cost_of_equity_at` and `wacc_at` all take it as the Hamada
+# relevering input. The registry's `financial_leverage` is ASSETS over EQUITY, a
+# different quantity. Introducing a second meaning of the word into the one
+# module that owns the first would be the collision class in a variable name, so
+# the function is named for what it computes.
+# ⭐ `assets_to_equity` also matches this module's own convention —
+# `debt_to_revenue`, `net_debt`, `total_debt`. Finance calls it the equity
+# multiplier; the registry id `axiom.financial_leverage` maps to it.
+#
+# ⭐⭐ AND `net_margin` IS NOT HERE, DELIBERATELY. A first draft added one; the
+# registry's integrity test then reported that `axiom.net_margin` declared
+# `unit: percent` while its formula no longer showed a ×100 — the scaling had
+# been hidden inside the function. ⛔ The right answer was fewer owners, not a
+# new one: `margin()` ALREADY owns the division, so the formula delegates to it
+# and keeps the ×100 visible. §7r-D's worry was a FOURTH site computing a
+# margin; this adds none.
+
+
+def asset_turnover(revenue: Number, assets: Number) -> Number:
+    """Revenue over assets. Absence propagates.
+
+    ⭐ THE BASIS IS THE CALLER'S. This divides the two numbers it is handed; the
+    registry formula decides whether `assets` arrives as `avg(bs.total_assets)`
+    or a period-end figure. Putting the basis in the function would hide a
+    ruling inside an implementation.
+    """
+    from .engines import _n
+    return _n(lambda r, a: r / a, revenue, assets)
+
+
+def assets_to_equity(assets: Number, equity: Number) -> Number:
+    """Assets over equity — the equity multiplier. Absence propagates.
+
+    ⛔ NOT `leverage`. In this module that word is DEBT to equity (Hamada), and
+    this is ASSETS to equity. Two quantities, two names.
+
+    ⭐ THE BASIS OF EACH TERM IS THE CALLER'S, deliberately — see
+    `asset_turnover`. It matters here more than anywhere: the DuPont residual was
+    wholly a basis choice in the equity term, and a function that fixed the basis
+    would have made that ruling unreachable.
+    """
+    from .engines import _n
+    return _n(lambda a, e: a / e, assets, equity)
+
+
 def debt_to_revenue(debt: Number, revenue: Number) -> Number:
     """Total debt over revenue. Absence propagates.
 
