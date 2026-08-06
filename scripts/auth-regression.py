@@ -66,11 +66,15 @@ EXPECTED_SIDEBAR_LINKS = [
     "Dashboard", "Feedback", "Profitability",
     "Valuation", "Planning",
     "Optimization", "Prescience AI",
-    "Projects", "Monitoring", "Structure",
+    # ⭐⭐ "Projects" -> "PMO" and "Risk & SWOT" -> "SWOT & Risk", ruled 6 Aug.
+    # The guard failing on a rename IS the guard working; it is updated in the
+    # SAME commit as the move, never ahead of it. Paths are untouched, so every
+    # inbound link and the `projects` MUST_RESOLVE term still resolve.
+    "PMO", "Monitoring", "Structure",
     # ⭐ §4A RULING 1 — Risk & SWOT is whole, and in ANALYZE. It was a Dashboard
     # tab; splitting its forward-looking distributions into STRATEGIZE would be
     # pure by the ruling and worse for the reader.
-    "Risk & SWOT",
+    "SWOT & Risk",
     # ⭐ §4A — UTILITY IS RETIRED. These two are reference surfaces, not sections
     # of the argument; they moved to a sidebar FOOTER. They are still sidebar
     # links, so they stay asserted here — what changed is the group they sit in.

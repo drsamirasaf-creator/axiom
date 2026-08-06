@@ -20379,3 +20379,132 @@ sized in the report.
 frozen snapshot and no content hash can move. `event_type` **stays `String(24)`**:
 both new values fit (19 and 22), and widening the model without altering the live
 column would leave the two disagreeing.
+
+---
+
+# ⭐⭐ §4A.4 · THE STRUCTURE RE-ORGANISATION — FIVE RULINGS AND WHAT THEY COST (6 Aug)
+
+`docs/reports/structure-reconciliation-2026-08-06.md` (ef16eb8) measured the ruled
+6 Aug structure against what exists and returned **seven rulings owed**. Two were
+answered in the dispatch that opened this lane; **three of the remaining five were
+defects wearing an option's clothes** — the classification lane's finding, and the
+third time in four lanes that naming them saved decisions nobody needed to make.
+
+## ⭐ 1 · RULING ONE — DASHBOARD LINKS TO OKRs, WITH THE NUMBERS
+
+⭐⭐ **THE CORE-VERSUS-CORE CLASS (§5a), RESOLVED BY REDEFINING ONE TERM.** *"Dashboard
+is where the CEO sees everything"* and §4A's ruling moving OKRs to Planning were
+**both correct and mutually exclusive**. Measurement confirmed both; only a ruling
+could resolve it.
+
+**Ruled: "sees everything" means REACHING everything, not RENDERING everything.**
+Dashboard carries the OKR *position* — attainment, on-track, at-risk, unscored —
+and links to Planning for the detail. ⛔ **A second render was refused**: two
+surfaces drawing the same objectives is the duplication §4A exists to remove.
+
+⭐ **The summary is the load-bearing half.** A bare *"they live in Planning"* tells a
+CEO where to click; it does not tell them the answer. **A link without figures does
+not satisfy the ruling** — which is why the browser proof asserts the numbers and
+not the card.
+
+⛔ **AND THE BANDING IS NOT LOCAL.** The mean comes from `averageAttainment` in
+`objective-status.ts`, the file that says of itself *"it must never drift from the
+Python"*. A first build reimplemented the roll-up inline — same filter, same divide
+— in a file with no idea that rule was already documented as fragile. **Two copies
+of a rule known to be fragile is how the org chart and the department page came to
+disagree about a colour with neither being wrong.**
+
+## ⭐ 2 · RULING TWO — A RETIRED TAB KEY REDIRECTS; IT NEVER 404s, AND IT NEVER
+## SILENTLY DEFAULTS
+
+⭐⭐ **THE FAILURE MODE IS NOT THE 404 — IT IS THE ARRIVAL.** An unrecognised key
+does not error: `validateSearch` drops it and `useTabParam` falls back to the
+default, so **a reader lands on Revenue Analysis believing they are looking at the
+margin bridge.** That is worse than an error page, which at least tells the truth.
+
+**Ruled: resolution happens in `tabOf`, via an explicit alias map per route.** It
+cannot live in `useTabParam` — `validateSearch` runs first and has already dropped
+the value.
+
+⭐ **AND THE URL IS REWRITTEN TO THE CANONICAL KEY.** `?tab=overview` becomes
+`?tab=revenue` before the page settles, so the reader's next copy-paste carries the
+live key. **The alias map shrinks its own caller set.** This was better than the
+lane assumed: a first browser assertion demanded the *original* key survive and
+reported five failures against correct behaviour.
+
+## ⭐ 3 · RULING THREE — PROJECTS BECOMES PMO NOW, WITH THE HALF THAT DOES NOT SHIP
+## NAMED IN THE COMMIT
+
+**Ruled: the rename lands now.** ⛔ **With a caution recorded in the nav source
+itself:** the economics half of the PMO scope **has no data model at all**, and the
+brochure and comparison matrix state what ships rather than what the name suggests.
+A label that promises a module AXIOM cannot estimate is the claim §7 forbids.
+
+## ⭐ 4 · RULING FOUR — THREE RENAMES, AND ONE NAME KEPT
+
+| surface | ruled | why |
+|---|---|---|
+| Profitability's **Gap Analysis** | ⭐ **keeps the name** | it IS variance analysis, and the ruling names it |
+| Planning's Gap Analysis | → **Plan vs actual** | two tabs called Gap Analysis in one product is the collision; Planning's is the plan-to-actual read (§4u.1, §8l) |
+| SWOT | → **SWOT & Risk** | the page already carries both |
+| **Frontier** | ⭐ **stays Frontier** | §7j.6's caution stands |
+
+⛔ **A RENAME IS TWO SURFACES, NOT ONE.** The sidebar and the page header must say
+the same words. This lane renamed the nav and left `/swot` calling itself *"SWOT &
+Risk Analysis"* and `/initiatives` calling itself *"Projects"* — **caught by the
+browser gate, not by typecheck, lint, the ratchet or the build**, all of which
+passed. A reader who clicks a label and lands on a different title has to work out
+whether they arrived.
+
+## ⭐ 5 · RULING FIVE — URGENT ITEMS MOVES TO MONITORING; THE BRIEF AND READINESS STAY
+
+**Ruled: Urgent Items is a worklist, and worklists belong in EXECUTE.** Executive
+Brief and Transformation Readiness are *"what is true"* and stay on Dashboard.
+
+⭐ **`/dashboard?tab=urgent` REMAINS A LIVE URL** rendering a card that names the new
+home and **carries the count** — the same discipline as ruling 1. A signpost that
+does not state the number is a detour.
+
+## ⭐⭐ 6 · THE FLAT-ROUTE PRECEDENT DID THE WORK
+
+Every rename above changed a **label**, never a **path**. Inbound references and
+`MUST_RESOLVE` terms keep resolving because there is nothing to re-point — **522
+source references across 50 destinations, none of them broken by five renames and
+a six-into-four re-tabbing.** The one thing that DID need an alias map was the tab
+keys, which is exactly what ruling 2 is about.
+
+## ⭐ 7 · WHAT THE GUARDS COST, AND THE FOUR DEFECTS THEY WERE
+
+1. ⭐⭐ **`"PMO".isupper()` IS TRUE.** Two independently-written parsers classified
+   the first acronym sidebar label as a **section heading**, dropping the entry and
+   producing two contradictory findings about one label — *"expected and does NOT
+   ship"* **and** *"ships and is NOT expected"*. **§III.12's third law, twice in one
+   lane.** Fixed structurally in both: a section carries `subtitle:`, an item
+   carries `to:`.
+2. ⭐⭐ **A FIXED-WIDTH WINDOW READ THE NEXT ENTRY'S FIELD.** The reference guard
+   attributed a following synonym's `tab:` to an entry that declares none, and
+   reported **twelve broken links, every one of them mine.** An entry owns the text
+   up to the next reference, not the next 220 characters.
+3. ⭐⭐ **THE REFERENCE GUARD WAS VACUOUS, AND ITS OWN CONTROL HID IT.** Deleting the
+   entire alias map left it **green**: no in-repo `to:` uses a retired key, because
+   the code was re-keyed in the same commit. **The links that need the aliases are
+   the ones written down** — `/profitability?tab=change` appears in four committed
+   reports. ⛔ And a first control asserted `"overview" in known_prof`, taking the
+   app's own state as a control input, so the control *crashed* on the very defect
+   the check had correctly found. **A control proves the recogniser discriminates;
+   whether the app is correct is the check's answer, never the control's premise.**
+4. ⭐⭐ **A HAND LIST DRIFTED INSIDE THE FILE THAT EXISTS TO CATCH DRIFT.**
+   `browser-verify.py` carried hand-typed `(route, label)` pairs for the My AXIOM
+   strip; **two had been wrong since before this lane** — a `KPIs` tab renamed to
+   `Data Input`, and a `/target-state` tab the strip no longer carries. Now derived
+   from `route-tabs-config.ts`. ⛔ Two further witness defects followed: an
+   `adminOnly` label a member cannot see (**testing the role, not the strip**), and
+   `My AXIOM`, which is also the brand and therefore **true on every page in the
+   app**.
+
+## ⭐ 8 · WHAT IS NOT RULED, AND IS MARKED AS MINE
+
+**Data Quality's placement under Gap Analysis.** The ruling names four Profitability
+tabs and does not say where coverage goes. It is folded there and **labelled ⚠ THAT
+PLACEMENT IS MINE, NOT RULED** in both the source and the browser assertion, so if
+the ruling later moves it, the failure names itself.
