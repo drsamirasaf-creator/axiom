@@ -343,7 +343,7 @@ the page turned out to be **unreachable by its own name** (`/what-is-axiom`
 
 **Tell:** an assertion with no URL in it.
 
-## A guard that matches text will punish stating its own rule — *eleven instances* (5 Aug)
+## A guard that matches text will punish stating its own rule — *twelve instances* (6 Aug: the strategy-map delete-guard matched `@router.delete`, the DECORATOR, while the forbidden thing was the row destroy — `90f2b5f`)
 
 | banned token | what it actually struck |
 |---|---|
@@ -362,6 +362,37 @@ under any synonym.**
 argument, a column. ⭐ **AN EXCEPTION LIST IS THE TELL**: adding an allowlist
 entry to stop a guard firing on correct writing means the guard measures the
 wrong thing.
+
+## Every ratchet needs its opposite — *added 6 Aug*
+
+A ratchet that only tightens one way is half a ratchet. The sidebar contract
+checked shipped-not-expected and never the reverse, so retiring a group left the
+crawler asserting one that no longer existed and the guard said nothing.
+`check-ledger-anchors` now fails **both** on a new collision and on a baseline
+entry that has stopped colliding.
+
+## A guard over a list cannot see what the list omits — *added 6 Aug*
+
+Two hand lists compared to each other are blind to the entry neither carries.
+Derive the list from the thing it describes. ⭐ **Corollary, measured:** a guard
+whose corpus was source-only was **vacuous** for retired tab keys — the links
+needing the aliases live in committed prose, not in code.
+
+## Span distinguishes a chart from a table, and is blind to positions carrying no meaning — *added 6 Aug, extended 7 Aug*
+
+§III.13 established span against a **table**. Repositioning marks by **array
+index** left span at 1030px and the assertion **passed**; monotonicity and
+same-value-same-x caught it. ⭐ **Extended 7 Aug:** geometry is blind to **paint**
+— a `<line>` whose stroke equals the background has a perfect bounding box.
+Fifteen edges, correct coordinates, **1.03:1 contrast**, invisible.
+
+## A control that reads the artefact must fail the way the check fails — *added 6 Aug*
+
+A control asserting `"overview" in known_prof` took the app's state as a premise
+and **crashed before the findings printed**, so the run blamed the guard for a
+defect the guard had found. ⛔ **Sharpest instance:** `check-relative-imports`
+contained `if node.module is None: continue` and skipped the exact statement it
+was written to catch.
 
 ## A constraint on cardinality cannot catch an error of identity
 
@@ -462,7 +493,24 @@ nothing — which is indistinguishable from success.**
 
 ---
 
-# 7 · CURRENT STATE (1 Aug 2026)
+# 7 · CURRENT STATE (7 Aug 2026)
+
+⭐ **Every count in this section was measured on 7 Aug, not carried forward.**
+
+| | measured |
+|---|---|
+| backend CI steps · guard scripts | **34** · **33** |
+| frontend CI steps · guard scripts | **17** · **9** |
+| backend tests | **2,343 passed**, 1 skipped, 3 xfailed |
+| frontend lint | **1,039 warnings across 289 files** |
+| ratchets (at ceiling, none over) | `no-explicit-any` **817** · `no-restricted-syntax` **180** · `exhaustive-deps` **26** |
+| CORE section headings · distinct anchors | **99** · **91** (⛔ **8 duplicated** — §0.2) |
+| reports on disk · cited in CORE | **144** · 39 |
+
+⛔ **KNOWN-RED, CARRIED:** two pre-existing mutation survivors
+(`test_resolver_selects_the_populated_cycle`,
+`test_score_is_not_money_and_carries_no_symbol_or_tier`), and **`demo-rot` has
+never once succeeded.**
 
 ## The launch condition — ruled
 
@@ -487,6 +535,38 @@ a customer**; correction and notification remain the user's ruling).
 ValuationRun code version · `B17` §4l Control Tower (**no code**) · `B18` mobile
 coverage pass · `B19` mindmaps (**undesigned**) · `B20`/`B21`/`B22` encode the 31
 Jul rulings · `B15` the features map as a distinct asset.
+
+## ⭐⭐ THE OPEN QUEUE IN PRIORITY ORDER (7 Aug) — rulings first
+
+**Rulings owed. Nothing below them can be built without one.**
+
+| # | ruling | why it is first |
+|---|---|---|
+| 1 | **§7r-O's completion — sole-own the leverage-risk assumption** | It exists **four times** on four bases with unrelated constants, and **the un-owned quantity decides the sign** of the leverage advice a CFO reads. ⛔ §7o binds; **it moves published valuations**, so it is gated on the §7u registry carrying all four with provenance. |
+| 2 | **Which endpoint owns `kr_key`** | The strategy map mints `/key-result/{kr_key}` links and `/companies/{id}/objectives` carries **zero** `kr_key`s — **0 of 6 key-result nodes resolve.** |
+| 3 | **Should the eight duplicated CORE anchors be renumbered?** | A dispatch citing `§8n` or `§4v.2` is ambiguous today. Renumbering means editing **committed reports**, which is why it is a ruling and not a cleanup (§0.2). |
+| 4 | **Band aggregation at a coarser grain** | Ruled in principle (§8o ruling 4); the build is not done, and summing percentiles overstates the range by √n. |
+| 5 | **Partial-bucket policy beyond the current default** | Complete-only-with-remainder shipped as **my** choice, marked as unruled. |
+| 6 | Assessor standing-vs-per-cycle · Viewer positive definition · the tier contradiction · does a pack freeze the leader / the movement history · milestone deletion as a revoke (ten-site sweep sized) · the crawler merge (two divergent `auth-regression.py`) · required checks as a real gate | carried from earlier lanes, unchanged |
+
+**Then builds, in dependency order:** the §7u registry entries that unblock #1 ·
+the `kr_key` fix once #2 is ruled · band aggregation once #4 is ruled · `B2`/`B3`
+ratio library and DuPont · `B17` Control Tower (**no code**) · `B18` mobile
+coverage · `B15` the features map · `B19` mindmaps (**undesigned**, not unbuilt).
+
+## ⛔⭐⭐ WHAT THE REPOSITORY ALONE CANNOT VERIFY
+
+⭐ **A fresh advisor must not infer these from the code. Each needs an external
+system or the user.**
+
+| claim | why the repo cannot settle it |
+|---|---|
+| **Whether a deploy is serving HEAD** | The strategy-map investigation measured the component working at HEAD while the reader saw nothing. Only the served host answers this — check it **before** concluding a defect exists. |
+| **Whether an endpoint works in production** | Measured this week: `frequency-view` returned **500 on every call it ever had** while every gate was green. The browser proof **stubs the API**, so a green gate says the surface works, never the endpoint. Curl the served host. |
+| **Sentry, uptime and error rates** | Not in the repo. Sentry found the 500 that 2,336 tests and a three-mode browser proof did not. |
+| **Whether `demo-rot` has ever succeeded** | It has not, and the repository cannot show why — the run history is in CI. |
+| **Customer data, counts and figures** | Never in a committed report by ruling; only a lane-env read answers, and only as a verification READ. |
+| **Which CORE claims are stale** | A ledger cannot audit itself. §0.2 found one row **stale in the rebuilding direction** by comparing commits to prose — the only method that works. |
 
 ## Reliability gates — precede any relaunch carrying paying customers
 

@@ -28,6 +28,13 @@ jobs:
       # package tree instead of hoping something executes it.
       - name: relative imports resolve (incl. call-time)
         run: python scripts/check-relative-imports.py
+      # ⭐⭐ EIGHT CORE ANCHORS NAME TWO SECTIONS EACH (§0.2), so a dispatch citing
+      # "§8n" or "§4v.2" is ambiguous — §7j.6's collision class applied to the
+      # addressing of the document that records it. The eight are frozen as a
+      # DOWNWARD-ONLY baseline: a ninth fails, and an entry that stops colliding
+      # must leave the list.
+      - name: no new duplicate CORE anchors (§0.2)
+        run: python scripts/check-ledger-anchors.py
       - name: route shadowing
         run: python scripts/check-route-shadowing.py
       # ⭐ A MODEL COLUMN WITHOUT A MIGRATION LINE TAKES EVERY READ OF THAT TABLE

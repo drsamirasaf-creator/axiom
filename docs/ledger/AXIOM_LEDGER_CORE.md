@@ -19905,7 +19905,7 @@ the user's, not an inference.
 |---|---|---|
 | 1 | **Data search** | scoped (`docs/reports/in-app-search-scope-*.md`), **not built**. Needs a new authenticated endpoint honouring tenant, capability, magic-link scope, department, **the k-floor** and the showcase exemption. ⛔ A result naming a suppressed slice defeats the floor; verbatim text is **never** indexed |
 | 2 | **The two statement renders converging** | ⛔ **not a de-duplication** — see §4A.1 correction 3. A build with a forecast-vs-scenario ruling |
-| 3 | **EVA distribution** | ⭐ **ruled and unbuilt** — mixture and copula in separate panels with an explainer contract (§4B) |
+| 3 | **EVA distribution** | ⭐⭐ **BUILT** — `0ead656`, `ad7edb2`, frontend `1272f38`. `eva_distribution.py` (235 lines) returns `panels:{mixture, copula}` on **declared priors** registered at `7u-pd.3`; 13 tests. The absent panel renders **its reasoning, not a blank**. ⛔ This row read *"ruled and unbuilt"* until the 7 Aug sync — **stale in the rebuilding direction**, the B9 shape (§0.2) |
 | 4 | **The Gantt as a real chart** | the Schedule tab draws bars; a true timeline axis is unbuilt |
 | 5 | **Voice of Employee per department** | |
 | 6 | **The strategy map** | designed at §4v, ruled at §4v.1, **unbuilt** |
@@ -21182,3 +21182,97 @@ carries **zero `kr_key` values** — the strategy-map handler **attaches them
 itself**. So the map mints links only it can resolve. **Reported, not fixed:** the
 fix is a decision about which endpoint owns `kr_key`, and this lane was called to
 draw the edges.
+
+---
+
+# ⭐⭐ §0.2 · LEDGER SYNC, 7 Aug — DERIVED FROM COMMITS, NOT RECALLED
+
+23 backend commits since `454fcfa`; 18 frontend commits. Every item below was
+checked against CORE by grep, and the counts were measured in the lane.
+
+## ⭐ 1 · CONFIRMED PRESENT — 19 of 20
+
+The structure re-organisation and §4A.4's five rulings · PMO renamed with the
+economics caveat · Profitability's four tabs · the strategy map · the revoke
+contract's three holes · frequency views with the §8a reconciliation, **both
+moves recorded** · the optimal-range surface · the two-optimisers finding and
+its A/B build · §7r-O queued · the PMO scope · the request object and §4C's five
+rulings · the budget-is-a-parallel-ledger ruling · the slippage premise
+correction · navigation search and MUST_RESOLVE · addressable tabs and
+`useTabParam` · the frequency-view 500 · the strategy map's invisible edges.
+
+## ⛔ 2 · ONE ITEM WAS MISSING, AND IT WAS STALE IN THE REBUILDING DIRECTION
+
+**EVA's two panels.** CORE §0.1's item 3 still reads *"ruled and unbuilt"* while
+`0ead656`, `ad7edb2` and frontend `1272f38` **built it**:
+`services/api/eva_distribution.py` (235 lines) returning
+`{registry_version, parameters, panels:{mixture, copula}}`, **13 tests passing**,
+and the absent panel rendering **its reasoning rather than a blank**.
+
+⭐ **`PLATFORM_DEFAULTS_VERSION` is `7u-pd.3`; CORE records only up to `7u-pd.2`.**
+The copula family and ρ are **declarations registered as priors**, not fitted —
+which is what makes the panel admissible at all.
+
+⛔ **THE SAME SHAPE AS B9** — *"STALE IN THE REBUILDING DIRECTION"*. A ledger that
+says unbuilt about something built invites a lane to build it twice.
+
+## ⛔⭐⭐ 3 · EIGHT ANCHORS NAME TWO SECTIONS EACH — §7j.6, IN THE LEDGER ITSELF
+
+| anchor | names |
+|---|---|
+| **§4v · §4v.1 · §4v.2** | the comparison matrix (1 Aug) **and** the departmental strategy map (5–6 Aug) |
+| §4z.1 | the viewer's tier mark **and** "What is AXIOM?" |
+| **§8m · §8n · §8o** | T4.2/T4.3/T4.4 (4 Aug) **and** optimal range / frequency views (6 Aug) |
+| §8p | an existing entry **and** the frequency-view 500 (7 Aug) |
+
+⛔ **A DISPATCH SAYING "read §8n" IS AMBIGUOUS**, and this week's dispatches cited
+both `§8m` and `§4v.2`. **This is §7j.6's name-collision class applied to the
+addressing of the document that records it.**
+
+⭐ **THE MECHANISM: INCREMENTING WITHOUT CHECKING.** `§8a`–`§8z` were exhausted by
+the T-series and later lanes appended `§8m` again. `§8A`/`§8B` already showed the
+uppercase escape; nobody measured which letters were free. **Five of the eight are
+mine.**
+
+⛔ **RECORDED, NOT RENUMBERED — and that is a ruling owed, not a cleanup.**
+Renumbering would require editing **committed reports**, and a report is a record
+of what was said at the time. `scripts/check-ledger-anchors.py` freezes the eight
+as a **downward-only** baseline: a ninth fails the build, and an entry that stops
+colliding must leave the list.
+
+## ⭐⭐ 4 · THE LAWS ADDED THIS WEEK
+
+### EVERY RATCHET NEEDS ITS OPPOSITE
+A ratchet that only tightens one way is half a ratchet. The sidebar contract
+checked shipped-not-expected and not the reverse, so retiring a group left the
+crawler asserting a group that no longer existed and the guard said nothing.
+⭐ **Applied again here:** `check-ledger-anchors` fails both on a new collision
+**and** on a baseline entry that no longer collides.
+
+### A GUARD OVER A LIST CANNOT SEE WHAT THE LIST OMITS
+`check-sidebar-contract` compared two hand lists and was blind to the entry
+neither carried. The fix is to derive the list from the thing it describes —
+`browser-verify`'s My AXIOM pairs, the nav index, the frequency views.
+⭐ **Corollary measured this week:** a guard whose corpus is source-only was
+**vacuous** for retired tab keys, because the links that need the aliases live in
+committed prose.
+
+### SPAN DISTINGUISHES A CHART FROM A TABLE AND IS BLIND TO POSITIONS THAT CARRY
+### NO MEANING
+§III.13 established span as load-bearing against a **table**. Measured 6 Aug:
+repositioning marks by **array index** left the span at 1030px — the assertion
+**passed**. Monotonicity, same-value-same-x, and ordering caught it.
+⛔ **Neither assertion subsumes the other**, and a surface needs both.
+⭐ **Extended again 7 Aug:** geometry is blind to **paint**. A `<line>` whose
+stroke equals the background has a perfectly good bounding box — 15 edges,
+correct coordinates, **1.03:1 contrast**. Pixels were the missing assertion.
+
+### A CONTROL THAT READS THE ARTEFACT MUST FAIL THE WAY THE CHECK FAILS
+A control asserting `"overview" in known_prof` took the app's own state as a
+premise, so deleting the aliases **crashed the control before the findings
+printed** — a run that said "the guard is broken" about a defect the guard had
+correctly found. Same shape recurred with a bare subscript on
+`weight_on_value`, raising `KeyError` over the findings.
+⛔ **And the sharpest instance: `check-relative-imports` contained
+`if node.module is None: continue` and therefore SKIPPED the exact statement it
+was written to catch.** §III.11, inside the instrument.
