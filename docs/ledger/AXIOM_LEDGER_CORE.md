@@ -20050,3 +20050,55 @@ proves the app agrees.**
 
 ⭐ **GENERALLY: every ratchet needs its opposite.** A list-of-things-that-must-be-
 valid says nothing about things that should be present and are not.
+
+# ⭐⭐ §III.13 · AN ASSERTION THAT COUNTS ELEMENTS PASSES ON THE WRONG THING (5 Aug)
+
+**The Gantt lane reported "7 bars" and passed. What shipped was a table with a
+date column.**
+
+## THE MECHANISM
+
+`data-schedule-bar` sat on the **table row**, and the assertion was
+`count > 0`. ⭐⭐ **"7 bars rendered" WAS LITERALLY TRUE OF A LIST**, so the
+harness could not distinguish the chart it was written for from the table that
+existed.
+
+⛔ **AND THE PAIRED CONTROL DID NOT HELP.** §III.11's machinery — a
+known-negative paired with a known-positive — proves the *matcher is alive*. It
+says nothing about whether the thing matched is the thing meant. **A probe on the
+wrong element passes both halves.**
+
+## ⭐ THE SECOND DEFECT, WHICH THE COUNT ALSO HID
+
+Each row's fill was `width: pctOf(date)` from `left-0`, so **a later milestone
+drew a LONGER bar.** Width encoded *position* and read as *duration or progress*.
+⛔ **§8h forbids a visual that means something it does not carry** — and a count
+assertion cannot see it, because the element is there either way.
+
+## ⭐⭐ THE FIX IS GEOMETRY
+
+**Measure coordinates, not elements.** Two assertions, and only one is
+load-bearing:
+
+- ⭐⭐ **SPAN** — `max(x) − min(x)` must exceed a floor. **A table puts every
+  marker at the same x; a chart spreads them.** Control: pinning every marker to
+  `left:0%` gives **0px** and fails.
+- ⚠ **MONOTONICITY** — x must not go backwards when sorted by date. ⛔ **THIS ONE
+  PASSED AGAINST THE TABLE**, because all-equal is non-decreasing. **Necessary,
+  not sufficient**, and recording that is the point: an assertion that survives
+  the defect it was written for is decoration.
+
+## ⭐ AND THE CHART WAS STILL WRONG AFTER IT DREW
+
+Twice, both found by measuring rather than looking:
+
+1. **The axis started at `created_at`** — the record, not the work — so an
+   initiative typed in months early squeezed every marker into the right edge.
+   **59px of spread.**
+2. **The track was 61px wide** because the fixed columns ate the row inside the
+   drawer. ⭐ **A chart whose axis is narrower than its labels is a table with
+   extra steps.** Now a 240px floor, scrolling rather than compressing.
+
+⭐ **GENERALLY: for anything visual, assert a MEASUREMENT the wrong
+implementation cannot produce.** Presence, count and class names all survive the
+substitution of a list for a chart.
