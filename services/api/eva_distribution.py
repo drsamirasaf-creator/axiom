@@ -163,10 +163,13 @@ def eva_distribution(history, wacc):
 
     # ── MIXTURE — which world are we in? ─────────────────────────────────
     if n_sd is None:
+        # ⭐ THE REASONING IS RENDERED, NOT A BLANK. The registry's own basis
+        # travels with the refusal, so a reader learns WHY rather than seeing an
+        # empty frame and assuming the feature is broken.
         out["panels"]["mixture"] = _absent(
             f"A regime shift is measured in this company's own NOPAT dispersion, "
-            f"and that needs at least {minp} periods of history. "
-            f"{len(nopats)} available.")
+            f"and only {len(nopats)} period(s) carry one. "
+            f"{_prior('eva_min_periods')['basis']}")
     else:
         pts = []
         for name, weight, shift in regimes_p["value"]:
@@ -190,9 +193,9 @@ def eva_distribution(history, wacc):
     # ── COPULA — when margin falls, does capital intensity rise? ──────────
     if n_sd is None or ic_sd is None:
         out["panels"]["copula"] = _absent(
-            f"A dependence is applied to two dispersions at once, and both need "
-            f"at least {minp} periods. NOPAT has {len(nopats)}, invested capital "
-            f"{len(ics)}.")
+            f"A dependence is applied to two dispersions at once. NOPAT has "
+            f"{len(nopats)} period(s) and invested capital {len(ics)}. "
+            f"{_prior('eva_min_periods')['basis']}")
     else:
         rho = float(rho_p["value"])
         # ⭐ A DETERMINISTIC LATTICE OVER THE COPULA, NOT A SAMPLER. A seeded RNG

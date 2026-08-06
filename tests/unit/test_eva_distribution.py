@@ -157,7 +157,11 @@ def test_too_little_history_declares_per_panel():
     for name in ("mixture", "copula"):
         p = out["panels"][name]
         assert p.get("absent"), f"{name} should be absent on one period"
-        assert "period" in p["absent"].lower() or "history" in p["absent"].lower()
+        assert "period" in p["absent"].lower()
+        # ⭐ THE REASONING TRAVELS, not just the fact. The registry's basis for
+        # the minimum is rendered, so a reader learns why three.
+        assert "gap between them" in p["absent"], \
+            "the absent panel states the fact without the reasoning"
 
 
 def test_a_missing_wacc_declares_rather_than_defaulting():
