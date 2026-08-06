@@ -11,6 +11,7 @@ from ...core.config import ai_model
 from ..financials import models as fin_models
 from ..financials import engines as fin_engines
 from . import ai_client, engines
+from ... import optimal_range as optrange
 
 router = APIRouter(prefix="/api/v1/intelligence", tags=["intelligence"])
 
@@ -187,6 +188,34 @@ def value_risk_frontier(dataset_id: int, risk_aversion: float = 0.5,
     except ValueError as e:
         from fastapi import HTTPException as _H
         raise _H(status_code=422, detail=str(e))
+
+
+@router.get("/optimal-range/{dataset_id}")
+def optimal_range(dataset_id: int, risk_aversion: float = 0.5,
+                  n_paths: int = 1000,
+                  db: Session = Depends(get_db),
+                  tenant: str = Depends(_tenant)):
+    """Where the company stands, the range it could stand in, and what moves.
+
+    ⭐ WIRING. Every figure comes from the SAME `frontier` sweep the tab above
+    renders; `optimal_range` shapes it and adds nothing. ⛔ No second engine and
+    no second prior — two shapings of one sweep cannot disagree, which is the
+    whole reason this is not a new optimiser.
+
+    ⭐ `include_current=True` puts the company's own D/E on the grid so "you are
+    here" is an EVALUATED point rather than a position on an axis.
+    """
+    ds = _get_dataset(db, tenant, dataset_id)
+    try:
+        f = engines.frontier(ds.data, risk_aversion=risk_aversion,
+                             n_paths=min(max(n_paths, 200), 5000),
+                             include_current=True)
+    except ValueError as e:
+        from fastapi import HTTPException as _H
+        raise _H(status_code=422, detail=str(e))
+    out = optrange.build_range(f)
+    out["audit"] = optrange.audit()
+    return out
 
 
 @router.get("/risk-profile/{dataset_id}")

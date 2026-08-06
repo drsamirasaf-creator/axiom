@@ -20508,3 +20508,121 @@ keys, which is exactly what ruling 2 is about.
 tabs and does not say where coverage goes. It is folded there and **labelled ⚠ THAT
 PLACEMENT IS MINE, NOT RULED** in both the source and the browser assertion, so if
 the ruling later moves it, the failure names itself.
+
+---
+
+# ⭐⭐ §8m · THE OPTIMAL RANGE — BUILT 6 Aug. `optimal_range.py`
+
+Report: `docs/reports/optimal-range-2026-08-06.md`.
+
+Ruled 6 Aug: Strategize presents the value-maximising range the firm should aspire
+to, **computed from its own constraints**. ⛔ Industry data is not collected — a
+median across a heterogeneous population looks authoritative and misleads, and
+standing behind sourced industry data is an **ongoing obligation** rather than a
+feature. Benchmarking stays client-supplied peers.
+
+## ⭐ 1 · NOTHING NEW WAS COMPUTED
+
+`intelligence.frontier` already swept capital structure, ran the seeded Monte Carlo
+at each D/E and returned the Pareto set with a recommended point. `optimal_range` is
+a **pure shaping of that output**. The one engine change is a flag —
+`include_current` — that puts the company's own D/E on the grid, because the default
+grid steps by 0.25 and the showcase company stands at **0.60**, so "you are here"
+was an axis position with no value attached to it.
+
+⭐ **NOT INTERPOLATED AND NOT NEAREST-MATCHED.** Both would have reported what the
+company is worth at a leverage level it is not at, with nothing on the surface
+saying so. One extra point, evaluated by the same sweep, so current and optimal are
+comparable **because they came out of the same loop**.
+
+## ⭐⭐ 2 · THE RECOMMENDATION IS MOSTLY THE PRIOR, NOT THE DATA
+
+Measured on the showcase dataset — the recommended D/E across the λ dial:
+
+| λ | 0.00 | 0.25 | 0.50 | 0.75 | 1.00 |
+|---|---|---|---|---|---|
+| **recommended D/E** | 1.75 | 1.50 | **0.00** | 0.00 | 0.00 |
+
+⛔ **THE DIAL MOVES THE ANSWER ACROSS THE ENTIRE GRID, AND IT DOES NOT MOVE
+GRADUALLY — IT FLIPS** between 0.25 and 0.50. Printing one number and calling it
+"the optimum" hands a reader a target whose value was chosen by a slider they may
+never have touched. **That is why the object is a range.**
+
+## ⭐⭐ 3 · AND THE RECOMMENDED POINT IS NOT THE VALUE-MAXIMISING ONE
+
+At the default weight it **lowers** expected EV by 636 and raises the tail cushion by
+650. So the range ships **two ends** — the value end and the safety end — read off
+the Pareto set that was already returned, and the prior chooses between them. ⛔ The
+field is called `optimal`, never `value_maximising`: **a name that overstates what a
+number is survives every test that checks the number.**
+
+## ⛔⭐⭐ 4 · THE CAPITAL-STRUCTURE OPTIMUM IS UNCONSTRAINED. MEASURED.
+
+`frontier` applies **no feasibility filter of any kind**. Tail solvency margin is a
+weighted OBJECTIVE, not a floor. Pushing the grid out returns margins of **242, 75
+and 29** against recapitalised debt — every one ranked, **none refused**.
+
+⭐ So `constraint` ships as `present: False` with that reason attached, and
+`assumption` carries the declared prior. **An optimum without both reads as a target
+rather than as a consequence**, and where a constraint is absent the surface says
+*unconstrained* — which is **not the same as safe**, and says so in those words.
+
+⭐ **The one genuinely CONSTRAINED optimum AXIOM ships is the mix optimiser**, where
+capacity binds and a line without a declared demand ceiling **declines** (§8h·2).
+
+## ⭐ 5 · THE PER-QUANTITY AUDIT — 11 ROWS, MEASURED NOT READ OFF A DOCSTRING
+
+**7 computed · 1 absent · 3 refused.** Capital structure, revenue growth, EBIT
+margin, capex intensity, EV, equity value and product mix all have a
+value-maximising point today. Price, payment terms and discontinuation are refused
+by ruling (R2 / §8k / §22).
+
+⭐⭐ **`key_ratios` IS THE ROW MOST LIKELY TO BE MISREAD, AND IT IS ABSENT.** AXIOM
+grades ratios into bands, and **a band is not an optimum**: a green
+interest-coverage says the level is not alarming, never that it is the level that
+maximises value. **D/E is the exception only because `frontier` supplies an
+objective for it** — which is exactly what the other ratios lack. No optimum is
+inferred from a band.
+
+## ⚠️ 6 · A RULING IS OWED — TWO OPTIMISERS DISAGREE ABOUT LEVERAGE
+
+Measured on the showcase dataset, **one tab apart on the same page**:
+
+| surface | says | because |
+|---|---|---|
+| Frontier (`frontier`) | **D/E 0.00** at λ=0.5 | the objective carries a safety term |
+| Solver (`optimal_levers`) | **leverage +1.0** (max debt) | the objective is EV net of execution risk, with no safety term |
+
+⭐ They are not the same decision variable — a D/E *ratio* against a *multiple of
+plan debt* — and neither is wrong on its own terms. ⛔ **But a reader flipping
+between two tabs sees "optimal leverage" twice with opposite signs, and nothing on
+either surface says why.** Not resolved here: no new engine and no new prior were
+permitted, and this needs one or the other.
+
+## ⭐⭐ 7 · §III.13 EXTENDED AGAIN — SPAN IS BLIND TO A MEANINGLESS CHART
+
+The marks are positioned by D/E across a measured track and asserted by geometry.
+The paired control pins every mark to one x and the **same expression** re-measures:
+**1030px against 0px.**
+
+⛔ **BUT SPAN DID NOT CATCH THE SECOND DEFECT.** Repositioning the marks by ARRAY
+INDEX instead of by value left the span at **1030px — the assertion passed.** What
+caught it was three positional assertions: monotonicity against D/E, two marks at
+the SAME D/E having to land at the same x, and the value end having to lie beyond
+the current position.
+
+⭐ **§III.13 said span is load-bearing and monotonicity is necessary-not-sufficient.
+Both remain true, and the converse is now measured too: span distinguishes a chart
+from a TABLE and is blind to a chart whose positions carry no meaning.** Neither
+assertion subsumes the other, and a surface needs both.
+
+## ⭐ 8 · THE TWO FRONTIERS, NOW GUARDED RATHER THAN CAUTIONED
+
+§7j.6's collision is **current, not historical**: **six routes carry the noun
+"frontier" across two engines** — five in `prescience_decision`, one in
+`intelligence`. A substring search still cannot tell them apart and never will.
+
+`scripts/check-two-frontiers.py` asserts every frontier route has a **declared
+owner**, so a third has to be added deliberately, and that the range payload names
+both the engine it **is** and the one it **is not** — in FIELDS, because a sentence
+in a narrative cannot be asserted.

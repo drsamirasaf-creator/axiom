@@ -95,6 +95,14 @@ jobs:
       # downward-only ratchet over the 5 modules that compute one today.
       - name: margin boundary (Class A)
         run: python scripts/check-margin-boundary.py
+      # ⭐⭐ TWO FRONTIERS, ONE NOUN (CORE §7j.6). Six routes carry the word across
+      # two engines — the capital-structure sweep and the strategic move search —
+      # so a substring search cannot tell them apart and never will. A scope
+      # report already made exactly that mistake and a ruling was withdrawn on
+      # the false premise it produced. This asserts every frontier route has a
+      # DECLARED owner, so a third one has to be added deliberately.
+      - name: the two frontiers stay apart (§7j.6)
+        run: python scripts/check-two-frontiers.py
       # ⭐ WIRED 30 Jul AFTER IT WAS FOUND BLIND AND UNNOTICED. It exits 0 when
       # healthy and 2 when its own detection floor fails, so this step catches
       # the checker going blind — which is what happened: the sole-owner

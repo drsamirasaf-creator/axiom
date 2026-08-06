@@ -320,7 +320,8 @@ def recommend(data: dict) -> dict:
 
 def frontier(data: dict, de_grid: list | None = None,
              risk_aversion: float = 0.5, n_paths: int = 1000,
-             terminal_growth: float = 0.025) -> dict:
+             terminal_growth: float = 0.025,
+             include_current: bool = False) -> dict:
     """Value-vs-tail-risk frontier over capital structure.
 
     For each candidate D/E on the grid: WACC from the published
@@ -360,6 +361,17 @@ def frontier(data: dict, de_grid: list | None = None,
         beta_u = float(company["unlevered_industry_beta"])
 
     grid = de_grid if de_grid is not None else [k * 0.25 for k in range(0, 9)]
+    # ⭐⭐ "YOU ARE HERE" NEEDS TO BE AN EVALUATED POINT, NOT AN AXIS POSITION.
+    # The default grid steps by 0.25 and the showcase company stands at 0.60, so
+    # its CURRENT value and tail margin were never computed — the surface could
+    # draw where it stands but not say what it is worth there.
+    # ⛔ NOT A NEW COMPUTATION AND NOT A NEW GRID: one extra point, evaluated by
+    # the same sweep on the same basis, so current and optimal are comparable
+    # BECAUSE they came out of the same loop. Interpolating between neighbours
+    # would have invented a value; taking the nearest would have reported the
+    # wrong one. Opt-in, so every existing caller returns exactly what it did.
+    if include_current and not any(abs(x - x_cur) < 1e-9 for x in grid):
+        grid = sorted(grid + [round(x_cur, 4)])
     if not (2 <= len(grid) <= 25):
         raise ValueError("de_grid must contain 2-25 points")
     mode = "proforma" if data["periods"].get("forecast") else "auto_forecast"
