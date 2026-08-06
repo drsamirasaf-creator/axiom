@@ -20102,3 +20102,125 @@ Twice, both found by measuring rather than looking:
 ⭐ **GENERALLY: for anything visual, assert a MEASUREMENT the wrong
 implementation cannot produce.** Presence, count and class names all survive the
 substitution of a list for a chart.
+
+---
+
+# §4v.2 · THE DEPARTMENTAL STRATEGY MAP (6 Aug) — `ddaf5ac`, `cb49f3b`
+
+Report: `docs/reports/strategy-map-2026-08-06.md`.
+
+## ⭐⭐ LAYER ASSIGNMENT IS BY TYPE; ORDERING IS BY STABLE KEY; CROSSING MINIMISATION IS OMITTED
+
+`okr-map` returned objectives, KPIs and initiatives as three lists — a picture of
+what exists that says nothing about what serves what. The connections were
+sitting in four link tables nobody had drawn.
+
+Sugiyama's phase 1 (layer assignment) is a **constant here, not a computation**:
+a node's layer is its kind, `objective → key_result → kpi → initiative`. That is
+what makes the hierarchy *constrained* — a KPI cannot drift above an objective
+because someone drew an unusual edge.
+
+⭐⭐ **PHASE 2 IS OMITTED ON PURPOSE, AND IT IS THE LOAD-BEARING DECISION.**
+Barycentre ordering reduces edge crossings **by reordering nodes**. On a map a
+CXO returns to weekly that means declaring one new edge can move a node they were
+looking at — the picture rearranging as a side effect of an unrelated edit.
+Order is instead a pure function of stable keys, so:
+
+- adding, revoking or re-declaring an edge **never moves a node**;
+- a re-upload keeps every node where it was (`kr_key` is minted uuid4, not
+  derived from display text — a rename must not look like a new entity);
+- two readers of the same department see the same picture.
+
+**The price is crossings, and crossings are the right thing to pay with.**
+
+⛔ **NO NODE CARRIES A POSITION.** `build_map` publishes a layer and an order; the
+renderer turns that into coordinates. On a free canvas a position a person chose
+carries meaning the model does not, and the next reader cannot tell the two
+apart. Asserted: no node dict contains `x` or `y`.
+
+## ⭐⭐ CONTAINMENT IS NOT AN EDGE — THE FINDING WOULD ERASE ITSELF
+
+A key result sits under its objective because the upload put it there. That is
+structure, carried on the node as `objective_key`, and it deliberately does
+**not** make the KR `connected`.
+
+⭐ **HAD IT COUNTED, THE ROWS THAT CREATE KEY RESULTS WOULD ERASE THE FINDING KEY
+RESULTS EXIST TO EXPOSE.** 21 of 42 key results have nobody resourcing them — and
+every one of them has a parent objective. A connectivity rule that admitted
+containment would have reported 0 unresourced and been consistent, complete, and
+useless.
+
+## ⛔ THE REVOKE CONTRACT HAD THREE HOLES — THE COLUMN WAS INERT
+
+§4v.1 ruling 1 put `revoked_at` on all four link tables with its reasoning
+written onto each one, and `live_links()` exists to filter on it. **A column
+nothing writes and a filter nothing calls are both inert.**
+
+| # | site | was | now |
+|---|---|---|---|
+| 1 | `delete_kpi_link` | **DESTROYED the row** | writes `revoked_at`/`revoked_by`; re-declaring un-revokes |
+| 2 | `causal_map._rows` | read all four tables unfiltered | `live_links(...)` |
+| 3 | `_goal_links_index` | docstring said *"active links"*, query never filtered | `live_links(...)` |
+
+⭐⭐ **(1)'s DOCSTRING ARGUED FOR THE DELETE, AND ITS ARGUMENT WAS THE CASE
+AGAINST IT.** *"Unlike an upload's silence, this is a person saying the connection
+is wrong."* That is precisely the reason to KEEP the row: a person's judgement is
+information with an actor and a date, and destroying it stores the one thing
+certainly false — that nobody ever considered the question. **When a comment
+justifies a behaviour, read whether its reason actually supports the conclusion;
+here it supported the opposite one and had done for months.**
+
+⭐ **(3) IS THE WORD OUTLIVING THE SCHEMA.** The docstring said "active links"
+before `revoked_at` existed and was still true-sounding after. A stale word is
+not a stale comment — it is a claim nobody re-checked.
+
+## ⭐ §III.9, INSTANCE 12 — THE GUARD MATCHED THE ROUTE DECORATOR
+
+The guard for hole (1) searched for a call named `delete` and matched
+`@router.delete(...)`. **The HTTP verb is correctly DELETE** — the client is
+removing a resource — and what must not happen is a *row destroy*. Rescoped to a
+SQLAlchemy query chain with decorators excluded from the AST walk, and paired
+with a known-positive proving it still catches a real `.delete()`.
+
+⭐ **THE VERB AND THE STORAGE ARE DIFFERENT LAYERS, AND A TEXT-SHAPED GUARD
+CANNOT SEE THE DIFFERENCE.** Twelfth instance of the same class.
+
+## ⭐⭐ §III.13 EXTENDED — THE CONTROL MUST BE THE SAME FUNCTION AS THE ASSERTION
+
+`verify-strategy-map.py` defines `geometry_verdict()` once and runs it three
+ways: against the measured page (must PASS), against **nodes stacked at one
+position** (must FAIL), and against **one column per layer** (must FAIL).
+
+⭐ **THE SECOND CONTROL EXISTS BECAUSE THE FIRST IS NOT ENOUGH.** A
+band-separation check alone accepts one column per layer — banded, ordered, and
+still not a map. It took a second artefact to show that "spread" and "banded" are
+two claims, not one.
+
+⛔ **A CONTROL WRITTEN SEPARATELY FROM THE ASSERTION CAN DRIFT AWAY FROM IT AND
+PROVE NOTHING.** Sharing the function makes that impossible — and the paired
+known-positive (the same predicate still passing the real page) is what
+distinguishes "the control rejects bad input" from "the predicate rejects
+everything".
+
+## ⚠ THE DISPATCH'S FIGURES, MEASURED
+
+| dispatch | measured | resolution |
+|---|---|---|
+| largest dept **31 nodes / 28 edges** | **19 / 15** (dept 14) | **unresolved** — no scoping reproduces 31/28 |
+| **8 of 49** KPIs unconnected | **8 of 49** | exact — 49 is the active dataset's KPI count |
+| **41 of 82** KRs unresourced | **21 of 42** | 82 is the count across **all three datasets**; the active one holds 42. Same ratio. |
+
+⭐ **A COUNT TAKEN WITHOUT ITS DATASET SCOPE IS A DIFFERENT QUANTITY WEARING THE
+SAME NAME.** Two of the three figures were whole-table counts; the map is scoped
+to the active dataset, because drawing three quarters' key results on one map
+would show a department three times its size.
+
+## RULINGS OWED
+
+1. **The default landing tab for a department** — left at `okrs`. Should it
+   become the map? "Strategy Map" is first in the strip but is not the default.
+2. **The 31/28 discrepancy** — please confirm the measured counts are what was
+   wanted.
+3. **`objective → initiative` links are empty** — the table exists, has a writer,
+   and holds zero rows for company 20. Objectives connect only through their
+   KPIs. Intended shape, or an unpopulated link kind?
