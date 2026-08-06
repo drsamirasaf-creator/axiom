@@ -20626,3 +20626,101 @@ assertion subsumes the other, and a surface needs both.
 owner**, so a third has to be added deliberately, and that the range payload names
 both the engine it **is** and the one it **is not** — in FIELDS, because a sentence
 in a narrative cannot be asserted.
+
+---
+
+# ⭐⭐ §8m.1 · THE TWO-OPTIMISER LEVERAGE CONTRADICTION — DIAGNOSED, NOT FIXED (6 Aug)
+
+Report: `docs/reports/two-optimisers-leverage-2026-08-06.md`. **Report only.**
+§8m left this as a ruling owed. This is the diagnosis; the ruling is still owed.
+
+## ⭐ 1 · THEY AGREE ON VALUE. THEY DISAGREE ON WHAT TO MAXIMISE.
+
+Put on a common axis — lever setting converted to effective target D/E — the two
+paths return the same enterprise value **to within 0.07%**, which is Monte Carlo
+noise. ⛔ **There is no valuation defect.**
+
+`optimal_levers("ev")` carries **no safety term**, so its counterpart is `frontier`
+at **λ = 0** — which also recommends the most debt its grid allows. ⭐ **On
+like-for-like objectives the two agree.** The visible contradiction is `frontier` at
+λ=0.5 weighting the tail cushion, against a Solver objective that has no tail term
+at all, **with neither surface stating its objective.**
+
+## ⛔⭐⭐ 2 · THE REAL DEFECT IS A CORNER SOLUTION REPORTED AS AN OPTIMUM
+
+`optimal_levers` returns **leverage = +1.0, the grid maximum, and it is the only one
+of five levers at a bound.** Sweeping it alone, EV is **strictly monotonic** and the
+company cost of debt **never leaves 0.06000** — the distress spread never fires.
+
+⛔ **`_apply_levers`' OWN COMMENT CLAIMS THE OPPOSITE**, asserting the curve gives
+"a real optimum instead of a monotonic 'more debt is always better'". On this
+dataset it is exactly that monotonic case.
+
+⭐ **AND THE CHECKPOINT PASSES BECAUSE OF IT.** `levers_within_bounds: True` is
+satisfied *precisely at the corner*, and the panel reports "all checkpoints pass".
+**An assertion that survives the defect it would be written for is decoration** —
+§III.13's shape, in a numeric checkpoint rather than in a chart.
+
+## ⭐⭐ 3 · SOLE OWNERSHIP: VALUE IS OWNED, DISTRESS IS OWNED FOUR TIMES
+
+WACC is genuinely sole-owned (`ratios.wacc_at`) and **both optimisers consume it
+correctly**. The leverage-RISK assumption is not owned at all:
+
+| implementation | base | kink | coef | used by |
+|---|---|---|---|---|
+| `ratios.cost_of_debt_at(KD_KINKED)` | **D/E** | 1.00 | 0.01 | `frontier` |
+| `_apply_levers` inline | **debt / revenue** | 0.25 | 0.35 | `optimal_levers` |
+| `_distress_proxy` | **debt / EV** | 0.28 | 1.50 | `optimal_levers` (RAEV) |
+| `_kd_of_d` | debt ratio | 0.50 | 0.02 | `dp_optimize` |
+
+⭐ **§7r-O PREDICTED THIS IN WORDS** — *"the guard counts one owner of the WACC
+expression; it does not and cannot count owners of the assumption inside it."* §7r
+tabulated **two** of these on 30 Jul. **This lane found the other two.**
+
+⭐⭐ **THE UN-OWNED QUANTITY IS THE ONE THAT DECIDES THE SIGN.** Value is owned and
+agrees; distress is quadruply owned and disagrees.
+
+## ⛔⭐⭐ 4 · BOTH PRIORS ARE `0.5` AND THEY ARE NOT THE SAME THING
+
+`frontier` blends convexly — at λ=0.5 **value carries weight 0.5**. `RAEV_LAMBDA`
+subtracts a spread from a full-weight mean — at λ=0.5 **value carries weight 1.0**.
+Identical number, unrelated algebra. ⭐ **This is §7j.6's name-collision class
+applied to a CONSTANT rather than to a noun.**
+
+⭐ And the asymmetry is visible to the reader as nothing at all: **frontier's prior
+is a slider; the levers' prior is a module constant that is never displayed and
+cannot be moved.**
+
+## ⭐⭐ 5 · CONDITIONAL, NOT STRUCTURAL — AND THAT IS THE WORSE FINDING
+
+| debt/revenue | `optimal_levers` | `frontier` λ=0.5 | |
+|---|---|---|---|
+| **0.118 (actual)** | **+1.0** | **0.00** | ⛔ contradiction |
+| 0.309 · 0.594 · 0.975 | 0.0 | 0.00 | ✓ agree |
+
+The contradiction appears **only below the lever's kink at debt/revenue 0.25**.
+Above it the distress term fires and the two agree. The showcase company sits at
+0.118 and reaches only **0.213 at maximum lever** — ⛔ **its distress term cannot
+fire anywhere in its own range.**
+
+⭐⭐ **So a DISTRESSED company gets consistent advice and a CONSERVATIVELY FINANCED
+one gets contradictory advice** — which describes healthy companies, the demo, and
+the prospects most likely to be shown the product.
+
+## ⚠️ 6 · THE RULING STILL OWED — FOUR OPTIONS, COSTED
+
+**A · label both objectives** (lowest cost; fixes the confusion, not the defect).
+**B · flag boundary solutions** and make `levers_within_bounds` FAIL at a corner
+(low; fixes the defect, not the contradiction).
+**C · state precedence** — `frontier` owns capital structure, `optimal_levers` drops
+the leverage lever (medium; costs the lever's tax-shield value from every Solver
+uplift figure).
+**D · sole-own the distress assumption** (highest; the completion §7r-O already
+scoped).
+
+⭐ **A + B are the cheap honest floor and touch no number. C or D is the actual
+resolution, and both are rulings rather than builds.**
+
+⚠ **D MOVES PUBLISHED NUMBERS.** `cost_of_debt_at`'s constants are recorded here as
+undocumented placeholders reproduced to preserve behaviour; choosing one owner means
+choosing whose constants survive.
