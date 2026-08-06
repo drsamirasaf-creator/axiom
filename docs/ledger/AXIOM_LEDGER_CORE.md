@@ -20821,3 +20821,110 @@ Dropping the leverage lever would have removed a **real effect** — the tax shi
 is not an artefact — to avoid a contradiction that is really a labelling failure.
 **A surface that omits a true effect to look consistent is less honest than one
 that shows two objectives and says what each maximises.**
+
+---
+
+# ⭐⭐ §8n · FREQUENCY VIEWS AND INTERPOLATION — SCOPED (6 Aug). REPORT ONLY
+
+Report: `docs/reports/frequency-views-scope-2026-08-06.md`. **Nothing built.**
+This is item 7's data-frequency half ("stochastic pro forma with frequency views
+and interpolation").
+
+## ⭐ 1 · THE PERIOD MODEL IS MATURE; THE VIEW DOES NOT EXIST
+
+`periods.py` owns annual/quarterly/monthly end to end, frequency is **derived from
+the values not trusted from the label**, monthly was BUILT at `d8e31a5` with
+three-way equivalence, and both period-label guards are green.
+
+⛔ **AND THERE IS NO RE-GRAINING CAPABILITY OF ANY KIND.** Zero functions
+aggregate, resample, coarsen or annualise a statement. **Frequency is a property
+of the dataset, fixed at upload.** The ruled feature is new construction.
+
+⛔ **MONTHLY STOPS AT THE BACKEND.** The frontend type is
+`PeriodFrequency = "annual" | "quarterly"`. Measured population: **33 datasets, 4
+quarterly, ZERO monthly** — monthly is built and has never been used.
+
+⛔ **A LIVE DEFECT, REPRODUCED.** `MAX_HISTORICAL_PERIODS` has **no monthly key**,
+so it falls back to the annual limit, and the `unit` string has no monthly branch:
+**11 months of history warns "more than 10 historical YEARS supplied"**. ⭐⭐ This
+is the identical defect the comment four lines above it records as FIXED for
+quarterly — *"a warning that cries wolf on a normal file teaches customers to
+dismiss warnings"*. It has never fired on a customer only because no monthly
+dataset exists.
+
+## ⛔⭐⭐ 2 · NOTHING KNOWS A BALANCE SHEET IS NOT A FLOW
+
+There is **no machine-readable stock/flow classification anywhere**. The
+distinction is articulated in exactly one place in the codebase — an explainer
+string about the FCFF fan versus the cash fan. **Nothing would stop a coarsener
+summing four quarterly balance sheets and tripling assets.**
+
+⭐ Two partial precedents, neither sufficient: `OPENING_COLS = 1  # balance sheet
+only` (about entry, not aggregation), and **§7r-R R4**, which already ruled
+balance-sheet ratios POINT-IN-TIME and dropped `avg()`. **AXIOM has reasoned about
+stock-versus-flow for RATIOS and never encoded it for LINES.**
+
+⭐ `proforma.build_path` behaves correctly when FORECASTING — it carries
+`cash_prev` and `re_prev` forward — but that correctness comes from the
+recurrence, not from a classification, so **it does not transfer to aggregation.**
+
+## ⚠️⭐⭐ 3 · A PREMISE CORRECTED, AND THE FIX IS CHEAPER THAN EXPECTED
+
+The dispatch said summing per-period percentiles *"assumes perfect correlation and
+understates the range"*. ⭐ **The first half is exactly right. The direction is
+inverted — it OVERSTATES the range.** Measured over 20,000 paths with four
+independent quarters: summed P05s give a band **2.00× too wide** (= √4), and the
+two agree **exactly** only under perfect correlation, which is the widest case.
+
+⭐⭐ **CORRECT AGGREGATION NEEDS NO NEW ENGINE.** `build_path` simulates whole
+coupled paths and `dist[y][ln]` appends **in path order**, so **index *i* is the
+same path in every period**: sum each path's sub-periods, then take the
+percentile. **The correlation is already in the paths because they were generated
+as paths.** ⛔ §4B deferred Cholesky, and a reader could wrongly conclude this is
+blocked on it. **It is not.**
+
+⛔ **But the information is discarded before it leaves the function** — only
+`plan/expected/p05/p95/p_meets_plan` survive — so anything built on the returned
+payload can only sum percentiles, which is exactly the wrong thing.
+
+⛔ **AND THREE OF THE TEN BANDED LINES ARE STOCKS** (`cash`, `total_assets`,
+`equity`). Summing those is wrong at **every** correlation. Fixing correlation
+without fixing stock/flow yields a statistically respectable wrong number.
+
+## ⛔⭐⭐ 4 · INTERPOLATION COLLIDES WITH §8a, WHICH HAS TESTS DEFENDING IT
+
+`imputed` is **absent from `DATA_STATUSES` and its absence IS a ruling** (§8a),
+enforced by `FORBIDDEN["imputed_status"]` and two tests. **The 6 Aug ruling
+permits exactly what §8a forbids.** ⛔ **NOT RESOLVED HERE — a CORE-versus-CORE
+contradiction is not settled by the lane that finds it.**
+
+⭐ **The distinction available:** §8a forbids filling a missing observation *within
+the supplied grain*, and ingest **rejects gaps**, so none exist. Interpolation
+synthesises a **finer grain never supplied**. That distinction is real and is
+**drawn nowhere in CORE today**. ⛔ The counter-argument is equally plain: three
+months from one quarter is three values nobody supplied.
+
+⭐ **`sentinel` and `watch` are the consumers to rule on first.** Every other
+consumer *displays* a number a human reads with a mark beside it; these two **act**
+on it. **A status that leaks into an alert manufactures an event.** And
+`period_labels` is a declared pack INPUT_CLASS — the concrete §7o leak path.
+
+## ⭐ 5 · METHODS — LINEAR IS THREE RULES, AND NON-LINEAR IS R2's SHAPE
+
+Linear means *divide evenly* for a flow, *interpolate the level* for a stock, and
+**never interpolate a ratio** — so it depends on the same missing classification
+as §2. Non-linear asserts seasonality nobody declared, needs ≥2 years of
+sub-annual history to fit, and the population has **4 quarterly and 0 monthly
+datasets**: for most clients there is no basis. ⭐ **Same shape R2 already applied
+to price optimisation.** Ship the alternatives as REFUSALS carrying their reason.
+
+## ⚠️ 6 · FIVE RULINGS OWED — AND ONE IS EASY TO MISS
+
+1. **Does interpolation survive §8a?** Blocks everything in item 5.
+2. **Where the stock/flow classification lives.** Blocks aggregation AND interpolation.
+3. **Band aggregation**: inside the engine, or point estimate with the band declared unavailable.
+4. **Partial buckets**: caveat, complete-only, or suppress. *(Recommended, mine not ruled: complete-only with the remainder named — a partial bucket that renders is a number that will be quoted.)*
+5. ⭐⭐ **IS SEMI-ANNUAL REAL?** It is in the ruled list and exists in **neither**
+   `PERIODS_PER_YEAR` **nor** `periods.py`. Monthly, quarterly and annual all
+   exist; **semi-annual exists nowhere**, and adding it touches the derivation, the
+   encoder, the label formatter and the divisor map.
