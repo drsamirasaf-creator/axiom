@@ -67,6 +67,13 @@ EXPECTED_SIDEBAR_LINKS = [
     "Valuation", "Planning",
     "Optimization", "Prescience AI",
     "Projects", "Monitoring", "Structure",
+    # ⭐ §4A RULING 1 — Risk & SWOT is whole, and in ANALYZE. It was a Dashboard
+    # tab; splitting its forward-looking distributions into STRATEGIZE would be
+    # pure by the ruling and worse for the reader.
+    "Risk & SWOT",
+    # ⭐ §4A — UTILITY IS RETIRED. These two are reference surfaces, not sections
+    # of the argument; they moved to a sidebar FOOTER. They are still sidebar
+    # links, so they stay asserted here — what changed is the group they sit in.
     "Course Workspace", "What is AXIOM?",
     # ⭐⭐ custody-10, AMENDED 2 Aug — THE MECHANISM MOVED, THE INTENT DID NOT.
     # The rule was: the data-upload door must have a PERMANENT, app-controlled
@@ -93,7 +100,9 @@ FORBIDDEN_SIDEBAR_HREFS = {"/reports", "/benchmarking"}
 # it went STALE, which is the failure mode a hardcoded contract has. Verified
 # against source before changing: the rendered group labels are ANALYZE,
 # STRATEGIZE, EXECUTE, UTILITY (plus WORKSPACE, never asserted here).
-EXPECTED_GROUPS = ["ANALYZE", "STRATEGIZE", "EXECUTE", "UTILITY"]
+# ⭐ §4A — UTILITY RETIRED. Three sections carry the argument the app makes;
+# Course Workspace and What is AXIOM? moved to a sidebar footer.
+EXPECTED_GROUPS = ["ANALYZE", "STRATEGIZE", "EXECUTE"]
 
 # old path -> where it should land + a content needle proving the destination.
 # VERIFY-ON-FIRST-RUN (see module docstring): dest/needle are reconstructed.

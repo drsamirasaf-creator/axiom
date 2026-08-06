@@ -19474,3 +19474,78 @@ stale.** The gate must be fixed promptly, by whoever notices.
 
 **Green run first, enable second.** Enabling against a red main is not a safety
 improvement, it is an outage: every push is blocked, including the correct ones.
+
+# ⭐⭐ §4A · THE INFORMATION ARCHITECTURE — FIVE RULINGS, RE-ORGANISED (5 Aug)
+
+**Governing principle: a user must never wonder where to look. Like things live in
+one place.** The app grew feature by feature and the flow stopped following the
+argument it makes.
+
+    WORKSPACE   My AXIOM — the ONE place anything goes IN
+    ANALYZE     Structure · Dashboard · Feedback · Profitability · Valuation · Risk & SWOT
+    STRATEGIZE  Planning · Optimization · Prescience AI
+    EXECUTE     Projects · Monitoring
+    (UTILITY retired — Course Workspace and What is AXIOM? move out of the sidebar)
+
+## ⭐ RULING 1 · RISK & SWOT STAYS WHOLE IN ANALYZE
+
+The audit found `/risk-analysis` genuinely spans both sections: Overview and Heat
+Map read as current state, while FCFF distribution, probability of attainment and
+probability of distress are forward-looking.
+
+⛔ **SPLITTING IT WOULD BE PURE BY THE RULING AND WORSE FOR THE READER.** A risk
+picture living in two sections is precisely what this re-organisation exists to
+end. ⭐ **The principle outranks the taxonomy**: one concept, one place.
+
+## ⭐ RULING 2 · BENCHMARKING IS A TAB, NOT A PAGE
+
+Fifteen tabs is a page's worth of content and none of it is a section — it is
+comparison evidence for the dashboard. It becomes a **Dashboard tab**.
+
+⛔ **AND THE MISLABELLED TAB IS CORRECTED IN THE SAME MOVE.** `SWOT_RISK_TABS`
+carried an entry labelled **"Benchmarking" pointing at `/risk-analysis`** while
+`/benchmarking` existed with fifteen tabs and sat in `FORBIDDEN_SIDEBAR_HREFS`.
+⭐ **A label and its destination disagreeing is a dead end wearing a signpost.**
+
+## ⭐⭐ RULING 3 · THE DEPARTMENT VIEW IS A LENS, NOT A SECTION
+
+`/department/$deptId` reproduces eight tabs that also exist at enterprise level.
+It is a **filter applied to whichever section the user is in**, not a twelfth
+destination.
+
+⭐ **THIS IS WHAT CLOSES MOST OF THE EIGHT DUPLICATIONS.** OKRs having four doors
+and KPIs three is largely the department view being a separate place to go rather
+than a way to look.
+
+## ⭐ RULING 4 · THE OBSERVATORY MOVES TO OPTIMIZATION
+
+A Shapley attribution over 64 driver coalitions belongs beside Solver and
+Frontier — the other decomposition surfaces. ⛔ **It is NOT retirable**; `f72e98d`
+established that removing it loses a capability.
+
+⭐ It sat under EXECUTE › Monitoring, where the audit found **no execution
+monitoring at all**: `/twin`'s two tabs were a driver decomposition and a
+data-entry form.
+
+## ⭐⭐ RULING 5 · MONITORING IS ASSEMBLY, NOT CONSTRUCTION
+
+Cockpit, the auto-Gantt, RACI, unowned, blockers, slipped milestones, cadence and
+RAG roll-ups **all already exist** — all behind `/initiatives`, most two clicks
+deep inside a row drawer.
+
+⛔ **A PMO VIEW REACHABLE ONLY AFTER CHOOSING A PROJECT IS BACKWARDS.** The CXO's
+question is "how is delivery going", which is portfolio-level by construction.
+**Nothing is built; the existing pieces are surfaced at the page.**
+
+## ⭐ AND WORKSPACE ABSORBS EVERY INPUT DOOR
+
+`/data-input` and `/twin`'s **Sync** tab — templates, uploads, actuals, lineage,
+re-forecast — join assumptions, OKRs, KPIs, declared impact, team and pilot
+viewers under **My AXIOM**. ⭐⭐ **The audit found Sync had no home under the three
+sections**: entering actuals is neither current-state analysis, nor a forward
+plan, nor project execution. **It is an input, and inputs now have one door.**
+
+⛔ **custody-10 HOLDS THROUGH THIS MOVE, BOTH LOCKS.** My AXIOM remains a
+permanent sidebar entry, and the upload surface remains reachable by walking its
+tab. **The path does not move** — every inbound link resolves, per the precedent
+set by the SWOT and pilot-viewer moves.
