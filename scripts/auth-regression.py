@@ -984,11 +984,15 @@ def run_mode(p, mode, token, headed=False, recycle_every=0, sweep=False):
         up_ok, up_why = True, ""
         try:
             # (b) — start at My AXIOM and walk the tab, exactly as a user would.
+            # ⭐⭐ THE TAB WAS RENAMED FROM "KPIs" TO "Data Input" (5 Aug) AND
+            # THIS LOCK MOVED IN THE SAME COMMIT. The old label named the wrong
+            # concept — /dashboard?tab=kpis owns measurement — so the lock was
+            # pinned to a misleading word and protected the wrong thing.
             _safe_goto(st["pg"], APP_BASE + "/my-axiom")
             st["pg"].wait_for_timeout(SETTLE_MS)
-            tab = st["pg"].get_by_role("link", name="KPIs", exact=True)
+            tab = st["pg"].get_by_role("link", name="Data Input", exact=True)
             if tab.count() == 0:
-                up_ok, up_why = False, ("no 'KPIs' tab on /my-axiom — the door "
+                up_ok, up_why = False, ("no 'Data Input' tab on /my-axiom — the door "
                                         "is no longer reachable from the "
                                         "Workspace entry point")
             else:
