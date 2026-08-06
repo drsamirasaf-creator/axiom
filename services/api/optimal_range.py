@@ -196,6 +196,9 @@ def build_range(frontier_out):
             "note": ("The recommended point is chosen by the risk-aversion "
                      "weight. It is a declared prior, not a measurement: moving "
                      "it moves the recommendation along the frontier.")},
+        # ⭐ A · carried through from the sweep, not restated here. A second
+        # description of the same objective is a second thing to keep in step.
+        "objective_statement": frontier_out.get("objective_statement"),
         "narrative": frontier_out.get("narrative") or [],
     }
 

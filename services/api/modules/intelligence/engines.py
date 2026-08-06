@@ -33,6 +33,7 @@ valuation result without an explicit, recorded user decision.
 import re
 from ..financials import engines as fin
 from ..financials import ratios
+from ... import objective_statement as objstmt
 from ..valuation import engines as val
 
 # ---- 1. Suggestion gates ---------------------------------------------------
@@ -421,6 +422,9 @@ def frontier(data: dict, de_grid: list | None = None,
          "Pareto-efficient points are rational places to stand — lambda "
          "chooses among them, explicitly."]
     return {"risk_aversion_lambda": risk_aversion, "mode": mode,
+            # ⭐ A · the objective, stated in the payload rather than left to the
+            # narrative. A sentence in prose cannot be asserted; a field can.
+            "objective_statement": objstmt.frontier_objective(risk_aversion),
             "current_de": round(x_cur, 4), "points": points,
             "recommended": best, "narrative": n,
             "checkpoints": checkpoints,
@@ -2342,10 +2346,31 @@ def _apply_levers(data: dict, levers: dict) -> dict:
 
     # leverage: scale long-term debt AND price it on a distress-adjusted
     # curve. As debt/revenue rises past a kink, the cost of debt climbs
-    # quadratically (same shape as the optimizer's published curve), so more
-    # leverage first LOWERS WACC via the tax shield, then RAISES it as
-    # distress dominates — giving the lever a real optimum instead of a
-    # monotonic "more debt is always better".
+    # quadratically, so more leverage first LOWERS WACC via the tax shield and
+    # then RAISES it as distress dominates.
+    #
+    # ⛔⭐⭐ THAT IS THE INTENT. IT IS NOT WHAT HAPPENS FOR MOST COMPANIES, AND
+    # THIS COMMENT USED TO CLAIM OTHERWISE — it asserted the curve gives "a real
+    # optimum instead of a monotonic 'more debt is always better'". Measured on
+    # the showcase dataset (CORE §8m.1): EV is STRICTLY MONOTONIC in this lever
+    # across its whole range and `cost_of_debt` never leaves 0.06000. The
+    # distress spread never fires, so the optimiser returns the grid MAXIMUM.
+    #
+    # ⭐ THE REASON IS THE KINK'S BASE. It is debt/REVENUE at 0.25; the showcase
+    # company sits at 0.118 and reaches only 0.213 with the lever at +1.0 —
+    # short of its own kink at full travel. The curve is correct and simply
+    # never engages. Above debt/revenue 0.25 it does, and the lever then agrees
+    # with the capital-structure frontier.
+    #
+    # ⛔ NOT FIXED HERE, AND DELIBERATELY. This kink is ONE OF FOUR leverage-risk
+    # assumptions with unrelated constants (§8m.1 §3); reconciling them is the
+    # §7r-O completion, it is queued as its own lane, and it MOVES PUBLISHED
+    # VALUATIONS. What this lane does instead is stop the boundary result being
+    # reported as an optimum — see `no_lever_at_a_bound`.
+    # ⭐ A comment describing an intention the code does not implement is the
+    # class this codebase names; it is corrected rather than deleted, because
+    # the intent is still the right one and the next reader needs to know it is
+    # unmet rather than absent.
     if abs(lev_shift) > 1e-12:
         kd0 = float(d["company"]["cost_of_debt"])
         y0s = y0
@@ -2838,14 +2863,53 @@ def optimal_levers(data: dict, objective: str = "ev") -> dict:
 
     obj_label = ("enterprise value" if objective == "ev"
                  else "risk-adjusted enterprise value (RAEV)")
+    # ⭐⭐ A SOLUTION AT A BOUND IS A SOLUTION THE SEARCH DID NOT FIND.
+    # `levers_within_bounds` asked whether every lever lay INSIDE its range and
+    # went green — and it went green *because* leverage sat exactly on the grid
+    # maximum, which is inside the range by the ≤ test. ⛔ A CHECKPOINT THAT
+    # PASSES ON THE BOUNDARY CONDITION CANNOT SEE THE BOUNDARY, and the panel
+    # reported "all checkpoints pass" over a corner solution (CORE §8m.1).
+    #
+    # ⭐ At a corner the optimiser is reporting where it was told to stop looking,
+    # not where the objective turns. On the showcase dataset EV is strictly
+    # monotonic in leverage across the whole range and the distress spread never
+    # fires, so "+1.0" means "as much debt as the box allows" and nothing more.
+    at_bound = {}
+    for k, v in current.items():
+        spec = SCENARIO_LEVERS[k]
+        if abs(v - spec["max"]) < 1e-9:
+            at_bound[k] = "max"
+        elif abs(v - spec["min"]) < 1e-9:
+            at_bound[k] = "min"
+    # ⛔ `min` and `max` are BOTH corners. An earlier reading of this defect saw
+    # only the maximum because that is where leverage landed; a lever pinned to
+    # its floor is the same failure with the opposite sign.
+    outside = [k for k, v in current.items()
+               if not (SCENARIO_LEVERS[k]["min"] - 1e-9 <= v
+                       <= SCENARIO_LEVERS[k]["max"] + 1e-9)]
     checkpoints = [
         {"name": "optimum_beats_base",
          "value": round(opt_ev - base_ev, 2), "expected": ">= 0",
          "pass": opt_ev >= base_ev - 1.0},
-        {"name": "levers_within_bounds", "value": True, "expected": True,
-         "pass": all(SCENARIO_LEVERS[k]["min"] <= v <= SCENARIO_LEVERS[k]["max"]
-                     for k, v in current.items())}]
+        # ⭐ THE OLD QUESTION IS KEPT, because a lever OUTSIDE its range is a
+        # different and worse bug than one on the edge, and the new check would
+        # mask it: an out-of-range lever is not at a bound either.
+        {"name": "levers_inside_declared_ranges",
+         "value": outside or True, "expected": True, "pass": not outside},
+        # ⭐⭐ THE ONE THAT NOW FAILS AT A CORNER.
+        {"name": "no_lever_at_a_bound",
+         "value": at_bound or True,
+         "expected": "every lever strictly inside its search range",
+         "pass": not at_bound}]
     return {"objective": objective, "objective_label": obj_label,
+            # ⭐ A · the objective, said out loud, from the one module that
+            # states both so they cannot drift apart.
+            "objective_statement": objstmt.levers_objective(objective,
+                                                            RAEV_LAMBDA),
+            # ⭐ B · the bound facts, so a surface can report "unbounded" rather
+            # than "optimal" without re-deriving which levers are pinned.
+            "levers_at_bound": at_bound,
+            "bounded": not at_bound,
             "optimal_levers": current, "active_levers": active,
             "base_enterprise_value": round(base_ev, 2),
             "optimal_enterprise_value": round(opt_ev, 2),
@@ -2856,13 +2920,25 @@ def optimal_levers(data: dict, objective: str = "ev") -> dict:
             "execution_risk_penalty": round(exec_penalty, 2),
             "net_of_execution_risk": round(opt_ev - exec_penalty, 2),
             "optimal_downside_risk": round(opt_ra["mean"] - opt_ra["percentiles"]["p05"], 2),
-            "reading": (f"Maximizing {obj_label}, the optimal move is "
+            # ⭐⭐ THE WORD "OPTIMAL" IS WITHDRAWN AT A CORNER. The figures are
+            # unchanged — this sentence is the only thing that moves — because
+            # calling a boundary "the optimal move" tells a CFO the search found
+            # a turning point when it found the edge of its own box.
+            "reading": ((f"Maximizing {obj_label}, "
+                         + (objstmt.AT_BOUND_LEAD if at_bound
+                            else objstmt.OPTIMUM_LEAD))
                         + (", ".join(f"{SCENARIO_LEVERS[k]['label']} "
                                      f"{v:+g}" for k, v in active.items())
                            if active else "no change from plan")
                         + f" — worth {opt_ev - base_ev:+,.0f} "
                         f"({(opt_ev - base_ev) / base_ev * 100:+.1f}%) "
-                        f"versus the current plan."),
+                        f"versus the current plan."
+                        + (" ⚠ "
+                           + ", ".join(f"{SCENARIO_LEVERS[k]['label']} sits at "
+                                       f"the {b} of its range"
+                                       for k, b in at_bound.items())
+                           + ". " + objstmt.AT_BOUND_WARNING
+                           if at_bound else "")),
             "checkpoints": checkpoints,
             "all_checkpoints_pass": all(c["pass"] for c in checkpoints)}
 
@@ -2974,13 +3050,25 @@ def unified_optimization(data: dict) -> dict:
                           "levers": static_ev["optimal_levers"],
                           "ev_uplift": static_ev["value_gap"],
                           "ev_uplift_pct": static_ev["value_gap_pct"],
-                          "reading": static_ev["reading"]},
+                          "reading": static_ev["reading"],
+                          # ⭐ A and B travel with the lens. The panel renders these, and
+                          # a lens that carried the reading WITHOUT the bound facts would
+                          # print the corrected sentence beside an unflagged corner.
+                          "objective_statement": static_ev["objective_statement"],
+                          "levers_at_bound": static_ev["levers_at_bound"],
+                          "bounded": static_ev["bounded"]},
             "static_raev": {"basis": "DCF / risk-adjusted",
                             "objective": "maximize risk-adjusted EV",
                             "levers": static_raev["optimal_levers"],
                             "ev_uplift": static_raev["value_gap"],
                             "ev_uplift_pct": static_raev["value_gap_pct"],
-                            "reading": static_raev["reading"]},
+                            "reading": static_raev["reading"],
+                            # ⭐ A and B travel with the lens. The panel renders these, and
+                            # a lens that carried the reading WITHOUT the bound facts would
+                            # print the corrected sentence beside an unflagged corner.
+                            "objective_statement": static_raev["objective_statement"],
+                            "levers_at_bound": static_raev["levers_at_bound"],
+                            "bounded": static_raev["bounded"]},
             "dynamic": {"basis": "Vol II parametric / equity value",
                         "objective": "optimal dynamic growth-and-financing policy",
                         "equity_status_quo": round(dp_base_eq, 2),

@@ -237,3 +237,15 @@ def test_the_ends_are_drawn_from_the_efficient_set_only():
     out = R.build_range(_frontier([_pt(0.0, 100.0, 900.0), eff_hi, dominated],
                                   0.0, eff_hi))
     assert out["ends"]["value_max"]["de"] == 1.0
+
+
+def test_the_range_carries_the_sweeps_objective_statement_and_does_not_restate_it():
+    """⭐ A · One description of one objective. The range SHAPES the sweep; if it
+    wrote its own statement there would be two to keep in step, which is the
+    drift the sole-ownership programme exists to prevent — in prose."""
+    cur = _pt(0.6, 3215.4, 1662.1)
+    f = _frontier([cur], 0.6, cur)
+    f["objective_statement"] = {"formula": "SENTINEL", "prior": {"weight_on_value": 0.5}}
+    out = R.build_range(f)
+    assert out["objective_statement"]["formula"] == "SENTINEL"
+    assert out["objective_statement"]["prior"]["weight_on_value"] == 0.5

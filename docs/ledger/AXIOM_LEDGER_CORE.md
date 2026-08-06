@@ -20724,3 +20724,100 @@ resolution, and both are rulings rather than builds.**
 ⚠ **D MOVES PUBLISHED NUMBERS.** `cost_of_debt_at`'s constants are recorded here as
 undocumented placeholders reproduced to preserve behaviour; choosing one owner means
 choosing whose constants survive.
+
+---
+
+# ⭐⭐ §8m.2 · A AND B BUILT; C REFUSED; D QUEUED AS §7r-O's COMPLETION (6 Aug)
+
+Report: `docs/reports/objective-labels-and-bounds-2026-08-06.md`.
+**Ruled 6 Aug: A and B now, D queued as its own lane, C refused** — dropping the
+leverage lever removes a real effect to avoid a contradiction.
+
+## ⭐ A · BOTH OBJECTIVES ARE STATED, FROM ONE MODULE
+
+`services/api/objective_statement.py` holds **both** statements. ⛔ Two
+descriptions of two objectives, maintained apart, drift the way two definitions
+of a quantity drift — the sole-ownership failure in prose instead of arithmetic —
+so they are written next to each other and a change to one is read against the
+other. The **same component** renders both tabs, so they cannot describe
+themselves in two different shapes.
+
+## ⭐⭐ B · `weight_on_value` IS THE FIELD THAT RESOLVES THE COLLISION
+
+Both priors read **0.5** and mean different things. Printing both priors would
+have *reported* the collision; what a reader can actually compare is the weight
+each objective puts on **value**:
+
+| | prior | enters as | **weight on value** | visible | adjustable |
+|---|---|---|---|---|---|
+| `frontier` | 0.5 | convex blend | **0.5** | yes | **yes** — a slider |
+| `optimal_levers[ev]` | none | no risk term | **1.0** | yes | n/a |
+| `optimal_levers[raev]` | 0.5 | penalty off a full mean | **1.0** | **yes, from this lane** | **no — a module constant** |
+
+⭐ The blend's weight is **derived** (`1 − λ`) and tracks the slider; a typed
+`0.5` would have stopped tracking the moment the reader moved it. ⭐ The
+penalty's is **1.0 whatever its prior** — that is the whole difference, and it
+must not be reported as if the prior could take weight off value.
+
+⛔ **The asymmetry is stated rather than smoothed over**: one prior is a slider,
+the other is a constant that is now *shown* and still cannot be moved. Dressing
+it up as a setting would have been the easier lie.
+
+## ⛔⭐⭐ C · A CHECKPOINT THAT GOES GREEN ON THE BOUNDARY CANNOT SEE THE BOUNDARY
+
+`levers_within_bounds` asked whether every lever lay INSIDE its range. A lever
+sitting exactly on the maximum satisfies `min ≤ v ≤ max`, so **it passed
+precisely at the corner it would have existed to catch**, and the panel reported
+"all checkpoints pass" over a corner solution.
+
+Replaced by **`no_lever_at_a_bound`**, which fails there. ⭐ The old question is
+**kept** as `levers_inside_declared_ranges`: a lever OUTSIDE its range is a
+different and worse bug, and it is *not at a bound* either — the new check would
+have masked it.
+
+⭐ **Both corners.** The observed defect landed on the maximum; a lever pinned to
+its floor is the same failure with the opposite sign.
+
+⭐ **And the word "optimal" is withdrawn at a corner.** The reading now says the
+best move **inside the search range**, and names the result **UNBOUNDED in that
+lever, not optimal** — because a boundary is where the search was told to stop,
+not where the objective turns.
+
+## ⭐ THE FALSE COMMENT, CORRECTED RATHER THAN DELETED
+
+`_apply_levers` claimed its curve gives *"a real optimum instead of a monotonic
+'more debt is always better'"*. Measured: **EV is strictly monotonic across the
+lever's whole range and `cost_of_debt` never leaves 0.06000.** The kink's base is
+debt/**revenue** at 0.25; the showcase company sits at 0.118 and reaches only
+0.213 at full travel, **short of its own kink**.
+
+⭐ Corrected, not removed: the intent is still right, and the next reader needs to
+know it is **unmet** rather than absent.
+
+## ⭐ NO NUMBER MOVED, AND IT IS ASSERTED
+
+`scripts/lane-no-figure-moved.py` walked **407 numeric leaves across 8 payloads**
+before the lane's first edit and after its last. **Every pre-existing figure is
+identical**; fields were added. ⭐ Named `lane-`, not `check-`, because it
+compares against a scratchpad baseline and would be permanently inert on CI —
+calling it `check-` would have claimed a standing guarantee it cannot give.
+
+## ⚠️ D · QUEUED — §7r-O's COMPLETION, AND IT MOVES PUBLISHED VALUATIONS
+
+The leverage-risk assumption still exists **four times** on four bases with
+unrelated constants (§8m.1 §3), and **the un-owned quantity is the one that
+decides the sign**. A and B make the surface truthful; they do not reconcile the
+assumption.
+
+⛔ **§7o binds anything reaching a pack.** `cost_of_debt_at`'s constants are
+recorded here as **undocumented placeholders reproduced to preserve behaviour**,
+so choosing one owner means choosing **whose constants survive** — and that
+changes published valuations. It is a lane of its own, gated on the §7u
+assumptions registry carrying all four with visible provenance first.
+
+## ⛔ C (the option) REFUSED, AND THE REASON RECORDED
+
+Dropping the leverage lever would have removed a **real effect** — the tax shield
+is not an artefact — to avoid a contradiction that is really a labelling failure.
+**A surface that omits a true effect to look consistent is less honest than one
+that shows two objectives and says what each maximises.**

@@ -103,6 +103,15 @@ jobs:
       # DECLARED owner, so a third one has to be added deliberately.
       - name: the two frontiers stay apart (§7j.6)
         run: python scripts/check-two-frontiers.py
+      # ⭐⭐ Two optimisers gave opposite advice on leverage one tab apart and
+      # NEITHER SAID WHAT IT MAXIMISED (§8m.1). They agreed on enterprise value
+      # to within 0.07% — the contradiction was entirely in the objective, and
+      # the objective was the one thing not on the page. A labelling convention
+      # rots silently, so it is a gate: a new optimiser must declare its
+      # objective, its prior, and the weight that prior puts on VALUE — the only
+      # number that makes two different priors comparable.
+      - name: every optimiser states its objective (§8m.1 A/B)
+        run: python scripts/check-objective-labelled.py
       # ⭐ WIRED 30 Jul AFTER IT WAS FOUND BLIND AND UNNOTICED. It exits 0 when
       # healthy and 2 when its own detection floor fails, so this step catches
       # the checker going blind — which is what happened: the sole-owner
