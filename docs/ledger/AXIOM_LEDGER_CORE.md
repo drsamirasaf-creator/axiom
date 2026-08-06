@@ -19669,7 +19669,17 @@ times. Two decisions are load-bearing:
 written one lane earlier, in `/twin`. **Factoring is what stops the third
 mechanism being born.**
 
-## ⭐ NAVIGATION SEARCH — 107 DESTINATIONS, DERIVED
+## ⭐ NAVIGATION SEARCH — 106 DESTINATIONS, DERIVED
+
+> ⚠️ **CORRECTED 7 Aug: this read 107.** The generator prints **106**
+> (33 pages · 73 tabs) and `check-nav-index` regenerates and diffs, so 106
+> is the measured figure. ⭐⭐ **THE MECHANISM IS WORTH KEEPING:** counting
+> the generated file with the obvious pattern — `label:` or `kind: "` —
+> returns **107**, because `nav-index.generated.ts` declares its own
+> `NavEntry` TYPE and the type's fields match. **The schema was counted as
+> a destination.** Only `{ label:` — or the generator's own tally —
+> excludes it. A denominator taken by grepping a generated file includes
+> that file's declaration of itself.
 
 The `cmdk` palette was **already in production** in `CurrencySelector` and
 `/my-axiom`, never mounted app-wide — ⭐ **the eighteenth lane to find work under
@@ -21336,3 +21346,65 @@ inherits them. **No `basis:` or `headline:` field was changed.**
 
 `staging.v2` records the founder ruling — **DuPont ships in V1.0** (7 Aug) — beside
 the scope line it modifies, which is left intact as the historical record.
+
+---
+
+# ⭐⭐ §7o.2 · §7o DOES NOT BIND THE DUPONT BASIS RULING (7 Aug) — REPORT ONLY
+
+> ⚠️ **Numbered §7o.2, not §7o.1 — and the guard is why.** The first draft of
+> this entry took `§7o.1`, which already exists at line 18887.
+> `check-ledger-anchors.py`, written two lanes ago to freeze eight known
+> collisions and fail on a ninth, **caught it before the commit**. ⭐ The
+> mechanism it was written about — incrementing without checking — reproduced
+> itself in the very next lane that appended to CORE.
+
+Report: `docs/reports/dupont-basis-7o-2026-08-07.md`. Precondition for the
+`dupont_roe_reconciliation` ruling recorded at §7r-D.1.
+
+## ⭐ 1 · NOTHING PUBLISHED OR FROZEN CARRIES EITHER AT AVERAGE BASIS
+
+Every store examined, with its denominator:
+
+| store | rows examined | `asset_turnover` | `financial_leverage` |
+|---|---|---|---|
+| `valuation_runs` (`result` + `params`) | **807** | **0** | **0** |
+| `ax_packs` (all columns) | **24** | **0** | **0** |
+| `ax_changeset_snapshots` — the frozen pack inputs | **40** | **0** | **0** |
+| `ax_radar_snapshots` | **22** | **0** | **0** |
+| `state_snapshots` | **1** | **0** | **0** |
+| `pack.py` · `pack_render.py` · `pack_dist.py` (26 Cadence refs) | 3 files | **0** | **0** |
+
+⭐ **§7o DOES NOT BIND.** The basis ruling is an **edit**, not a versioned change,
+and no published artefact moves when it is made.
+
+## ⛔ 2 · BUT THEY ARE SERVED AND ON SCREEN TODAY
+
+Both emit — `asset_turnover` **0.8190**, `financial_leverage` **1.5325** — through
+`/api/v1/metrics/ratios/{dataset_id}`, **one of 340 openapi paths and the only
+ratio path**, rendered by `RatioSurface`, **mounted on `/dashboard?tab=ratios`** —
+one of **106** nav destinations. **45 of 77 registry ratios compute** on the
+showcase dataset, matching the router's own docstring.
+
+⭐ **So the ruling changes what a reader sees today and reverses nothing already
+published.** Those are different exposures, and separating them is the whole point
+of this precondition.
+
+## ⚠️ 3 · A PACK PIN IS NOW STALE
+
+`pack.py` pins `ratio_registry: {executed: true, renders_any_figure: false}`. Its
+own comment reasons that *"nothing in the SERVING path calls it… when a surface is
+switched over, THAT is when the version becomes real."*
+
+⛔ **A surface HAS been switched over.** `RatioSurface` renders registry figures on
+the Dashboard, so **`renders_any_figure: false` is no longer true** — and the pin's
+comment states the exact condition under which it must change. ⭐ Not changed here:
+this is a report-only lane and the pin governs pack provenance.
+
+## ⭐ 4 · THE NAV COUNT IS 106, AND THE 107 HAS A MECHANISM
+
+The generator prints **106** (33 pages · 73 tabs) and `check-nav-index`
+regenerates and diffs. ⭐⭐ **Counting the generated file with the obvious pattern
+returns 107**, because `nav-index.generated.ts` declares its own `NavEntry` TYPE
+and the type's `label:` and `kind: "` fields match it. **The schema was counted as
+a destination.** Corrected in CORE and ONBOARDING with the mechanism recorded, so
+it is not re-derived the same way.

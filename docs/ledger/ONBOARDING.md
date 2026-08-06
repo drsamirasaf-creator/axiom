@@ -609,7 +609,10 @@ runtime lock moved with it, and `check-sidebar-contract.py` fails if the two eve
 part (§4A.2).
 
 ⭐ **Every tab is addressable** — 19 of 19 strips are URL-driven, and a generated
-navigation index of **107 destinations** is guarded by regenerate-and-diff.
+navigation index of **106 destinations** is guarded by regenerate-and-diff.
+⚠️ *Corrected 7 Aug from 107: grepping the generated file for `label:`
+counts its own `NavEntry` type declaration as an entry. Use the
+generator's printed count, never a grep.*
 **Regenerate with `python3 scripts/gen-nav-index.py` after any route or tab
 change**, or `check-nav-index.py` fails.
 
