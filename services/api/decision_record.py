@@ -650,6 +650,14 @@ NOT_A_DECISION = {
                    "DECISION is what the pilot's own results lead the company to "
                    "do, not who was given read access to them",
     "AssessmentInvite": "an invitation is access administration",
+    # ⭐⭐ §4C — ASKING SOMEBODY FOR A SPREADSHEET IS ROUTING, NOT DECIDING.
+    # The request records that a thing was asked for and has not come back; the
+    # DECISION is whatever the company does with the data once it arrives, which
+    # the overrides, dispositions and initiatives already carry.
+    # ⛔ Withdrawing a request is information — "we stopped needing this" — but it
+    # is still administration of a workflow, not a judgement about the business.
+    "DataRequest": "asking for an artefact is routing; the decision is what the "
+                   "company does with the data once it arrives",
     "StrategicMove": "a move in the library is an option, not a decision to take it",
     "FrontierJob": "job bookkeeping",
     "PilotCompany": "commercial lifecycle, not a company's own decision",

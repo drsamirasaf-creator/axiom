@@ -599,6 +599,135 @@ def milestone_evidence_state(*, status, criterion, achievement, predates,
                     "criterion — complete by assertion, not by evidence."}
 
 
+# ⭐⭐ §4C — THE REQUEST OBJECT. The model recorded only ARRIVALS: a dataset
+# uploaded, a roster ingested, every one of them a thing that HAS happened.
+# Nothing represented a thing ASKED FOR and not yet returned, so "Finance has had
+# the P&L template for 19 days" was unrepresentable and the admin's status board
+# had nothing to render. What kills a pilot is a spreadsheet in an inbox.
+
+# ⛔ A CLOSED VOCABULARY. Free text would make the board ungroupable — "P&L
+# template", "P and L template" and "pnl" would be three outstanding items.
+REQUEST_ARTEFACTS = (
+    "financial_template",     # the locked, validated workbook
+    "participant_list",       # the assessor roster for a department
+    "assumptions",            # the assumption set a CXO owns
+    "org_data",               # departments, heads, reporting lines
+    "other",                  # ⭐ named, so "something else" is still groupable
+)
+
+
+class DataRequest(Base):
+    """Something asked of somebody, and not yet returned — §4C ruling 2.
+
+    ⭐⭐ ONE ROW PER (ARTEFACT, RECIPIENT). "Finance owes 1 of 2" is the sentence
+    the status board exists to produce, and it is unsayable at any coarser grain.
+
+    ⭐ MODELLED ON `AssessmentInvite` — what, who, asked, returned — which is
+    already this shape and already works.
+
+    ⛔ BUT A SPREADSHEET IS NOT AN INVITE. It carries no single-use `jti`, and it
+    may be answered by somebody other than the addressee. `recipient_email` is who
+    was ASKED; `answered_by_email` is who ANSWERED. ⭐ THOSE MAY DIFFER AND THE
+    DIFFERENCE IS INFORMATION — a template returned by the FP&A analyst rather
+    than the CFO it was sent to is a fact about how the company actually works,
+    and collapsing the two would record the CFO as having filed it.
+
+    ⭐ A DECLARATION (§4v.1): actor, timestamp, revoked_at, revoked_by. Withdrawing
+    a request is information — "we stopped needing this" — and a DELETE would
+    store the one thing certainly wrong: that nobody ever asked.
+    """
+    __tablename__ = "ax_data_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "artefact IN ('financial_template','participant_list','assumptions',"
+            "'org_data','other')", name="ck_request_artefact"),
+        Index("ix_request_open", "company_id", "recipient_email", "revoked_at"),
+    )
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    artefact = Column(String(32), nullable=False)
+    label = Column(String(200), nullable=True)      # free-text detail, never the key
+    department_id = Column(Integer, index=True, nullable=True)
+    # ── who was ASKED ──
+    recipient_email = Column(String(255), nullable=False, index=True)
+    recipient_name = Column(String(255), default="", nullable=False)
+    # ── when ──
+    asked_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # ⭐ OPTIONAL BY RULING. Most asks have no deadline, and inventing one would
+    # paint the whole board red on day one and teach the reader to ignore it.
+    due_at = Column(DateTime, nullable=True)
+    # ── who ANSWERED, and when ──
+    answered_at = Column(DateTime, nullable=True)
+    answered_by_email = Column(String(255), nullable=True)
+    note = Column(Text, nullable=True)
+    # ── the declaration ──
+    asked_by = Column(Integer, nullable=False)
+    asked_by_label = Column(String(160), nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+    revoked_by = Column(Integer, nullable=True)
+
+
+def live_requests(rows):
+    """Requests that have not been withdrawn — §4v.1.
+
+    ⭐⭐ THE SWEEP IS PAID UP FRONT. The axis-link lane added `revoked_at` to
+    tables with ~20 existing readers, correct only because no writer existed yet.
+    This table ships WITH its writer, so every read is filtered from the first
+    commit and a test walks the module to assert it.
+    """
+    return [r for r in rows if getattr(r, "revoked_at", None) is None]
+
+
+def request_state(r) -> str:
+    """outstanding · overdue · answered · withdrawn.
+
+    ⭐ ORDER MATTERS. Withdrawn beats everything — ⛔ chasing something nobody
+    wants any more is how a status board loses its reader. Answered beats overdue,
+    because a late answer is still an answer.
+    """
+    if getattr(r, "revoked_at", None) is not None:
+        return "withdrawn"
+    if getattr(r, "answered_at", None) is not None:
+        return "answered"
+    due = getattr(r, "due_at", None)
+    # ⭐ NO DUE DATE IS NOT "DUE NOW". Treating absence as zero is the same
+    # fabrication `placement_block` refuses when it declines to place an unjudged
+    # item at the origin.
+    if due is not None and due < datetime.utcnow():
+        return "overdue"
+    return "outstanding"
+
+
+def answered_by_substitute(r) -> bool:
+    """Did somebody other than the addressee answer?
+
+    ⭐ CASE-INSENSITIVE. Email is case-insensitive in the part that routes, and
+    manufacturing a substitution out of capitalisation would report a fact about
+    the company that is not true.
+    """
+    who = (getattr(r, "answered_by_email", None) or "").strip().lower()
+    asked = (getattr(r, "recipient_email", None) or "").strip().lower()
+    return bool(who) and bool(asked) and who != asked
+
+
+def request_summary(rows) -> dict:
+    """What a recipient owes — ⭐ "Finance owes 1 of 2", per §4C ruling 2."""
+    live = live_requests(rows or [])
+    states = [request_state(r) for r in live]
+    answered = states.count("answered")
+    overdue = states.count("overdue")
+    outstanding = states.count("outstanding") + overdue
+    return {
+        "asked": len(live),          # ⭐ withdrawn requests are not owed by anyone
+        "answered": answered,
+        "outstanding": outstanding,
+        "overdue": overdue,
+        "substituted": sum(1 for r in live if answered_by_substitute(r)),
+        "sentence": f"{outstanding} of {len(live)} outstanding" if live
+                    else "nothing outstanding",
+    }
+
+
 # ⭐⭐ RATINGS AND THE URGENT/IMPORTANT MATRIX — §4u.1 rulings 6–8 and the 5 Aug
 # amendment. Both attach to an idea or an issue by (kind, id) rather than by a
 # foreign key, because the two live in different tables and a rating is the same

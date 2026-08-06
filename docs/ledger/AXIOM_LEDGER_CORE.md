@@ -19947,3 +19947,65 @@ evidence beside it.
 - ⭐ **`demo-rot` has never once succeeded** — five runs, zero assertions. The
   playwright install is fixed (5 Aug) but **no green run exists yet**, so its
   coverage remains **unproven, not restored**.
+
+# ⭐⭐ §4C · THE REQUEST OBJECT — FIVE RULINGS (5 Aug)
+
+⭐ **THE ADMIN IS A ROUTER, NOT A DATA HOLDER**, and the model recorded only
+ARRIVALS. "Finance has had the P&L template for 19 days" was unrepresentable, so
+the status board could not be rendered from anything. **What a pilot dies of is a
+spreadsheet in an inbox, and nobody lying about it.**
+
+## ⭐⭐ RULING 1 · A HUMAN EDIT BEATS A MACHINE UNTIL EXPLICITLY RETRACTED
+
+⛔ **NOT EXPIRY** — a timer silently returns control to the machine, which is the
+failure this rule exists to prevent wearing a schedule.
+⛔ **NOT REVIEW-ON-NEXT-UPLOAD** — that puts the decision in front of someone at
+their least-equipped moment, mid-import.
+⛔ **NOT A PER-FIELD SOURCE RANKING** — a second list, subject to the same law as
+every other, and it rots.
+
+⭐ **A STALE CORRECTION STAYS VISIBLE WITH ITS ACTOR AND DATE. That is the honest
+failure mode**: a wrong number somebody owns beats a right number nobody chose.
+
+⭐ Matches `MetricOverride` exactly — *"an attributed layer OVER a computed value.
+Never a destructive write"* — so the ruling describes what is already built rather
+than requiring a new mechanism.
+
+## ⭐ RULING 2 · A REQUEST IS PER (ARTEFACT, RECIPIENT)
+
+Carrying an **asked-at** and an **optional due date**.
+⭐⭐ **"Finance owes 1 of 2" IS THE SENTENCE THE STATUS BOARD EXISTS TO PRODUCE**,
+and it is unsayable at any coarser grain.
+
+## ⭐⭐ RULING 3 · STATEMENT EDITING IS ALREADY RULED — DO NOT RE-LITIGATE IT
+
+The override architecture **was chosen**, and the write endpoint is **deliberately
+withheld** pending the §4x provenance-travel review. `accounts.py` says so in
+place: *"NO ROUTER: Stage 1 is the model and the read path only, and the write
+endpoint is deliberately absent until provenance-travel is reviewed."*
+
+⛔ **THE ITEM OWED IS COMPLETING THAT REVIEW, NOT PICKING AN ARCHITECTURE.**
+⭐ Recorded here because a scope report presented it as an open architectural
+choice, and an open choice invites the answer already rejected.
+
+## ⭐ RULING 4 · CYCLES STAY COMPANY-WIDE
+
+⛔ Department-scoped cycles would **shrink n per cycle, so MORE slices fall below
+the anonymity floor and LESS is publishable** — and fragment the corpus, so trend
+analysis stops working.
+
+⭐ **THE LENS ALREADY DELIVERS PER-DEPARTMENT SLICES** from one company-wide
+cycle (`_dept_cei_map`), floored. **The request was self-defeating**, and what is
+genuinely absent is the other half — customer, partner and supplier instruments,
+which is a content programme, not a ruling.
+
+## ⭐ RULING 5 · A RETURN ADDRESS IS OPT-IN, AND ONLY FOR THE ANONYMOUS CASE
+
+⭐ **Discussion-sourced ideas need no ruling at all.** `ThreadPost.author_user_id`
+and `Initiative.source_thread_id` already carry author and provenance — **those
+contributors can simply be told, with no anonymity traded.**
+
+⛔ The genuine remainder is narrow: an idea submitted through the **single-use
+anonymous assessor invite**, where no durable address exists. **Opt-in per
+submission, never defaulted on** — the invite's single-use `jti` is what makes
+*n = 40* mean forty, and a default return address would erode it silently.
