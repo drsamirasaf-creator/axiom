@@ -20224,3 +20224,158 @@ would show a department three times its size.
 3. **`objective → initiative` links are empty** — the table exists, has a writer,
    and holds zero rows for company 20. Objectives connect only through their
    KPIs. Intended shape, or an unpopulated link kind?
+
+---
+
+# ⭐⭐ §8B · A PROJECT BUDGET IS A PARALLEL LEDGER — RULED 6 Aug
+
+**Answers the blocking ruling owed by `docs/reports/pmo-module-scope-2026-08-06.md`
+(`9b1708a`), which recorded it as the one that blocks the whole economics tier.**
+
+## ⭐⭐ THE RULING
+
+> **A project budget does NOT reconcile to the income statement.**
+
+**Securing budget is the CXO's job; reconciliation is the CFO's.** A project
+budget is a **commitment**, not an accounting fact — and forcing it to tie would
+mean **refusing a number the client holds**.
+
+⭐ **THAT LAST CLAUSE IS THE WHOLE ARGUMENT.** The alternative was to make project
+cost a dimension of `ax_dimension_observation`, inheriting T1's reconciler and its
+`Unallocated / Other` residual — structurally attractive, and it would have made
+`detail + Unallocated = the statement line` true by construction. ⛔ **But a
+reconciler that refuses is a reconciler that rejects a client's own commitment
+because their general ledger has not caught up with it.** A budget approved in
+March and spent in June does not tie in March, and it is not wrong in March.
+
+## ⭐⭐ THE CONSEQUENCE, RECORDED WITH IT — IT MUST NEVER PRESENT AS RECONCILED
+
+⛔ **NO TOTAL THAT IMPLIES IT TIES TO THE STATEMENTS.** Not a "total project cost"
+row beside a statement figure, not a variance against an accounted line, and not a
+residual — ⭐ **a residual is the shape of a reconciliation**, and rendering one
+would assert the tie this ruling refuses.
+
+⛔ **AND ANY COST-OF-DELAY FIGURE IS STATED AS AGAINST DECLARED BUDGET, NEVER AS
+ACCOUNTED COST.** The two differ by whatever has not yet been booked, and a reader
+who takes the first for the second has a number they will defend to a CFO who can
+disprove it.
+
+⭐ **THIS IS THE `ratio_registry` DISCIPLINE ONE LEVEL UP:** the pack pins
+`consumed_by_production: false` rather than asserting more than it knows. A budget
+surface states what it is measuring against, and it is not the accounts.
+
+⭐ **IT ALSO DECIDES A DESIGN QUESTION WITHOUT A SECOND RULING:** project cost does
+**not** become a `dimension_type`, so `reconcile_across` is untouched and
+`ax_dimension_map`'s licence-to-combine rule keeps its current scope. **The
+economics tier is its own model, beside the accounts rather than inside them.**
+
+# ⭐⭐ §8A · THE SLIPPAGE RECORD — BUILT 6 Aug
+
+**The one gap whose cost of delay is strictly monotonic.** Report:
+`docs/reports/slippage-history-2026-08-06.md`.
+
+## ⭐⭐ 1 · WHAT THE MEASUREMENT CORRECTED — NOTHING HAS BEEN DESTROYED YET
+
+The PMO scope recorded the history as *"being destroyed"*, and this lane's own
+dispatch repeated it. ⭐ **Measured against production: nothing has been lost.**
+
+| | |
+|---|---|
+| `put_milestones` calls ever made in production | ⭐⭐ **ZERO** — `ax_audit` holds **no** `milestones_updated` row across 453 audit rows since 17 Jul |
+| initiative-event vocabulary in production | `created` 15 · `priority_changed` 9 · `note` 4 · `status_changed` 1 |
+| date-change events of any kind | ⛔ **0** |
+| ⭐ **milestones ever frozen into a pack** | **11 of 24**, each in **3 packs** |
+| ⭐⭐ **frozen dates that DIFFER between packs** | ⭐⭐ **0** |
+
+⭐⭐ **SO THE EXPOSURE IS ENTIRELY PROSPECTIVE, AND CLOSING IT NOW COSTS NOTHING IN
+LOST HISTORY.** The destroying path exists and has never run. **A defect that has
+never fired has destroyed nothing** — the §7e reading applied to a writer instead
+of a grant, and it is the difference between a lane that recovers data and one
+that merely stops the loss. This is the second.
+
+## ⭐⭐ 2 · A PARTIAL HISTORY ALREADY EXISTED, UNDER A NAME NOBODY SEARCHED
+
+**Twenty-third lane.** `_cap_initiatives` freezes **six** initiative child models
+into every pack — milestones among them, whole-row. ⭐ **So a published pack's
+frozen snapshot IS a dated observation of every milestone's target date**, and
+three packs give three points per milestone for 11 of 24.
+
+⛔ **IT IS NOT A SUBSTITUTE, AND THE REASONS ARE STRUCTURAL:** it covers only
+companies that publish, only milestones that existed at publication, only at the
+pack's cadence, and it records **no actor** — a pack knows a date changed between
+February and March and never who moved it or when. ⭐ **But it is why "unrecoverable"
+was too strong**, and a later lane may reconstruct a coarse history from it.
+
+## ⭐⭐ 3 · THE EVENT MODEL
+
+`InitiativeEvent` gains `milestone_id` and `subject_label`; two declared types,
+`target_date_changed` and `milestone_date_changed`.
+
+- ⭐ **`milestone_id` NULL IS A FACT** — the event is about the initiative's own
+  date. B12's `prior_absent` shape: the null carries information.
+- ⭐⭐ **`subject_label` IS FROZEN TEXT, NEVER A JOIN** — the §4x `author_label`
+  precedent. A milestone can be renamed, and (once removal becomes a revoke) can
+  stop being current; an event resolving its subject at read time would lose it
+  exactly when the history is worth reading.
+- ⭐ **TWO TYPES, NOT ONE.** One type would make the subject KIND something a
+  reader infers from a nullable column — which is how a reader infers it wrongly.
+- ⛔ **A NO-OP IS NOT AN EVENT.** The bulk writer receives the whole list on every
+  save, so most rows arrive unchanged; a writer keyed on *"was this row
+  submitted"* would manufacture a movement per save and **three saves would read
+  as three slips**, destroying the only finding the record exists to support.
+
+## ⭐⭐ 4 · THE SHARPEST HALF WAS NOT THE MISSING VALUES
+
+The PATCH's event selection was `if / elif / elif`: priority won, impact came
+second, everything else fell to a generic `note`. ⛔ **So a request moving BOTH the
+priority AND the target date recorded only the priority — the date left no trace
+at all, not even its field name.**
+
+⭐ **THAT IS INVISIBLE FROM THE HISTORY ITSELF**, which is what makes it worse than
+the missing from/to. The date now emits from **its own branch**, and a guard
+asserts that branch is not reachable past by another field's change.
+
+⭐ **AND THE `note` KEEPS ITS JOB, NARROWED.** It is the fallback for fields with
+no event of their own and its `to_value` is a comma-joined list of field NAMES —
+honest for a title, not for a date. The date leaves that list, so one movement
+produces one row rather than two, one of which says less.
+
+⭐ **THE AUDIT DETAIL STILL LISTS EVERY TOUCHED FIELD, DELIBERATELY.** Two records,
+two jobs: the audit trail records *what was touched*, the event history records
+*what it became*. A guard that could not tell them apart would have forced the
+audit to lie by omission — **and the first version of this lane's guard did
+exactly that, and was narrowed rather than obeyed.**
+
+## ⛔ 5 · THE DELETION IS REPORTED, NOT CHANGED
+
+`put_milestones` still `db.delete`s rows omitted from the payload. ⭐ **It is a
+bulk reconcile-by-id, so deletion is how the UI expresses a removal** — and per
+§4v.1 a milestone removed from a list **is not a milestone that never existed.**
+
+⛔ **NOT CHANGED IN THIS LANE, and the reason is the cost rather than the
+principle:** the principle is settled. **Ten reader sites** in `services/api` query
+`InitiativeMilestone` — progress, next-milestone, slipped count, the GET, the
+writer's own `existing` map, its return, the schedule, the overdue list,
+`watch.py`'s signal and `pack.py`'s freeze — and §4v.2 found **three** unfiltered
+readers on a table with only four. ⭐ **The reader sweep IS the lane**, and it is
+sized in the report.
+
+## ⭐ 6 · TWO GUARD DEFECTS THIS LANE'S OWN CONTROLS CAUGHT
+
+1. ⭐⭐ **THE RECOGNISER MATCHED A LITERAL WHERE THE CODE USES A NAMED CONSTANT** —
+   §7r-G exactly, *"said SHAPE and meant VARIABLE NAME"*. It reported *"no
+   conditional emits the date event"* about code that emits it. **The guard was
+   wrong and the code was right**, and the cheap fix would have replaced a named
+   constant with a literal to please a test.
+2. ⭐⭐ **ONE TEST PASSED AGAINST THE PRE-LANE CODE** — it asserted a `.join`
+   existed and that `target_date` appeared somewhere in the function, both true
+   before this lane. §7.43 entry 4: *assertion right, input cannot discriminate.*
+   Rewritten to name what actually changed. **All 19 now fail at `9b1708a` and
+   pass after.**
+
+## ⭐ 7 · §7o HOLDS BY CONSTRUCTION
+
+`InitiativeEvent` is **not** a pack input class — measured, not assumed — so no
+frozen snapshot and no content hash can move. `event_type` **stays `String(24)`**:
+both new values fit (19 and 22), and widening the model without altering the live
+column would leave the two disagreeing.

@@ -286,11 +286,68 @@ class InitiativeEvent(Base):
     id = Column(Integer, primary_key=True)
     initiative_id = Column(Integer, index=True, nullable=False)
     actor_user_id = Column(Integer, nullable=True)
-    event_type = Column(String(24), nullable=False)   # created|status_changed|priority_changed|impact_updated|note
+    # ⭐ STAYS String(24) — both new types fit (19 and 22 chars). Widening the
+    # MODEL without altering the live column would leave the two disagreeing, and
+    # a 25-character type would then pass here and be refused by Postgres.
+    event_type = Column(String(24), nullable=False)   # created|status_changed|priority_changed|impact_updated|note|target_date_changed|milestone_date_changed
     from_value = Column(String(120), nullable=True)
     to_value = Column(String(120), nullable=True)
     note = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # ⭐⭐ §8A — WHICH MILESTONE MOVED. The table is keyed on the initiative, so
+    # without this a date event would say "a date moved on this project" and never
+    # which one. NULL is a FACT, not a gap: it means the event is about the
+    # initiative's own target date. Same shape as B12's `prior_absent` — the null
+    # carries information rather than standing for a missing value.
+    milestone_id = Column(Integer, index=True, nullable=True)
+    # ⭐⭐ FROZEN TEXT, NEVER A JOIN — the §4x `author_label` precedent. A
+    # milestone can be renamed, and (once removal becomes a revoke) can stop being
+    # current. An event resolving its subject at read time would lose it exactly
+    # when the history is worth reading.
+    subject_label = Column(String(300), nullable=True)
+
+
+# ⭐⭐ §8A — TWO TYPES, NOT ONE, AND THE DISCRIMINATOR IS NOT A NULL CHECK.
+# An initiative's own target date and a milestone's are different facts about
+# different objects. One type for both would make the subject KIND something a
+# reader infers from a nullable column, which is how a reader comes to infer it
+# wrongly.
+EV_TARGET_DATE_CHANGED = "target_date_changed"
+EV_MILESTONE_DATE_CHANGED = "milestone_date_changed"
+
+_UNSET = object()
+
+
+def date_event_is_wellformed(event_type, *, milestone_id, subject_label,
+                             from_value=_UNSET, to_value=_UNSET):
+    """Is this a date movement worth recording? A pure predicate, shared by the
+    writers and by the guard — so a test cannot pass against a rule the writers
+    do not apply.
+
+    ⭐ THE SUBJECT INVARIANT is what makes two event types mean anything: a
+    milestone event must name a milestone, and an initiative event must not.
+    Without it the discriminator is decorative.
+
+    ⛔ AND A NO-OP IS NOT AN EVENT. A save that changes nothing must not
+    manufacture a movement — three saves would then read as three slips, which is
+    the finding this record exists to make trustworthy.
+    """
+    if event_type == EV_MILESTONE_DATE_CHANGED:
+        if milestone_id is None:
+            return False
+    elif event_type == EV_TARGET_DATE_CHANGED:
+        if milestone_id is not None:
+            return False
+    else:
+        return False
+    if from_value is not _UNSET and to_value is not _UNSET:
+        # ⭐ NULL ON THE FROM SIDE IS A FACT — the milestone had no date — and it
+        # is a fact ONLY because every movement from here on is recorded. Rows
+        # that moved before this lane wrote nothing at all, so there is no event
+        # to misread.
+        if from_value == to_value:
+            return False
+    return True
 
 
 class AssessmentFramework(Base):
@@ -6988,11 +7045,33 @@ def _reletter(db, ini):
     return (old, new)
 
 
-def _ini_event(db, ini, actor, etype, frm, to, note):
+def _ini_event(db, ini, actor, etype, frm, to, note,
+               milestone_id=None, subject_label=None):
     db.add(InitiativeEvent(
         initiative_id=ini.id, actor_user_id=actor, event_type=etype,
         from_value=(str(frm) if frm is not None else None),
-        to_value=(str(to) if to is not None else None), note=note))
+        to_value=(str(to) if to is not None else None), note=note,
+        milestone_id=milestone_id, subject_label=subject_label))
+
+
+def _milestone_date_event(db, ini, actor, m, old_date, new_date, note=None):
+    """Record that ONE milestone's target date moved — actor, time, both values.
+
+    ⭐⭐ "THIS MILESTONE HAS MOVED THREE TIMES" IS THE FINDING, AND IT IS STRONGER
+    THAN AMBER. A RAG badge is somebody's judgement about a date; a count of
+    movements is the date's own record, and a reader can check it. The badge says
+    how the leader feels; the count says what happened.
+
+    ⛔ THE TITLE IS COPIED, NOT REFERENCED. It is the subject of the sentence a
+    reader will one day read, and the row it names may be renamed or removed.
+    """
+    if not date_event_is_wellformed(EV_MILESTONE_DATE_CHANGED,
+                                    milestone_id=m.id, subject_label=m.title,
+                                    from_value=old_date, to_value=new_date):
+        return False
+    _ini_event(db, ini, actor, EV_MILESTONE_DATE_CHANGED, old_date, new_date, note,
+               milestone_id=m.id, subject_label=(m.title or "")[:300] or None)
+    return True
 
 
 def _display_code(i):
@@ -7205,7 +7284,12 @@ def patch_initiative(company_id: int, iid: int, body: InitiativePatch,
     if body.current_priority is not None and body.current_priority not in _PRIORITY \
             and body.current_priority != "unset":
         raise HTTPException(422, "current_priority must be one of high|medium|low|unset")
+    # ⭐ CAPTURED BEFORE THE LOOP, because the loop `setattr`s in place and the
+    # prior value is gone the moment it runs. The other two consequential fields
+    # were already captured here; the date was not, which is half of why it had
+    # no event.
     old_priority, old_impact = ini.current_priority, ini.expected_impact_amount
+    old_target = ini.target_date
     changed = []
     for f in ("title", "description", "importance", "urgency", "current_priority",
               "expected_impact_amount", "impact_currency", "owner_name", "target_date",
@@ -7228,8 +7312,22 @@ def patch_initiative(company_id: int, iid: int, body: InitiativePatch,
     # records " (by <admin> on behalf of <head>)" — never silent.
     obh = _on_behalf_suffix(db, user, getattr(ini, "department_id", None))
     note = ((body.note or "") + obh).strip() or None
+    # ⭐⭐ §8A — EMITTED FROM ITS OWN BRANCH, NEVER AN `elif`. The selection below
+    # was an if/elif/elif chain: a priority change won, an impact change came
+    # second, and everything else fell to a generic `note`. So a request moving
+    # BOTH the priority AND the target date recorded only the priority — the date
+    # left no trace at all, not even its field name. That is sharper than the
+    # missing values, because it is invisible from the history itself.
+    if "target_date" in changed:
+        _ini_event(db, ini, user.id, EV_TARGET_DATE_CHANGED,
+                   old_target, ini.target_date, note)
+    # ⭐ AND THE DATE LEAVES THE NOTE'S LIST. `note` is the fallback for fields
+    # with no event of their own, and its `to_value` is a comma-joined list of
+    # field NAMES with no values — honest for a title, not for a date. Leaving it
+    # in would produce two rows for one movement, one of which says less.
+    other = [f for f in changed if f != "target_date"]
     rel = _reletter(db, ini) if "current_priority" in changed else None
-    if "current_priority" in changed:
+    if "current_priority" in other:
         if rel:
             _ini_event(db, ini, user.id, "priority_changed", rel[0], rel[1], note)
         else:                                    # priority moved but band stayed (e.g. rejected)
@@ -7243,11 +7341,11 @@ def patch_initiative(company_id: int, iid: int, body: InitiativePatch,
         if old_band != new_band:
             ini.rank = None
             _renumber_band(db, company_id, old_band)
-    elif "expected_impact_amount" in changed:
+    elif "expected_impact_amount" in other:
         _ini_event(db, ini, user.id, "impact_updated", old_impact,
                    ini.expected_impact_amount, note)
-    elif changed:
-        _ini_event(db, ini, user.id, "note", None, ",".join(changed), note)
+    elif other:
+        _ini_event(db, ini, user.id, "note", None, ",".join(other), note)
     if changed:
         audit(db, user.id, "initiative_updated", "company", company_id,
               detail=f"{ini.ref_code} {','.join(changed)}{obh}")
@@ -7302,7 +7400,13 @@ def initiative_history(company_id: int, iid: int,
             "ref_chain": list(ini.previous_refs or []) + [ini.ref_code],
             "events": [{"id": e.id, "event_type": e.event_type, "from": e.from_value,
                         "to": e.to_value, "note": e.note,
-                        "actor_user_id": e.actor_user_id, "created_at": e.created_at}
+                        "actor_user_id": e.actor_user_id, "created_at": e.created_at,
+                        # ⭐ §8A — THE SUBJECT TRAVELS WITH THE EVENT. An event
+                        # written and unreadable is the built-but-not-wired class;
+                        # a date movement whose milestone the reader cannot name
+                        # is that class one level down.
+                        "milestone_id": e.milestone_id,
+                        "subject_label": e.subject_label}
                        for e in events]}
 
 
@@ -8860,6 +8964,12 @@ def put_milestones(company_id: int, iid: int, body: MilestonesPut,
         own = (item.owner_name or "").strip() or None
         if item.id and item.id in existing:
             m = existing[item.id]
+            # ⭐⭐ §8A — THE MOVEMENT IS RECORDED BEFORE IT IS PERFORMED. The
+            # assignment below overwrites the prior date in place, and until this
+            # lane that was the whole of the write: no event, no from-value, and
+            # therefore no way to say a milestone had moved at all. `updated_at`
+            # records THAT something changed and never what.
+            _milestone_date_event(db, ini, user.id, m, m.target_date, td)
             m.title, m.target_date, m.status, m.owner_name, m.position = title, td, item.status, own, pos
             m.updated_at = datetime.utcnow()
             # ⭐ THE ACHIEVEMENT IS A DECLARATION (§4v.1): who recorded it and
@@ -14422,6 +14532,11 @@ def _ensure_ax_columns(engine):
     # now fails the build on this class.
     _add("ax_initiatives", "links_considered_at", "links_considered_at TIMESTAMP")
     _add("ax_initiatives", "links_considered_by", "links_considered_by INTEGER")
+    # ⭐⭐ §8A — the slippage record. `create_all()` creates missing TABLES, never
+    # missing COLUMNS, and `ax_*` is not alembic-managed — the two lines above are
+    # here because that distinction once took the demo down.
+    _add("ax_initiative_events", "milestone_id", "milestone_id INTEGER")
+    _add("ax_initiative_events", "subject_label", "subject_label VARCHAR(300)")
     _add("ax_key_results", "kr_key", "kr_key VARCHAR(64)")
     _add("ax_key_results", "kpi_key", "kpi_key VARCHAR(64)")
     # GoalInitiativeLink brought up to the contract its two sibling link tables
