@@ -21276,3 +21276,63 @@ correctly found. Same shape recurred with a bare subscript on
 ⛔ **And the sharpest instance: `check-relative-imports` contained
 `if node.module is None: continue` and therefore SKIPPED the exact statement it
 was written to catch.** §III.11, inside the instrument.
+
+---
+
+# ⛔⭐⭐ §7r-D.1 · DUPONT — THE GATE FIRED. ALL THREE FACTORS ALREADY COMPUTE (7 Aug)
+
+Report: `docs/reports/dupont-t1-2026-08-07.md`. **T2 was not built.**
+
+## ⭐ 1 · MEASURED BY EXECUTING THE REGISTRY, NOT BY GREPPING
+
+§7r-D is right that Class A/B shapes cannot be found by name — **but they can be
+run.** `ratio_registry.evaluate_period` returns a value today for every one:
+
+| ratio | showcase, latest period |
+|---|---|
+| `axiom.net_margin` | **15.1229** |
+| `axiom.asset_turnover` | **0.8190** |
+| `axiom.financial_leverage` | **1.5325** |
+| `axiom.roe` | **17.6151** |
+| `axiom.dupont_three_step` | **18.9808** |
+
+## ⛔⭐⭐ 2 · §7r-D's UNBLOCK CONDITION IS AN EXTRACTION, NOT A CONSTRUCTION
+
+*"Computed inside the margin boundary rather than beside it"* reads as a build.
+It is not: an owner already exists (the registry evaluator). Building the three in
+`ratios.py` **without simultaneously making the registry delegate** creates
+exactly the second owner §7r-O forbids — and the 14-shape scan cannot catch it,
+which is the class §7r-D was written about.
+
+⭐ **Same shape as `operating_cash_flow`**, which §7r-O records as having *"arrived
+by EXTRACTION, not construction — an owner already existed."* The correct lane is
+move-and-delegate (§7r-R R2), and it is a different dispatch from the one written.
+
+## ⭐ 3 · SERVED AND SURFACED
+
+**Served:** one openapi path of **340** — `/api/v1/metrics/ratios/{dataset_id}`.
+**Surfaced:** one destination of **106** — *"Ratio Analysis"* →
+`/dashboard?tab=ratios`. ⛔ **`dupont_three_step` declares `surface:
+decomposition` and no such surface exists.**
+
+⚠ **Premise correction:** the nav index emits **106** destinations, not 107.
+
+## ⭐⭐ 4 · THE RESIDUAL IS WHOLLY A BASIS ARTEFACT — PROVEN, NOT ASSERTED
+
+Declared basis: ROE and net_margin `point_in_time`; asset_turnover, financial
+leverage and dupont `average`. Measured residual (dupont − roe), four periods:
+**+1.4232 · +1.4355 · +1.4004 · +1.3657** pp — the last being ≈7.8% of ROE.
+
+⭐⭐ **Recomputing the two average factors POINT-IN-TIME gives a residual of
+EXACTLY 0.000000 in all four periods.** The identity holds identically on a
+consistent basis. **There is no arithmetic defect.**
+
+⛔ **So the ruling owed is narrower than "how do we reconcile" — it is WHICH BASIS
+DUPONT IS ON.** Recorded in the registry as `unresolved: dupont_roe_reconciliation`
+(OPEN), carrying the measurements and the zero-residual control so the next reader
+inherits them. **No `basis:` or `headline:` field was changed.**
+
+## ⭐ 5 · STAGING AMENDED
+
+`staging.v2` records the founder ruling — **DuPont ships in V1.0** (7 Aug) — beside
+the scope line it modifies, which is left intact as the historical record.

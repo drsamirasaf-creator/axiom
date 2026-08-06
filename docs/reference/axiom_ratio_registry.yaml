@@ -2309,6 +2309,18 @@ staging:
       requires_data. Never render em dashes for ratios known to be
       uncomputable — list them separately with the reason."
   v2:
+    # ⭐⭐ FOUNDER RULING 7 Aug 2026 — DUPONT SHIPS IN V1.0, NOT V2.
+    # Recorded here rather than only in CORE, because this block is what a
+    # staging decision is read from and a ruling that lives in one document is
+    # a ruling the other will contradict.
+    # ⛔ NOTHING ELSE IN THIS BLOCK IS AMENDED. `basis:` and `headline:` on the
+    # DuPont rows are a SEPARATE founder ruling that has not been made — see
+    # the reconciliation entry under `unresolved` below.
+    dupont_moved_to_v1:
+      ruling: "DuPont ships in V1.0."
+      date: "2026-08-07"
+      note: "The v2 scope line below is left intact as the historical record of
+        what v2 was scoped to contain; DuPont is no longer part of it."
     scope: "tier: core remainder, DuPont, distress screens with the
       independent-read panel and agreement/divergence surfacing."
   v3:
@@ -2326,6 +2338,22 @@ unresolved:
       canonical taxonomy. The registry's categories and 77 ratios are now
       the reference library. The earlier chat-log specification is superseded
       and is no longer a source."
+  - id: dupont_roe_reconciliation
+    status: OPEN
+    question: "dupont_three_step declares basis: average and its display_rule
+      requires reconciliation to axiom.roe, which is basis: point_in_time. On
+      which basis must the two agree?"
+    measured: "7 Aug 2026, showcase dataset, four historical periods. As
+      declared, the residual is +1.4232 / +1.4355 / +1.4004 / +1.3657 (dupont
+      minus roe, percentage points). Recomputing asset_turnover and
+      financial_leverage POINT-IN-TIME makes the residual EXACTLY 0.000000 in
+      every period. The residual is therefore wholly a basis artefact, not an
+      arithmetic defect."
+    note: "⛔ No basis: or headline: field was changed while recording this.
+      The options are: move the two average factors to point_in_time so the
+      identity holds exactly; keep the mixed basis and render the residual as
+      the display_rule already requires; or restate the display_rule to
+      reconcile against an average-basis ROE that does not currently exist."
   - id: payable_days_denominator
     question: "COGS proxy accepted, or hold DPO until is.purchases exists?"
     registry_default: "COGS proxy with the convention stated in the explainer."
