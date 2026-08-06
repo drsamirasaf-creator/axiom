@@ -505,6 +505,13 @@ Jul rulings · `B15` the features map as a distinct asset.
 is known-red.** Read it before anything else — it exists so you do not have to
 reconstruct the state from commits.
 
+⭐ **It was reconciled on 5 Aug against a fuller list and gained four items** —
+the urgency/importance matrix (**model only, no surface**), user roles (**an
+adoption problem: 12 sites on the capability layer against 96 on
+`require_company_admin`**), Monitoring (**built 5 Aug**) and the mindmap
+(**undesigned**, CORE B19). ⭐ **Each line there is measured, with its evidence
+beside it.**
+
 ## ⭐ THE INFORMATION ARCHITECTURE CHANGED ON 5 Aug
 
 The app now ships **three sections and 14 sidebar links**, not the older shape

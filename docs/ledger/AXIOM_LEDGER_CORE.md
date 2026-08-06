@@ -19885,6 +19885,46 @@ the user's, not an inference.
 | 13 | **The Ask AXIOM allowance** (§5b) | ⛔ **cost-per-company and retention are UNMEASURED** — the allowance was ruled without them |
 | 14 | **The pre-launch programme** | §7 audits |
 
+## ⭐ RECONCILED 5 Aug — FOUR ITEMS WERE MISSING FROM THE LIST ABOVE
+
+⭐ **Each line is MEASURED, not recalled** — ruled / scoped / built, with the
+evidence beside it.
+
+| # | item | ruled? | scoped? | built? | measured |
+|---|---|---|---|---|---|
+| 15 | ⭐⭐ **The urgency/importance matrix** | ⭐ **RULED** (§4u.1, 5 Aug amendment — both axes declared, coarse, revocable) | scoped | ⛔ **MODEL ONLY** | `ItemPlacement` / `ax_item_placements` exists with `placement_block()`; ⛔ **zero endpoints and zero frontend surface** — no `data-placement`, no matrix component anywhere in `src/` |
+| 16 | ⭐⭐ **User roles** | ⭐ **partly ruled** — §7e names the leader; B21's five categories are **not** all ruled | ⭐ **SCOPED** (`b21-role-vocabulary-scope-*.md`, corrected twice) | ⚠ **the layer exists, barely adopted** | `permissions.py` has **5 capabilities**; `require_capability` at **12** sites against `require_company_admin` at **96** and `_leader_or_admin` at **9** |
+| 17 | **Monitoring** | ⭐ ruled (§4A ruling 5 — assembly, not construction) | scoped | ⭐ **BUILT 5 Aug** | `PortfolioMonitoring` — six tiles + attention list at `/twin`. ⛔ **What remains is the Gantt (#4) and per-project depth**, not the portfolio view |
+| 18 | **Mindmap** | ⛔ **UNRULED** | ⛔ **UNSCOPED** | ⛔ **unbuilt** | CORE **B19** already records it: *"UNDESIGNED — zero occurrences in either repository and no ledger entry."* ⭐ **Undesigned and unbuilt are different states**, and this is the former |
+
+⭐ **AND TWO ITEMS ABOVE ARE NARROWER THAN THEIR NAMES:**
+
+- **#8 "Admin panels"** means **two** panels — ⭐ **user admin** (a company's own
+  members) **and super admin** (platform staff). `/admin` exists and is
+  platform-scoped; the company-facing half is unbuilt.
+- **#13** is the **Ask AXIOM** allowance specifically. ⭐ **"Fair-use limits"
+  generally is the same item**: §5b §5 records **two prerequisites, both
+  unmeasured** — cost-per-company and retention — and **they block the number**,
+  not the design.
+- **#7's "frequency views with interpolation"** is the data-frequency item; it is
+  not separate.
+
+## ⛔⭐ THE THREE FLAGGED, STATED PLAINLY
+
+1. ⭐⭐ **THE URGENCY/IMPORTANCE MODELS SHIPPED WITH NO SURFACE** (`2da5bbf`,
+   *"Ratings and the urgent/important matrix — both models, both floored and
+   declared"*). **A model with no endpoint and no surface is unshipped**, and this
+   is the built-but-not-wired class **caught before it could be forgotten** rather
+   than after — the eighteen instances in ONBOARDING are what happens otherwise.
+2. ⭐⭐ **FAIR-USE IS BLOCKED ON MEASUREMENT, NOT ON A RULING.** §5b's allowance was
+   ruled **without** cost-per-company or retention. ⛔ **A limit set before the
+   unit cost is known is a guess wearing a policy's clothes.**
+3. ⭐⭐ **ROLES ARE AN ADOPTION PROBLEM, NOT A DESIGN ONE.** The capability layer
+   exists and works — `permissions.py`, `require_capability`, a stable 403. **12
+   sites use it; 96 still use `require_company_admin`.** ⛔ **The gap is not "build
+   a role system"; it is "convert 96 endpoints", one at a time, with the old check
+   as the default capability so nothing changes behaviour on the day it lands.**
+
 ## ⭐ RULINGS OWED (blocking, or nearly)
 
 1. ⭐⭐ **Do required checks become a real gate?** Today they gate PR merges only;
