@@ -42,6 +42,15 @@ jobs:
       # DOMAIN vocabulary here, and a recogniser that floods on them gets muted.
       - name: reports do not restate repository exposure
         run: python scripts/check-report-exposure.py
+      # ⭐⭐ "Zero cells allow exact derivation" was a property of one corpus,
+      # written into a report. §7.29's complement inference means the next cycle
+      # can make a withheld comment count derivable by subtraction from the
+      # per-category counts the Voice tab already publishes. This recomputes it
+      # and fails when a cell becomes derivable.
+      # ⛔ It asserts the PREDICATE with in-memory controls even where no
+      # database is reachable, and says so rather than passing quietly.
+      - name: no withheld comment cell is derivable (§7.29)
+        run: python scripts/check-comment-floor-derivability.py
       - name: route shadowing
         run: python scripts/check-route-shadowing.py
       # ⭐ A MODEL COLUMN WITHOUT A MIGRATION LINE TAKES EVERY READ OF THAT TABLE
