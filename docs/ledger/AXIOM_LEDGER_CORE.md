@@ -16347,6 +16347,39 @@ statuses.
 1. **`imputed` as a data status** — "a missing observation filled under an
    approved imputation method" is exactly what absence propagation forbids. There
    is no approval that converts a gap into a value. The taxonomy ships without it.
+
+   > ### ⭐⭐ AMENDED 6 Aug — `interpolated` IS PERMITTED, AND IT IS NOT THIS
+   >
+   > **The refusal above is unchanged.** `FORBIDDEN["imputed_status"]` still
+   > stands and a gap is still never filled. What is added is a DIFFERENT ACT,
+   > and the distinction is written here because this is the section a future
+   > lane will read before concluding the two collide:
+   >
+   > | | |
+   > |---|---|
+   > | **`imputed`** ⛔ refused | an **absent value where one should exist**, filled by AXIOM, **unasked**. The series has a hole. |
+   > | **`interpolated`** ⭐ permitted | a **complete series re-grained to a finer view**, at the CXO's **explicit request**, with the method named on the figure. **Nothing is missing** — ingest REJECTS gaps, so a supplied series has no hole to fill. |
+   >
+   > ⭐⭐ **SELF-SELECTION IS THE BASIS.** A CXO who chooses a method and reads
+   > *"estimated by linear interpolation between reported quarters, not reported
+   > data"* has been told what they are looking at. That is materially different
+   > from AXIOM filling a gap on their behalf.
+   >
+   > ⛔ **AND IT IS WHY THE STATUS TRAVELS WITH THE FIGURE, NOT THE SESSION.** The
+   > CXO chose it; a pack recipient did not. Enforced structurally: interpolation
+   > is a **read-time view with no write path**, so it cannot be frozen into a
+   > pack however the calling code is later rewritten — and
+   > `check-frequency-views.py` asserts that `pack.py`, `sentinel.py` and
+   > `watch.py` never import the view module. **Those three ACT on numbers rather
+   > than displaying them, and an interpolated figure crossing a threshold
+   > manufactures an event.**
+   >
+   > ⚠️ **THE 5 Aug PERMISSION WAS WITHDRAWN AND THEN RE-GRANTED ON 6 Aug**, and
+   > both moves are recorded rather than the second overwriting the first. The
+   > withdrawal was correct on its own terms: a ruling permitting what another
+   > forbids, reconciled by a distinction **nobody had written down**, is the
+   > CORE-versus-CORE class. ⭐ **The distinction is now written down — here —
+   > which is what makes the re-grant something other than a weakening.**
 2. **The proportional gross-up escape** ("unless explicitly approved") — the rule
    is right, the escape is not.
 3. **"Probability of remaining profitable" across allocation methods** — a spread
@@ -20928,3 +20961,90 @@ to price optimisation.** Ship the alternatives as REFUSALS carrying their reason
    `PERIODS_PER_YEAR` **nor** `periods.py`. Monthly, quarterly and annual all
    exist; **semi-annual exists nowhere**, and adding it touches the derivation, the
    encoder, the label formatter and the divisor map.
+
+---
+
+# ⭐⭐ §8o · FREQUENCY VIEWS — FOUR RULINGS AND THE BUILD (6 Aug)
+
+Report: `docs/reports/frequency-views-2026-08-06.md`. Scoped at §8n.
+
+## ⭐ RULING 1 · INTERPOLATION SHIPS — WITHDRAWN, THEN RE-GRANTED, BOTH RECORDED
+
+⭐⭐ **THE RECONCILIATION IS WRITTEN INTO §8a ITSELF**, not here, because §8a is
+where a future lane will look before deciding the two collide. In short:
+`imputed` fills a **hole**; `interpolated` **re-grains a complete series** at the
+CXO's request. Ingest rejects gaps, so there is no hole to fill.
+
+⚠️ **The 5 Aug permission was withdrawn on the morning of 6 Aug and re-granted the
+same day. Both moves stand in the record.** The withdrawal was right on its own
+terms — a distinction nobody had written down is not a reconciliation. ⭐ **It is
+written down now, and that is the difference.**
+
+## ⭐ RULING 2 · SEMI-ANNUAL IS DROPPED. THREE VIEWS.
+
+It exists in **neither** `PERIODS_PER_YEAR` **nor** `periods.py`; monthly,
+quarterly and annual all do. A real build — derivation, encoder, label formatter,
+divisor map — for a frequency almost nobody reports on.
+
+## ⭐⭐ RULING 3 · STOCK VERSUS FLOW IS DECLARED PER TOKEN
+
+**All 70 registry tokens now carry `aggregation` beside `source` and `expr`:**
+**23 sum · 25 closing · 18 derived · 3 constant · 1 period_defined.**
+
+§7r-R R4 reasoned about this for **ratios** and never encoded it for **lines**, so
+nothing in the codebase knew a balance sheet is not a flow.
+
+⛔ **NOTHING INFERS IT FROM A NAME, AND FOUR TOKENS ARE WHY:** `mk.dps` is a flow
+sitting among point-in-time tokens; `sa.arr` and `sa.mrr` are **run rates**, so
+summing twelve MRRs to make an ARR is the error the field exists to prevent; and
+`po.days_in_period` is a property of the **period**, not of the company. ⭐ An
+unknown token returns **None**, never a default — a defaulted `sum` on a stock is
+the tripling itself.
+
+## ⭐ RULING 4 · BANDS AGGREGATE INSIDE THE ENGINE
+
+Sum each path's sub-periods, **then** take the percentile. The correlation is
+already in the paths (`dist[y][ln]` appends in path order), so no Cholesky is
+needed. Summed percentiles overstate the range by **√n**. ⛔ **For the three
+banded STOCK lines — `cash`, `total_assets`, `equity` — the band is declared
+UNAVAILABLE at the coarser grain**: summing is wrong at every correlation.
+⭐ **Ruled here; the stochastic pro forma is not touched in this lane.**
+
+## ⭐ THE BUILD
+
+**Three views.** A finer view is **disabled and says why**, rendered rather than
+hidden — and the disabled button stays clickable, because that is how a reader
+discovers both the reason and the option to estimate it.
+
+**Aggregation obeys the classification.** Flows sum; stocks take the **closing**
+sub-period; derived lines are recomputed, never aggregated; a **rate that changed
+mid-bucket is absent rather than averaged**; absence propagates through a bucket.
+
+⛔⭐⭐ **THE TRIPLING IS ASSERTED IN THREE PLACES** — unit test, guard control and
+browser proof — because summing four quarterly balance sheets quadruples assets
+**and** liabilities, so the result **still balances** and a reconciliation check
+cannot see it.
+
+**Partial buckets are named, never silent.** Eight months leaves Q3 holding 2 of
+3, and the surface says which bucket and how many. ⭐ A partial **flow** is a
+smaller number than the quarter will hold; a partial **stock** is the latest
+position actually supplied — different facts, said differently.
+
+**`MAX_HISTORICAL_PERIODS` fixed.** The monthly key was missing, so eleven months
+warned *"more than 10 historical **years** supplied"* — the identical defect the
+comment four lines above records as fixed for quarterly. Now `monthly: 120`, and
+the unit word has a monthly branch.
+
+## ⛔⭐⭐ A DEFECT THIS LANE SHIPPED AND ITS OWN ASSERTION CAUGHT
+
+The first monthly→quarterly bucket key was `year*100 + quarter`, giving **202401**
+for 2024 Q1 — **six digits, which IS the monthly encoding**. `derive_frequency`
+reads frequency from **digit count**, so the aggregated series would have declared
+itself monthly to every consumer: every label would have read "Jan 2024" for a
+quarter, and `periods_per_year` would have returned 12 for annual data. ⭐ `bucket`
+now asserts every key it produces is valid at the target grain.
+
+## ⭐ NO FIGURE MOVED
+
+413 numeric leaves across 8 payloads, exact comparison, before the first edit and
+after the last. **Every pre-existing figure identical.**

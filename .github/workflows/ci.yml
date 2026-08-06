@@ -112,6 +112,16 @@ jobs:
       # number that makes two different priors comparable.
       - name: every optimiser states its objective (§8m.1 A/B)
         run: python scripts/check-objective-labelled.py
+      # ⭐⭐ FREQUENCY VIEWS (CORE §8o). Every registry token must declare whether
+      # it SUMS or takes the CLOSING position — nothing infers it from a name, and
+      # a prefix rule gets mk.dps, sa.arr and po.days_in_period wrong. Without the
+      # declaration a coarsened balance sheet quadruples assets AND liabilities,
+      # so it still balances and a reconciliation check cannot see it.
+      # ⛔ It also asserts that pack, sentinel and watch never import the view
+      # module: interpolation is read-time only, and §8a's reconciliation rests
+      # on an interpolated figure never being frozen or fired on.
+      - name: frequency views classified, interpolation cannot be frozen (§8o)
+        run: python scripts/check-frequency-views.py
       # ⭐ WIRED 30 Jul AFTER IT WAS FOUND BLIND AND UNNOTICED. It exits 0 when
       # healthy and 2 when its own detection floor fails, so this step catches
       # the checker going blind — which is what happened: the sole-owner

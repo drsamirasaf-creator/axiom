@@ -161,7 +161,13 @@ def _series(block: dict, key: str, years: list) -> list:
 # 120 forecast columns would push the template past 130 columns to serve a case
 # nobody plans in. Five years is the horizon monthly planning actually reaches.
 MAX_FORECAST_PERIODS = {"annual": 15, "quarterly": 40, "monthly": 60}
-MAX_HISTORICAL_PERIODS = {"annual": 10, "quarterly": 40}
+# ⭐ MONTHLY ADDED 6 Aug (CORE §8n). The key was MISSING, so a monthly
+# dataset fell through `.get(freq, ...["annual"])` to the ANNUAL limit of
+# 10 — and ELEVEN MONTHS, under one year of history, warned "more than 10
+# historical years supplied". ⛔ THE IDENTICAL DEFECT THE COMMENT ABOVE
+# RECORDS AS FIXED FOR QUARTERLY, reintroduced at a different divisor.
+# 120 = ten years of months, matching quarterly's ten years of quarters.
+MAX_HISTORICAL_PERIODS = {"annual": 10, "quarterly": 40, "monthly": 120}
 
 
 # ── balance-sheet integrity ────────────────────────────────────────────────
@@ -343,7 +349,9 @@ def validate_dataset(data: dict) -> dict:
     # teaches customers to dismiss warnings, which costs exactly on the day one
     # matters.
     freq = (data.get("periods", {}) or {}).get("frequency") or "annual"
-    unit = "quarters" if freq == "quarterly" else "years"
+    # ⭐ AND THE UNIT WORD. A monthly dataset said "years", which is how the
+    # quarterly version of this warning came to cry wolf in the first place.
+    unit = {"quarterly": "quarters", "monthly": "months"}.get(freq, "years")
     max_fcst = MAX_FORECAST_PERIODS.get(freq, MAX_FORECAST_PERIODS["annual"])
     max_hist = MAX_HISTORICAL_PERIODS.get(freq, MAX_HISTORICAL_PERIODS["annual"])
     if len(hist) > max_hist:

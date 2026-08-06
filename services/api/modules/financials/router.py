@@ -615,6 +615,51 @@ def eva_distribution_surface(dataset_id: int, db: Session = Depends(get_db),
     return _dist(series.get("ratios") or [], w)
 
 
+@router.get("/datasets/{dataset_id}/frequency-view")
+def frequency_view(dataset_id: int, view: str | None = None,
+                   interpolate: bool = False,
+                   db: Session = Depends(get_db),
+                   tenant: str = Depends(_tenant),
+                   scoped: int | None = Depends(_scoped)):
+    """The statements at a chosen grain. ⭐ READ-TIME ONLY — nothing is stored.
+
+    ⛔⭐⭐ THAT IS THE STRUCTURAL GUARANTEE THAT INTERPOLATION NEVER ENTERS A PACK.
+    A pack freezes the STORED dataset; this computes a view from it and returns
+    it. There is no write path, so an interpolated figure cannot be frozen
+    however the calling code is later rewritten — the same reasoning as
+    `ax_assigned_feedback` having no column able to hold comment text.
+
+    ⭐ `interpolate` defaults to FALSE. The finer view exists only when the CXO
+    asks for it, and every figure it produces carries its own status and method.
+    """
+    from .... import frequency_views as FVW
+    from . import periods as _PR
+    row = _get_dataset(db, tenant, dataset_id, scoped)
+    base = _PR.frequency_of(row.data)
+    views = FVW.enabled_views(base)
+    target = view or base
+    if target not in FVW.VIEWS:
+        raise HTTPException(422, f"view must be one of {list(FVW.VIEWS)}")
+    chosen = next(v for v in views if v["view"] == target)
+    out = {"base_frequency": base, "view": target, "views": views,
+           "method_labels": FVW.METHOD_LABEL,
+           "refused_methods": FVW.REFUSED_METHODS,
+           "interpolated": False, "statements": None}
+    if chosen["enabled"]:
+        out["statements"] = FVW.aggregate_statements(row.data, target)
+        return out
+    if not interpolate:
+        # ⭐ The disabled view is RETURNED as disabled with its reason, never
+        # omitted. A missing option reads as a product that cannot do it.
+        out["disabled_reason"] = chosen["reason"]
+        return out
+    out["interpolated"] = True
+    out["method"] = FVW.LINEAR
+    out["method_label"] = FVW.METHOD_LABEL[FVW.LINEAR]
+    out["statements"] = FVW.interpolate_statements(row.data, target)
+    return out
+
+
 @router.get("/datasets/{dataset_id}/derived")
 def derived_series(dataset_id: int, db: Session = Depends(get_db),
                    tenant: str = Depends(_tenant),

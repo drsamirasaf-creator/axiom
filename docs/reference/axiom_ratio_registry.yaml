@@ -55,7 +55,31 @@ registry_version: "7r.11"  # 2 Aug stage 3: R6 — template v10 working-capital 
 #   repository is a claim — and this is the third time in one day that a claim
 #   about a file was not supported by the file.
 canonical_units: millions   # matches post-ingest normalisation
-period_support: [annual, quarterly]
+period_support: [annual, quarterly, monthly]
+# ⭐ MONTHLY ADDED 6 Aug. The engines have supported it since d8e31a5 (three-way
+# equivalence proven); this file still said [annual, quarterly], so the registry
+# and the engines disagreed about which grains exist. Semi-annual is DROPPED by
+# ruling — it exists in neither PERIODS_PER_YEAR nor periods.py, and it is a real
+# build for a frequency almost nobody reports on.
+#
+# ⭐⭐ EVERY VOCABULARY TOKEN NOW DECLARES `aggregation` (ruling 3, 6 Aug).
+# §7r-R R4 reasoned about stock-versus-flow for RATIOS and never encoded it for
+# LINES, so nothing in the codebase knew a balance sheet is not a flow — a
+# coarsener would have tripled assets, and a linear interpolator would have
+# smeared a closing balance across three months.
+#
+#   sum            a flow; sub-period values ADD
+#   closing        a stock; the coarser period takes the LAST sub-period
+#   derived        never aggregated itself — recomputed from aggregated inputs
+#   constant       a rate or policy, identical at every grain
+#   period_defined a property of the period, recomputed for the target grain
+#
+# ⛔ DECLARED, NEVER INFERRED FROM THE NAME. A prefix rule gets `mk.dps` wrong
+# (dividends per share is a flow sitting among point-in-time tokens), gets
+# `sa.arr` and `sa.mrr` wrong (RUN RATES, not flows — summing twelve MRRs to make
+# an ARR is the error this field exists to prevent), and has nothing to say about
+# `po.days_in_period`, which is a property of the period rather than of the
+# company.
 
 # ---------------------------------------------------------------------------
 # EVALUATION CONTRACT
@@ -255,35 +279,43 @@ vocabulary:
   income_statement:
     is.revenue:
       source: stored
+      aggregation: sum
       collected: true
       field: revenue
     is.cogs:
       source: stored
+      aggregation: sum
       collected: true
       field: cogs
     is.gross_profit:
       source: derived
+      aggregation: derived
       collected: true
       expr: "is.revenue - is.cogs"
     is.operating_expenses:
       source: stored
+      aggregation: sum
       collected: true
       field: opex
     is.sga:
       source: absent
+      aggregation: sum
       collected: false
       requires: "SG&A is not split out; opex is a single line"
     is.dep_amort:
       source: stored
+      aggregation: sum
       collected: true
       field: depreciation_amortization
       note: "FOUNDER RULING 7r.7 — collapsed from is.depreciation + is.amortisation. The template collects ONE combined line, so two tokens over one field was a spec asking for something the system cannot produce. Same shape as a department name the canonical list cannot make. Split again if a template ever collects them separately."
     is.ebitda:
       source: derived
+      aggregation: derived
       collected: true
       expr: "is.revenue - is.cogs - is.operating_expenses"
     is.ebit:
       source: derived
+      aggregation: derived
       collected: true
       expr: "is.ebitda - is.dep_amort"
       at: "engines.py:280"
@@ -303,51 +335,62 @@ vocabulary:
       # nothing did for five registry versions.
     is.interest_expense:
       source: stored
+      aggregation: sum
       collected: true
       field: interest_expense
     is.interest_income:
       source: absent
+      aggregation: sum
       collected: false
       requires: "not collected and not derived; net interest is not split"
     is.pbt:
       source: derived
+      aggregation: derived
       collected: true
       expr: "is.ebit - is.interest_expense"
       at: "engines.py:281"
     is.tax_expense:
       source: derived
+      aggregation: derived
       collected: true
       expr: "po.tax_rate_policy * max(is.pbt, 0)"
       at: "engines.py:282"
     is.pat:
       source: derived
+      aggregation: derived
       collected: true
       expr: "is.pbt - is.tax_expense"
       at: "engines.py:283"
     is.rd_expense:
       source: absent
+      aggregation: sum
       collected: false
       requires: "R&D line"
     is.bad_debt_expense:
       source: absent
+      aggregation: sum
       collected: false
       requires: "bad debt / allowance lines"
     is.purchases:
       source: absent
+      aggregation: sum
       collected: false
       requires: "purchases as distinct from COGS"
     is.lease_expense:
       source: absent
+      aggregation: sum
       collected: false
       requires: "lease expense line"
 
   balance_sheet:
     bs.cash:
       source: stored
+      aggregation: closing
       collected: true
       field: cash
     bs.receivables:
       source: stored
+      aggregation: closing
       collected: true
       field: receivables
       optional: true
@@ -365,6 +408,7 @@ vocabulary:
 
     bs.inventory:
       source: stored
+      aggregation: closing
       collected: true
       field: inventory
       optional: true
@@ -382,18 +426,22 @@ vocabulary:
 
     bs.other_current_assets:
       source: stored
+      aggregation: closing
       collected: true
       field: other_current_assets
     bs.current_assets:
       source: derived
+      aggregation: derived
       collected: true
       expr: "bs.cash + bs.other_current_assets"
     bs.ppe_net:
       source: stored
+      aggregation: closing
       collected: true
       field: property_plant_equipment_net
     bs.intangibles:
       source: stored
+      aggregation: closing
       collected: true
       field: intangible_assets_net
       note: "goodwill is a SEPARATE stored field and is not included here"
@@ -409,6 +457,7 @@ vocabulary:
     # drift apart.
     bs.noncurrent_assets:
       source: stored
+      aggregation: closing
       collected: true
       field: noncurrent_assets
       # ⭐ STORED, NOT DERIVED — and the first draft of this entry got it wrong
@@ -427,10 +476,12 @@ vocabulary:
       at: "templates.py:411 (ingest-time derivation), engines.py:487 (read)"
     bs.total_assets:
       source: derived
+      aggregation: derived
       collected: true
       expr: "bs.current_assets + bs.noncurrent_assets"
     bs.payables:
       source: stored
+      aggregation: closing
       collected: true
       field: payables
       optional: true
@@ -447,19 +498,23 @@ vocabulary:
       # a guessed receivables figure is fabrication.
     bs.short_term_debt:
       source: stored
+      aggregation: closing
       collected: true
       field: short_term_debt
     bs.other_current_liabilities:
       source: stored
+      aggregation: closing
       collected: true
       field: current_liabilities_ex_debt
       note: "the stored field is the whole ex-debt aggregate, not an 'other' residual"
     bs.current_liabilities:
       source: derived
+      aggregation: derived
       collected: true
       expr: "bs.other_current_liabilities + bs.short_term_debt"
     bs.long_term_debt:
       source: stored
+      aggregation: closing
       collected: true
       field: long_term_debt
     # ⭐⭐ DEFECT 3, FIXED 2 Aug. Same shape as bs.noncurrent_assets: the token
@@ -469,6 +524,7 @@ vocabulary:
     # legitimate state on a pre-v8 dataset rather than a validation failure.
     bs.other_noncurrent_liabilities:
       source: stored
+      aggregation: closing
       collected: true
       field: other_noncurrent_liabilities
       optional: true
@@ -497,6 +553,7 @@ vocabulary:
     # an approximation of it.
     bs.nwc:
       source: derived
+      aggregation: derived
       collected: true
       expr: "bs.other_current_assets - bs.other_current_liabilities"
       at: "engines.py:455"
@@ -504,23 +561,28 @@ vocabulary:
       distinct_from: "axiom.working_capital — see above. Not interchangeable."
     bs.total_liabilities:
       source: derived
+      aggregation: derived
       collected: true
       expr: "bs.current_liabilities + bs.long_term_debt + bs.other_noncurrent_liabilities"
     bs.equity:
       source: stored
+      aggregation: closing
       collected: true
       field: total_equity
     bs.minority_interest:
       source: stored
+      aggregation: closing
       collected: true
       field: minority_interest
     bs.preferred:
       source: stored
+      aggregation: closing
       collected: true
       field: preferred_equity
       note: "added 7r.4"
     bs.total_debt:
       source: derived
+      aggregation: derived
       collected: true
       # R2/R7: DELEGATES. Restating the sum here would be an eighteenth
       # implementation, in a file the sole-owner guard reads as code.
@@ -528,106 +590,129 @@ vocabulary:
       at: "⭐ DERIVED, NOT STORED. A token resolving to an EXPRESSION changes the arithmetic shape the scan must look for."
     bs.secured_debt:
       source: absent
+      aggregation: closing
       collected: false
       requires: "debt composition — secured/unsecured"
     bs.floating_rate_debt:
       source: absent
+      aggregation: closing
       collected: false
       requires: "debt composition — fixed/floating"
     bs.allowance_doubtful:
       source: absent
+      aggregation: closing
       collected: false
       requires: "allowance line"
     bs.retained_earnings:
       source: absent
+      aggregation: closing
       collected: false
       requires: "a retained earnings line. TEMPLATE QUESTION, not a registry one — joins the v9 pile alongside the other_current_assets split (bs.receivables, bs.inventory). Was marked collected: true and is not collected."
 
   cash_flow:
     cf.operating_cash_flow:
       source: derived
+      aggregation: derived
       collected: true
       # R1: `nwc` was a bare undeclared name. Now bs.nwc — the OPERATING basis.
       expr: "is.pat + is.dep_amort - (bs.nwc - prior(bs.nwc))"
       at: "ratios.py::operating_cash_flow — extracted from proforma.py:147, which already computed this arithmetic for FORECAST years only and without absence propagation. The registry said 'no owner'; there was one, for half the periods."
     cf.capex:
       source: stored
+      aggregation: sum
       collected: true
       field: capex
     cf.maintenance_capex:
       source: absent
+      aggregation: sum
       collected: false
       requires: "maintenance vs growth capex split"
     cf.growth_capex:
       source: absent
+      aggregation: sum
       collected: false
       requires: "maintenance vs growth capex split"
     cf.investing_cash_flow:
       source: absent
+      aggregation: sum
       collected: false
       requires: "not collected"
     cf.financing_cash_flow:
       source: absent
+      aggregation: sum
       collected: false
       requires: "not collected"
     cf.dividends_paid:
       source: stored
+      aggregation: sum
       collected: true
       field: dividends
     cf.debt_raised:
       source: absent
+      aggregation: sum
       collected: false
       requires: "⭐ only NET borrowing is stored (net_borrowing). Gross raised/repaid cannot be recovered from a net figure."
     cf.debt_repaid:
       source: absent
+      aggregation: sum
       collected: false
       requires: "⭐ see cf.debt_raised — net_borrowing only."
     cf.cash_from_customers:
       source: absent
+      aggregation: sum
       collected: false
       requires: "not collected"
     cf.buybacks:
       source: absent
+      aggregation: sum
       collected: false
       requires: "not collected"
 
   market_and_shares:
     mk.shares_outstanding:
       source: stored
+      aggregation: closing
       collected: true
       field: company.shares_outstanding
       note: "company-level field, not a statement line"
     mk.share_price:
       source: stored
+      aggregation: closing
       collected: true
       field: company.share_price
       note: "company-level; public companies only"
     mk.market_cap:
       source: derived
+      aggregation: derived
       collected: true
       expr: "mk.share_price * mk.shares_outstanding"
     mk.dps:
       source: absent
+      aggregation: sum
       collected: false
       requires: "dividend per share not collected"
 
   policy_and_assumptions:
     po.tax_rate_policy:
       source: stored
+      aggregation: constant
       collected: true
       field: company.tax_rate
       note: "company-level policy input"
     po.cost_of_equity:
       source: derived
+      aggregation: constant
       collected: true
       expr: "CAPM: risk_free_rate + beta * market_risk_premium + premia"
       at: "ratios.py::cost_of_equity_at"
     po.cost_of_debt:
       source: stored
+      aggregation: constant
       collected: true
       field: company.cost_of_debt
     po.days_in_period:
       source: derived
+      aggregation: period_defined
       collected: true
       expr: "365 | 366 | 90 by period basis"
       at: "a convention, not an input"
@@ -648,6 +733,7 @@ vocabulary:
     # does not have. It is what the caller resolves and hands to wacc_at.
     po.actual_leverage:
       source: caller_resolved
+      aggregation: derived
       collected: true
       at: "engines.py:566 (public), engines.py:579 (private)"
       note: "D/E at the company's actual capital structure. Public: market
@@ -657,36 +743,44 @@ vocabulary:
   human_capital:
     hc.headcount:
       source: absent
+      aggregation: closing
       collected: false
       requires: "headcount not collected"
     hc.payroll_cost:
       source: absent
+      aggregation: sum
       collected: false
       requires: "payroll cost not collected"
 
   saas:
     sa.arr:
       source: absent
+      aggregation: closing
       collected: false
       requires: "SaaS metrics not collected"
     sa.mrr:
       source: absent
+      aggregation: closing
       collected: false
       requires: "SaaS metrics not collected"
     sa.gross_churn:
       source: absent
+      aggregation: derived
       collected: false
       requires: "SaaS metrics not collected"
     sa.nrr:
       source: absent
+      aggregation: derived
       collected: false
       requires: "SaaS metrics not collected"
     sa.cac:
       source: absent
+      aggregation: derived
       collected: false
       requires: "SaaS metrics not collected"
     sa.customers:
       source: absent
+      aggregation: closing
       collected: false
       requires: "SaaS metrics not collected"
 

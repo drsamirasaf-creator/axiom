@@ -48,11 +48,37 @@ OBSERVED = "observed"
 DIRECTLY_DERIVED = "directly_derived"
 ALLOCATED = "allocated"
 ESTIMATED = "estimated"
+# ⭐⭐ `interpolated` ADDED 6 Aug — AND IT IS NOT `imputed`. The refusal above
+# stands unchanged: filling a MISSING observation within the supplied grain is
+# still forbidden, and `FORBIDDEN["imputed_status"]` still names it.
+#
+# ⭐ THE DISTINCTION, RECORDED HERE BECAUSE THIS IS WHERE SOMEONE WILL DOUBT IT
+# (CORE §8a's reconciliation):
+#
+#   imputed       an absent value where one SHOULD exist, filled by AXIOM,
+#                 unasked. The series has a hole. REFUSED.
+#   interpolated  a COMPLETE series re-grained to a finer view, at the CXO's
+#                 explicit request, with the method named on the figure.
+#                 Nothing is missing — ingest REJECTS gaps, so a supplied series
+#                 has no hole to fill.
+#
+# ⛔ SELF-SELECTION IS THE BASIS, and it is why this is not a weakening. A CXO who
+# chooses a method and reads "estimated by linear interpolation" has been told
+# what they are looking at. A pack recipient made no such choice — which is why
+# the status travels with the FIGURE and why an interpolated figure never enters
+# a pack.
+INTERPOLATED = "interpolated"
 UNAVAILABLE = "unavailable"
 
 # Ordered WEAKEST-LAST. `weakest_status` relies on this order, so a new status
 # must be inserted at its true strength rather than appended.
-DATA_STATUSES = (OBSERVED, DIRECTLY_DERIVED, ALLOCATED, ESTIMATED, UNAVAILABLE)
+# ⭐ `interpolated` sits BELOW `estimated` and above `unavailable`: an estimate
+# derived from a model the client supplied inputs to is stronger than a value
+# AXIOM produced by dividing another value. Placing it weaker is the
+# conservative choice — anything it touches degrades to at least interpolated,
+# which is what makes exclusion enforceable.
+DATA_STATUSES = (OBSERVED, DIRECTLY_DERIVED, ALLOCATED, ESTIMATED,
+                 INTERPOLATED, UNAVAILABLE)
 _RANK = {s: i for i, s in enumerate(DATA_STATUSES)}
 
 
@@ -263,6 +289,9 @@ def reconcile_across(dimension_type_a, dimension_type_b, mapping_exists, **kw):
 #                                  shown, and a floor that keeps a large
 #                                  financial impact visible.
 FORBIDDEN = {
+    # ⭐ STILL FORBIDDEN after `interpolated` shipped (6 Aug). The two are
+    # different acts and the reconciliation is at DATA_STATUSES above: a gap is
+    # never filled; a complete series may be re-grained on request.
     "imputed_status": "CORE §8a — absence propagates; a gap is never filled",
     "proportional_gross_up": "CORE §8a — no approval path to a fabricated number",
     "probability_across_allocation_methods":
