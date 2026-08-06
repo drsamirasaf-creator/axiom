@@ -253,7 +253,7 @@ def resolve_names(db, cid, nodes):
 def _rows(db, cid):
     """Read the five declared link tables. ⭐ Reads rows, computes nothing."""
     from .accounts import (GoalInitiativeLink, KpiInitiativeLink,
-                           KpiObjectiveLink, KrInitiativeLink)
+                           KpiObjectiveLink, KrInitiativeLink, live_links)
     from .initiative_lines import links_for
 
     line_links = [{"initiative_id": r.initiative_id,
@@ -269,7 +269,11 @@ def _rows(db, cid):
             (KpiInitiativeLink, "kpi->initiative", "kpi_key", "initiative_id"),
             (GoalInitiativeLink, "objective->initiative", "goal_key", "initiative_id"),
             (KrInitiativeLink, "key-result->initiative", "kr_key", "initiative_id")):
-        for r in db.query(model).filter_by(company_id=cid).all():
+        # ⛔ LIVE ONLY (§4v.1 ruling 1). A revoked link surviving into the causal
+        # map means a CXO's "this does not cause that" is on the record and off
+        # the picture — the retraction stored and ignored, which is worse than
+        # never storing it.
+        for r in live_links(db.query(model).filter_by(company_id=cid), model).all():
             other.append({
                 "source": f"{a.replace('_key','').replace('_id','')}:{getattr(r, a)}",
                 "target": f"{b.replace('_key','').replace('_id','')}:{getattr(r, b)}",

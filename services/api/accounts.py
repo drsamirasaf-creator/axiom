@@ -4478,8 +4478,13 @@ def _rag_mix(inis):
 
 
 def _goal_links_index(db, company_id):
-    """Map goal_key -> [Initiative] for this company's active links (one query pair)."""
-    links = db.query(GoalInitiativeLink).filter_by(company_id=company_id).all()
+    """Map goal_key -> [Initiative] for this company's LIVE links (one query pair).
+
+    ⭐ "Active" was the word here before `revoked_at` existed, and the query never
+    caught up — a revoked objective→initiative link stayed on every objective
+    card. §4v.1 ruling 1's column is inert unless each reader filters on it."""
+    links = live_links(db.query(GoalInitiativeLink).filter_by(company_id=company_id),
+                       GoalInitiativeLink).all()
     if not links:
         return {}
     ini_ids = {l.initiative_id for l in links}
@@ -5291,7 +5296,12 @@ def create_kpi_link(company_id: int, kpi_id: int, body: KpiLinkIn,
         if row:
             # Re-linking something the template had dropped revives it AS in-app,
             # so a later upload cannot flag it away again.
+            # ⭐ AND IT UN-REVOKES. Once removal became a revoke, a re-declaration
+            # that cleared only `flagged_absent` would appear to succeed and draw
+            # nothing — the row is unique on (company, kpi, goal), so there is no
+            # second row to create.
             row.flagged_absent, row.source = False, "in_app"
+            row.revoked_at, row.revoked_by = None, None
         else:
             db.add(KpiObjectiveLink(company_id=company_id, kpi_key=key, goal_key=goal_key,
                                     source="in_app", created_by=user.id))
@@ -5303,6 +5313,7 @@ def create_kpi_link(company_id: int, kpi_id: int, body: KpiLinkIn,
                .filter_by(company_id=company_id, kpi_key=key, initiative_id=iid).first())
         if row:
             row.flagged_absent, row.source = False, "in_app"
+            row.revoked_at, row.revoked_by = None, None
         else:
             db.add(KpiInitiativeLink(company_id=company_id, kpi_key=key, initiative_id=iid,
                                      source="in_app", created_by=user.id))
@@ -5319,24 +5330,43 @@ def delete_kpi_link(company_id: int, kpi_id: int, goal_key: str | None = None,
                     initiative_id: int | None = None,
                     member=Depends(require_company_admin),
                     user: User = Depends(get_current_user), db=Depends(get_db)):
-    """Remove a link. Deletes outright — unlike an upload's silence, this is a
-    person saying the connection is wrong, and flagging it would leave it on
-    screen under ?include_absent."""
-    key = _kpi_key_for(db, company_id, kpi_id)
-    n = 0
-    if goal_key:
-        n += (db.query(KpiObjectiveLink)
-              .filter_by(company_id=company_id, kpi_key=key, goal_key=goal_key)
-              .delete(synchronize_session=False))
-    if initiative_id is not None:
-        n += (db.query(KpiInitiativeLink)
-              .filter_by(company_id=company_id, kpi_key=key, initiative_id=initiative_id)
-              .delete(synchronize_session=False))
+    """Remove a link — by REVOKING it (§4v.1 ruling 1), never by deleting it.
+
+    ⭐⭐ THIS DOCSTRING USED TO ARGUE FOR THE DELETE: "unlike an upload's silence,
+    this is a person saying the connection is wrong". That is precisely why the
+    row must survive. A person's judgement that a KPI does not serve an objective
+    IS information, with an actor and a date; destroying the row stores the one
+    thing certainly false — that nobody ever considered the question. The reason
+    given for deleting was the reason for keeping.
+
+    ⭐ AND IT IS NOT `flagged_absent`. That flag means "the template stopped
+    mentioning this", which is silence; a revocation is a statement. Keeping them
+    distinct is why `?include_absent` can still show the template's omissions
+    without resurrecting anything a person retracted.
+    """
     if not goal_key and initiative_id is None:
         raise HTTPException(422, "specify goal_key or initiative_id")
-    audit(db, user.id, "kpi_link_deleted", "company", company_id, detail=f"kpi={kpi_id}")
+    key = _kpi_key_for(db, company_id, kpi_id)
+    now = datetime.utcnow()
+    n = 0
+    if goal_key:
+        for row in live_links(
+                db.query(KpiObjectiveLink)
+                  .filter_by(company_id=company_id, kpi_key=key, goal_key=goal_key),
+                KpiObjectiveLink).all():
+            row.revoked_at, row.revoked_by = now, user.id
+            n += 1
+    if initiative_id is not None:
+        for row in live_links(
+                db.query(KpiInitiativeLink)
+                  .filter_by(company_id=company_id, kpi_key=key,
+                             initiative_id=initiative_id),
+                KpiInitiativeLink).all():
+            row.revoked_at, row.revoked_by = now, user.id
+            n += 1
+    audit(db, user.id, "kpi_link_revoked", "company", company_id, detail=f"kpi={kpi_id}")
     db.commit()
-    return {"ok": True, "removed": int(n)}
+    return {"ok": True, "removed": int(n), "revoked": int(n)}
 
 
 class SeedDeptTarget(BaseModel):
@@ -6530,6 +6560,139 @@ def department_okr_map(company_id: int, dept_id: int,
             "objectives": objectives.get("objectives", []),
             "kpis": kpis.get("kpis", []),
             "initiatives": initiatives.get("initiatives", [])}
+
+
+@router.get("/companies/{company_id}/departments/{dept_id}/strategy-map")
+def department_strategy_map(company_id: int, dept_id: int,
+                            authorization: str = Header(None),
+                            member=Depends(_summary_access), db=Depends(get_db)):
+    """§4v — one department's strategy as a constrained hierarchy with DECLARED edges.
+
+    ⭐⭐ THIS IS `okr-map` PLUS THE THING IT NEVER HAD: EDGES. The okr-map returns
+    objectives, KPIs and initiatives as three lists, which is a picture of what
+    exists and says nothing about what serves what. The connections live in four
+    link tables nobody had drawn.
+
+    ⛔ EVERY EDGE HERE IS A DECLARATION AND NONE IS AN INFERENCE. Nothing is
+    matched by name, nothing is joined by coincidence of department. Where the
+    declarer is a person we name them; where it is the uploaded template we say
+    so, because "the template said this" is a real provenance and pretending a
+    person said it would be worse than either.
+
+    ⭐ CONTAINMENT IS NOT AN EDGE. A key result sits under its objective because
+    the upload put it there — that is structure, carried on the node as
+    `objective_key`. It deliberately does NOT make the KR `connected`, or the
+    finding this map exists to show ("41 of 82 key results have nobody resourcing
+    them") would be erased by the very rows that create the key results.
+    """
+    from . import strategy_map as SM
+    from . import axis_objective as AO
+
+    dep = db.get(Department, dept_id)
+    if not dep or dep.company_id != company_id:
+        raise HTTPException(404, "department not found")
+
+    objectives = company_objectives(company_id, department=dept_id,
+                                    member=member, db=db).get("objectives", [])
+    kpis = company_kpi_variance(company_id, department=dept_id,
+                               member=member, db=db).get("kpis", [])
+    initiatives = list_initiatives(company_id, department=dept_id,
+                                   member=member, db=db).get("initiatives", [])
+
+    # ⭐ THE NODES ARRIVE WITH THEIR DISPLAY SHAPE; the link tables speak in
+    # stable keys. These two indexes are the only translation, and they are built
+    # from the SAME rows the map draws — so an edge can never point at a node
+    # this department does not have.
+    obj_of = {}
+    for o in objectives:
+        obj_of[str(o.get("key"))] = o
+    ds = _active_company_dataset(db, company_id)
+    kr_rows = []
+    kpi_by_key, kr_keys = {}, set()
+    if ds:
+        oids = {str(o.get("objective_id")) for o in objectives}
+        for kr in (db.query(KeyResult)
+                     .filter_by(company_id=company_id, dataset_id=ds.id).all()):
+            if str(kr.objective_id) in oids and kr.kr_key:
+                kr_rows.append(kr)
+                kr_keys.add(kr.kr_key)
+        for kp in (db.query(KpiPlan)
+                     .filter_by(company_id=company_id, dataset_id=ds.id,
+                                department_id=dept_id).all()):
+            if kp.kpi_key:
+                kpi_by_key.setdefault(kp.kpi_key, []).append(kp.id)
+    # attach kr_key to the serialized key results, which carry only display fields
+    key_by_oid_text = {(str(k.objective_id), (k.key_result or "").strip()): k.kr_key
+                       for k in kr_rows}
+    for o in objectives:
+        for kr in (o.get("key_results") or []):
+            kr["kr_key"] = key_by_oid_text.get(
+                (str(kr.get("objective_id")), (kr.get("key_result") or "").strip()))
+            kr["name"] = kr.get("key_result")
+
+    ini_ids = {int(i["id"]) for i in initiatives if i.get("id") is not None}
+
+    def _who(row):
+        """⭐ AN ACTOR OR THE TEMPLATE — never a fabricated person. `created_by` is
+        NULL on template-sourced links because no user made them; the honest
+        declarer there is the upload, and it is named as such."""
+        if getattr(row, "created_by", None) is not None:
+            return row.created_by, None
+        return f"template:{getattr(row, 'source', 'template')}", "Uploaded template"
+
+    edges = []
+
+    def _add(row, kind, src, dst):
+        by, label = _who(row)
+        edges.append({"kind": kind, "src": src, "dst": dst,
+                      "declared_by": by, "declared_by_label": label,
+                      "declared_at": (row.created_at.isoformat()
+                                      if getattr(row, "created_at", None) else None),
+                      "revoked_at": row.revoked_at, "source": row.source})
+
+    # ⛔ LIVE ONLY — §4v.1 ruling 1. A revoked link stops connecting.
+    for r in live_links(db.query(KpiObjectiveLink).filter_by(company_id=company_id),
+                        KpiObjectiveLink).all():
+        for kid in kpi_by_key.get(r.kpi_key, []):
+            if str(r.goal_key) in obj_of:
+                _add(r, "kpi_objective", f"kpi:{kid}", f"obj:{r.goal_key}")
+    for r in live_links(db.query(KpiInitiativeLink).filter_by(company_id=company_id),
+                        KpiInitiativeLink).all():
+        for kid in kpi_by_key.get(r.kpi_key, []):
+            if r.initiative_id in ini_ids:
+                _add(r, "kpi_initiative", f"kpi:{kid}", f"ini:{r.initiative_id}")
+    for r in live_links(db.query(GoalInitiativeLink).filter_by(company_id=company_id),
+                        GoalInitiativeLink).all():
+        if str(r.goal_key) in obj_of and r.initiative_id in ini_ids:
+            _add(r, "objective_initiative", f"obj:{r.goal_key}", f"ini:{r.initiative_id}")
+    for r in live_links(db.query(KrInitiativeLink).filter_by(company_id=company_id),
+                        KrInitiativeLink).all():
+        if r.kr_key in kr_keys and r.initiative_id in ini_ids:
+            _add(r, "kr_initiative", f"kr:{r.kr_key}", f"ini:{r.initiative_id}")
+
+    built = SM.build_map(objectives=[{**o, "obj_key": o.get("key")} for o in objectives],
+                         kpis=[{**k, "name": k.get("kpi_name")} for k in kpis],
+                         initiatives=initiatives, edges=edges)
+
+    # ⭐⭐ WHO MAY EDIT, AND WHY NOT. Five of Meridian's seven departments have no
+    # authority holder, so most readers of this map cannot draw on it — and a
+    # disabled control with no reason reads as a broken feature. The reason
+    # travels with the refusal.
+    user = None
+    if authorization and authorization.lower().startswith("bearer "):
+        try:
+            user = get_current_user(authorization, db)
+        except HTTPException:
+            user = None
+    from .overrides import _is_platform_staff
+    perm = SM.map_permission(
+        has_authority=bool(user) and AO.may_declare(db, company_id, user,
+                                                    department_id=dept_id),
+        is_platform_staff=bool(user) and _is_platform_staff(user))
+    built["permission"] = perm
+    built["company_id"] = company_id
+    built["department"] = _dept_out(dep)
+    return built
 
 
 @router.get("/companies/{company_id}/people/detail")
