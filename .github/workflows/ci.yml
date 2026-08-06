@@ -35,6 +35,13 @@ jobs:
       # must leave the list.
       - name: no new duplicate CORE anchors (§0.2)
         run: python scripts/check-ledger-anchors.py
+      # ⭐⭐ A committed report must not restate the exposure it describes. The
+      # production-truth lane judged two matches benign and recorded that
+      # judgement ONLY IN CHAT — a guard in a chat message is not a guard.
+      # ⛔ The pattern is phrase-scoped on purpose: `public`/`private` are core
+      # DOMAIN vocabulary here, and a recogniser that floods on them gets muted.
+      - name: reports do not restate repository exposure
+        run: python scripts/check-report-exposure.py
       - name: route shadowing
         run: python scripts/check-route-shadowing.py
       # ⭐ A MODEL COLUMN WITHOUT A MIGRATION LINE TAKES EVERY READ OF THAT TABLE
