@@ -20763,6 +20763,29 @@ being able to check anything at all.
 
 ## ⭐⭐ §III.20 · NAME WHAT EACH GUARD CAN SEE — REPOSITORY, TREE, OR DEPLOY (7 Aug)
 
+### ⛔⭐⭐ COMPLETION, 8 Aug — NAMING THE ORIGIN DOES NOT REPAIR MEASURING THE WRONG THING
+
+**§III.20 said: name what each guard can see. The half it did not say is that
+naming it correctly is not permission to take the measurement.**
+
+⛔ **A proof of the wrong tree is worse than no proof**, because it arrives with
+an origin attached and therefore reads as rigorous. *"Walked
+`https://axiomdynamics.app`, found no empty states"* is a true sentence about a
+build from the night before, presented as a statement about today's work.
+
+⭐ **THE RULE: a DEPLOY-scope proof requires the deploy to MATCH the tree it is
+claiming about, and the match is asserted before the walk, not after.**
+`check-deploy-version.py` is that assertion, and its refusal is the gate.
+
+⭐⭐ **AND THE TWO DEPLOYS ARE SEPARATE, WHICH IS THE PRACTICAL HALF.** Measured
+8 Aug: `axiomdynamics.app` serves the FRONTEND and reports its own build commit;
+the API is a different host entirely, on its own release cycle. **A backend
+change can be live while the frontend is a day behind, and a single "is the
+deploy current?" question has two answers.** A proof must say which one it
+measured — a department set proven through the API is proven; the same claim
+made from a stale frontend is not.
+
+
 **Three nav guards were green, the deploy was correct, and the founder was
 looking at the old sidebar.** Every guard was telling the truth **about its own
 scope**, and nothing anywhere named those scopes — so the configuration read as
