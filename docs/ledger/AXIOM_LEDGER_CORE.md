@@ -20458,6 +20458,49 @@ someone who reads the shorter mark as an accident.
 DOMAIN the product operates in without asserting an outcome the product does not
 own.
 
+## ⭐⭐ §9a.1 · AXIOM REPOSITIONS ON STRATEGY-EXECUTION (founder ruling, 8 Aug)
+
+**AXIOM is the operating system for STRATEGY-EXECUTION. This SUPERSEDES the
+canonical line ruled 7 Aug** — *"the strategic operating system for mid-market
+companies"* — which described a category rather than a problem.
+
+### ⭐ WHY THIS ONE, IN THE FOUNDER'S REASONING
+
+| | |
+|---|---|
+| **it names a problem the buyer already believes they have** | nobody has to be persuaded that strategy and delivery drift apart. The line starts inside a conviction the reader arrived with, rather than teaching a category first |
+| ⭐⭐ **it self-selects** | *a prospect who does not feel the gap was never a buyer.* A line that qualifies OUT is worth more than one that appeals broadly, because the cost of a wrong prospect is paid in the pilot, not the pitch |
+| **it maps onto the product's own three states** | **ANALYZE / STRATEGIZE / EXECUTE** is already the navigation. The positioning describes what the software is shaped like, so the demo and the sentence cannot drift |
+
+### ⭐ WHAT CARRIES OVER UNCHANGED
+
+- **"Adaptive" stays.** It is the A in the acronym and its boundary is §9a's.
+- **"Autonomous" stays refused.**
+- ⛔ **§9a's boundary still governs, and it is the load-bearing half here.**
+  *The system responds; the executive decides.* **A tool makes an execution gap
+  VISIBLE. The executives close it.** Repositioning on execution raises the
+  temptation to claim the closing — which is exactly what §9b refused when it
+  struck *"Strategy Execution DELIVERED"* from the logo, for the same reason.
+
+### ⛔⭐⭐ WHAT MUST NOT APPEAR: THE UNSOURCED FAILURE STATISTIC
+
+**No "70–80% of strategies fail" figure, in any collateral, in any form.**
+
+It circulates with **at least three different attributions and incompatible
+definitions of "failure"** — abandoned, delayed, under-target, never-started —
+so a reader who checks finds a different number attached to each source, and a
+reader who does not is being given a decoration.
+
+⛔ **THE RULE: either ONE NAMED STUDY WITH ITS YEAR AND ITS DEFINITION OF
+FAILURE, OR THE CLAIM STATED QUALITATIVELY.** *"Strategy and delivery drift
+apart"* needs no citation because it asserts no magnitude. A percentage asserts
+one, and a magnitude without a source is the §III.24 defect on the most public
+surface the company has — a recorded number nothing can re-measure.
+
+⭐ This is the same discipline as the product's own refusals: **AXIOM declines
+to state a figure it cannot show the derivation of.** Marketing collateral is
+not exempt from the rule the software is built on.
+
 ## ⭐⭐ §9a · "ADAPTIVE" IS RULED IN. "AUTONOMOUS" IS REFUSED. (7 Aug)
 
 **FOUNDER RULING, 7 Aug: "Adaptive" enters AXIOM's value proposition.
