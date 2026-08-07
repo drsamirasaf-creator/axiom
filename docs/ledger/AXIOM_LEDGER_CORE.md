@@ -20620,6 +20620,37 @@ arithmetic is defensible and **unchanged**; the reading is recorded so it cannot
 drift unnoticed, and whether a financing flow should be allocated evenly at all
 is a ruling this lane does not take.
 
+## ⭐⭐ §III.23 · A DURATION FROM TWO TIMESTAMPS MUST STATE BOTH ZONES (7 Aug)
+
+**A duration computed across two clocks is not a measurement. State both zones,
+or do not state the duration.**
+
+⛔ **THE EVIDENCE, and it changed a conclusion rather than a figure.** A commit
+timestamp in **`+0600`** was compared against a **UTC** clock:
+
+| | |
+|---|---|
+| reported | *"`d3d1fe9` was pushed **~4.5 hours** before this measurement"* |
+| truth | **57 minutes** |
+| the inference built on it | *"a queue that deep is unusual, which makes **failing** or **sync paused** the more likely"* |
+| what that excluded | ⛔ **queued — which is what it actually was.** The deploy rebuilt an hour later, unaided. |
+
+⭐⭐ **THE WRONG NUMBER DID NOT LOOK WRONG.** 4.5 hours is plausible for a stalled
+pipeline, has the right magnitude, and **nothing in the arithmetic announced that
+two clocks had been compared** — subtracting two numbers that both look like
+times produces a number that looks like a duration. **§III.18 arriving in a
+single unit rather than a pattern.**
+
+⛔ **THE RULE:** any reported duration names the zone of **both** endpoints, or
+it is an estimate and must say so. `git log --date=iso` prints the offset;
+`%aI` gives it machine-readably. **Neither costs anything, and the alternative
+cost a conclusion.**
+
+⭐ **AND THE SAME APPLIES TO "AGE".** *"The deploy is N minutes behind"* is a
+duration across a server clock and a local one. If the artefact publishes its
+own `built_at` in UTC — as `/version.json` now does — **use that and compare
+UTC to UTC.** Do not derive the age from a commit timestamp.
+
 ## ⭐⭐ §III.22 · A CENSUS TAKEN ON A PROXY IS NOT A CENSUS OF THE PROPERTY (7 Aug)
 
 **§III.15 is a GUARD that tests a proxy for the harm. This is the same failure
