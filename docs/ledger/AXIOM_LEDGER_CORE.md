@@ -20354,6 +20354,85 @@ known-positive (the same predicate still passing the real page) is what
 distinguishes "the control rejects bad input" from "the predicate rejects
 everything".
 
+## ⭐⭐ §9a · "ADAPTIVE" IS RULED IN. "AUTONOMOUS" IS REFUSED. (7 Aug)
+
+**FOUNDER RULING, 7 Aug: "Adaptive" enters AXIOM's value proposition.
+"Autonomous" is explicitly REFUSED and must not appear in collateral.**
+
+⭐ **The word is not new to the product — it is already the A in the acronym**:
+*"**Adaptive** eXecutable Integrated Organization Model"*, on the landing page
+today. What the ruling adds is the **boundary it has never had**.
+
+### ⛔ THE DEFINITION, RECORDED SO THE WORD CANNOT DRIFT
+
+> **AXIOM adapts what it COMPUTES and SHOWS to the data and assumptions it is
+> given. It does not adapt the customer's DECISIONS.**
+>
+> **The system responds; the executive decides.**
+
+### Why "autonomous" is refused — these are EXISTING RULINGS, not new argument
+
+| ruling | what it already forbids |
+|---|---|
+| **B12** | initiative impact is **client-declared, never derived** |
+| **pack freeze** | a pack freezes the leader; **declaring a link is a distinct permission from overriding a figure** |
+| **§4u-c** | verbatim comments **do not travel into an assignment** — four enforcements |
+| **§8m.2 C** | **"optimal" is withdrawn at a corner** — a bound is where the search stopped, not where the objective turned |
+| **absence** | absence propagates; **no `or 0` anywhere** |
+
+⭐⭐ **THESE ARE THE PRODUCT'S ARGUMENT, NOT LIMITATIONS TO BE OVERCOME.** A CFO
+takes a number to a board **because a named human owns it**. A system that
+decided would remove the one property that makes the number usable.
+
+### ⭐ THE RECEIPTS — what backs the word, each measured
+
+| adapts to | measurement |
+|---|---|
+| **DATA DEPTH** | **45/77** for one company, **42/77** for three others, with the reason named **per quantity** |
+| **GRAIN** | annual · quarterly · monthly, with estimation **declared** rather than silent |
+| **ASSUMPTIONS** | the frontier moves with λ; the **equity grid refuses where the model refuses** — 4 of 25 cells where g ≥ WACC |
+| **FRAMEWORK** | `us_gaap` / `ifrs` — **9 of 26 captions differ** |
+| **WHAT THE ORGANISATION SAYS** | sentiment → initiatives → statement lines, **five hops** |
+
+⛔ **THE LAST ONE IS THE LEAST IMITABLE AND THE HARDEST TO SHOW.** It needs a
+**seeded department** to demonstrate at all — so it is the strongest claim and
+the one most likely to be absent from a demo that has not been prepared for it.
+
+### ⛔ BOUND TO THE CLAIMS AUDIT
+
+The standing rule from the PMO rename applies unchanged: **collateral states WHAT
+SHIPS, not what the name suggests.** Every use of "adaptive" in the brochure, the
+website or the comparison matrix **must be backed by something demonstrable in
+the demo**, and that is checked at the **CLAIMS AUDIT — third in the locked
+pre-launch sequence.**
+
+### ⛔⭐⭐ T4 · THE VALUE PROPOSITION EXISTS IN FOUR PLACES AND THEY DISAGREE
+
+**Measured before anyone edits anything. Nothing was edited.**
+
+| where | headline today |
+|---|---|
+| `docs/brochure/AXIOM_Brochure_v3.html` | *"A strategy-execution platform that supports dynamic corporate transformation, powered by advanced analytics."* |
+| `docs/brochure/AXIOM_Capabilities_Brochure_v2.html` | *"A strategy-execution platform for the whole transformation loop."* |
+| `optimization-anchor/src/routes/index.tsx` | *"AXIOM — Optimization, Certified."* |
+| `optimization-anchor/src/routes/what-is-axiom.tsx` | the comparison matrix, 962 lines, its own framing |
+
+| | |
+|---|---|
+| brochures | **hand-authored HTML in the BACKEND repo. No generator** — `scripts/` contains nothing that builds them |
+| landing page + about + what-is-axiom | **frontend repo**, Lovable-editable |
+| a single owner of the words | **none** |
+
+⛔ **THIS IS THE TWO-OWNERS CLASS ON THE SENTENCE A BUYER READS FIRST**, and it
+is worse than the usual shape because the copies live in **different
+repositories** with different editors — a lane changing one will not see the
+others, and Lovable editing the landing page cannot see the brochure at all.
+
+⭐ **So "adaptive" must not simply be added.** Adding it to one surface produces
+a fifth variant. **Which surface owns the value proposition is a ruling owed
+before any collateral edit**, and it is the precondition for the claims audit
+being able to check anything at all.
+
 ## ⭐⭐ §III.20 · NAME WHAT EACH GUARD CAN SEE — REPOSITORY, TREE, OR DEPLOY (7 Aug)
 
 **Three nav guards were green, the deploy was correct, and the founder was
