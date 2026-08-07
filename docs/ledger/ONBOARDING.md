@@ -549,6 +549,23 @@ Jul rulings · `B15` the features map as a distinct asset.
 | 5 | **Partial-bucket policy beyond the current default** | Complete-only-with-remainder shipped as **my** choice, marked as unruled. |
 | 6 | Assessor standing-vs-per-cycle · Viewer positive definition · the tier contradiction · does a pack freeze the leader / the movement history · milestone deletion as a revoke (ten-site sweep sized) · the crawler merge (two divergent `auth-regression.py`) · required checks as a real gate | carried from earlier lanes, unchanged |
 
+### ⭐⭐ ADDED 7 AUG — TWELVE MORE, AND ONE OF THEM BLOCKS TWO PROGRAMMES
+
+| # | ruling | why |
+|---|---|---|
+| **0** | ⛔⭐⭐ **THE SPEC IS NOT IN THE REPOSITORY** | Two lanes were dispatched against a spec citing §2, §4 (Tabs A–G), §82, §83, ~60 engines, and a nine-dimension grain. **Zero matches in `docs/`** — `docs/specs/` holds six specs, none of them it. Both lanes had to substitute derivable denominators. **Nothing in the data-spine or PMO programme can be measured against its own scope until this lands in the repo.** Ranked above everything because it is not a decision, it is a missing input. |
+| **0b** | **`routeTree.gen.ts` — Lovable committed the STRICT variant** (`b7eb617`) | The guard refuses it; **two clean frontend commits cannot push** (`acab2c9`, incl. the dataset-id verification fix). Ruled *"leave it"* 7 Aug — **a hold, not a resolution.** Options: restore the LOOSE variant, or `ALLOW_ROUTETREE=1` if the route change was intentional. |
+| 7 | **Which bucket `cf.net_borrowing` takes** | It is in `LABELS` and carries values in **33/33** datasets, and is dropped from every frequency view for want of a token. Candidates: `sum` (issuance less repayment is a period flow) or a refusal (a *net* of two flows the template cannot decompose). |
+| 8 | **Does the ratings surface publish its count** the way §4u-c publishes the comment count? | Measured: **19 of 33** — no: **3 of 45 department-cycles** fall below KFLOOR at n∈{1,2}. Because the floor is all-or-nothing per department, **withholding discloses the same two-element set implicitly.** The choice is disclosing plainly vs disclosing by inference. |
+| 9 | **`not_supplied` as a declared third dimension state** | `is_unallocated` exists; *"this business has no geography dimension"* has no representation, and an empty table cannot distinguish it from a failed upload. |
+| 10 | **Legal Entity · Business Unit · SKU as `Dimension Type` values** | 6 of the 9 named dimensions are already covered by `DIMENSION_COLUMNS`. These three are enum values plus a hierarchy rule — **not a second template.** |
+| 11 | **Build the completeness score before any engine** | Derivable today (**45/77 = 58.4%** for the demo, **42/77 = 54.5%** for the other three companies), needs no new engine, and is what turns a 54% first upload from a broken product into a progress bar. |
+| 12 | **§5.1's fourteen roles** | **Not reachable by extending the matrix.** 10 sites consult it; **143 consult a binary `require_company_admin`**. The work is 143 individual capability judgements — and the Assessor/Viewer rulings (#6) are **inputs to those**, not preliminaries. |
+| 13 | **§18 Decisions: a destination, and company scope** | 1 served path, **0 of 106 nav destinations**. Also document-scoped where §18 wants a company register. **Extend that owner; §17 Issues is the working sibling.** |
+| 14 | **The interpolation banner's grain** | A module-level constant says *"between reported quarters"* on an annual dataset, and ships on non-interpolated responses too. Smallest change reported, **not built**. |
+| 15 | **Frontend copy for the at-bound reading and the equity grid** | The **slot and the data** shipped 7 Aug; weight and placement are Lovable's. ⛔ Not an alarm — **19/33 = 57.6%** recommend at a boundary. |
+| 16 | **The crawler's dataset coverage** | `auth-regression` calls the valuation path for **one** dataset (`active_dataset_id`); datasets 3–5 are never active, and they are the only three that failed. Deliberately not widened in the same commit as the 404 fix. |
+
 **Then builds, in dependency order:** the §7u registry entries that unblock #1 ·
 the `kr_key` fix once #2 is ruled · band aggregation once #4 is ruled · `B2`/`B3`
 ratio library and DuPont · `B17` Control Tower (**no code**) · `B18` mobile
