@@ -20354,6 +20354,70 @@ known-positive (the same predicate still passing the real page) is what
 distinguishes "the control rejects bad input" from "the predicate rejects
 everything".
 
+# ⭐⭐ §0.4 · THE V1.0 SEQUENCE (ruled 7 Aug) — SEQUENTIAL, EACH GATES THE NEXT
+
+| # | step | why it comes first |
+|---|---|---|
+| **1** | **Verification capacity** — tokens, the crawler's dataset set, `demo-rot` green | ⭐⭐ **Nothing after it is PROVABLE without it.** `demo-rot` has never once succeeded; the crawler tests ONE dataset (`active_dataset_id`), which is why datasets 3–5 could 500 unseen; and no lane can hold a Business-tier credential, which is why the Prescience gate is unprovable in either direction. **Every step below reports "green" against instruments that cannot see.** |
+| **2** | **The controller** — scenario identity, incl. **CROSS-TAB consistency** (SPEC Part V §70–72: Revenue/Cost/Margin must not contradict) | ⭐⭐ **It is cheaper before the surfaces than after.** Three tabs that each compute independently will disagree, and a contradiction found by a CFO on screen is the §8m.1 defect at three times the width. Building the controller first means the tabs are consumers, not owners. |
+| **3** | Completeness surface | shipped 7 Aug — it gates which engines can run per customer |
+| **4** | **Seed Meridian FULLY** — every department: feedback, ideas for action, issues, and each department's pre-loaded questionnaire | ⭐⭐ **The five-hop chain is the least imitable claim AXIOM has and it cannot be DEMONSTRATED without a seeded department.** Measured: 3 of 45 department-cycles fall below KFLOOR; comments clear the floor on only 12.3% against ratings' 93.4%. **A demo that cannot show the chain is a demo of the parts.** |
+| **5** | **PMO §5 authorization** — the 143-site capability conversion | ⭐⭐ **Everything after it inherits the permission model.** 143 sites consult a binary `require_company_admin`; 10 consult the role matrix. Fourteen roles over a binary check collapses to two. **Steps 6–9 add dozens of surfaces, and each one built before the conversion is another site to convert.** |
+| **6** | Three new stakeholder instruments — **Voice of Customer, Partners, Suppliers** | ⛔ **NOT BUILT. Only employees have ever answered.** Each needs its own respondent population, invitation path and floor treatment. ⛔ **KFLOOR FOLLOWS THE RESPONDENT, NOT THE TABLE** — a supplier count and an employee count are different populations and must not share a floor. |
+| **7** | PMO registers and lifecycle — **§18 Decisions first**; §9.7 Timeline and §14 Schedule Intelligence (Gantt), which depend on **§9.11 Dependencies** | §18 is computed and served on 1 path, surfaced on **0 of 106** |
+| **8** | Revenue, Cost and Margin — **Tier 1**, cross-linked through the controller | depends on 2 |
+| **9** | **Tier 2** — gated on a **backtest** | |
+| **10** | Remaining features, then the **locked pre-launch sequence** | |
+
+⛔ **SEQUENTIAL. Each gates the next.** The four with recorded reasons — 1, 2, 4
+and 5 — each make everything after them **cheaper or provable**; taking them out
+of order does not delay the work, it multiplies it.
+
+# ⭐⭐ §0.5 · THE EXECUTIVE UX RULING (7 Aug) — CONSTRAINTS ON EVERY SURFACE
+
+**Audience: senior executives.** Recorded verbatim as design constraints:
+
+> - **Results first.** Charts and graphs summarise each page/tab visually
+>   **before any table**.
+> - **Details on demand** — a separate tab, **never the landing view**.
+> - **Everything interconnected. NO DEAD ENDS.**
+> - **Technical detail under the hood but ACCESSIBLE, never hidden.**
+> - **Less is more. Easy is king. The experience flows like water.**
+
+⛔ **THESE BIND EVERY SURFACE BUILT FROM NOW — they are not a phase after V1.0.**
+Steps 6–9 add dozens of surfaces, and **one built without results-first is one
+rebuilt.**
+
+### ⭐ "NO DEAD ENDS" IS TESTABLE, AND HALF OF IT IS ALREADY PROVEN
+
+`check-routes-reachable.py` proves **every route is reachable** — you can get
+IN. ⛔ **The inverse is unproven: does every surface offer a NEXT STEP?** A page
+a reader can reach and cannot leave except by the back button is a dead end that
+every current guard calls green.
+
+**Recorded as a check to build, not built here:** enumerate each surface's
+outbound affordances — a tab strip, a link, a drill-down — and fail on any
+analytical surface offering none.
+
+### ⚠️ WHAT ALREADY CONFLICTS — measured 7 Aug, reported not redesigned
+
+**14 analytical surfaces land on a DATA TABLE with no visual above it**, and
+**13 of them contain no chart anywhere in the file.** (`ui/table.tsx` is the
+primitive and is a false positive; the real count is 13.)
+
+Both surfaces the dispatch named are confirmed:
+
+| surface | tables in the landing view | charts in the file |
+|---|---|---|
+| **`RatioSurface.tsx`** | **3** | **none** |
+| **`FrequencyViews.tsx`** | **1** | **none** |
+| `OkrPanels.tsx` | 4 | none |
+| `assumptions.tsx` · `initiative-impact.tsx` · `sentiment.$axisCode.tsx` | 2 each | none |
+| `SentimentPanels` · `AssessmentPanels` · `UnifiedOptimizationPanel` · `ProjectExecution` · `ComparisonMatrix` · `ParticipantListTab` · `DemoDataInput` | 2 each | none |
+
+⭐ **Measured now while it is small.** This is the backlog the UX pass inherits,
+and it is 13 surfaces rather than the whole product.
+
 ## ⭐⭐ §9a · "ADAPTIVE" IS RULED IN. "AUTONOMOUS" IS REFUSED. (7 Aug)
 
 **FOUNDER RULING, 7 Aug: "Adaptive" enters AXIOM's value proposition.
