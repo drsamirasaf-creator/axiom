@@ -8,7 +8,12 @@ import os
 
 ABOUT = {
     "product": "AXIOM",
-    "tagline": "The enterprise, as a living mathematical model.",
+    # ⛔ "The enterprise, as a living mathematical model." RETIRED 7 Aug
+    # (CORE §9a). ⭐ THIS is what a generated board report actually renders —
+    # the frontend `board-report.tsx` string is only a FALLBACK for when the
+    # payload supplies none, and it never fires because this always does.
+    # Changing the template was not the fix; changing the source is.
+    "tagline": "The strategic operating system for mid-market companies.",
     # -------- audience 1: organizations -----------------------------------
     "for_organizations": {
         "title": "AXIOM for Organizations",
@@ -158,7 +163,12 @@ def intro_video_url() -> str | None:
 # ---- The board report brand block (Phase 16, ADR-017) -----------------------
 REPORT_BRAND = {
     "product": "AXIOM",
-    "tagline": "The enterprise, as a living mathematical model.",
+    # ⛔ "The enterprise, as a living mathematical model." RETIRED 7 Aug
+    # (CORE §9a). ⭐ THIS is what a generated board report actually renders —
+    # the frontend `board-report.tsx` string is only a FALLBACK for when the
+    # payload supplies none, and it never fires because this always does.
+    # Changing the template was not the fix; changing the source is.
+    "tagline": "The strategic operating system for mid-market companies.",
     "prepared_by": "Regent Financial",
     "contact_email": "samir@theregentfinancial.com",
     "powered_by": "Powered by AXIOM — axiomdynamics.app",
