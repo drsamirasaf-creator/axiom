@@ -675,11 +675,27 @@ vocabulary:
       aggregation: sum
       collected: true
       field: dividends
+    cf.net_borrowing:
+      source: stored
+      aggregation: sum
+      collected: true
+      field: net_borrowing
+      # ⭐⭐ RULED 7 Aug — IT IS A FLOW, AND IT SUMS. Under ASC 230 debt proceeds
+      # and repayments are FINANCING CASH FLOWS, so the movement between two
+      # debt stocks is itself a flow and aggregates by addition.
+      # ⛔ RULING 1 (balance-sheet items are STOCKS, never summed across
+      # periods) does NOT govern it. `bs.long_term_debt` and `bs.short_term_debt`
+      # are the stocks; this is the movement between them, and confusing the two
+      # is exactly the collision recorded in CORE.
+      # ⭐ It carried values in 33/33 datasets while being dropped from every
+      # frequency view for want of this entry — the drop was correct behaviour
+      # for an undeclared token (§8o ruling 3 forbids inferring a rule from a
+      # name), and the missing declaration was the defect.
     cf.debt_raised:
       source: absent
       aggregation: sum
       collected: false
-      requires: "⭐ only NET borrowing is stored (net_borrowing). Gross raised/repaid cannot be recovered from a net figure."
+      requires: "⭐ only NET borrowing is stored (net_borrowing). Gross raised/repaid cannot be recovered from a net figure. ⛔ ASC 230 requires proceeds and repayments GROSS; netting is permitted only for short-maturity, quick-turnover items. So the template collects a figure a compliant statement does not present that way — reported 7 Aug, not redesigned, because it changes TEMPLATE_SIG."
     cf.debt_repaid:
       source: absent
       aggregation: sum

@@ -20505,6 +20505,57 @@ and a reader who does not know the scope will over-read it every time.
 against the served host does — which is why the sidebar question was settled by
 fetching the deployed chunk, not by any check.
 
+## ⭐⭐ §8o.4 · STOCKS AND FLOWS — AND "NET BORROWING" READS AS BOTH (7 Aug)
+
+### ⭐ RULING 1 — **BALANCE SHEET ITEMS ARE STOCKS. NO AGGREGATION ACROSS PERIODS.**
+
+**Recorded in these words because it governs the vocabulary generally**, not one
+token. A balance is a position at an instant; adding four quarter-ends is the
+tripling `frequency_views` exists to prevent.
+
+### ⭐ RULING 2 — **APPLY GAAP. `cf.net_borrowing` IS A FLOW AND IT SUMS.**
+
+Under **ASC 230**, debt proceeds and repayments are **financing cash flows**.
+
+⛔ **Ruling 1 does NOT govern it.** `bs.long_term_debt` and `bs.short_term_debt`
+are the **stocks**; `cf.net_borrowing` is the **movement between them**. Reading
+ruling 1 onto it would have suppressed a flow for being adjacent to a balance.
+
+⭐ It carried values in **33 of 33 datasets** while being dropped from every
+frequency view for want of a vocabulary entry. **The drop was correct** — §8o
+ruling 3 forbids inferring an aggregation rule from a name — and the missing
+declaration was the defect.
+
+### ⛔⭐⭐ THE COLLISION: ONE NAME, A STOCK AND A FLOW
+
+| reading | quantity | owner |
+|---|---|---|
+| borrowings **net of cash** | a **STOCK** | ⭐ already owned by **`ratios.net_debt(debt, cash)`** |
+| **issuance minus repayment** | a **FLOW** | the stored `cf.net_borrowing` line |
+
+**The code held the flow. The domain authority read the stock.** Neither was
+wrong about its own referent — the name carries both.
+
+⭐⭐ **SAME SHAPE AS `leverage`**, which means **D/E** in `ratios.py` and **A/E**
+in the registry — §7j.6's name-collision class, arriving in a cash-flow line
+instead of a ratio.
+
+⛔ **AND THE NEW DECLARATION IS NOT A SECOND OWNER OF NET DEBT**, asserted
+rather than argued: `net_debt` **computes** a stock from two balances;
+`cf.net_borrowing` is **`source: stored`, `collected: true`** and is merely
+aggregated. Neither derives the other, so there is nothing to drift.
+
+### ⚠️ WHAT THE SUB-ANNUAL VIEW NOW SAYS — REPORTED, NOT RULED
+
+Monthly interpolation splits the annual figure **evenly**: `15.7714 / 12 =
+1.31428`, twelve identical months, each carrying `status: interpolated`.
+
+⛔ **Even allocation of a financing flow implies equal monthly drawdowns, and
+that is not how facilities behave** — a revolver is drawn in lumps. The
+arithmetic is defensible and **unchanged**; the reading is recorded so it cannot
+drift unnoticed, and whether a financing flow should be allocated evenly at all
+is a ruling this lane does not take.
+
 ## ⭐⭐ §III.22 · A CENSUS TAKEN ON A PROXY IS NOT A CENSUS OF THE PROPERTY (7 Aug)
 
 **§III.15 is a GUARD that tests a proxy for the harm. This is the same failure
