@@ -20354,6 +20354,59 @@ known-positive (the same predicate still passing the real page) is what
 distinguishes "the control rejects bad input" from "the predicate rejects
 everything".
 
+## ⭐⭐ §III.20 · NAME WHAT EACH GUARD CAN SEE — REPOSITORY, TREE, OR DEPLOY (7 Aug)
+
+**Three nav guards were green, the deploy was correct, and the founder was
+looking at the old sidebar.** Every guard was telling the truth **about its own
+scope**, and nothing anywhere named those scopes — so the configuration read as
+"the guards are unreliable" when not one of them was wrong.
+
+| guard | what it compares | scope |
+|---|---|---|
+| `check-sidebar-contract` | labels parsed from `AppLayout.tsx` **against** `EXPECTED_SIDEBAR_LINKS` in both `auth-regression` copies | ⭐ **REPOSITORY** — two committed lists. **It cannot see a deploy.** |
+| `check-nav-index` | regenerates `nav-index.generated.ts` and diffs | **REPOSITORY** — the projection matches its source |
+| `check-routes-reachable` | routes on disk against the nav arrays | **REPOSITORY** |
+| `browser-verify.py` | a rendered page | ⛔ **TREE** — origin defaults to `localhost:3000`, and `APP_URL` is never set |
+| `auth-regression.py` | a live crawl | ⭐ **DEPLOY** — origin defaults to the served host |
+
+⛔ **DO NOT WIDEN A GUARD TO CLOSE THE GAP.** `check-sidebar-contract` comparing
+two committed lists is its **correct job** — it caught the `auth-regression`
+divergence on 7 Aug and forced both copies fixed in the same commit. A
+repository guard that reached for the deploy would be slower, flakier, and
+answering a question it was not built for.
+
+⭐ **The fix is naming, not widening.** A green guard is a claim about a scope,
+and a reader who does not know the scope will over-read it every time.
+
+⛔ **AND NOTHING IN THE REPOSITORY CAN CLOSE THE DEPLOY GAP.** Only a request
+against the served host does — which is why the sidebar question was settled by
+fetching the deployed chunk, not by any check.
+
+## ⭐⭐ §III.21 · WHEN A NAME SEARCH ANSWERS PLAUSIBLY, ASK WHAT OWNS THE BEHAVIOUR (7 Aug)
+
+**Three instruments asked *"does this string appear somewhere?"* and all three
+answered plausibly and wrongly. The one that worked asked *"which chunk OWNS the
+sidebar?"***
+
+| asked | answered | why it was wrong |
+|---|---|---|
+| does `"Prescience AI"` appear in the bundle? | **yes** | it was a **page meta title** |
+| does `"Monitoring"` appear? | **yes** | it was an **i18n dictionary** entry |
+| does the moves commit's copy appear? | **no** | the dashboard is **code-split into another chunk** |
+| **which of the 44 chunks contains the sidebar?** | `AppLayout-*.js` | ⭐ **and reading it settled the question in one step** |
+
+⛔ **SECOND INSTANCE THIS WEEK, AND THE FIRST WAS THE SAME SHAPE.** The
+bound-check audit found three producers by searching for the check's **NAME**;
+the **fourth** — `scenario_pro` — was found only by searching for the
+**BEHAVIOUR**, a value compared against its declared range. **A name search
+cannot find a producer that never had the name.**
+
+⭐ **THE REFRAME:** a name search tells you where a string is *written*. It
+cannot tell you what *owns* the behaviour, and the two diverge exactly where it
+matters — a minified bundle, a code-split chunk, a producer that never adopted
+the convention. **When a name search returns a plausible answer, that is the
+moment to ask the ownership question**, not the moment to report.
+
 ## ⭐⭐ §III.19 · PLANT THE DEFECT WHERE IT CAN PROPAGATE (7 Aug)
 
 **A planted defect proves nothing unless the plant reaches the branch under

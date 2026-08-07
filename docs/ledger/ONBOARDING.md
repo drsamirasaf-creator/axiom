@@ -194,6 +194,34 @@ for f in scripts/check-*.py; do python3 "$f" || echo "FAIL $f"; done   # 29 gate
 ⭐ **Run the gate loop in the background.** A foreground 10-minute timeout has
 killed it mid-run four times.
 
+### ⛔⭐⭐ A BROWSER PROOF MUST NAME ITS ORIGIN, OR IT PROVES NOTHING ABOUT THE PRODUCT
+
+**Every browser proof reports the ORIGIN it ran against, beside its result.**
+Not the path — the **host**.
+
+⛔ **"On the URL a reader takes" does not specify a host, and is satisfied by
+`localhost`.** That phrasing has stood in dispatches all week and a localhost
+proof satisfies it completely — which is the defect. **A localhost proof is a
+statement about the TREE. Only a proof against the served host is a statement
+about the DEPLOY.**
+
+| what ran it | default origin | what it can prove |
+|---|---|---|
+| **`browser-verify.py`** — the CI browser gate | **`localhost:3000`**, and `APP_URL` is **never set** anywhere | **the tree only**, on the **nitro** build |
+| `auth-regression.py` (both copies) | **the served host** | the deploy |
+| `proxy-sweep.py` | the served host | the deploy |
+| `crawler-login.py` | `localhost:4175` | the tree |
+
+⭐⭐ **AND THE TWO BUILDS ARE NOT THE SAME ARTEFACT.** `build:preview` produces
+the **nitro** target (`/_build/assets/*`); the deployed product is a **Vite SPA**
+(`/assets/*`) with different chunking. Two targets from one tree. On 7 Aug they
+agreed — **by luck, not by construction**, and a lane cited a localhost proof as
+evidence about the deploy.
+
+⛔ **So report it like this:** *"browser proof, incognito, origin
+`localhost:3000` (nitro `build:preview`)"* — or name the served host. A result
+with no origin is not a proof, and **the reader cannot supply the missing half.**
+
 Frontend (`export PATH="$HOME/.bun/bin:$PATH"` first — `bun` is installed but
 not on the default PATH; a lane once concluded "no JS runtime" and queued unneeded
 work on that false measurement):
@@ -580,6 +608,7 @@ system or the user.**
 |---|---|
 | **Whether a deploy is serving HEAD** | The strategy-map investigation measured the component working at HEAD while the reader saw nothing. Only the served host answers this — check it **before** concluding a defect exists. |
 | **Whether an endpoint works in production** | Measured this week: `frequency-view` returned **500 on every call it ever had** while every gate was green. The browser proof **stubs the API**, so a green gate says the surface works, never the endpoint. Curl the served host. |
+| **⛔ Whether the DEPLOY renders what the tree renders** | **The browser gate cannot answer this.** `browser-verify.py` defaults `APP_URL` to **`localhost:3000`** and **nothing ever sets it** — CI serves `build:preview` there and tests that. ⭐ So every browser-gate run this project has ever made is a statement about the **tree**, on the **nitro** build; the deployed product is a **Vite SPA** with different chunking. Only a request against the served host answers it. |
 | **Sentry, uptime and error rates** | Not in the repo. Sentry found the 500 that 2,336 tests and a three-mode browser proof did not. |
 | **Whether `demo-rot` has ever succeeded** | It has not, and the repository cannot show why — the run history is in CI. |
 | **Customer data, counts and figures** | Never in a committed report by ruling; only a lane-env read answers, and only as a verification READ. |
