@@ -29,7 +29,7 @@ from sqlalchemy import (Column, DateTime, Integer, String, Text, JSON,
                         UniqueConstraint, func)
 
 from . import accounts as A
-from .accounts import (Base, get_db, require_company_member, require_company_admin,
+from .accounts import (Base, live_departments, get_db, require_company_member, require_company_admin,
                        _is_showcase_company,
                        get_current_user,
                        audit, _active_company_dataset, _derive_recommendations,
@@ -535,7 +535,7 @@ def _sec_overrides(doc, db, company_id):
              "retained and shown beside each. When answering about any of these metrics you "
              "MUST state that the figure was adjusted, by whom, and for what stated reason — "
              "never present an adjusted figure as AXIOM's own computation.")
-    names = {d.id: d.name for d in db.query(Department).filter_by(company_id=company_id).all()}
+    names = {d.id: d.name for d in live_departments(db, company_id).all()}
     for o in rows:
         where = names.get(o.department_id) or o.target_scope
         label = f"{where} · {o.metric_label or o.metric_ref}"

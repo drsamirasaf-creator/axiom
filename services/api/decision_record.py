@@ -637,6 +637,14 @@ NOT_A_DECISION = {
     "KeyResult": "same — the DECISION is the initiative or disposition it drives",
     "KpiPlan": "a plan row is a target, not a decision about one",
     "KpiDefinition": "defining a metric is configuration",
+    # ⭐ THE ORG CHART IS CONFIGURATION. Creating or retiring a department
+    # changes the STRUCTURE evidence is gathered against; the decision that
+    # caused the reorganisation is an objective or an initiative, and those are
+    # carried already. ⛔ The REVOCATION still carries its actor (§4v.1) because
+    # "who retired this department" is asked the moment one vanishes — an
+    # attribution requirement, not a decision-record one.
+    "Department": "the org chart is configuration — the DECISION behind a "
+                  "reorganisation is the objective or initiative that drove it",
     # ⭐ AUTHORING A QUESTIONNAIRE IS CONFIGURATION — the same family as
     # KpiDefinition. Choosing which questions an audience sees shapes the
     # EVIDENCE; it decides nothing about the company. ⛔ The decision is opening

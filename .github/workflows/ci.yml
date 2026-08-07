@@ -53,6 +53,14 @@ jobs:
         run: python scripts/check-comment-floor-derivability.py
       - name: route shadowing
         run: python scripts/check-route-shadowing.py
+
+      # ⛔⭐⭐ A REVOKED DEPARTMENT MUST NOT REAPPEAR. The state was authorized
+      # before it existed: ax_departments had no revoked_at, and `flagged_absent`
+      # was filtered by ZERO of 22 query(Department) sites. This guard DERIVES
+      # every call site by AST rather than carrying a list, so a 23rd enters the
+      # denominator the moment it is written — coverage, not activity.
+      - name: no serving path can surface a revoked department
+        run: python scripts/check-department-revoke.py
       # ⭐ A MODEL COLUMN WITHOUT A MIGRATION LINE TAKES EVERY READ OF THAT TABLE
       # DOWN, and the suite cannot see it: tests build SQLite from the models via
       # create_all(), so the test schema always has the column. 796 green tests

@@ -246,7 +246,8 @@ def _cap_okr_rows(db, cid):
     # reason. `test_the_override_capture_reads_columns_that_exist` is what
     # turned that into a failure instead of a quiet gap.
     from .accounts import Department, KeyResult, KpiPlan, Objective
-    dep = db.query(Department).filter_by(company_id=cid).all()
+    from .accounts import live_departments
+    dep = live_departments(db, cid).all()
     obj = db.query(Objective).filter_by(company_id=cid).all()
     kr = db.query(KeyResult).filter_by(company_id=cid).all()
     kpi = db.query(KpiPlan).filter_by(company_id=cid).all()

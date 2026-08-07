@@ -47,7 +47,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import (Boolean, Column, DateTime, Integer, String,
                         UniqueConstraint)
 
-from .accounts import Base
+from .accounts import Base, live_departments
 
 # ⭐ THE WINDOW, IN ONE PLACE. A duration repeated at the call sites drifts.
 VIEWER_DAYS = 30
@@ -457,7 +457,7 @@ def include(app, get_db, require_company_admin, require_platform=None):
         v = _open(db, token, "sentiment", request)
         from .accounts import Department
         from .voice_of_employee import for_department
-        deps = db.query(Department).filter_by(company_id=v.cid).all()
+        deps = live_departments(db, v.cid).all()
         return {"departments": [
             {"id": d.id, "name": d.name, **for_department(db, v.cid, d.id)}
             for d in deps], "has_data": bool(deps)}

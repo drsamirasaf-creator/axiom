@@ -1623,6 +1623,44 @@ class Department(Base):
     employees = Column(Integer, nullable=True)                    # headcount (optional; null ≠ 0) — coverage
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # ⛔⭐⭐ REMOVAL IS A REVOKE, NEVER A DELETE — and `flagged_absent` above is
+    # NOT this. That column means "a re-upload omitted this department"; these
+    # two mean "a human retired it". Overloading one column with both would be
+    # the defect that rejected instruments-without-cycles: two meanings on one
+    # field, indistinguishable at read time.
+    #
+    # ⭐ §4v.1 — A REVOCATION IS A DECLARATION AND DECLARATIONS CARRY ACTORS.
+    # `revoked_at` alone records that it happened and never who did it, which is
+    # the one question asked when a department vanishes from the org chart.
+    #
+    # ⛔ AND THE STATE IS HALF THE WORK. A revoked department must leave the
+    # SERVING path and stay readable to HISTORY: Meridian's "Sales & Marketing"
+    # carries 2,418 responses that must keep resolving under the name that
+    # collected them. Readers go through `live_departments`; the ones that must
+    # see everything are named in `scripts/check-department-revoke.py`.
+    revoked_at = Column(DateTime, nullable=True)
+    revoked_by = Column(Integer, nullable=True)
+
+
+def live_departments(db, company_id=None):
+    """THE SERVING PATH'S ONE READER. Revoked departments are excluded here and
+    nowhere else, so a 23rd call site cannot quietly reintroduce one.
+
+    ⛔ A guard (`check-department-revoke.py`) derives the full list of
+    `query(Department)` sites by AST and fails on any that is neither routed
+    through here nor exempt BY NAME WITH A REASON — coverage, not activity.
+    """
+    q = db.query(Department).filter(Department.revoked_at.is_(None))
+    return q.filter_by(company_id=company_id) if company_id is not None else q
+
+
+def revoke_department(db, dept, actor=None, now=None):
+    """⛔ NEVER A DELETE. The row, its responses, its objectives and its issues
+    all stay exactly where they are; it simply stops being part of the current
+    structure."""
+    dept.revoked_at = now or datetime.utcnow()
+    dept.revoked_by = actor
+    return dept
 
 
 class DepartmentAlias(Base):
@@ -4000,7 +4038,7 @@ def apply_upload(db, company_id: int, *, ent, data, objectives, key_results,
     # gate always passes an approved-set dict) — so the "flagged, not deleted"
     # contract silently did nothing for departments, and stale rows sat unmarked.
     if departments:
-        for dep in db.query(Department).filter_by(company_id=company_id).all():
+        for dep in live_departments(db, company_id).all():
             if dep.id not in named_dept_ids and not dep.flagged_absent:
                 dep.flagged_absent = True
 
@@ -4471,7 +4509,7 @@ def _dept_out(dep):
 
 def _dept_index(db, company_id):
     """{department_id: Department} for a company (one query)."""
-    return {d.id: d for d in db.query(Department).filter_by(company_id=company_id).all()}
+    return {d.id: d for d in live_departments(db, company_id).all()}
 
 
 def _norm_person(s):
@@ -6357,7 +6395,7 @@ def _dept_coverage(db, company_id):
         # reading it back with `.get(d.name)` returns 0 for every department whose
         # name has moved. That is the same trap `_department_sentiment_map` already
         # documents, reached from a second direction.
-        deps = db.query(Department).filter_by(company_id=company_id).all()
+        deps = live_departments(db, company_id).all()
         norm_to_id = {}
         for d in deps:
             for n_ in _dept_variant_norms(db, company_id, d):
@@ -6450,7 +6488,7 @@ def _dept_cei_map(db, company_id):
     # this file has already shipped one of those to production (see the `func`
     # import fix in 92e7340).
     from .assessment_engine import apply_kfloor, SUPPRESSION_NOTE, cei_band
-    deps = db.query(Department).filter_by(company_id=company_id).all()
+    deps = live_departments(db, company_id).all()
     empty = {d.id: {"cei": None, "n": 0, "state": "absent", "reason": None,
                     "note": None, "cycle_id": None, "cycle_name": None} for d in deps}
     # `cycles` is used below for the stable per-company ordinal, so it is bound
@@ -6554,8 +6592,7 @@ def list_departments(company_id: int, member=Depends(_summary_access), db=Depend
     """The company org chart — flat list of departments (parent_id nests them) with
     the head as the §4s accountable decision-maker and per-department counts of the
     active dataset's objectives / key results / KPIs and the company's initiatives."""
-    deps = (db.query(Department).filter_by(company_id=company_id)
-              .order_by(Department.name).all())
+    deps = live_departments(db, company_id).order_by(Department.name).all()
     counts = _dept_counts(db, company_id)
     cov = _dept_coverage(db, company_id)
     sent = _department_sentiment_map(db, company_id)      # shared with the Sentiment tab
@@ -6675,7 +6712,7 @@ def delete_department(company_id: int, dept_id: int, reassign_to: int | None = N
         k.department_id = new_id; moved["kpis"] += 1
     for i in db.query(Initiative).filter_by(company_id=company_id, department_id=dep.id).all():
         i.department_id = new_id; moved["initiatives"] += 1
-    for child in db.query(Department).filter_by(company_id=company_id, parent_id=dep.id).all():
+    for child in live_departments(db, company_id).filter_by(parent_id=dep.id).all():
         child.parent_id = dep.parent_id
     # Drop this department's aliases. A dangling alias points at a row that no
     # longer exists: _resolve_department would return None for it, so a later
@@ -6852,7 +6889,7 @@ def owner_detail(company_id: int, name: str,
     if not key:
         raise HTTPException(422, "name is required")
     # department(s) headed by this person
-    heads = [d for d in db.query(Department).filter_by(company_id=company_id).all()
+    heads = [d for d in live_departments(db, company_id).all()
              if (d.head_name or "").strip().lower() == key]
     title = next((d.head_title for d in heads if d.head_title), None)
     email = next((d.head_email for d in heads if d.head_email), None)
@@ -9469,7 +9506,7 @@ def urgent_items(company_id: int, member=Depends(_summary_access), db=Depends(ge
     # ── I8 / R3 — department sentiment (below k-floor NEVER appears) ───────────
     try:
         dmap = _department_sentiment_map(db, company_id)
-        dnames = {d.id: d.name for d in db.query(Department).filter_by(company_id=company_id).all()}
+        dnames = {d.id: d.name for d in live_departments(db, company_id).all()}
         for did, v in dmap.items():
             if v["below_floor"]:
                 continue
@@ -11875,7 +11912,7 @@ def _department_sentiment_map(db, company_id):
     Keyed by department id; every department gets an entry (n=0 → below floor)."""
     from .assessment_engine import KFLOOR
     out = {}
-    deps = db.query(Department).filter_by(company_id=company_id).all()
+    deps = live_departments(db, company_id).all()
     latest = cycle_with_published_results(db, company_id)
     if latest is None or not (latest.snapshot or {}).get("sentiment_available"):
         return {d.id: {"score": None, "rag": None, "n": 0, "below_floor": True,
@@ -12073,7 +12110,7 @@ def assessment_sentiment(company_id: int, department: int | None = None,
     # per-department composites — the SAME helper the org-chart chip reads, so the two
     # can never disagree. Attached to the department name for easy client join.
     dsent = _department_sentiment_map(db, company_id)
-    dname = {d.id: d.name for d in db.query(Department).filter_by(company_id=company_id).all()}
+    dname = {d.id: d.name for d in live_departments(db, company_id).all()}
     departments = [{"department_id": did, "name": dname.get(did), **v}
                    for did, v in dsent.items()]
     return {"company_id": company_id, "has_data": overall is not None,
@@ -12870,7 +12907,7 @@ def company_roster(company_id: int, department: int | None = None,
 # Participant List bulk upload — template · preview · commit · invite
 # ====================================================================
 def _company_department_names(db, company_id):
-    return [d.name for d in db.query(Department).filter_by(company_id=company_id)
+    return [d.name for d in live_departments(db, company_id)
               .order_by(Department.name).all()]
 
 
@@ -14699,6 +14736,10 @@ def _ensure_ax_columns(engine):
     # reconciliation contract promised but only half-kept (it existed on OKR rows
     # and not here, so a stale department was retained with nothing marking it).
     _add("ax_departments", "flagged_absent", "flagged_absent BOOLEAN NOT NULL DEFAULT false")
+    # ⛔ REVOCATION IS NOT `flagged_absent` — see the model. Two meanings on one
+    # column would be indistinguishable at read time.
+    _add("ax_departments", "revoked_at", "revoked_at TIMESTAMP")
+    _add("ax_departments", "revoked_by", "revoked_by INTEGER")
     _add("ax_document_proposals", "source", "source VARCHAR(16) NOT NULL DEFAULT 'synthesis'")
     _add("ax_assessment_invites", "is_demo", "is_demo BOOLEAN NOT NULL DEFAULT false")
     # §16: report-share bundling (multiple formats in one email)

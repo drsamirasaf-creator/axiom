@@ -23,7 +23,7 @@ found inspecting 7 of 292 paths and passing vacuously.
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from .accounts import (Department, _summary_access, get_db,
+from .accounts import (Department, live_departments, _summary_access, get_db,
                        require_company_admin, require_company_member,
                        get_current_user, User)
 from .overrides import (signoff_state, signoff_diff, grants_for, audit_rows,
@@ -212,7 +212,7 @@ def list_company_authority(company_id: int,
     row would read as "nothing to see", which is the opposite of what a vacancy
     means.
     """
-    deps = (db.query(Department).filter_by(company_id=company_id)
+    deps = (live_departments(db, company_id)
               .order_by(Department.name).all())
     return {
         "company_id": company_id,
