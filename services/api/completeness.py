@@ -49,6 +49,42 @@ UNALLOCATED = "unallocated"    # the dimension exists; this fact is not attribut
 NOT_SUPPLIED = "not_supplied"  # ⚠️ DECLARED absence — never inferred from 0 rows
 DIMENSION_STATES = (SUPPLIED, UNALLOCATED, NOT_SUPPLIED)
 
+# ── the three states a QUANTITY can be in, which is a different axis ────────
+# ⛔⭐⭐ "THE CUSTOMER LACKS THE INPUT" AND "WE NEVER DECLARED WHAT IT NEEDS" ARE
+# NOT THE SAME MISS, and collapsing them charges the customer for our gap. The
+# first is a next action they can take; the second is a next action WE owe. A
+# two-state score reports both as "not reachable" and sends a CFO looking for a
+# field nobody ever said was required.
+REACHABLE = "reachable"
+BLOCKED = "blocked"                          # inputs known, and some are absent
+REQUIREMENT_UNDECLARED = "requirement_undeclared"   # we cannot say what it needs
+QUANTITY_STATES = (REACHABLE, BLOCKED, REQUIREMENT_UNDECLARED)
+
+# ⛔⭐⭐ T4 — TWO SCORES, NEVER POOLED. The registry score counts AXIOM's computed
+# vocabulary; a spec-engine score would count units of a scope document. They are
+# different quantities over different denominators, and one number carrying two
+# definitions is the two-owners class in a metric — with no ragged edge to notice.
+# Every score names its denominator, and `assert_not_poolable` refuses two that
+# do not agree.
+REGISTRY_DENOMINATOR = "axiom.registry.declared_quantities"
+
+
+def assert_not_poolable(a, b):
+    """Refuse to combine two scores measured against different denominators.
+
+    ⭐ Structural, not advisory. A caller that tries to average a registry score
+    with a spec-engine score gets an exception naming both denominators, rather
+    than a plausible blended percentage nobody can trace.
+    """
+    da, db = a.get("denominator_id"), b.get("denominator_id")
+    if da != db:
+        raise ValueError(
+            f"refusing to combine scores over different denominators: "
+            f"{da!r} and {db!r}. These count different things — see "
+            f"completeness.REGISTRY_DENOMINATOR. If a single figure is wanted, "
+            f"that is a ruling about which denominator governs, not an average.")
+    return True
+
 # ⭐ Any `namespace.field` reference. Deliberately NOT a fixed prefix list — the
 # registry already uses is/bs/cf/company/po/mk/sa and a hand list would silently
 # skip the next one. `axiom.` is excluded and resolved transitively instead,
@@ -166,8 +202,19 @@ def score(data, period_index=None):
             if not req["inputs"]:
                 unparsed.append(qid)
 
+        # ⭐ T3 — THE THIRD STATE, kept out of the customer's column. A quantity
+        # whose formula we could not parse is OUR undeclared requirement, not
+        # their missing data.
+        if reachable:
+            state = REACHABLE
+        elif not req["inputs"]:
+            state = REQUIREMENT_UNDECLARED
+        else:
+            state = BLOCKED
+
         engines.append({
             "id": qid, "name": req["name"], "category": req["category"],
+            "state": state,
             "reachable": reachable,
             # ⭐ The named inputs, so a surface can group "six engines need
             # channel data" rather than listing six unrelated sentences.
@@ -178,11 +225,25 @@ def score(data, period_index=None):
             "error": error,
         })
 
-    ok = sum(1 for e in engines if e["reachable"])
+    ok = sum(1 for e in engines if e["state"] == REACHABLE)
+    blocked = sum(1 for e in engines if e["state"] == BLOCKED)
+    undeclared = sum(1 for e in engines
+                     if e["state"] == REQUIREMENT_UNDECLARED)
     total = len(engines)
     return {
         "computable": ok,
         "declared": total,
+        # ⛔ THE THREE STATES SUM TO THE DENOMINATOR AND ARE REPORTED APART.
+        # A surface that shows only `computable` invites "the rest is missing
+        # data", which is false for the undeclared ones.
+        "blocked": blocked,
+        "requirement_undeclared": undeclared,
+        "states": QUANTITY_STATES,
+        # ⛔⭐⭐ THE DENOMINATOR IS NAMED, NOT IMPLIED. "54%" with an unnamed
+        # denominator is a number two readers will define differently — and this
+        # one is specifically NOT the spec's engine count, which is unruled.
+        "denominator_id": REGISTRY_DENOMINATOR,
+        "denominator_label": "AXIOM registry-declared quantities",
         # ⭐ The denominator travels with the fraction, always.
         "fraction": round(ok / total, 4) if total else None,
         "percent": round(100.0 * ok / total, 1) if total else None,
