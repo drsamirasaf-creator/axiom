@@ -2,6 +2,31 @@
 
 **Last updated: 30 Jul 2026.**
 
+## ⛔⭐⭐ WHAT A LANE MUST BE TOLD TO READ — THERE IS NO AUTOMATIC ENTRY POINT
+
+**Measured 7 Aug: there is NO `CLAUDE.md` anywhere in this repository** — not at
+the root, not in `.claude/`. A lane loads its instructions from the user-level
+`MEMORY.md`, and **nothing in that path references `docs/ledger/` or
+`docs/specs/`.**
+
+⛔ **SO A DISPATCH THAT OMITS THE PATH GETS A LANE WITH NO LEDGER.** Not a lane
+that reads a stale ledger — one that has never seen it, and will re-derive
+rulings that were settled weeks ago.
+
+**The four paths a lane needs, by name:**
+
+| | |
+|---|---|
+| `docs/ledger/AXIOM_LEDGER_CORE.md` | this file — canonical, read at session start |
+| `docs/ledger/ONBOARDING.md` | the recovery doc and the open queue |
+| `docs/specs/AXIOM_REVENUE_COST_MARGIN_SPEC.md` | authoritative scope, Revenue/Cost/Margin |
+| `docs/specs/AXIOM_PMO_SPEC.md` | authoritative scope, PMO |
+
+⭐ **RULED 7 Aug: the pointer lives HERE, not in a new `CLAUDE.md`.** CORE is
+what every lane already opens, and a second entry point would be **two owners of
+"what a lane reads at session start"** — the sole-ownership failure applied to
+the one file whose job is to prevent it. ⛔ **Do not create `CLAUDE.md`.**
+
 ## ⭐ TOPIC OWNERSHIP (read before comparing this file with any other)
 
 Three documents describe AXIOM and **each is authoritative on some topics and
@@ -20273,6 +20298,47 @@ PROVE NOTHING.** Sharing the function makes that impossible — and the paired
 known-positive (the same predicate still passing the real page) is what
 distinguishes "the control rejects bad input" from "the predicate rejects
 everything".
+
+## ⭐⭐ §III.18 · A PLAUSIBLE WRONG NUMBER IS MORE DANGEROUS THAN AN ABSURD ONE (7 Aug)
+
+**A checker with one pattern is a list of one, and cannot see a file it was not
+written for.** That is the ordinary half. ⭐⭐ **The sharper half is which failure
+mode is worse — and it is not the loud one.**
+
+⛔ **THE EVIDENCE, from one afternoon:**
+
+| instrument | returned | fate |
+|---|---|---|
+| markdown-heading scan on the PMO spec | **0 sections in a 5,165-line document** | **absurd → disbelieved instantly** |
+| `<n>. text` scan on the same file | **1–24** | ⛔ **plausible → nearly acted on**; it had matched the table of contents, and would have declared **31 sections missing** and blocked the commit |
+| `path:`-only scan of the nav index | **25 destinations** | ⛔ **plausible → reported**; the real figure is **106**, and CORE had carried 106 since the navigation lane |
+
+⭐⭐ **THE ABSURD RESULT PROTECTED ME. THE PLAUSIBLE ONE DID NOT.** Zero sections
+in a large spec is impossible on its face, so it triggered a re-measurement
+within seconds. *"1 to 24"* looks exactly like a real answer — it has the right
+shape, the right magnitude, and a coherent story ("the spec is smaller than
+stated"). Nothing about it announces that the instrument matched the wrong thing.
+
+⛔ **SO THE HEURISTIC IS INVERTED FROM THE INTUITIVE ONE.** A number that offends
+is self-policing. **A number that satisfies must be checked hardest** — and the
+check is not "is it plausible" but *"what did the instrument actually match, and
+does the file use that convention?"*
+
+⭐ **The two specs proved the point in the same directory.** The Revenue spec uses
+markdown headings; the PMO spec uses bold lines `**N. TITLE**` and carries **no
+markdown headings at all**. One scan cannot see both, and the one that saw
+neither was the honest one.
+
+### ⛔ AND A RANGE ASSERTED FROM OUTSIDE THE FILE IS NOT A MEASUREMENT
+
+The dispatch stated the Revenue spec's numbering as *"1 to 92"*. Measured, **it
+carries 93, 94 and 95 as well.** The bound was supplied by a reader, not read
+from the document — and a checker that had trusted it would have reported a
+clean 1–92 while silently ignoring three real sections.
+
+⭐ **Bounds come from the artefact.** *"Verify it runs 1 to N"* is two claims —
+that it is unbroken, and that it stops at N — and only the first is usually
+meant. **Measure the max; do not accept it.**
 
 ## ⭐⭐ §III.17 · A RULE CAN INVERT WITHOUT CHANGING (7 Aug)
 
