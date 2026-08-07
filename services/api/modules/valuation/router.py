@@ -69,9 +69,25 @@ def list_modes():
          "subtitle": "Value the client's OWN forecast (as supplied)",
          "requires": "dataset with forecast years (a client plan)",
          "spec_ref": "Product §8.5/§8.9, Math §3.9-3.12"},
+        # ⛔⭐⭐ "TREND BASELINE", NOT "AXIOM FORECAST" — founder ruling, 8 Aug.
+        # This mode is `fin.auto_forecast`: historically fitted driver ratios
+        # with a capped CAGR. ONE METHOD OF FIVE. The Forecast Studio's
+        # "AXIOM Ensemble" — the inverse-MAE blend of four methods — is a
+        # DIFFERENT projection, and the two sat one line apart on the valuation
+        # surface, both read as "AXIOM's number".
+        #
+        # ⛔ THE MINIMAL RENAME WAS REJECTED. "AXIOM forecast (driver method)"
+        # leaves two AXIOM forecasts adjacent, which is the actual defect. The
+        # word AXIOM leaves this slot entirely, so only one thing in the product
+        # is AXIOM's forecast.
+        #
+        # ⭐ NO NUMBER CHANGES. The mode key stays `auto_forecast` and still
+        # computes `fin.auto_forecast`; only the caption moves. The KEY is the
+        # identifier and the TITLE is display text — the label ruling.
         {"mode": "auto_forecast",
-         "title": "AXIOM forecast DCF + stochastic risk adjustment",
-         "subtitle": "Value AXIOM's OWN projection (re-derived from historicals)",
+         "title": "Trend baseline DCF + stochastic risk adjustment",
+         "subtitle": "Value a trend baseline projected from your historicals "
+                     "(a capped-CAGR extrapolation of fitted driver ratios)",
          "requires": "any dataset with historicals (a client plan, if present, is "
                      "set aside for this view — never overwritten)",
          "spec_ref": "Product §7.12/§8.9 (Historical Trends), ADR-005"}]
