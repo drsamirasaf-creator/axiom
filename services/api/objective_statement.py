@@ -78,10 +78,16 @@ AT_BOUND_WARNING = (
 
 
 def _statement(*, maximises, formula, decision_variable, decision_variable_unit,
+               reading=None,
                constraint_present, constraint_note, prior_name, prior_value,
                prior_enters_as, weight_on_value, prior_visible, prior_adjustable,
                search):
     return {
+        # ⭐ THE READING SLOT. `frontier_objective` had none, so §8m.2 C's corner
+        # language had nowhere to live on that surface. None where a caller has
+        # not supplied the facts — absent, never an empty string pretending to
+        # be a sentence.
+        "reading": reading,
         "maximises": maximises,
         "formula": formula,
         "decision_variable": decision_variable,
@@ -107,10 +113,44 @@ def _statement(*, maximises, formula, decision_variable, decision_variable_unit,
     }
 
 
-def frontier_objective(risk_aversion):
+def frontier_reading(recommended_de, at_bound):
+    """The Frontier's one-line reading, from the SAME constants the levers panel
+    reads — `AT_BOUND_LEAD` / `OPTIMUM_LEAD` / `AT_BOUND_WARNING`.
+
+    ⛔ THE STRINGS ARE NOT DUPLICATED. §8m.2 A exists because two descriptions of
+    one idea, maintained apart, drift the way two definitions of a quantity
+    drift. The Frontier had no reading slot at all, so the corner language had
+    nowhere to go and the surface said "optimum" at a boundary for as long as
+    that was true.
+
+    ⛔ AND IT IS NOT STYLED AS AN ALARM. Measured 7 Aug: 19 of 33 datasets
+    recommend at a boundary (18 of them at the Safety end, 0.00× D/E). A warning
+    on the majority of datasets trains its reader to ignore it. This is a plain
+    factual clause carrying the same weight as the rest of the reading — no ⚠,
+    no emphasis. The levers panel keeps its ⚠ because a lever at a bound there
+    is the exception, not the rule.
+
+    `at_bound` is None/empty when the recommendation is interior, or `"min"` /
+    `"max"` naming which end it sits on.
+    """
+    end = (at_bound or {}).get("debt_to_equity") if isinstance(at_bound, dict) \
+        else at_bound
+    lead = AT_BOUND_LEAD if end else OPTIMUM_LEAD
+    line = f"At this λ, {lead}D/E = {recommended_de:g}."
+    if end:
+        side = "Safety end" if end == "min" else "Value end"
+        line += (f" That is the {side} of the swept grid — its "
+                 f"{'lowest' if end == 'min' else 'highest'} point. "
+                 + AT_BOUND_WARNING)
+    return line
+
+
+def frontier_objective(risk_aversion, recommended_de=None, at_bound=None):
     """The capital-structure sweep's objective."""
     lam = float(risk_aversion)
     return _statement(
+        reading=(None if recommended_de is None
+                 else frontier_reading(recommended_de, at_bound)),
         maximises="a blend of expected enterprise value and the tail solvency "
                   "margin",
         formula="(1 − λ)·mean(EV) + λ·(CVaR95(EV) − recapitalised debt)",

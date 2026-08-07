@@ -20865,8 +20865,40 @@ leverage lever removes a real effect to avoid a contradiction.
 descriptions of two objectives, maintained apart, drift the way two definitions
 of a quantity drift — the sole-ownership failure in prose instead of arithmetic —
 so they are written next to each other and a change to one is read against the
-other. The **same component** renders both tabs, so they cannot describe
-themselves in two different shapes.
+other.
+
+### ⛔⛔ THE GUARANTEE GOVERNS THE PAYLOAD LAYER ONLY — CORRECTED 7 AUG
+
+This section originally ended *"The **same component** renders both tabs, so they
+cannot describe themselves in two different shapes."* **That was true of the
+backend and false of the frontend, and the false half is where the defect
+lived.**
+
+| layer | one owner? | evidence |
+|---|---|---|
+| **payload** — what each objective says | **yes** | `objective_statement.py` holds `frontier_objective` and `levers_objective` side by side; both carry `COLLISION_NOTE` |
+| **rendering** — what the reader sees | **NO** | Solver is `UnifiedOptimizationPanel.tsx` and carries the at-bound copy with a `data-lens-unbounded` probe; **Frontier is `OptimalRange.tsx` and grepped ZERO for `bound`, `UNBOUNDED` or `search range`** |
+
+⭐ The "same component" in the original sentence renders the two **lenses**
+(`ev` and `raev`) *within* the solver panel. **It never rendered the Frontier.**
+
+⛔ **AND THE PAYLOAD GUARANTEE WAS ITSELF INCOMPLETE.** `frontier_objective()`
+returned **no `reading` key at all**, so even a correct component had nowhere to
+put the corner language — the surface said "optimum" at a boundary because the
+data never offered it anything else. Fixed 7 Aug: `_statement()` carries a
+`reading` slot and `frontier_reading()` composes it from the **same**
+`AT_BOUND_LEAD` / `OPTIMUM_LEAD` / `AT_BOUND_WARNING` constants the levers panel
+reads. Nothing is duplicated.
+
+⭐ **The lesson generalises:** a sole-ownership claim must name **which layer** it
+governs. "One module owns the words" does not imply "one component shows them",
+and the gap between those two sentences is exactly where a surface goes on saying
+the withdrawn word.
+
+⛔ **`"None — this optimum is unconstrained"` is a SEPARATE AXIS and was not
+overloaded.** It is driven by `constraint.present` — whether a constraint was
+applied — and says nothing about the search range. Both facts can be true at
+once, and they are now reported independently.
 
 ## ⭐⭐ B · `weight_on_value` IS THE FIELD THAT RESOLVES THE COLLISION
 

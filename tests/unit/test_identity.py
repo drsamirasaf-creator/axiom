@@ -579,7 +579,15 @@ def test_board_report_endpoint_open_and_redactable(client):
     body = r.json()
     assert len(body["sections"]) == 8
     assert body["brand"]["prepared_by"] == "Regent Financial"
-    assert body["all_checkpoints_pass"] is True
+    # ⭐ Every checkpoint but the ones that REPORT where an optimum landed (see
+    # engines.BOUND_REPORTING). A boundary is a fact about the data, not a
+    # broken engine — 19 of 33 datasets recommend on one — so demanding blanket
+    # green here would mean weakening the check that finally sees it.
+    _rep = {"no_lever_at_a_bound", "underlying_optima_off_their_bounds",
+            "composed_optima_off_their_bounds"}
+    _bad = [c["name"] for c in body["checkpoints"]
+            if not c["pass"] and c["name"] not in _rep]
+    assert not _bad, _bad
     red = client.get(f"/api/v1/intelligence/board-report/{plan['id']}"
                      "?confidential=true")
     assert red.status_code == 200 and red.json()["redacted"] is True

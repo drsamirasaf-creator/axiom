@@ -17,7 +17,17 @@ def test_frontier_certified_shape_and_values():
     assert abs(by_de[1.25]["value_mean_ev"] - 2601.8) < 0.5      # seeded
     assert abs(by_de[0.0]["safety_tail_margin"] - 2089.1) < 0.5
     assert by_de[2.0]["pareto_efficient"] is False               # dominated
-    assert f["all_checkpoints_pass"] is True
+    # ⭐⭐ §8m.2 C, 7 Aug: the frontier now carries `no_lever_at_a_bound`, and on
+    # this dataset the recommendation IS the grid minimum (D/E = 0.00, the Safety
+    # end), so the honest verdict is False. ⛔ The check is not weakened to
+    # restore a green line — that is the defect it was written to remove. Every
+    # OTHER checkpoint must still pass, and the bound verdict is asserted
+    # explicitly so a change of position fails this test rather than sliding by.
+    cps = {c["name"]: c["pass"] for c in f["checkpoints"]}
+    assert all(v for k, v in cps.items() if k != "no_lever_at_a_bound")
+    assert cps["no_lever_at_a_bound"] is False, \
+        "the recommendation left the boundary — update the expectation"
+    assert f["all_checkpoints_pass"] is False
 
 
 def test_frontier_lambda_spans_the_frontier():

@@ -9,6 +9,7 @@ import pytest
 
 import services.api.objective_statement as OS
 from services.api.modules.intelligence import engines as E
+from tests.fixtures.refcases import meridian
 
 
 # ── A · the two objectives are stated ───────────────────────────────────────
@@ -111,16 +112,22 @@ def _levers(**kw):
 
 
 def _bounds(current):
-    """The production rule, exercised directly — the same expression the engine
-    uses, so this cannot pass against a second implementation."""
-    at = {}
-    for k, v in current.items():
-        spec = E.SCENARIO_LEVERS[k]
-        if abs(v - spec["max"]) < 1e-9:
-            at[k] = "max"
-        elif abs(v - spec["min"]) < 1e-9:
-            at[k] = "min"
+    """The production rule, CALLED — not restated.
+
+    ⭐⭐ §III.13-EXTENDED, CAUGHT HERE. This helper used to re-implement the
+    engine's loop while its own docstring claimed it was "the same expression the
+    engine uses, so this cannot pass against a second implementation." It WAS the
+    second implementation. When the rule was extracted into
+    `E.bound_checkpoints` for its four producers, this copy would have gone on
+    passing against the old arithmetic forever.
+    """
+    at, _outside, _cps = E.bound_checkpoints(current, E.SCENARIO_LEVERS)
     return at
+
+
+def _outside_of(current):
+    _at, outside, _cps = E.bound_checkpoints(current, E.SCENARIO_LEVERS)
+    return outside
 
 
 def test_a_lever_at_its_maximum_is_flagged():
@@ -165,22 +172,30 @@ def test_a_lever_outside_its_range_is_still_caught_separately():
     bound — so the new check would miss it. Both questions are kept."""
     over = _levers(leverage=E.SCENARIO_LEVERS["leverage"]["max"] + 0.5)
     assert _bounds(over) == {}, "an out-of-range lever is not on the boundary"
-    outside = [k for k, v in over.items()
-               if not (E.SCENARIO_LEVERS[k]["min"] - 1e-9 <= v
-                       <= E.SCENARIO_LEVERS[k]["max"] + 1e-9)]
-    assert outside == ["leverage"]
+    assert _outside_of(over) == ["leverage"]
 
 
 # ── B · the surface withdraws the word "optimal" ────────────────────────────
 
 def test_the_engine_exposes_the_bound_facts_a_surface_needs():
     """⭐ So a panel can say "unbounded" without re-deriving which levers are
-    pinned — a second derivation is a second answer waiting to disagree."""
-    import inspect
-    src = inspect.getsource(E.optimal_levers)
-    assert '"levers_at_bound"' in src
-    assert '"bounded"' in src
-    assert '"no_lever_at_a_bound"' in src
+    pinned — a second derivation is a second answer waiting to disagree.
+
+    ⭐⭐ ASSERTED ON THE PAYLOAD, NOT ON SOURCE TEXT. This test read
+    `inspect.getsource(optimal_levers)` for the literal `"no_lever_at_a_bound"`
+    and went red the moment that checkpoint was EXTRACTED into
+    `bound_checkpoints` for its four producers — the code got better and the
+    test failed. It is the same fragility the sibling test below already records
+    (a line-wrapped literal), caught a second time in the same file: **a test
+    that reads source text asserts where a thing is written, not what the
+    program does.**
+    """
+    out = E.optimal_levers(meridian(), "ev")
+    assert "levers_at_bound" in out
+    assert "bounded" in out
+    names = {c["name"] for c in out["checkpoints"]}
+    assert "no_lever_at_a_bound" in names
+    assert "levers_inside_declared_ranges" in names
 
 
 def test_the_reading_withdraws_optimal_and_says_unbounded_at_a_corner():

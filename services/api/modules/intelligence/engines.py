@@ -402,6 +402,15 @@ def frontier(data: dict, de_grid: list | None = None,
             for q in points)
     best = max(points, key=lambda p: p["objective"])
     cur_w = _wacc_curve_point(company, beta_u, x_cur)
+    # ⭐⭐ THE FRONTIER HAD NO BOUND QUESTION AT ALL. It emitted only the two
+    # Pareto checks and reported `all_checkpoints_pass: True` while recommending
+    # the grid MINIMUM — §8m.2 C's defect on a second surface, never revisited
+    # when the levers panel was fixed. The decision variable here is the D/E
+    # grid position, so its "range" is the grid's own ends.
+    _de_spec = {"debt_to_equity": {"min": min(p["de"] for p in points),
+                                   "max": max(p["de"] for p in points)}}
+    de_at_bound, _de_outside, de_bound_cps = bound_checkpoints(
+        {"debt_to_equity": best["de"]}, _de_spec, what="grid point")
     checkpoints = [
         {"name": "recommended_is_pareto", "value": best["de"],
          "expected": "pareto_efficient", "pass": best["pareto_efficient"]},
@@ -409,6 +418,7 @@ def frontier(data: dict, de_grid: list | None = None,
          "value": sum(1 for p in points if p["pareto_efficient"]),
          "expected": ">= 1",
          "pass": any(p["pareto_efficient"] for p in points)},
+        *de_bound_cps,
     ]
     n = [f"Frontier over capital structure (lambda = {risk_aversion:g}): "
          f"the risk-adjusted optimum is D/E = {best['de']:g} "
@@ -424,7 +434,9 @@ def frontier(data: dict, de_grid: list | None = None,
     return {"risk_aversion_lambda": risk_aversion, "mode": mode,
             # ⭐ A · the objective, stated in the payload rather than left to the
             # narrative. A sentence in prose cannot be asserted; a field can.
-            "objective_statement": objstmt.frontier_objective(risk_aversion),
+            "objective_statement": objstmt.frontier_objective(
+                risk_aversion, recommended_de=best["de"],
+                at_bound=de_at_bound),
             "current_de": round(x_cur, 4), "points": points,
             "recommended": best, "narrative": n,
             "checkpoints": checkpoints,
@@ -1007,10 +1019,19 @@ def executive_brief(data: dict, readiness: dict | None = None) -> dict:
         {"name": "every_section_speaks",
          "value": min(len(s["words"]) for s in sections), "expected": ">= 1",
          "pass": all(s["words"] for s in sections)},
+        # ⭐ Same rule as the board report's rollup: "did the machinery work" is
+        # a different question from "where did the optimum land". See
+        # `_certified_ignoring_bounds`.
         {"name": "composed_engines_certified", "value": True,
          "expected": True,
-         "pass": all([rp["all_checkpoints_pass"], dp["all_checkpoints_pass"],
-                      base["all_checkpoints_pass"], fr["all_checkpoints_pass"]])}]
+         "pass": all(_certified_ignoring_bounds(x)
+                     for x in (rp, dp, base, fr))},
+        {"name": "composed_optima_off_their_bounds",
+         "value": [n for n, x in (("risk_profile", rp), ("dp_optimize", dp),
+                                  ("valuation", base), ("frontier", fr))
+                   if not _bound_verdict(x)],
+         "expected": "no composed optimum on a search boundary",
+         "pass": all(_bound_verdict(x) for x in (rp, dp, base, fr))}]
     return {"company": data["company"]["name"],
             "as_of_year": dm["as_of_year"], "sections": sections,
             "summary": [q1["words"][0], q2["words"][0],
@@ -2031,10 +2052,29 @@ def board_report(data: dict, readiness: dict | None = None,
          "value": sum(1 for s in sections if s.get("takeaway")),
          "expected": len(sections),
          "pass": all(s.get("takeaway") for s in sections)},
+        # ⭐⭐ A ROLLUP MUST NOT LAUNDER AN HONEST REFUSAL INTO A FAILED REPORT.
+        # `no_lever_at_a_bound` reports WHERE the recommendation sits; on 19 of
+        # 33 datasets it sits on a boundary, which is a fact about the data, not
+        # a defect in the engine. Rolling it up unchanged would mark the board
+        # report uncertified for the majority of companies and teach a reader
+        # that "uncertified" means nothing.
+        #
+        # ⛔ IT IS EXCLUDED HERE AND NOWHERE ELSE. Each engine still reports the
+        # bound verdict on its own payload, and the surfaces still read it; only
+        # this ENGINES-CERTIFIED rollup — which asks "did the machinery work" —
+        # stops treating "the optimum is at an edge" as machinery failing.
         {"name": "underlying_engines_certified", "value": True, "expected": True,
-         "pass": all([hv, rp["all_checkpoints_pass"], dp["all_checkpoints_pass"],
-                      fr["all_checkpoints_pass"], ro["all_checkpoints_pass"],
-                      brief["all_checkpoints_pass"]])}]
+         "pass": all(_certified_ignoring_bounds(x)
+                     for x in (rp, dp, fr, ro, brief)) and hv},
+        # ⭐ And the bound facts are SURFACED rather than swallowed, so the
+        # report can say which underlying optimum sits on an edge.
+        {"name": "underlying_optima_off_their_bounds",
+         "value": [n for n, x in (("risk_profile", rp), ("dp_optimize", dp),
+                                  ("frontier", fr), ("real_options", ro),
+                                  ("executive_brief", brief))
+                   if not _bound_verdict(x)],
+         "expected": "no underlying optimum on a search boundary",
+         "pass": all(_bound_verdict(x) for x in (rp, dp, fr, ro, brief))}]
     result_key_findings = None    # computed post-hoc by report_key_findings
     return {"brand": REPORT_BRAND, "generated_on": generated,
             "generated_at_utc": _dt.datetime.now(_dt.timezone.utc).strftime(
@@ -2246,6 +2286,80 @@ def report_key_findings(data, report: dict) -> list:
 # but distress dominates past the kink (WACC rises) — a real optimum.
 LEV_KD_KINK = 0.25          # debt/revenue beyond which distress bites
 LEV_KD_COEF = 0.35          # curvature of the distress spread
+
+
+# ⭐⭐ THE CHECKPOINTS THAT REPORT WHERE AN OPTIMUM LANDED, as opposed to
+# certifying that the machinery ran. Rollups exclude these; surfaces read them.
+BOUND_CHECK = "no_lever_at_a_bound"
+BOUND_REPORTING = {BOUND_CHECK,
+                   "underlying_optima_off_their_bounds",
+                   "composed_optima_off_their_bounds"}
+
+
+def _bound_verdict(payload):
+    """True when the payload has no bound checkpoint, or its bound check passes.
+
+    ⭐ Absent means "this producer asks no bound question", which is not a
+    failure — it is silence. Only an explicit False is a boundary report.
+    """
+    return all(bool(c["pass"]) for c in (payload or {}).get("checkpoints") or []
+               if c["name"] in BOUND_REPORTING)
+
+
+def _certified_ignoring_bounds(payload):
+    """Did the MACHINERY work — every checkpoint but the bound question.
+
+    ⛔ The bound question answers "where did the optimum land", which is a fact
+    about the data. Rolling it into "are the engines certified" would report a
+    broken engine whenever a company's optimum sits at an edge.
+    """
+    cps = (payload or {}).get("checkpoints") or []
+    if not cps:
+        return bool((payload or {}).get("all_checkpoints_pass", False))
+    return all(c["pass"] for c in cps if c["name"] not in BOUND_REPORTING)
+
+
+def bound_checkpoints(values, specs, what="lever"):
+    """§8m.2 C's TWO questions, for any value/range mapping. ONE owner.
+
+    ⭐⭐ IT IS EXTRACTED BECAUSE THERE ARE FOUR PRODUCERS, NOT ONE. `optimal_levers`
+    got the fix on 6 Aug; `scenario` kept the condemned `min <= v <= max` form;
+    `frontier` and `scenario_pro` never had a bound question at all — each
+    reporting `all_checkpoints_pass` over a solution sitting on its own edge. A
+    check fixed in one place while three consumers were never revisited is the
+    shape this function exists to make impossible.
+
+    Returns `(at_bound, outside, checkpoints)`.
+
+    ⛔ THE TWO QUESTIONS ARE KEPT SEPARATE AND BOTH ARE ASKED.
+      · `no_lever_at_a_bound` — fails ON the edge. A solution at a bound is
+        where the search was told to stop, not where the objective turns.
+      · `levers_inside_declared_ranges` — fails OUTSIDE it. A value out of
+        range is a different and WORSE bug, and it is not at a bound either,
+        so the first check would mask it.
+
+    ⭐ BOTH CORNERS. The observed defect landed on a maximum; a value pinned to
+    its floor is the same failure with the opposite sign. Measured 7 Aug: 18 of
+    33 datasets recommend at the MINIMUM and 1 at the maximum, so the floor is
+    the common case and a min-blind check would miss almost all of it.
+    """
+    at_bound, outside = {}, []
+    for k, v in values.items():
+        spec = specs[k]
+        lo, hi = spec["min"], spec["max"]
+        if abs(v - hi) < 1e-9:
+            at_bound[k] = "max"
+        elif abs(v - lo) < 1e-9:
+            at_bound[k] = "min"
+        if not (lo - 1e-9 <= v <= hi + 1e-9):
+            outside.append(k)
+    return at_bound, outside, [
+        {"name": "levers_inside_declared_ranges",
+         "value": outside or True, "expected": True, "pass": not outside},
+        {"name": "no_lever_at_a_bound",
+         "value": at_bound or True,
+         "expected": f"every {what} strictly inside its search range",
+         "pass": not at_bound}]
 
 
 SCENARIO_LEVERS = {
@@ -2494,10 +2608,14 @@ def scenario(data: dict, levers: dict, n_paths: int = 1500) -> dict:
     ev_delta_pct = ev_delta / base["enterprise_value"] if base["enterprise_value"] else None
 
     active = {k: v for k, v in clean.items() if abs(v) > 1e-12}
+    # ⛔ `levers_within_bounds` WAS CONDEMNED 6 AUG (§8m.2 C) AND STILL RAN HERE.
+    # `min <= v <= max` is satisfied BY a value sitting exactly on the edge, so
+    # it passed precisely at the corner it existed to catch — and `scenario`
+    # CLAMPS its input to that range a few lines above, which is how a lever
+    # arrives at a bound in the first place.
+    _at_bound, _outside, _bound_cps = bound_checkpoints(clean, SCENARIO_LEVERS)
     checkpoints = [
-        {"name": "levers_within_bounds", "value": True, "expected": True,
-         "pass": all(SCENARIO_LEVERS[k]["min"] <= v <= SCENARIO_LEVERS[k]["max"]
-                     for k, v in clean.items())},
+        *_bound_cps,
         {"name": "distributions_present", "value": True, "expected": True,
          "pass": bool(base["valuation_distribution"]["histogram"])
                  and bool(scen["valuation_distribution"]["histogram"])}]
@@ -2682,7 +2800,16 @@ def scenario_pro(data: dict, levers: dict, n_paths: int = 1200) -> dict:
     if tornado:
         headline += f"; the biggest lever is {tornado[0]['label']}."
 
+    # ⭐⭐ THE FOURTH PRODUCER. `scenario_pro` clamps every lever into its range
+    # a hundred lines above — which is precisely how a lever ARRIVES at a bound —
+    # and then emitted four checkpoints, none of which asked the bound question.
+    # It was found by searching for the BEHAVIOUR (a value compared against its
+    # declared range) rather than for the check's name; the name search had
+    # found three.
+    _pro_at_bound, _pro_outside, _pro_bound_cps = bound_checkpoints(
+        clean, SCENARIO_LEVERS)
     checkpoints = [
+        *_pro_bound_cps,
         {"name": "waterfall_reconciles",
          "value": round(waterfall[-1]["cumulative"] - base_ev, 2),
          "expected": "sum of contributions",
@@ -2874,33 +3001,16 @@ def optimal_levers(data: dict, objective: str = "ev") -> dict:
     # not where the objective turns. On the showcase dataset EV is strictly
     # monotonic in leverage across the whole range and the distress spread never
     # fires, so "+1.0" means "as much debt as the box allows" and nothing more.
-    at_bound = {}
-    for k, v in current.items():
-        spec = SCENARIO_LEVERS[k]
-        if abs(v - spec["max"]) < 1e-9:
-            at_bound[k] = "max"
-        elif abs(v - spec["min"]) < 1e-9:
-            at_bound[k] = "min"
-    # ⛔ `min` and `max` are BOTH corners. An earlier reading of this defect saw
-    # only the maximum because that is where leverage landed; a lever pinned to
-    # its floor is the same failure with the opposite sign.
-    outside = [k for k, v in current.items()
-               if not (SCENARIO_LEVERS[k]["min"] - 1e-9 <= v
-                       <= SCENARIO_LEVERS[k]["max"] + 1e-9)]
+    # ⭐ Delegates to `bound_checkpoints`, the one owner — this used to restate
+    # the arithmetic inline, and three other producers needed the same answer.
+    at_bound, outside, _lever_bound_cps = bound_checkpoints(current,
+                                                            SCENARIO_LEVERS)
     checkpoints = [
         {"name": "optimum_beats_base",
          "value": round(opt_ev - base_ev, 2), "expected": ">= 0",
          "pass": opt_ev >= base_ev - 1.0},
-        # ⭐ THE OLD QUESTION IS KEPT, because a lever OUTSIDE its range is a
-        # different and worse bug than one on the edge, and the new check would
-        # mask it: an out-of-range lever is not at a bound either.
-        {"name": "levers_inside_declared_ranges",
-         "value": outside or True, "expected": True, "pass": not outside},
-        # ⭐⭐ THE ONE THAT NOW FAILS AT A CORNER.
-        {"name": "no_lever_at_a_bound",
-         "value": at_bound or True,
-         "expected": "every lever strictly inside its search range",
-         "pass": not at_bound}]
+        # ⭐ Both questions, from the shared owner.
+        *_lever_bound_cps]
     return {"objective": objective, "objective_label": obj_label,
             # ⭐ A · the objective, said out loud, from the one module that
             # states both so they cannot drift apart.
