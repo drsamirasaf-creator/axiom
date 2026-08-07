@@ -2,6 +2,61 @@
 
 **Last updated: 30 Jul 2026.**
 
+## ⛔⭐⭐ LABEL → PATH. A DISPATCH NAMES A LABEL; THE REPO ONLY HAS PATHS.
+
+**Read this before writing a dispatch that names a navigation surface.** A lane
+sent after a label will grep for the matching path, find nothing, and conclude
+the page does not exist. **That happened on 7 Aug with `/monitoring`, which has
+never existed.**
+
+| label a dispatch says | path a lane must open |
+|---|---|
+| **Monitoring** | **`/twin`** ⛔ there is no `monitoring.tsx` |
+| **PMO** | **`/initiatives`** |
+| **Planning** | **`/target-state`** |
+| **Feedback** | **`/stakeholder-engagement`** |
+| **Structure** | **`/org-structure`** |
+
+⭐ **Those five are the SIDEBAR. The tab strips add sixteen more** — including
+`Executive Brief` → `/brief`, `Benchmarking` → `/risk-analysis`, `Survey
+Feedback` → `/cei`, `Forecasting` → `/financial-forecasts`, `Declared Impact` →
+`/initiative-impact`, and **three different labels on `/twin` alone**
+(`Monitoring`, `Observatory`, `Sync`).
+
+⛔ **DO NOT RENAME PATHS TO CLOSE THE GAP.** The flat-route precedent below is
+what made this week's three nav moves free — no redirects, no broken inbound
+links, no signposts. **Renaming paths spends that.** The map is the fix; the
+rename is not.
+
+## ⭐⭐ A "TAB" IN `route-tabs-config.ts` IS A LINK TO A FLAT ROUTE
+
+**Not a nested component. Not a nested route. A link.**
+
+Moving a page between tab strips moves **its nav entry only**:
+
+| | |
+|---|---|
+| the path | **unchanged** — `/swot`, `/prescience-ai`, `/twin` stay flat routes |
+| inbound links | **all still resolve** — nothing to re-point |
+| redirects needed | **none** |
+| signpost cards needed | **none** — nothing was taken away |
+| nested tab params | **none** — a page keeps its own `?tab=` exactly as before |
+
+⭐ A page that is a "tab" renders `<RouteTabs tabs={GROUP} />`, which draws links
+to its sibling **routes**. The page's own within-page tabs are a *different*
+mechanism (`PageTabs` + `useTabParam`), and the two coexist — Dashboard and PMO
+both carry one of each.
+
+⛔ **TWO DISPATCHES THIS WEEK ASSUMED OTHERWISE**, and the assumption produced a
+nested-tab gate that blocked a lane **for two turns** over a routing ruling with
+no subject: Prescience's four features never became tabs-within-a-tab, because
+`/prescience-ai` kept its own `?tab=brief|causal|multiverse|resilience`
+untouched.
+
+⭐ **The one thing a move DOES require** is that the page render its new home's
+strip. `/prescience-ai` rendered **none**, and would have shipped reachable only
+by typing the URL — see `check-routes-reachable.py`.
+
 ## ⛔⭐⭐ WHAT A LANE MUST BE TOLD TO READ — THERE IS NO AUTOMATIC ENTRY POINT
 
 **Measured 7 Aug: there is NO `CLAUDE.md` anywhere in this repository** — not at
