@@ -1,238 +1,243 @@
-"""DuPont as a NODE TREE. Pure shaping — it computes nothing.
+"""DuPont as a NODE TREE. It holds the STRUCTURE and nothing else.
 
-⭐⭐ IT COMPUTES NOTHING, AND THAT IS THE POINT (§7r-O). Every value comes from
-`ratio_registry.evaluate_period` — the production path — or is read straight off
-the stored statements. A lane wrote `tiers.py` last turn and deleted it for
-exactly this reason: a second owner of a quantity is worse than an absent
-surface, because the two drift and nobody is told.
+⭐⭐ IT COMPUTES NOTHING, AND IT NO LONGER READS ANYTHING EITHER. Every value,
+label, operand, basis and absence reason on this payload comes from
+`ratio_registry.explain` — the same call the ratios surface has used since R7.
+This module owns only what nothing else does: **which node is whose child**,
+how absence travels upward, the reconciliation, and the attribution.
 
-⛔ DEFINITIONS ARE NOT AUTHORED HERE. Each node's `definition` is the registry
-row's own `definition:` field. **No new definition text is written in this
-module**, and if a row has none the node reports absence rather than inventing a
-sentence.
+## ⛔⭐⭐ IT WAS A SECOND PRODUCER, AND IT LOST (§7r-O)
 
-⛔ IMPLICATIONS ARE ABSENT, DELIBERATELY. Measured 7 Aug: **nothing in the
-codebase owns "what this means"** for a ratio — the only `interpretation` hits
-are period-format notes in `ingest.py`. Writing per-node prose here would create
-an owner nobody ruled on, so every node carries `implication: None` and the
-payload says why. **The surface must render that as absent, not as blank.**
+The first version resolved its own operands, looked up its own registry rows and
+captioned its own leaves. Measured this lane, `explain` already returned every
+one of those — **better in three places**:
+
+| | this module's first version | `explain` |
+|---|---|---|
+| which operands a factor has | a hand-written `_OPERANDS` map | **parsed from the formula** |
+| the caption | `templates.LABELS` via the vocabulary's `field:` | `display_name(token, standard)` — **the client's own standard** |
+| `avg(bs.total_assets)` in the first period | ⛔ returned a period-end number still labelled `basis: "average"` until I fixed it by hand last lane | **already absent, "no opening balance for an average"** |
+
+⭐⭐ THE THIRD ROW IS THE ONE THAT MATTERS. I found that defect by measuring,
+wrote a regression test for it, and shipped the fix — and the correct behaviour
+had been sitting in the owner the whole time. **A second producer does not just
+duplicate an owner; it re-earns the owner's bug fixes one incident at a time.**
+
+⛔ AND THE FACTOR LIST IS NOT HAND-WRITTEN EITHER. `axiom.dupont_three_step`'s
+formula IS `net_margin * asset_turnover * financial_leverage`, so the three
+children are read from the registry. A tuple here would have been a fourth
+place to edit when the identity changes.
 
 ## ⭐ THE SHAPE
 
-    ROE
-     ├─ net_margin          → pat / revenue
-     │    ├─ pat
-     │    └─ revenue
-     ├─ asset_turnover      → revenue / avg(total assets)
-     │    ├─ revenue
-     │    └─ avg(total assets)
-     └─ financial_leverage  → avg(total assets) / period-end equity
-          ├─ avg(total assets)
-          └─ equity
+    ROE                            ← axiom.roe
+     ├─ net_margin                 ← the three leaves of the identity's formula
+     │    ├─ is.pat                ← each factor's own operands, from ITS formula
+     │    └─ is.revenue
+     ├─ asset_turnover
+     │    ├─ is.revenue
+     │    └─ avg(bs.total_assets)
+     └─ financial_leverage
+          ├─ avg(bs.total_assets)
+          └─ bs.equity
 
-⛔ ABSENCE PROPAGATES PER NODE. A node whose input is missing renders **absent**,
-never zero — and a parent whose child is absent is absent too, because the
-product of an absent factor is not a number.
+⛔ ABSENCE PROPAGATES PER NODE, AND EVERY POINT CARRIES ITS OWN STATE. A node
+whose input is missing renders **absent with the reason**, never zero — and a
+parent whose child is absent is absent too, because the product of an absent
+factor is not a number. A 4-of-5 series ships four observed points and one
+absent one; it must never become a 5-point line with an invented value.
+
+⛔ IMPLICATIONS ARE ABSENT, DELIBERATELY. Measured 7 Aug: nothing in the
+codebase owns "what this means" for a ratio. Every node carries
+`implication: None` and the payload says why, so a surface renders that as
+absent rather than as blank.
 """
 import math
 
 from .modules.financials import engines as FE
 from .modules.financials import ratio_registry as RR
 
-# the three states a node's value can be in
+# the states a node's value can be in
 OBSERVED = "observed"
 ABSENT = "absent"
 DERIVED = "derived"
 
 ROOT = "axiom.roe"
-FACTORS = ("axiom.net_margin", "axiom.asset_turnover",
-           "axiom.financial_leverage")
-
-# ⛔⭐⭐ THE OPERAND TOKENS ONLY. NO LABELS HERE — I AUTHORED A LABEL MAP IN THIS
-# TUPLE LAST LANE AND IT WAS A SECOND OWNER OF DISPLAY TEXT, which is exactly
-# what the label ruling forbids: the payload carries the display string and the
-# KEY stays the identifier, from the owner that already holds it.
-#
-# ⭐ THE RESOLUTION IS TWO HOPS, and neither is invented here: the vocabulary
-# maps a token to its stored `field:`, and `templates.LABELS` maps that field to
-# a caption in the dataset's own framework. `bs.equity` -> field `total_equity`
-# -> "Total Stockholders' Equity". Looking the token's own suffix up in LABELS —
-# what a first version did — finds nothing, because `equity` is not the stored
-# name.
-_OPERANDS = {
-    "axiom.net_margin": (("is.pat", "period"),
-                         ("is.revenue", "period")),
-    "axiom.asset_turnover": (("is.revenue", "period"),
-                             ("bs.total_assets", "average")),
-    "axiom.financial_leverage": (("bs.total_assets", "average"),
-                                 ("bs.equity", "period_end")),
-}
+IDENTITY = "axiom.dupont_three_step"
 
 
-def _framework(data):
-    fw = ((data or {}).get("company") or {}).get("framework") \
-        or (data or {}).get("standard") or "us_gaap"
-    return fw if fw in ("us_gaap", "ifrs") else "us_gaap"
+def factors():
+    """The three factors, READ OFF THE IDENTITY'S FORMULA (§7r-O).
 
-
-def operand_label(data, token):
-    """The caption for an operand token, from the OWNERS. `None` is a GAP.
-
-    ⛔ Returns None rather than the token or a guess. Measured 7 Aug: of the
-    four operand tokens, `is.revenue` and `bs.equity` resolve to a caption and
-    **`is.pat` and `bs.total_assets` have none anywhere** — both are
-    `source: derived` with an `expr:` and no `field:`, so there is no stored
-    line for `templates.LABELS` to caption. That is a gap to report, not a
-    place to invent text.
+    ⛔ Not a tuple in this file. If the registry ever restates the identity —
+    a five-step DuPont splits net margin into tax burden, interest burden and
+    operating margin — the tree follows without an edit here.
     """
-    from .modules.financials import templates as T
-    vocab, _g, _r = RR._index()
-    field = (vocab.get(token) or {}).get("field")
-    if not field:
-        return None
-    lines = (T.LABELS.get(_framework(data)) or {}).get("lines") or {}
-    return lines.get(field)
+    _v, _g, ratios = RR._index()
+    row = ratios.get(IDENTITY) or {}
+    toks = RR._leaf_tokens(RR._parse(row["formula"]))
+    # ⭐ ORDER IS THE FORMULA'S ORDER, so the tree reads left-to-right the way
+    # the identity is written. `_leaf_tokens` may return a set; sort by where
+    # each token appears in the formula text rather than alphabetically.
+    return tuple(sorted((t for t in toks if t in ratios),
+                        key=lambda t: row["formula"].index(t)))
 
 
-_BLOCK = {"is": "income_statement", "bs": "balance_sheet", "cf": "cash_flow"}
+def _explained(data, years, i, qid, supplied):
+    """One node from THE OWNER. No second reader, no second caption."""
+    return RR.explain(data, years, i, qid, supplied=supplied)
 
 
-def _row(qid):
-    for r in RR.load()["ratios"]:
-        if r["id"] == qid:
-            return r
-    return {}
+def _leaf(op, period):
+    """An operand, as `explain` already reported it.
 
-
-def _value(data, years, i, qid):
-    """(value, status) from the PRODUCTION path. Absence is a state, not a zero."""
-    try:
-        v = RR.evaluate_period(data, years, i, qid)
-    except Exception:                                        # noqa: BLE001
-        return None, ABSENT
-    if isinstance(v, RR.Absent):
-        return None, ABSENT
-    return v, OBSERVED
-
-
-def _operand(data, years, i, token, basis):
-    """A leaf node, resolved by THE REGISTRY'S OWN RESOLVER.
-
-    ⛔⭐⭐ A FIRST VERSION READ THE STORED BLOCKS DIRECTLY AND EVERY LEAF CAME BACK
-    ABSENT — because the registry's tokens are not the stored field names:
-    `is.pat` is derived as `net_income`, `bs.equity` is stored as `total_equity`,
-    and `bs.total_assets` **is not stored at all**. The ratios computed fine
-    while their own operands showed as missing.
-
-    ⭐ The mapping has an owner — `ratio_registry._resolve` takes a token OR a
-    ratio id and returns a number or an `Absent` with its reason. Re-deriving it
-    here would have been a second resolver in the very lane that opened by
-    warning against a second owner. Same shape as the completeness lane's
-    `is.ebit`: the question is "can it be OBTAINED", never "was it typed".
+    ⭐ THE BASIS IS IN THE OPERAND'S OWN TEXT. `avg(bs.total_assets)` and
+    `bs.equity` state structurally which term is averaged and which is
+    period-end — no note has to say it in prose.
     """
-    label = operand_label(data, token)
-    ctx = RR._Ctx(data, years, i)
-    reason = None
-    if basis == "average":
-        # ⛔⭐⭐ THE FIRST PERIOD HAS NO AVERAGE, AND IT MUST SAY SO. An earlier
-        # version wrote `if basis == "average" and i > 0`, so at i=0 it FELL
-        # THROUGH to the point-value branch and returned a period-end number
-        # still labelled `basis: "average"` — OBSERVED, while its own parent
-        # ratio was ABSENT for exactly the missing opening balance. Measured on
-        # the showcase: 2021 asset_turnover=absent, leaf=observed. A leaf that
-        # disagrees with its parent about whether a period exists is the §III.15
-        # shape — the label is a PROXY for the basis, and it failed silently.
-        if i <= 0:
-            return {"id": token, "label": f"avg({label.lower()})" if label else None,
-                    "value": None, "status": ABSENT, "basis": basis,
-                    "absence_reason": ("an average basis needs an opening "
-                                       "balance, and this is the first period"),
-                    "period": years[i], "formula": None, "definition": None,
-                    "implication": None, "children": []}
-        a, b = RR._resolve(ctx, token, -1), RR._resolve(ctx, token, 0)
-        ok = not isinstance(a, RR.Absent) and not isinstance(b, RR.Absent)
-        val = (a + b) / 2.0 if ok else None
-        if not ok:
-            reason = getattr(a if isinstance(a, RR.Absent) else b, "reason", None)
-        shown = f"avg({label.lower()})" if label else None
-    else:
-        raw = RR._resolve(ctx, token, 0)
-        val = None if isinstance(raw, RR.Absent) else raw
-        reason = getattr(raw, "reason", None) if val is None else None
-        shown = label
+    text = op.get("text") or ""
     return {
-        "id": token, "label": shown, "value": val,
-        "status": OBSERVED if val is not None else ABSENT,
-        "absence_reason": reason,
-        "basis": basis, "period": years[i],
-        "formula": None,            # a stored line has no formula
-        "definition": None,         # ⛔ no owner; see the module docstring
+        "id": text,
+        "label": op.get("text_display") or text,
+        "role": op.get("role"),
+        "value": op.get("value"),
+        "status": ABSENT if op.get("value") is None else OBSERVED,
+        # ⛔ THE REASON TRAVELS. An absent leaf with no reason is a blank cell
+        # the reader cannot act on.
+        "absence_reason": op.get("absent"),
+        "period": period,
+        "basis": "average" if text.startswith("avg(") else "period_end",
+        # a stored line has no formula, and no definition this module may write
+        "formula": None,
+        "definition": None,
+        "unit": None,
+        "needs": None,
+        "needs_display": None,
         "implication": None,
         "children": [],
     }
 
 
-def _node(data, years, i, qid, *, children=()):
-    row = _row(qid)
-    val, status = _value(data, years, i, qid)
-    kids = list(children)
+def _node(data, years, i, qid, supplied, *, children=None):
+    e = _explained(data, years, i, qid, supplied)
+    kids = children if children is not None else [
+        _leaf(o, years[i]) for o in (e.get("operands") or [])]
+    value, reason = e.get("value"), e.get("absent")
+    status = ABSENT if value is None else OBSERVED
     # ⛔ ABSENCE PROPAGATES UPWARD. A parent whose child is absent cannot be
-    # observed, whatever the evaluator returned — the product of an absent
-    # factor is not a number.
-    if any(k["status"] == ABSENT for k in kids):
-        val, status = (val, status) if status == ABSENT else (None, ABSENT)
+    # observed, whatever the evaluator returned.
+    if any(k["status"] == ABSENT for k in kids) and status == OBSERVED:
+        value, status = None, ABSENT
+        reason = reason or next(
+            (k["absence_reason"] for k in kids if k["absence_reason"]), None)
     return {
         "id": qid,
-        "label": row.get("name") or qid,
-        "value": val,
+        "label": e.get("name") or qid,
+        "value": value,
         "status": status,
-        "unit": row.get("unit"),
+        "absence_reason": reason,
+        "needs": e.get("needs"),
+        "needs_display": e.get("needs_display"),
+        "unit": e.get("unit"),
         "period": years[i],
-        "basis": row.get("basis"),
-        # ⭐ MIXED BASIS TRAVELS AS DATA, NOT AS COPY. `financial_leverage` is
-        # average assets over PERIOD-END equity — the only mixed-basis figure
-        # among the average-basis ratios — and a surface must not have to infer
-        # that from a sentence.
-        "basis_note": ("average total assets over period-end equity"
-                       if row.get("basis") == "mixed" else None),
-        "formula": row.get("formula"),
-        "definition": row.get("definition"),
+        # ⭐ THE BASIS IS THE REGISTRY'S OWN FIELD, not a regex over the
+        # formula. The frontend derived it by matching `avg(` and asking
+        # whether a `bs.` token sat outside the wrapper — a third statement of
+        # a fact the row already carries.
+        #
+        # ⛔⭐⭐ AND THERE IS NO `basis_note`. This module used to compose one
+        # ("average total assets over period-end equity") and the registry row
+        # for `financial_leverage` says in as many words why that was wrong:
+        # *"The precision lives in `definition`, which a reader actually
+        # sees."* The note was a SECOND STATEMENT of the definition, drifting
+        # the moment ruling A2 was reworded. `basis: "mixed"` is the datum; the
+        # definition is the prose; the operand texts show it structurally.
+        "basis": e.get("basis"),
+        "formula": e.get("formula_display") or e.get("formula"),
+        "definition": e.get("definition_display") or e.get("definition"),
         # ⛔ NO OWNER EXISTS. See the module docstring.
         "implication": None,
         "children": kids,
     }
 
 
-def build_tree(data, period_index=None):
-    """The DuPont tree for one period. Shapes; never computes."""
-    derived = FE.derive_series(data)
-    years = derived["years"]
-    i = derived["n_historical"] - 1 if period_index is None else period_index
+def _supplied(data):
+    """WACC, because the registry delegates it to `ratios.wacc_at`."""
+    try:
+        return {"wacc_at": FE.wacc(dict(data.get("company") or {},
+                                        _debt_book=None))["wacc"]}
+    except Exception:                                        # noqa: BLE001
+        return {}
 
-    factors = []
-    for qid in FACTORS:
-        ops = _OPERANDS.get(qid, ())
-        kids = [_operand(data, years, i, t, b) for t, b in ops]
-        factors.append(_node(data, years, i, qid, children=kids))
 
-    root = _node(data, years, i, ROOT, children=factors)
+def series_for(data, qid, supplied=None, *, historical_only=True):
+    """One node's value across periods — A LOOP, NOT A FETCH.
+
+    ⛔⭐⭐ EVERY POINT CARRIES ITS OWN STATE. Measured on the showcase:
+    `asset_turnover` and `financial_leverage` are 4-of-5, both from the single
+    missing 2021 opening balance. A surface that drew a 5-point line would be
+    inventing the fifth value; a surface that drew a 4-point line silently
+    would be hiding that a period exists and could not be computed. The
+    absent point ships, with its reason, and `observed`/`n` ships beside it so
+    the denominator is never inferred from the length of the array.
+    """
+    der = FE.derive_series(data)
+    years, n = der["years"], der["n_historical"]
+    supplied = _supplied(data) if supplied is None else supplied
+    span = range(n) if historical_only else range(len(years))
+    points = []
+    for i in span:
+        e = _explained(data, years, i, qid, supplied)
+        points.append({
+            "period": years[i],
+            "value": e.get("value"),
+            "status": ABSENT if e.get("value") is None else OBSERVED,
+            "absence_reason": e.get("absent"),
+            "projection": i >= n,
+        })
+    return {
+        "id": qid,
+        "points": points,
+        "observed": sum(1 for p in points if p["status"] == OBSERVED),
+        "n": len(points),
+        "historical_only": historical_only,
+    }
+
+
+def build_tree(data, period_index=None, *, with_series=True):
+    """The DuPont tree for one period, and each node's history beside it."""
+    der = FE.derive_series(data)
+    years, n = der["years"], der["n_historical"]
+    i = n - 1 if period_index is None else period_index
+    supplied = _supplied(data)
+
+    facs = factors()
+    factor_nodes = [_node(data, years, i, q, supplied) for q in facs]
+    root = _node(data, years, i, ROOT, supplied, children=factor_nodes)
 
     # ⭐⭐ THE RECONCILIATION IS STRUCTURAL, NOT EMPIRICAL. Under ruling A2 the
     # assets cancel — (PAT/Rev)·(Rev/avgA)·(avgA/E) = PAT/E — so the product IS
     # ROE by algebra, and the residual is float noise rather than a variance to
     # watch. The payload says so, so the surface renders a reconciliation that
     # HOLDS instead of a difference to monitor.
-    prod, prod_status = _value(data, years, i, "axiom.dupont_three_step")
+    ident = _explained(data, years, i, IDENTITY, supplied)
+    prod = ident.get("value")
     residual = None
     if prod is not None and root["value"] is not None:
         residual = prod - root["value"]
 
-    return {
+    out = {
         "period": years[i],
+        "period_index": i,
+        "periods": [{"period": y, "projection": k >= n}
+                    for k, y in enumerate(years)],
+        "n_historical": n,
         "root": root,
-        "product": {"id": "axiom.dupont_three_step", "value": prod,
-                    "status": prod_status,
-                    "definition": _row("axiom.dupont_three_step").get("definition")},
+        "product": {"id": IDENTITY, "value": prod,
+                    "status": ABSENT if prod is None else OBSERVED,
+                    "absence_reason": ident.get("absent"),
+                    "definition": (ident.get("definition_display")
+                                   or ident.get("definition"))},
         "reconciliation": {
             "holds": residual is not None and abs(residual) < 1e-9,
             "residual": residual,
@@ -250,6 +255,10 @@ def build_tree(data, period_index=None):
                               "invent one"),
         "states": (OBSERVED, ABSENT, DERIVED),
     }
+    if with_series:
+        out["series"] = {q: series_for(data, q, supplied)
+                         for q in (ROOT,) + facs}
+    return out
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -294,15 +303,26 @@ def attribute(data, i_from, i_to):
                 "reason": (f"attribution needs two periods of real data inside "
                            f"the {n} historical periods; got {i_from}->{i_to}")}
 
+    # ⭐ THE SAME OWNER THE TREE READS. `explain` and `evaluate_period` agree
+    # today, but two readers is how they stop agreeing.
+    supplied = _supplied(data)
+    facs = factors()
+
     def val(i, q):
-        v = RR.evaluate_period(data, years, i, q)
-        return None if isinstance(v, RR.Absent) else v
+        return _explained(data, years, i, q, supplied).get("value")
 
     roe_a, roe_b = val(i_from, ROOT), val(i_to, ROOT)
-    fa = [val(i_from, f) for f in FACTORS]
-    fb = [val(i_to, f) for f in FACTORS]
+    fa = [val(i_from, f) for f in facs]
+    fb = [val(i_to, f) for f in facs]
     if roe_a is None or roe_b is None or any(x is None for x in fa + fb):
-        return {"available": False, "reason": "a factor is absent in one period"}
+        # ⛔ NAME WHICH ONE. "a factor is absent" sends the reader hunting; the
+        # 2021 refusal on this dataset is one missing opening balance and the
+        # payload can say so.
+        missing = [q for q, x, z in zip(facs, fa, fb) if x is None or z is None]
+        return {"available": False,
+                "reason": ("attribution needs every factor in both periods; "
+                           + (", ".join(missing) or ROOT) + " is absent"),
+                "absent_factors": missing}
     if roe_a <= 0 or roe_b <= 0 or any(x <= 0 for x in fa + fb):
         return {"available": False,
                 "reason": ("the logarithmic method is undefined at or below "
@@ -325,7 +345,7 @@ def attribute(data, i_from, i_to):
         "factors": [
             {"id": f, "from": x, "to": z, "contribution": c,
              "share": (c / change) if change else None}
-            for f, x, z, c in zip(FACTORS, fa, fb, contrib)
+            for f, x, z, c in zip(facs, fa, fb, contrib)
         ],
         # ⛔ STATED, NOT ASSUMED. If this ever stops being ~0 the contributions
         # are not an attribution and the surface must not present them as one.

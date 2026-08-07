@@ -35,7 +35,11 @@ def test_the_tree_has_the_ruled_shape():
     t = DT.build_tree(_data())
     root = t["root"]
     assert root["id"] == "axiom.roe"
-    assert [c["id"] for c in root["children"]] == list(DT.FACTORS)
+    # ⭐ THE FACTOR LIST IS READ OFF THE IDENTITY'S FORMULA, not a tuple here
+    # or in the module. `axiom.dupont_three_step` IS the declaration.
+    assert [c["id"] for c in root["children"]] == list(DT.factors())
+    assert set(DT.factors()) == {"axiom.net_margin", "axiom.asset_turnover",
+                                 "axiom.financial_leverage"}
     for f in root["children"]:
         assert len(f["children"]) == 2, f"{f['id']} needs a numerator and a denominator"
 
@@ -76,15 +80,32 @@ def test_no_implication_is_invented():
 def test_the_mixed_basis_travels_as_DATA_not_as_copy():
     """⛔ `financial_leverage` is average assets over PERIOD-END equity — the
     only mixed-basis figure among the average-basis ratios. A surface must not
-    have to infer that from a sentence."""
+    have to infer that from a sentence.
+
+    ⭐⭐ AND THE SENTENCE IS GONE. This module used to ship a `basis_note`
+    composing that fact in prose. The registry row rules against it in as many
+    words — *"the precision lives in `definition`, which a reader actually
+    sees"* — so the note was a second statement that would drift the moment
+    ruling A2 was reworded. What travels now is the DATUM (`basis`), the
+    registry's own definition, and the operand texts, which show which term is
+    wrapped in `avg(` and which is not.
+    """
     t = DT.build_tree(_data())
     lev = next(c for c in t["root"]["children"]
                if c["id"] == "axiom.financial_leverage")
     assert lev["basis"] == "mixed"
-    assert lev["basis_note"] and "period-end equity" in lev["basis_note"]
-    # ⭐ and it is the ONLY one
-    others = [c for c in t["root"]["children"] if c["id"] != "axiom.financial_leverage"]
-    assert all(c["basis_note"] is None for c in others)
+    assert "basis_note" not in lev, (
+        "a composed basis sentence is back; the registry row says the "
+        "precision belongs in `definition`")
+    # ⭐ the precision is READABLE, from the owner that holds it
+    assert "PERIOD-END" in (lev["definition"] or "").upper()
+    # ⭐ and the mixture is STRUCTURAL in the operands, not prose
+    bases = {c["id"]: c["basis"] for c in lev["children"]}
+    assert set(bases.values()) == {"average", "period_end"}, bases
+    # ⭐ mixed is the ONLY one — the other two factors are single-basis
+    others = [c for c in t["root"]["children"] if c["id"] != lev["id"]]
+    assert all(c["basis"] != "mixed" for c in others), \
+        [c["id"] for c in others if c["basis"] == "mixed"]
 
 
 def test_the_reconciliation_is_STRUCTURAL_not_a_variance():
@@ -154,14 +175,20 @@ def test_a_leaf_never_claims_a_period_its_parent_refuses():
                 assert factor["status"] == DT.ABSENT, (
                     f"{years[i]}: leaf {leaf['id']} is absent but its parent "
                     f"{factor['id']} is {factor['status']}")
-        # ⛔ THE KNOWN POSITIVE for the average basis specifically.
-        first = DT._operand(d, years, i, "bs.total_assets", "average")
+        # ⛔ THE KNOWN POSITIVE, on the node the defect lived in. In the first
+        # period `avg(bs.total_assets)` has no opening balance; the owner says
+        # so, and this asserts the tree carries that through rather than
+        # rendering a period-end number under an "average" label.
+        turn = next(c for c in DT.build_tree(d, period_index=i)["root"]["children"]
+                    if c["id"] == "axiom.asset_turnover")
+        avg = next(c for c in turn["children"] if c["id"].startswith("avg("))
         if i == 0:
-            assert first["status"] == DT.ABSENT and first["absence_reason"], (
+            assert avg["status"] == DT.ABSENT and avg["absence_reason"], (
                 "the first period reported an AVERAGE without an opening "
                 "balance — the branch this test exists for")
+            assert "opening balance" in avg["absence_reason"]
         else:
-            assert first["status"] == DT.OBSERVED
+            assert avg["status"] == DT.OBSERVED
 
 
 def test_every_absent_node_says_why():
@@ -172,3 +199,64 @@ def test_every_absent_node_says_why():
         for n in _walk(DT.build_tree(d, period_index=i)["root"]):
             if n["status"] == DT.ABSENT and not n["children"]:
                 assert n.get("absence_reason"), f"{n['id']} at {years[i]}"
+
+
+def test_a_four_of_five_series_ships_five_points_one_of_them_absent():
+    """⛔⭐⭐ A SERIES MUST NOT DROP THE PERIOD IT COULD NOT COMPUTE.
+
+    Measured on the showcase: `asset_turnover` and `financial_leverage` are
+    4-of-5, both from the single missing 2021 opening balance. Two wrong
+    renderings are possible and this test forbids both — a 5-point line with an
+    invented value, and a 4-point line that silently omits a period that
+    exists. The absent point ships with its reason, and `observed`/`n` ship so
+    the denominator is never inferred from the array's length.
+    """
+    d = _data()
+    der = FE.derive_series(d)
+    n = der["n_historical"]
+    t = DT.build_tree(d)
+    four = [q for q, s in t["series"].items() if s["observed"] < s["n"]]
+    assert four, ("no series on this dataset is short, so this test cannot "
+                  "tell a correct implementation from one that drops points")
+    for q, s in t["series"].items():
+        assert s["n"] == n, f"{q} shipped {s['n']} points for {n} periods"
+        assert len(s["points"]) == n
+        assert [p["period"] for p in s["points"]] == der["years"][:n]
+        for p in s["points"]:
+            assert p["status"] in (DT.OBSERVED, DT.ABSENT)
+            if p["status"] == DT.ABSENT:
+                assert p["value"] is None, "an absence carried a value"
+                assert p["absence_reason"], f"{q} at {p['period']} says nothing"
+            else:
+                assert p["value"] is not None
+        assert s["observed"] == sum(1 for p in s["points"]
+                                    if p["status"] == DT.OBSERVED)
+    for q in four:
+        assert t["series"][q]["observed"] == n - 1
+        assert "opening balance" in t["series"][q]["points"][0]["absence_reason"]
+
+
+def test_the_series_is_a_LOOP_not_a_second_fetch():
+    """⭐ §7r-O. The history comes from the dataset already in hand — a series
+    that needed a second call would be a second read path to keep in step."""
+    import inspect
+    src = inspect.getsource(DT.series_for)
+    for forbidden in ("requests", "httpx", "get_db", "Session", "urlopen"):
+        assert forbidden not in src, f"series_for reaches for {forbidden}"
+    d = _data()
+    one = DT.series_for(d, "axiom.roe")
+    assert one["points"] == DT.build_tree(d)["series"]["axiom.roe"]["points"]
+
+
+def test_the_series_stops_at_the_last_REAL_period():
+    """⛔ A projection of a projection must not enter a history line without
+    being marked. The default is historical only, and when forecasts are asked
+    for every point says which it is."""
+    d = _data()
+    n = FE.derive_series(d)["n_historical"]
+    assert all(p["projection"] is False
+               for p in DT.series_for(d, "axiom.roe")["points"])
+    full = DT.series_for(d, "axiom.roe", historical_only=False)
+    assert full["n"] > n
+    assert [p["projection"] for p in full["points"]][:n] == [False] * n
+    assert all(p["projection"] for p in full["points"][n:])

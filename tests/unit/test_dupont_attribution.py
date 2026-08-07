@@ -52,6 +52,16 @@ def test_the_contributions_sum_to_the_observed_change():
     assert abs(a["residual"]) < 1e-9
 
 
+def test_it_names_WHICH_factor_is_absent_rather_than_saying_one_is():
+    """⭐ The showcase refuses 2021 for a single missing opening balance. A
+    refusal that does not name the factor sends the reader hunting."""
+    d = _data()
+    a = DT.attribute(d, 0, 1)
+    assert a["available"] is False
+    assert a["absent_factors"], a
+    assert all(f in a["reason"] for f in a["absent_factors"])
+
+
 def test_the_factors_really_do_pull_in_opposite_directions():
     """⭐⭐ THE KNOWN POSITIVE. A sum-to-change test passes trivially if one
     factor carries the whole move and the others are zero — and it would also
@@ -83,19 +93,22 @@ def test_it_refuses_rather_than_switching_method_at_a_sign_change():
     fallback to a different method or a nan."""
     d = json.loads(json.dumps(_data()))
     i, j = _last_two(d)
-    real = DT.RR.evaluate_period
+    # ⭐ PATCHED ON THE OWNER THE CODE ACTUALLY READS. An earlier version of
+    # this test patched `evaluate_period`, and when the module was rewired to
+    # `explain` it kept passing while testing nothing — §III.11 in one move.
+    real = DT.RR.explain
 
-    def negative_at(_data_, years, k, qid):
-        v = real(_data_, years, k, qid)
-        if qid == "axiom.net_margin" and k == j and not isinstance(v, DT.RR.Absent):
-            return -abs(v)
-        return v
+    def negative_at(_data_, years, k, qid, **kw):
+        e = dict(real(_data_, years, k, qid, **kw))
+        if qid == "axiom.net_margin" and k == j and e.get("value") is not None:
+            e["value"] = -abs(e["value"])
+        return e
 
-    DT.RR.evaluate_period = negative_at
+    DT.RR.explain = negative_at
     try:
         a = DT.attribute(d, i, j)
     finally:
-        DT.RR.evaluate_period = real
+        DT.RR.explain = real
     assert a["available"] is False
     assert "below zero" in a["reason"]
 
@@ -116,14 +129,14 @@ def test_a_flat_ROE_is_a_refusal_not_a_division_by_a_tiny_number():
     infinities rather than an honest 'nothing moved'."""
     d = _data()
     i, j = _last_two(d)
-    real = DT.RR.evaluate_period
+    real = DT.RR.explain
 
-    DT.RR.evaluate_period = (
-        lambda dd, y, k, qid: real(dd, y, i, qid) if qid == DT.ROOT
-        else real(dd, y, k, qid))
+    DT.RR.explain = (
+        lambda dd, y, k, qid, **kw: real(dd, y, i, qid, **kw) if qid == DT.ROOT
+        else real(dd, y, k, qid, **kw))
     try:
         a = DT.attribute(d, i, j)
     finally:
-        DT.RR.evaluate_period = real
+        DT.RR.explain = real
     assert a["available"] is False
     assert "did not move" in a["reason"]

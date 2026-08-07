@@ -1130,6 +1130,76 @@ def ratios_surface(dataset_id: int, db: Session = Depends(get_db),
     }
 
 
+@metrics_router.get("/dupont/{dataset_id}")
+def dupont_surface(dataset_id: int, period: int | None = None,
+                   db: Session = Depends(get_db),
+                   tenant: str = Depends(_tenant),
+                   scoped: int | None = Depends(_scoped)):
+    """The DuPont tree, its per-node history, and what moved ROE.
+
+    ⛔⭐⭐ ONE PRODUCER. The frontend used to assemble this tree itself from
+    `/ratios/{id}` — it held its own ROOT and FACTORS constants, decided each
+    node's basis with a regex over the formula, and composed the mixed-basis
+    sentence in TSX. Three facts the registry already owned, restated in a
+    language the registry cannot be tested in. This endpoint serves
+    `dupont_tree.build_tree`, which reads `explain` for every value, and the
+    client-side assembly was deleted in the same lane (§7r-O).
+
+    ⭐ THE SERIES IS A LOOP, NOT A SECOND CALL. Each node's history comes from
+    the dataset already in hand, and every point carries its OWN status — a
+    4-of-5 series ships four observed points and one absent one with its
+    reason, never a 5-point line with an invented value.
+
+    ⛔ THE ATTRIBUTION NAMES ITS METHOD. Logarithmic, symmetric in the three
+    factors; it refuses at a sign change rather than switching silently.
+    """
+    from ... import dupont_tree as dt
+    row = _get_dataset(db, tenant, dataset_id, scoped)
+    data = row.data
+    der = engines.derive_series(data)
+    years, n_hist = der["years"], der["n_historical"]
+    labels = der.get("period_labels") or {}
+
+    def _label(y):
+        return str(labels.get(y, labels.get(str(y), y)))
+
+    # ⭐ THE CALLER NAMES A PERIOD BY ITS VALUE, not by an index. An index is a
+    # position in an array the caller cannot see, and it silently means a
+    # different year the day a period is added.
+    idx = n_hist - 1
+    if period is not None:
+        if period not in years:
+            raise HTTPException(404, detail={
+                "error": "no_such_period",
+                "message": f"period {period} is not in this dataset",
+                "periods": years})
+        idx = years.index(period)
+
+    out = dt.build_tree(data, period_index=idx)
+    # ⭐ LABELS ON THE SURFACE PAYLOAD ONLY (the label ruling). The tree carries
+    # period IDENTIFIERS; the caption is attached here, where nothing freezes.
+    for p in out["periods"]:
+        p["label"] = _label(p["period"])
+    for s_ in out.get("series", {}).values():
+        for pt in s_["points"]:
+            pt["label"] = _label(pt["period"])
+    out["period_label"] = _label(out["period"])
+
+    # ⛔ THE ATTRIBUTION IS AGAINST THE PRIOR REAL PERIOD, and it refuses when
+    # there is not one — the first period of every dataset has no predecessor.
+    out["attribution"] = (dt.attribute(data, idx - 1, idx) if idx > 0 else
+                          {"available": False,
+                           "reason": ("attribution compares two periods and "
+                                      f"{years[idx]} is the first one")})
+    if out["attribution"].get("available"):
+        out["attribution"]["from_label"] = _label(out["attribution"]["from_period"])
+        out["attribution"]["to_label"] = _label(out["attribution"]["to_period"])
+    out["dataset_id"] = dataset_id
+    from . import ratio_registry as rr
+    out["registry_version"] = rr.load().get("registry_version")
+    return out
+
+
 @metrics_router.get("/dashboard/{dataset_id}")
 def dashboard(dataset_id: int, valuation_run_id: int | None = None,
               db: Session = Depends(get_db), tenant: str = Depends(_tenant),
