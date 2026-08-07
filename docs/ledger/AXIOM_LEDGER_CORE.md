@@ -20458,6 +20458,96 @@ someone who reads the shorter mark as an accident.
 DOMAIN the product operates in without asserting an outcome the product does not
 own.
 
+## ⭐⭐ §16.4 · COMPLIANCE MAPS INTO AXIS 11. THE AXIS SET STAYS AT 13. (founder ruling, 8 Aug)
+
+**"Compliance" appears as a category on exactly 2 questions in the stakeholder
+survey library — `Regulators` U2 and `Government Agencies` U2. It maps into L1
+#11, "Risk, Compliance & Resilience". The 13 axes are unchanged.**
+
+### ⭐ THE REASON, RECORDED
+
+**Two questions do not justify renormalising every weight.**
+`ax_assessment_weights` requires **13 L1 weights summing to 100**, so a 14th axis
+is not a schema change — it is a **restatement**: every historical score
+reweights and **every published CEI moves**. A §7o event, for 2 rows.
+
+⭐ **And the separability being given up applies to two instruments that are not
+built.** `Regulators` and `Government Agencies` have never been fielded. The cost
+is paid in a future that has not arrived, against a certain cost paid now across
+every pack already published.
+
+### ⛔⭐⭐ THE LOSS, RECORDED EXPLICITLY — A COST TAKEN KNOWINGLY IS NOT A DEFECT; AN UNRECORDED ONE IS
+
+> **"How the regulator sees us" is no longer separable from general risk.**
+
+A regulator's view of an organisation is largely its compliance record, and after
+this mapping that view is averaged into an axis that also carries operational
+risk and resilience. **A future question — "is our regulatory standing
+deteriorating?" — cannot be answered from axis 11 alone**, because a fall there
+has three possible causes and this ruling makes them indistinguishable.
+
+⭐ **If regulator-perception later earns its own axis, that is a DELIBERATE
+VERSIONED CHANGE** — a new framework revision, with the reweighting acknowledged
+and the historical series restated or explicitly broken. **It is not a bug fix
+and must never arrive as one.**
+
+## ⛔⭐⭐ §16.5 · TWO THIRTEENS THAT ARE NOT THE SAME THIRTEEN (8 Aug)
+
+**The survey library uses 13 categories. `ax_assessment_items` has 13 L1 axes.
+⛔ NOT ONE NAME IS SHARED.**
+
+| | |
+|---|---|
+| **the workbook's 13** — ⭐ ATTRIBUTE-shaped, *how good are we at X* | Strategy Clarity · Governance · Financial Discipline · Operational Excellence · Customer Focus · Innovation · Digital Capability · Talent & Culture · Risk Management · ESG & Sustainability · Brand & Reputation · Change Readiness · Partnerships & Ecosystem |
+| **the platform's 13** — ⭐ FUNCTION-shaped, *the parts of the enterprise* | Strategy, Purpose & Governance · Products, Services & Sustainable Value · Marketing, Sales & Customer Growth · Supply Chain, Procurement & Logistics · Service Delivery & Operations · Customer Service & Experience · People, Culture & Leadership · Technology, Data & Innovation · Finance & Enterprise Performance · Assets & Enterprise Resources · Risk, Compliance & Resilience · Stakeholder & External Relationships · Transformation, Process & Business Capability Management |
+
+### ⛔ THE TRAP, NAMED — BECAUSE A LATER LANE WILL MEET IT
+
+**Matching cardinality invites the assumption that both thirteens are the same
+thirteen.** They are two different taxonomies that happen to have the same count,
+and the coincidence is more dangerous than a mismatch would be: **13 against 14
+would have prompted a question; 13 against 13 prompts a join.**
+
+⛔ **THERE IS NO LOOKUP.** Every one of the workbook's categories is a judgement
+about which function it belongs to, and **several span more than one axis** —
+*Digital Capability* reaches Technology, Data & Innovation **and**
+Transformation; *Governance* reaches Strategy, Purpose & Governance **and** Risk,
+Compliance & Resilience. **A one-to-one mapping table would be a fabrication with
+a schema around it.**
+
+⭐ **What the relationship actually is: a MANY-TO-MANY with weights, and it is
+the same shape `READINESS_MAP` already uses** — six dimensions over thirteen
+axes with declared weights that renormalise when an axis is missing. **If the
+workbook's 13 are ever mapped onto the platform's 13, that is the precedent to
+copy, and it is a DECLARED mapping, not a derived one.**
+
+## ⭐⭐ §16.6 · THE EXTERNAL INSTRUMENTS ARE OFF THE SPINE BY DESIGN (8 Aug)
+
+**26 of 30 stakeholder instruments carry none of the shared 13. They therefore
+reach neither CEI, nor the radar, nor any comparison with an internal
+respondent.** ⛔ **This is a DESIGN DECISION, not a gap, and no later lane may
+"fix" it.**
+
+⭐ **The argument is the one §7j.13 already made**: a supplier cannot rate
+Financial Discipline. Forcing external instruments onto the internal spine would
+**manufacture comparability that does not exist** — the same category error as
+pooling external stakeholder scores or averaging across allocation methods.
+
+⭐ **And §0.4 step 6 already says the neighbouring half**: *"KFLOOR FOLLOWS THE
+RESPONDENT, NOT THE TABLE — a supplier count and an employee count are different
+populations and must not share a floor."* **The same logic one level up says they
+must not share an axis set either.** A floor protects the respondent; an axis set
+asserts what they are competent to judge.
+
+⛔ **THE TELL THAT THIS IS RIGHT IS IN THE WORKBOOK ITSELF.** The founder's own
+split is already exactly this: the **4 internal** stakeholder instruments —
+Employees, Managers & Supervisors, Senior Executives, Board Members — carry the
+shared 13; the **26 external** do not. **The library was authored with the
+distinction; the schema must not erase it.**
+
+⭐ `ax_assessment_items.orientation` already carries `internal|external` and is
+populated, so the model can express this today.
+
 ## ⭐⭐ §9a.1 · AXIOM REPOSITIONS ON STRATEGY-EXECUTION (founder ruling, 8 Aug)
 
 **AXIOM is the operating system for STRATEGY-EXECUTION. This SUPERSEDES the
