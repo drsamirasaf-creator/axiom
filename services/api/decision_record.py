@@ -637,6 +637,16 @@ NOT_A_DECISION = {
     "KeyResult": "same — the DECISION is the initiative or disposition it drives",
     "KpiPlan": "a plan row is a target, not a decision about one",
     "KpiDefinition": "defining a metric is configuration",
+    # ⭐ AUTHORING A QUESTIONNAIRE IS CONFIGURATION — the same family as
+    # KpiDefinition. Choosing which questions an audience sees shapes the
+    # EVIDENCE; it decides nothing about the company. ⛔ The decision is opening
+    # a CYCLE with it, and then what the company does about the answers — and
+    # the cycle is already carried elsewhere.
+    "AssessmentInstrument": "composing a questionnaire is configuration of how "
+                            "evidence is gathered, not a decision about the "
+                            "company; the decision is the cycle it is fielded in",
+    "AssessmentInstrumentItem": "a membership is a relationship, not a judgement "
+                                "— the same reasoning as the four link tables",
     "KpiInitiativeLink": "a link is a relationship, not a judgement",
     "KpiObjectiveLink": "a link is a relationship, not a judgement",
     "KrInitiativeLink": "a link is a relationship, not a judgement",

@@ -369,9 +369,97 @@ class AssessmentItem(Base):
     title = Column(String(300), nullable=False)
     definition = Column(Text, default="", nullable=False)
     parent_code = Column(String(40), nullable=True)
+    # ⛔⭐⭐ `selected` IS THE FRAMEWORK-LEVEL DEFAULT — RULED 8 Aug, ONE MEANING.
+    # It answers *"does this company assess this item at all"*, and its five
+    # existing readers (the SWOT L2 filter, the readiness slice, and two export
+    # paths) keep that question unchanged. It is NOT "is this item on a
+    # questionnaire": that is `ax_assessment_instrument_items`, which selects a
+    # NARROWER set within what the framework already allows.
+    #
+    # ⭐ Measured before ruling: 452 of 452 items are `selected=True` in all 7
+    # frameworks — the flag has never once been exercised. Deprecating it would
+    # have meant rewriting five readers in the same commit that adds a table;
+    # one change, one proof.
     selected = Column(Boolean, default=True, nullable=False)
     custom = Column(Boolean, default=False, nullable=False)
     orientation = Column(String(16), nullable=True)     # internal|external (L2/L3, v2+); None for L1
+
+
+class AssessmentInstrument(Base):
+    """A NAMED, AUDIENCE-SCOPED SELECTION over one framework's item tree.
+
+    ⛔⭐⭐ THE GAP THIS CLOSES. 61 questionnaires exist in the founder's survey
+    library and nothing named a selection: `AssessmentItem.selected` is one
+    boolean per item per framework, so a company could express exactly ONE
+    questionnaire. *"Each department uses its own"* had no mechanism — not
+    merely no data.
+
+    ⭐ IT EXTENDS THE TREE; IT IS NOT A SECOND ITEM STORE. No question text
+    lives here. An instrument is a NAME plus a membership over
+    `ax_assessment_items`, so there is one place a question is authored and one
+    place its wording can change.
+
+    ⭐ ORIENTATION IS CARRIED, NOT RE-DERIVED. `AssessmentItem.orientation`
+    already holds internal|external and is populated; an instrument ASSERTS
+    which it is, so §16.6's ruling — 26 external instruments sit off the 13-axis
+    spine BY DESIGN — is a property of the row rather than a convention.
+    """
+    __tablename__ = "ax_assessment_instruments"
+    __table_args__ = (UniqueConstraint("company_id", "framework_id", "key",
+                                       name="uq_instrument_key"),)
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, index=True, nullable=False)
+    framework_id = Column(Integer, index=True, nullable=False)
+    # ⭐ STABLE ACROSS RE-AUTHORING — the goal_key / kpi_key precedent. The
+    # library is replaced wholesale on re-upload, so identity cannot be a row id.
+    key = Column(String(64), index=True, nullable=False)
+    name = Column(String(160), nullable=False)
+    # enterprise | department | stakeholder
+    audience_kind = Column(String(16), nullable=False)
+    # the department id, or the stakeholder type; NULL for enterprise
+    audience_ref = Column(String(64), index=True, nullable=True)
+    # ⭐ internal|external — asserted here, inherited from the items it selects
+    orientation = Column(String(16), nullable=True)
+    revision = Column(Integer, default=1, nullable=False)
+    source = Column(String(16), default="template", nullable=False)   # template|in_app
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_by = Column(Integer, nullable=True)
+    # ⛔ REMOVAL IS A REVOKE, NEVER A DELETE (§4v.1 ruling 1). An instrument that
+    # was fielded and then retired must stay readable: responses point at items,
+    # and a reader asking "which questionnaire produced this?" needs the answer
+    # to survive the retirement.
+    revoked_at = Column(DateTime, nullable=True)
+    revoked_by = Column(Integer, nullable=True)
+
+
+class AssessmentInstrumentItem(Base):
+    """One question's membership of one instrument.
+
+    ⛔⭐⭐ `source` AND `flagged_absent` ARE LOAD-BEARING, AND THE CODEBASE HAS
+    ALREADY LEARNED THIS TWICE. `GoalInitiativeLink`'s own docstring records it:
+    *without `source`, a re-upload whose template omits a link DELETES a link a
+    human created in the app; without `flagged_absent`, an omission is
+    indistinguishable from a deletion.* **A survey library re-uploaded next
+    quarter is exactly that threat**, and it is the path the tests red-proof —
+    not only the happy one.
+    """
+    __tablename__ = "ax_assessment_instrument_items"
+    __table_args__ = (UniqueConstraint("instrument_id", "item_id",
+                                       name="uq_instrument_item"),)
+    id = Column(Integer, primary_key=True)
+    instrument_id = Column(Integer, index=True, nullable=False)
+    item_id = Column(Integer, index=True, nullable=False)
+    # the workbook's own ordering, so a questionnaire renders as authored
+    position = Column(Integer, nullable=True)
+    # shared | unique — which block of the workbook this row came from
+    block = Column(String(16), nullable=True)
+    source = Column(String(16), default="template", nullable=False)   # template|in_app
+    # ⛔ a template that no longer mentions this row FLAGS it; it never deletes it
+    flagged_absent = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_by = Column(Integer, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+    revoked_by = Column(Integer, nullable=True)
 
 
 class AssessmentWeight(Base):
