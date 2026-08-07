@@ -39,6 +39,38 @@ def _r(x, nd=6):
     return None if x is None else round(float(x), nd)
 
 
+# ⭐⭐ THE EQUITY BRIDGE HAS ONE OWNER (§7r-O). It was restated inline at THREE
+# places inside `run()` alone — the deterministic equity (:159), the
+# `bridge_sums_to_equity` checkpoint (:311), and the sensitivity equity grid
+# (:337) — plus a fourth in `multiples`. Two of the three did raw arithmetic on
+# absence-bearing operands, and the third (:337) is the TypeError that reached
+# production on three showcase datasets and 5 of 8 valuation endpoints.
+#
+# ⛔ ABSENCE PROPAGATES; IT IS NOT ZEROED. `or 0` on net_debt makes equity equal
+# EV — a coherent valuation wrong by the whole debt load, with no ragged edge.
+# `or 0` on an EV cell asserts an enterprise value of ZERO at exactly the corners
+# where the model declines to answer. Both are worse than the 500 they replace.
+def equity_from_ev(ev, net_debt, preferred, minority):
+    """Enterprise value less the bridge terms. Absence propagates.
+
+    ⭐ It takes NUMBERS, not a deterministic block, so a caller cannot pass a
+    balance sheet and have it silently mean something else — the same signature
+    discipline `ratios.net_debt` is written with.
+    """
+    return fin._n(lambda e, nd, p, m: e - nd - p - m,
+                  ev, net_debt, preferred, minority)
+
+
+# ⭐ §7q — AN ABSENCE WITH A PLAUSIBLE REASON IS THE MOST INFORMATIVE SIGNAL, so
+# the reason travels with the grid rather than living in a report. `_dcf` raises
+# when terminal growth reaches WACC because Gordon growth has a zero or negative
+# denominator there; the grid catches it and records absence. That is CORRECT
+# refusal, not a defect — the defect was consuming it with raw arithmetic.
+NO_TERMINAL_VALUE = ("terminal growth at or above WACC: Gordon growth has no "
+                     "solution, so enterprise value is not defined at this "
+                     "corner of the grid")
+
+
 # ── frequency-aware discounting (Lane 2 A3, 28 Jul) ─────────────────────────
 # ⭐ THE DISCOUNT EXPONENT COUNTS PERIODS, NOT YEARS. `_dcf` compounds once per
 # element of `fcff`, and the WACC handed to it is an ANNUAL rate. On an annual
@@ -156,7 +188,7 @@ def run(data: dict, mode: str, assumptions: dict | None = None,
     net_debt = ratios.net_debt(company["_debt_book"], bs["cash"][ys])
     pref = bs["preferred_equity"][ys]
     mino = bs["minority_interest"][ys]
-    equity = ev - net_debt - pref - mino
+    equity = equity_from_ev(ev, net_debt, pref, mino)
     # ⭐ AN ABSENT DLOM IS NOT A ZERO DLOM. `or 0.0` reported `dlom: 0.0` in the
     # payload — a stated fact nobody supplied — and made equity_post equal to
     # equity, so the discount silently vanished. DLOM sits OUTSIDE the EV→equity
@@ -306,14 +338,46 @@ def run(data: dict, mode: str, assumptions: dict | None = None,
     for x in evs:
         counts[min(int((x - lo) / width), nbins - 1)] += 1
 
+    # ⭐ The equity grid mirrors the EV grid CELL FOR CELL, through the one
+    # bridge owner. Where EV refuses, equity refuses — for the same reason.
+    equity_grid = [[_r(equity_from_ev(cell, deterministic["net_debt"],
+                                      deterministic["preferred_equity"],
+                                      deterministic["minority_interest"]), 2)
+                    for cell in row_] for row_ in ev_grid]
+    _ev_absent = {(i, j) for i, r_ in enumerate(ev_grid)
+                  for j, c in enumerate(r_) if c is None}
+    _eq_absent = {(i, j) for i, r_ in enumerate(equity_grid)
+                  for j, c in enumerate(r_) if c is None}
+    _bridge_absent = any(deterministic[k] is None for k in
+                         ("net_debt", "preferred_equity", "minority_interest"))
+
+    # ⭐ Through the same owner, so the checkpoint verifies the bridge rather
+    # than a second copy of its arithmetic.
+    _bridge_sum = equity_from_ev(pv_e + pv_t, net_debt, pref, mino)
     checkpoints = [
         {"name": "bridge_sums_to_equity",
-         "value": _r(pv_e + pv_t - net_debt - pref - mino),
-         "expected": _r(equity), "pass": abs(pv_e + pv_t - net_debt - pref
-                                             - mino - equity) < 1e-6},
+         "value": _r(_bridge_sum), "expected": _r(equity),
+         # ⛔ ABSENCE IS NOT A FAILURE. If a bridge term is absent both sides are
+         # absent, and the checkpoint passes on agreement — it must not report a
+         # broken identity for a line the balance sheet does not carry.
+         "pass": (_bridge_sum is None and equity is None)
+                 or (_bridge_sum is not None and equity is not None
+                     and abs(_bridge_sum - equity) < 1e-6)},
         {"name": "sensitivity_center_equals_ev",
          "value": ev_grid[2][2], "expected": _r(ev, 2),
-         "pass": abs(ev_grid[2][2] - round(ev, 2)) < 0.01},
+         "pass": ev_grid[2][2] is not None
+                 and abs(ev_grid[2][2] - round(ev, 2)) < 0.01},
+        # ⭐⭐ T2 — THE CHECKPOINT THAT COULD SEE THIS. `sensitivity_center_equals_ev`
+        # asserts ev_grid[2][2], the CENTRE, which is non-None by construction: the
+        # centre is the un-shifted (wacc, g) pair, so it is exactly the cell that
+        # cannot refuse. It could never have caught a corner. This one compares
+        # the two grids POSITIONALLY — a count would pass with the same number of
+        # absences in different places.
+        {"name": "equity_grid_absence_mirrors_ev_grid",
+         "value": sorted(_eq_absent), "expected": sorted(_ev_absent),
+         "pass": (_eq_absent == _ev_absent) if not _bridge_absent
+                 else _eq_absent == {(i, j) for i in range(len(ev_grid))
+                                     for j in range(len(ev_grid[i]))}},
         {"name": "mc_mean_near_deterministic",
          "value": _r(mean, 2), "expected": _r(ev, 2),
          "pass": abs(mean - ev) < 0.15 * abs(ev)},
@@ -333,11 +397,16 @@ def run(data: dict, mode: str, assumptions: dict | None = None,
                         # bridge terms are balance-sheet constants, so the
                         # equity grid is the EV grid shifted by them
                         # (pre-DLOM for private companies, stated)
-                        "equity_grid": [
-                            [_r(cell - deterministic["net_debt"]
-                                 - deterministic["preferred_equity"]
-                                 - deterministic["minority_interest"], 2)
-                             for cell in row_] for row_ in ev_grid],
+                        #
+                        # ⭐⭐ PER-CELL ABSENCE, AND BOTH AXES KEPT WHOLE. The EV
+                        # grid is VALID — only the corners where g >= WACC
+                        # refuse — so the honest rendering is the full 5x5 with
+                        # an em dash in exactly those positions. ⛔ A grid
+                        # truncated to its populated rows would hide that WACC
+                        # sits AT the growth rate, which is the one thing the
+                        # reader most needs to see about the assumption set.
+                        "equity_grid": equity_grid,
+                        "equity_grid_absent_reason": NO_TERMINAL_VALUE,
                         "equity_grid_note": "pre-DLOM equity value; the "
                                             "bridge terms are constants"},
         "risk_adjusted": {
@@ -853,10 +922,37 @@ def real_options_suite(data: dict) -> dict:
     """All three canonical options at their firm-scaled defaults, plus the
     total flexibility value — the complete real-options view for the
     Valuation page."""
+    # ⭐⭐ ONE REFUSAL, NOT THREE EM DASHES (§7q, ruled 7 Aug). The three options
+    # are valued against the SAME underlying, so an absent underlying is ONE
+    # missing input — not three independent unknowns. Rendering an em dash per
+    # option would assert three failures and misdescribe the cause; the reader
+    # would look for three reasons where there is one.
+    #
+    # ⛔ THIS BRANCH IS DEFENSIVE, NOT OBSERVED. `enterprise_value` is
+    # `pv_explicit + pv_terminal`, both floats, so it cannot be absent on any of
+    # the 33 stored datasets today. It is written because the suite must not
+    # fabricate a shape if that ever changes, and it is driven by a test that
+    # plants an absent underlying — an untested branch is worse than none.
+    mode = "proforma" if data["periods"].get("forecast") else "auto_forecast"
+    s0_probe = run(data, mode)["deterministic"]["enterprise_value"]
+    if s0_probe is None:
+        return {"subject": data["company"]["name"],
+                "underlying_enterprise_value": None,
+                "options": None,
+                "refused": True,
+                "refused_reason": ("the underlying enterprise value is not "
+                                   "available, so none of the three options "
+                                   "can be valued — one missing input, not "
+                                   "three unknown options"),
+                "total_flexibility_value": None,
+                "note": None,
+                "all_checkpoints_pass": None}
+
     outs = {o: real_option(data, o) for o in ("expand", "abandon", "defer")}
     total_flex = sum(v["flexibility_value"] for v in outs.values())
     s0 = outs["expand"]["underlying_enterprise_value"]
     return {"subject": data["company"]["name"],
+            "refused": False,
             "underlying_enterprise_value": s0,
             "options": outs,
             "total_flexibility_value": round(total_flex, 2),

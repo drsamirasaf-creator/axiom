@@ -525,9 +525,10 @@ def interaction_sweep(page, rec, sink, path, cap=16):
             except Exception:
                 pass
             continue
-        five = [c for c in rec.calls[before:] if c[2] >= 500]
-        if five:
-            findings.append((path, f"{tag} · {txt}", f"backend {five[0][2]} {five[0][1]}"))
+        refused = _backend_refused(rec.calls[before:])
+        if refused:
+            findings.append((path, f"{tag} · {txt}",
+                             f"backend {refused[0][2]} {refused[0][1]}"))
         if sink.errors:
             findings.append((path, f"{tag} · {txt}", f"console: {sink.errors[0][:60]}"))
         # off-route navigation → return to keep sweeping this route's controls
@@ -641,9 +642,10 @@ def flow_sweep(page, rec, sink):
             if _err_surface(page):
                 findings.append((label, f"{step['note']} · {hit}", "ERROR BOUNDARY"))
                 break                       # flow crashed — stop driving it
-            five = [c for c in rec.calls[before:] if c[2] >= 500]
-            if five:
-                findings.append((label, f"{step['note']} · {hit}", f"backend {five[0][2]} {five[0][1]}"))
+            refused = _backend_refused(rec.calls[before:])
+            if refused:
+                findings.append((label, f"{step['note']} · {hit}",
+                                 f"backend {refused[0][2]} {refused[0][1]}"))
             if sink.errors:
                 findings.append((label, f"{step['note']} · {hit}", f"console: {sink.errors[0][:50]}"))
     return findings, acted
@@ -668,6 +670,23 @@ def make_context(browser, token):
 def _expected_benign(call):
     method, path, status, had_auth = call
     return status == 401 and not had_auth and "forecast-horizon" in path
+
+
+# ⭐⭐ ONE PREDICATE FOR "THE BACKEND REFUSED", USED BY NAVIGATION AND BY CLICKS.
+# `visit()` already treated ANY non-2xx/3xx during navigation as a route failure,
+# but the two INTERACTION sweeps filtered `status >= 500` — so a 404 raised by a
+# CLICK was recorded and thrown away. That is how a click-driven
+# `POST /api/v1/valuation/run` returning 404 "dataset not found" went unseen
+# while the crawler reported the page green.
+#
+# ⛔ A 404 FROM A BUTTON IS A BROKEN FEATURE, not a missing page: the reader
+# pressed something and the backend said the thing it acts on does not exist.
+# Extracting the predicate rather than copying `>= 500 or == 404` into two more
+# places keeps ONE definition of refusal (§7r-O).
+def _backend_refused(calls):
+    """Calls in this slice that the backend did not accept."""
+    return [c for c in calls
+            if not (200 <= c[2] < 400) and not _expected_benign(c)]
 
 
 def visit(page, rec, path):

@@ -20274,6 +20274,37 @@ known-positive (the same predicate still passing the real page) is what
 distinguishes "the control rejects bad input" from "the predicate rejects
 everything".
 
+## ⭐⭐ §III.14 · AN INSTRUMENT'S OWN TRAFFIC READS AS AN ATTACKER (7 Aug)
+
+**A verification probe is indistinguishable, in the telemetry, from a hostile
+one — and it arrives with exactly the properties that make a walk look
+systematic.**
+
+Measured, twice in one session, from a single read-only lane:
+
+| the alarm | what it actually was |
+|---|---|
+| `device.family = Spider`, `browser = Python-urllib 3.12`, production, two datasets · two endpoints · 111 s apart — *"a systematic enumeration"* | this session's own anonymous `urllib` probe, sweeping `analytics/{…}` then `real-options/{…}` in one script |
+| *"the Valuation page requests `/valuation/analytics/20`"* | **a URL this session constructed itself** to test a hypothesis, then read back as an observation of the frontend |
+
+⭐⭐ **THE SECOND IS THE DANGEROUS ONE.** The first cost an escalation that was
+withdrawn. The second nearly caused a **fix to a caller that is not broken** —
+and the dispatch that raised it had already written the warning against itself:
+*"a caller fixed to match a wrong route, or a route added to match a wrong
+caller, both produce a green screen and one of them is wrong."*
+
+⛔ **THE RULE: a probe's own output is not evidence about the system.** Before an
+observed URL, user-agent or id becomes a premise, establish that **something
+other than this session produced it**. A hypothesis written as a test input
+returns looking exactly like a measurement — same shape, same log line, same
+confidence — and the only thing distinguishing them is provenance, which is not
+recorded anywhere in the artefact.
+
+⭐ **This is the recording side of [[unrecorded-provenance-is-unrecoverable]]:**
+provenance that was never attached cannot be recovered later by effort. The
+defence is to attach it at the moment the probe is written, not to reconstruct it
+when the alarm fires.
+
 ## ⚠ THE DISPATCH'S FIGURES, MEASURED
 
 | dispatch | measured | resolution |
