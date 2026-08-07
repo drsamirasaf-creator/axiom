@@ -20274,6 +20274,52 @@ known-positive (the same predicate still passing the real page) is what
 distinguishes "the control rejects bad input" from "the predicate rejects
 everything".
 
+## ⭐⭐ §III.17 · A RULE CAN INVERT WITHOUT CHANGING (7 Aug)
+
+**§III.15 is a rule that stopped tracking the harm. This is a rule that kept
+working exactly as written while its MEANING reversed underneath it.** The line
+never changed, never errored, and never needed maintenance. What changed was the
+world it referred to.
+
+⛔ **THE EVIDENCE: `git checkout -- src/routeTree.gen.ts` in `.githooks/pre-push`.**
+
+| | |
+|---|---|
+| what it was written to do | undo a **forbidden** side effect — `bun run build` regenerated a tree that could not be committed |
+| what it does now | ⛔ **after any real route change, DISCARD the regeneration and push a stale tree** |
+| the line | **identical in both readings** |
+
+⭐⭐ **AND IT WAS INVISIBLE FOR A MEASURED REASON.** With no route change the
+regeneration is **byte-identical**, so discarding it restores the same bytes. It
+ran 10+ times, harmlessly, every time. **The defect only exists when the bytes
+DIFFER — the one case nothing had ever exercised, because the reset ran first
+every time.** A thing that has never been allowed to fail has not been shown to
+work.
+
+⛔ **DETECTION DIFFERS FROM §III.15, AND THAT IS THE POINT.**
+
+| | §III.15 — a stale proxy | §III.17 — an inverted rule |
+|---|---|---|
+| the rule | drifted away from the harm | **unchanged and still correct as written** |
+| you catch it by | **re-measuring its stated premise** | ⛔ **asking what it DOES now — not what it prevents** |
+| the comment | argues for the old premise | **still accurately describes the mechanism**, which is why re-reading it clears it |
+
+⭐ *"The hook that dirties the file is the hook that cleans it"* was a **true
+description of the mechanism on the day the meaning inverted.** Re-reading the
+comment could never have caught this. Only asking *"what is the effect of this
+line today"* does.
+
+⭐⭐ **AND IT WAS FOUND BY A CENSUS DISPATCHED FOR SOMETHING ELSE.** The lane asked
+for a count of `git checkout --` occurrences before removing them. Enumerating
+the sites forced reading each one's current effect rather than its stated
+purpose — and the second site had been sitting on the **success path, after the
+CI replay**, which is the least-watched place a defect can live. **Nobody was
+looking for it; the inventory found it.**
+
+⛔ **THE STANDING RULE:** if a step dirties a generated file it **REGENERATES or
+FAILS. It never discards.** A discard is indistinguishable from a correct no-op
+whenever the inputs happen not to have changed.
+
 ## ⭐⭐ §III.15 · A GUARD THAT TESTS A PROXY FAILS SILENTLY (7 Aug)
 
 **A guard that tests the HARM can only fail loudly. A guard that tests a PROXY
