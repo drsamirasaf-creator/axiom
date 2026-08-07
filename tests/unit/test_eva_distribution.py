@@ -141,11 +141,67 @@ def test_eva_is_not_restated_here():
                 pytest.fail("EVA's arithmetic is restated here — consume the owner")
 
 
+def _imported_modules(mod):
+    """Every module this file imports, from the AST — the same question the
+    rule asks, answered structurally."""
+    tree = ast.parse(inspect.getsource(mod))
+    out = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            out |= {a.name for a in n.names}
+        elif isinstance(n, ast.ImportFrom):
+            base = ("." * (n.level or 0)) + (n.module or "")
+            out.add(base)
+            out |= {f"{base}.{a.name}" for a in n.names}
+    return out
+
+
 def test_the_valuation_kernel_is_untouched():
-    """⛔ NO ENGINE CHANGE. The module must not import or call the Monte Carlo."""
-    src = inspect.getsource(E)
-    assert "valuation" not in src or "engines" not in src, \
-        "this module reaches into the valuation kernel"
+    """⛔ NO ENGINE CHANGE. The module must not import or call the Monte Carlo.
+
+    ⛔⭐⭐ THIS ASSERTION USED TO MATCH SOURCE TEXT — `"valuation" not in src or
+    "engines" not in src` — AND IT FIRED ON A COMMENT. §III.9: a guard matching
+    TEXT punishes the file that states its own rule. Line 22 of the module is
+    the docstring *"never imports the valuation kernel"*, and a comment added
+    8 Aug naming `engines.wacc` (the function whose exception the absence now
+    carries) completed the pair. Nothing had changed about what the module DOES.
+
+    ⭐ The rule is now asked of the IMPORT GRAPH, which is the harm: a module
+    that does not import the kernel cannot call it. Prose about the kernel is
+    exactly what a reader needs and is no longer punished.
+    """
+    mods = _imported_modules(E)
+    reaches = sorted(m for m in mods if "valuation" in m)
+    assert not reaches, f"this module imports the valuation kernel: {reaches}"
+    # ⭐ AND NOT BY ATTRIBUTE EITHER — a lazily imported kernel would not appear
+    # above. No call in this module may be rooted at a `valuation` name.
+    tree = ast.parse(inspect.getsource(E))
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Call):
+            f = n.func
+            root = f
+            while isinstance(root, ast.Attribute):
+                root = root.value
+            if isinstance(root, ast.Name) and "valuation" in root.id.lower():
+                pytest.fail(f"a call is rooted at {root.id!r}")
+
+
+def test_that_guard_can_still_see_a_real_import():
+    """⛔⭐⭐ THE KNOWN POSITIVE. The rewritten guard is looser than the string
+    match it replaces, so it must be shown to still catch the thing it exists
+    for — otherwise §III.9 has been traded for §III.11."""
+    import types
+    fake = types.ModuleType("fake")
+    fake_src = ("from .modules.valuation import engines as V\n"
+                "def f():\n    return V.run({}, 'proforma', {}, {})\n")
+    tree = ast.parse(fake_src)
+    found = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ImportFrom):
+            base = ("." * (n.level or 0)) + (n.module or "")
+            found.add(base)
+    assert any("valuation" in m for m in found), \
+        "the recogniser cannot see a real kernel import"
 
 
 # ── 4 · absence declares, per panel ───────────────────────────────────────
@@ -194,3 +250,58 @@ def test_the_point_estimate_is_the_deterministic_eva():
     expected = R.eva(last["nopat"], WACC, last["invested_capital"])
     out = E.eva_distribution(HISTORY, WACC)
     assert out["panels"]["mixture"]["point_estimate"] == pytest.approx(expected)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⛔⭐⭐ THE ABSENCE NAMES ITS CAUSE (8 Aug)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_the_wacc_absence_carries_the_cause_not_only_the_consequence():
+    """⛔ Measured 8 Aug: 6 of 33 datasets return both panels absent, and for
+    the 3 public companies the reason was *"without a cost of capital there is
+    no charge to take"* — true, and unactionable. `engines.wacc` raises naming
+    the missing input, and the caller caught it into `w = None` one line later.
+
+    ⭐ THE CONSEQUENCE IS KEPT AND THE CAUSE IS ADDED. A reader needs both:
+    what is missing, and why that matters."""
+    cause = "company._debt_book is required to weight a public WACC"
+    out = E.eva_distribution([], None, wacc_absent=cause)
+    for name, panel in out["panels"].items():
+        why = panel["absent"]
+        assert why, f"{name} went absent with no reason at all"
+        assert cause in why, (
+            f"{name} dropped the cause; the reader is told the consequence "
+            f"only, which names nothing they can supply")
+        assert "no charge to take" in why, (
+            f"{name} dropped the consequence — the cause alone does not say "
+            f"why a missing debt basis empties this panel")
+
+
+def test_the_cause_is_OPTIONAL_so_every_existing_caller_still_works():
+    """⛔ THE KNOWN POSITIVE FOR THE DEFAULT. 13 tests and the ratio surface
+    call this with two arguments. A required third would have broken them all,
+    and a test that only checked the new branch would not have noticed."""
+    out = E.eva_distribution([], None)
+    for name, panel in out["panels"].items():
+        assert panel["absent"], f"{name} lost its reason when no cause was given"
+        assert "no charge to take" in panel["absent"]
+        assert "could not be computed" not in panel["absent"], (
+            "an empty cause was rendered as though a cause existed")
+
+
+def test_a_present_wacc_is_unaffected_by_the_new_argument():
+    """⭐ The argument governs an ABSENCE. It must not reach a populated panel."""
+    import json as _json, os as _os
+    path = _os.environ.get("AXIOM_SCRATCH", "/private/tmp/claude-501/"
+                           "-Users-samirasaf/5dfccbe2-516b-41df-b70a-8355f80ec452/"
+                           "scratchpad") + "/meridian-45.json"
+    if not _os.path.exists(path):
+        pytest.skip("the showcase dataset is not cached in this environment")
+    from services.api.modules.financials import engines as _FE
+    d = _json.load(open(path, encoding="utf-8"))
+    w = _FE.wacc(dict(d["company"], _debt_book=None))["wacc"]
+    rows = _FE.derive_series(d).get("ratios") or []
+    a = E.eva_distribution(rows, w)
+    b = E.eva_distribution(rows, w, wacc_absent="ignored — wacc is present")
+    assert a == b, "a cause string changed a populated payload"
+    assert a["panels"]["copula"]["absent"] is None

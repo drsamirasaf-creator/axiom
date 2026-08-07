@@ -20668,6 +20668,62 @@ its corpus — and was **wired into no CI step and no hook**. It never ran once.
 guard nobody runs is a document, and a document cannot re-take a measurement.
 See §III.25.
 
+## ⛔⭐⭐ §III.27 · YOUR OWN PROBE IS NOT EVIDENCE (8 Aug)
+
+**A hypothesis written as a test INPUT comes back looking like a measurement.**
+
+⛔ **THE EVIDENCE.** The EVA distribution endpoint was called to check whether it
+populates. It returned **HTTP 200 with both panels absent** — exactly the shape
+a broken surface would have, and it was reported as one. **The cause was the
+fixture.** `tests/fixtures/refcases.meridian()` is a **public** company; the
+handler passes `_debt_book=None`; `engines.wacc` raises; both panels go absent.
+The same call against the real showcase populates completely.
+
+| | |
+|---|---|
+| what was concluded | *"the payload is not populated"* |
+| what was actually measured | **the fixture's ownership field** |
+| what would have caught it | ⭐ running the same probe against a **second, differently-shaped** input |
+
+⭐⭐ **THE ASYMMETRY THAT MAKES THIS DANGEROUS.** A probe that returns the
+*expected* answer is not re-examined. Had the panels populated, the probe would
+have been trusted and the fixture never inspected — so **this class is only ever
+caught when the answer is one you already suspected**, which is precisely when
+scrutiny is lowest.
+
+⛔ **THE RULE:** *before reporting a negative from a probe you constructed, name
+the properties of the input that could produce that negative on their own.* If
+the input differs from production in any of them, the probe measured the input.
+⭐ **Two inputs, or none** — a second fixture of a different shape costs one line
+and converts a guess into a comparison.
+
+## ⛔⭐⭐ §III.28 · "UNREACHED" IS NOT DIAGNOSTIC (8 Aug)
+
+**A finding built from three screenshots has now been dissolved twice by
+measurement, and both times the dissolving number was a denominator.**
+
+| the class asserted | the measurement |
+|---|---|
+| *"quantities that declare a surface"* | ⭐ **1 of 77** declares one — so declaring is the exception, not the rule, and its absence diagnoses nothing |
+| *"this handler is never exercised by a call"* | ⭐ **280 of 342 served paths have no frontend caller at all** |
+
+⛔ **SO "IT IS SERVED AND NOTHING CALLS IT" DESCRIBES 82% OF THIS API.** It is
+the normal state of a product whose surface area is smaller than its kernel, and
+a lane dispatched to fix it would be fixing the shape of the codebase.
+
+⭐⭐ **WHAT IS ACTUALLY DIAGNOSTIC IS THE FOUR STATES, ASKED SEPARATELY** —
+COMPUTED, SERVED, SURFACED, REACHED. The EVA distribution scored **YES on all
+four**: served in the schema, called by `EvaDistribution.tsx`, rendered under
+`sub === "raev"`, and `/valuation?sub=raev` is one of the nav index's 106
+destinations. **The real gap was none of them: no test exercises the HTTP
+handler** — which is why the swallowed exception behind §7q's absence text
+survived.
+
+⛔ **THE RULE:** *a state that most of the population is in cannot explain why
+one member is broken.* Before building a class from a handful of examples, count
+how many members share the property. **If the answer is "most of them", the
+property is a description, not a diagnosis.**
+
 ## ⛔⭐⭐ §III.26 · A NET CATCHES MALFORMEDNESS, NEVER MISREADING (7 Aug)
 
 **The question is never "regex or parser". It is: DOES ANYTHING ELSE PARSE THE

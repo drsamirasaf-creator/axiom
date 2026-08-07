@@ -103,7 +103,7 @@ def _absent(why):
             "point_estimate": None}
 
 
-def eva_distribution(history, wacc):
+def eva_distribution(history, wacc, wacc_absent=None):
     """-> {registry_version, parameters, panels:{mixture, copula}}.
 
     `history` is `derive_series(data)["ratios"]` — the per-period series carrying
@@ -146,8 +146,27 @@ def eva_distribution(history, wacc):
     # ⛔ ABSENCE IS DECIDED PER PANEL, not once for the page — the two need
     # different things, and one banner would hide which.
     if wacc is None:
+        # ⛔⭐⭐ THE ABSENCE NAMES ITS CAUSE, NOT ITS CONSEQUENCE. This branch
+        # used to state only *"without a cost of capital there is no charge to
+        # take"* — true, and unactionable. A reader cannot tell from it that one
+        # missing input would populate the whole panel.
+        #
+        # ⭐ THE CAUSE ALREADY EXISTED AND WAS BEING THROWN AWAY. `engines.wacc`
+        # raises with the exact remedy — *"company._debt_book is required to
+        # weight a public WACC; the caller must supply the debt basis"* — and
+        # the caller caught it into `w = None` one line later. Measured 8 Aug:
+        # 6 of 33 datasets return both panels absent, and for 3 of them (the
+        # public companies) THIS is the reason. The other 3 are private and
+        # already name their cause — too few periods carrying a NOPAT.
+        #
+        # ⛔ `wacc_absent` DEFAULTS TO None so every existing caller, and all 13
+        # module tests, keep working unchanged. The consequence sentence is
+        # kept as the frame and the cause is appended, because the reader needs
+        # both: what is missing, and why that matters.
         why = ("EVA is NOPAT less a charge for the capital employed, so without "
                "a cost of capital there is no charge to take.")
+        if wacc_absent:
+            why += f" The cost of capital could not be computed: {wacc_absent}"
         out["panels"] = {"mixture": _absent(why), "copula": _absent(why)}
         return out
     if not rows:

@@ -608,11 +608,17 @@ def eva_distribution_surface(dataset_id: int, db: Session = Depends(get_db),
     series = engines.derive_series(row.data)
     # ⭐ ONE WACC, ONE OWNER — the same call the ratio surface makes, so the
     # distribution and the headline EVA cannot disagree about the capital charge.
+    # ⛔⭐⭐ THE REASON TRAVELS. `except Exception: w = None` discarded the one
+    # sentence that tells the reader what to do — `engines.wacc` raises naming
+    # the missing input, and that message is what makes the absence actionable.
+    # Measured: of 17 broad except-handlers in the valuation path, 7 discard the
+    # exception's reason; this was one of them.
     try:
         w = engines.wacc(dict((row.data.get("company") or {}), _debt_book=None))["wacc"]
-    except Exception:
-        w = None
-    return _dist(series.get("ratios") or [], w)
+        werr = None
+    except Exception as e:                                   # noqa: BLE001
+        w, werr = None, str(e)
+    return _dist(series.get("ratios") or [], w, wacc_absent=werr)
 
 
 @router.get("/datasets/{dataset_id}/frequency-view")
@@ -1128,6 +1134,31 @@ def ratios_surface(dataset_id: int, db: Session = Depends(get_db),
         "coverage": {"in_registry": len(rr.load()["ratios"]),
                      "rendered": len(out), "absent": len(absent)},
     }
+
+
+@metrics_router.get("/ratio-independence/{dataset_id}")
+def ratio_independence_surface(dataset_id: int, db: Session = Depends(get_db),
+                               tenant: str = Depends(_tenant),
+                               scoped: int | None = Depends(_scoped)):
+    """How many of the declared quantities are actually different questions.
+
+    ⛔⭐⭐ THE FINDING IS NEGATIVE AND THE PAYLOAD SAYS SO. Measured: all but one
+    computable quantity is algebraically independent, and the single exact
+    identity is `dupont_three_step == roe` — the decomposition closing, which is
+    its purpose. **There is essentially no redundancy to prune**, so "less is
+    more" on a ratio page is a CURATION decision about what a reader needs, never
+    a de-duplication. A surface that rendered this as "N duplicates found" would
+    be dressing a negative result as a feature.
+
+    ⭐ The method is EMPIRICAL because the textual one was disproved by a
+    counterexample in the same registry, and the payload carries what the claim
+    is worth: agreement over N periods is evidence, not proof.
+    """
+    from ... import ratio_independence as ri
+    row = _get_dataset(db, tenant, dataset_id, scoped)
+    out = ri.analyse(row.data)
+    out["dataset_id"] = dataset_id
+    return out
 
 
 @metrics_router.get("/dupont/{dataset_id}")
