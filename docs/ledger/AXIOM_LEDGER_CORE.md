@@ -20418,6 +20418,46 @@ Both surfaces the dispatch named are confirmed:
 ⭐ **Measured now while it is small.** This is the backlog the UX pass inherits,
 and it is 13 surfaces rather than the whole product.
 
+## ⭐⭐ §9b · THE LOGO LOCKUP IS "AXIOM — STRATEGY EXECUTION" (founder ruling, 8 Aug)
+
+**"DYNAMIC CORPORATE TRANSFORMATION" IS RETIRED FROM THE LOGO. IT IS NOT
+RETIRED FROM THE PRODUCT.**
+
+### ⛔⭐⭐ THE DISTINCTION A LATER SWEEP MUST NOT COLLAPSE
+
+**Dynamic Corporate Transformation is the founder's BOOK** — Springer, Volumes
+I–II — and the methodology AXIOM implements. Under the logo it reads as
+**positioning**: a claim about what the product is. Under **About the Founder**
+it reads as **credibility**: a statement of what the author wrote.
+
+| where it appears | what it is | ruling |
+|---|---|---|
+| **the logo lockup** | positioning | ⛔ **RETIRED** — replaced by *Strategy Execution* |
+| About the Founder, the book citation, the DCT ecosystem, the course/education lab, the methodology note on a board report, the DCT glossary entry | ⭐ **credibility and provenance** | ⭐ **KEPT, deliberately** |
+
+⛔ **A SWEEP THAT REMOVES THE REMAINING OCCURRENCES AS "STALE VARIANTS" IS
+WRONG.** They are not variants of the tagline; they are references to a
+published work and to a named methodology. The phrase is retired **from one
+slot**, not from the vocabulary. This section exists so that the next lane to
+grep for it finds the reason before the string.
+
+### ⛔ "STRATEGY EXECUTION DELIVERED" WAS CONSIDERED AND REFUSED
+
+**"Delivered" claims the outcome.** §9a's boundary is that **AXIOM makes the gap
+visible and the executives close it** — *the system responds; the executive
+decides*. A mark promising delivery would contradict, on the most visible
+surface in the product, the boundary every ruling below it enforces: B12's
+client-declared impact, §8m.2's withdrawal of "optimal" at a corner, the refusal
+to derive what a client must declare.
+
+⭐ **RECORDED AS A REFUSAL, NOT AN OMISSION** — the same treatment as the three
+rejected value-proposition phrasings — so it cannot be quietly restored by
+someone who reads the shorter mark as an accident.
+
+⭐ **"Strategy Execution" survives the test that killed it**: it names the
+DOMAIN the product operates in without asserting an outcome the product does not
+own.
+
 ## ⭐⭐ §9a · "ADAPTIVE" IS RULED IN. "AUTONOMOUS" IS REFUSED. (7 Aug)
 
 **FOUNDER RULING, 7 Aug: "Adaptive" enters AXIOM's value proposition.
