@@ -20406,6 +20406,50 @@ website or the comparison matrix **must be backed by something demonstrable in
 the demo**, and that is checked at the **CLAIMS AUDIT — third in the locked
 pre-launch sequence.**
 
+### ⭐⭐ THREE RULINGS ON THE WORDS (7 Aug) — RECORDED BEFORE ANY SURFACE IS TOUCHED
+
+**⛔ Nothing has been edited. Nine surfaces and one string: a wrong string is
+nine edits to undo, so the wording is confirmed before the first change.**
+
+#### RULING 1 — **"Optimization, Certified." is RETIRED. Nothing replaces it.**
+
+| why | |
+|---|---|
+| **"Certified" is a certification claim** | nothing in the repository states **what** certifies it, **by whom**, or **against what standard**. In a finance context the word carries regulatory weight that "verified" or "checkable" would not. |
+| **it had already drifted** | **two variants** — with and without *"Enterprise"* — across **four surfaces**, before anyone tried to change it |
+| **it names one page of nineteen** | "Optimization" is a single sidebar destination; the tagline elevated it to the whole product |
+
+**Where it lives today:** `routes/index.tsx` (the `<h1>`), `lib/platform.ts` (a
+`tagline` field), `lib/glossary.ts` (a glossary **key**), and
+`AXIOM_Capabilities_Brochure_v2.html` (a repeated footer, lines 313 and 451).
+
+#### RULING 2 — **"living mathematical model" is RETIRED**
+
+⛔ **Including from `src/lib/board-report.tsx` — a GENERATED CUSTOMER ARTEFACT.**
+A positioning phrase was shipping inside a board report, which is the surface
+where marketing language is least defensible: a CFO forwards that document to a
+board.
+
+**Where it lives today:** `routes/index.tsx` and `lib/board-report.tsx`.
+
+#### RULING 3 — **the canonical value proposition** is the line at T2 below
+
+⛔ **AWAITING FOUNDER CONFIRMATION OF THE WORDING.** Recorded here so the
+refusals cannot be quietly restored; **not yet applied to any surface.**
+
+**Three phrasings were REFUSED, and the reasons are recorded so nobody restores
+them:**
+
+| refused | why |
+|---|---|
+| *"takes in data from ERP, CRM and other systems"* | ⛔ ingestion is **spreadsheet upload today**; ERP is **V2.0**. A capability claim with no capability. |
+| *"value maximizing"* | ⛔ **§8m.2 C withdrew "optimal" at a corner**, and **19 of 33** datasets recommend at a boundary. The tagline must not promise what the product declines to claim. |
+| *"most sophisticated available"* | ⛔ **unfalsifiable** — no comparative benchmark exists, so it cannot pass a claims audit. |
+
+⭐ **The second refusal is the one worth keeping visible:** the product already
+withdraws "optimal" in its own payload. A tagline claiming maximisation would
+contradict a ruling the engine enforces on every render.
+
 ### ⛔⭐⭐ T4 · THE VALUE PROPOSITION EXISTS IN FOUR PLACES AND THEY DISAGREE
 
 **Measured before anyone edits anything. Nothing was edited.**
