@@ -20274,6 +20274,68 @@ known-positive (the same predicate still passing the real page) is what
 distinguishes "the control rejects bad input" from "the predicate rejects
 everything".
 
+## ⭐⭐ §III.15 · A GUARD THAT TESTS A PROXY FAILS SILENTLY (7 Aug)
+
+**A guard that tests the HARM can only fail loudly. A guard that tests a PROXY
+for the harm goes wrong quietly the moment the proxy stops tracking it — and
+keeps passing, or keeps failing, with equal confidence either way.**
+
+⛔ **THE EVIDENCE: `check-routetree.mjs`.** Its harm was *"`tsc --noEmit` breaks
+in ~80 untouched files."* Its test was *"does the file contain
+`declare module '@tanstack/react-start'`."* Those coincided when it was written.
+Then the project moved to TanStack Start, `src/router.tsx` and `src/start.ts`
+arrived, and the block began to compile.
+
+| | |
+|---|---|
+| the harm, re-measured 7 Aug | **`tsc --noEmit` clean with the block committed** |
+| the proxy | still firing on every push |
+| what the guard was rejecting | ⛔ **the generator's own byte-identical output** |
+| how long | `git log -S` shows the block added and removed **10+ times** |
+
+⭐⭐ **AND THE PROXY DEFENDED ITSELF IN PROSE.** The CI comment, the README
+section and the `.env.example` note all *argued for the proxy* — three documents
+restating a premise none of them had re-measured. **A stale guard with good
+comments is harder to dislodge than one with none**, because every reader who
+checks finds a reason and stops.
+
+⭐ **THE CORRECTION IS NOT A LOOSER GUARD.** The rule now asks the harm directly:
+the block `import type`s two modules, so a tree carrying it while either is
+missing cannot compile — that fails, loudly, and it is red-proofable by moving a
+real file aside. **The question got harder, not softer.**
+
+⛔ **THE TEST FOR THIS CLASS:** *can I state the harm, and does the check test
+that, or something correlated with it?* If correlated — write down what would
+break the correlation, because that is the day the guard starts lying.
+
+## ⭐⭐ §III.16 · A BULK EDIT NEEDS A UNIQUENESS CHECK BEFORE AND AN ASSERTION AFTER (7 Aug)
+
+**Measured on my own work, twice in one lane.**
+
+| step | intended | actual |
+|---|---|---|
+| replace `"narrative": n, "checkpoints": checkpoints,` | **1 site** | **5 sites** — four other functions share the line and have no `lever_clamps` in scope |
+| "repair" by deleting a line range | restore **4** | removed `"narrative": n,` from all four **and** ate an extra line at each |
+| second "repair" | restore **4** | ⛔ **added the line to 16 functions, twelve of which never had it** |
+
+⭐⭐ **EACH REPAIR WAS WORSE THAN THE DEFECT IT FIXED**, because each was aimed at
+a symptom count rather than at a verified target set. The suite caught it — 15
+failures — but the third edit was already written by then.
+
+⛔ **THE RULE, BOTH ENDS:**
+
+- **BEFORE** — a bulk edit must prove its target set. `assert s.count(old) == N`
+  with **N stated in advance**, not read off the result. An anchor that is not
+  unique is not an anchor; extend it until it is, or edit each site separately.
+- **AFTER** — assert the shape that should now hold, not the count of changes
+  made. `git diff | grep "^-"` answers *"what did I actually remove"*, which is
+  the question a bulk edit cannot answer from its own return value.
+
+⭐ **AND WHEN A PATCH NEEDS A PATCH, REVERT.** The file was restored to HEAD —
+after `git status` confirmed it was the only dirty file, so nothing but my own
+broken edits could be lost — and redone with uniquely-anchored edits. **Two
+repairs deep is the signal to stop repairing.**
+
 ## ⭐⭐ §III.14 · AN INSTRUMENT'S OWN TRAFFIC READS AS AN ATTACKER (7 Aug)
 
 **A verification probe is indistinguishable, in the telemetry, from a hostile

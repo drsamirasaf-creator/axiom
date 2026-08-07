@@ -640,9 +640,19 @@ this session: `check-flow-diagram-links` · `check-hydration-safe-session` ·
 `check-sidebar-contract` · `check-scope-declared` · `check-tabs-addressable` ·
 `check-nav-index`.
 
-⛔ **`bun run build` regenerates `routeTree.gen.ts`.** Restore it before pushing
-(`git checkout -- src/routeTree.gen.ts`) or `check:routetree` blocks you. This
-happens on nearly every lane.
+⭐ **`bun run build` regenerates `routeTree.gen.ts` — and as of 7 Aug you COMMIT
+that.** ⛔ **The old instruction here said to restore it with
+`git checkout -- src/routeTree.gen.ts`. Do not.** The regenerated form is
+legitimate under TanStack Start, `check:routetree` now validates it by harm (do
+the modules its Register block imports exist) rather than by presence, and
+`build:preview` no longer strips it. If the check ever fails, **regenerate**
+(`NITRO_PRESET=node-server bunx vite build`) — a step that needs a clean
+generated file regenerates or fails; it does not discard.
+
+⚠️ **Two automated resets remain**, both in `.githooks/pre-push` (lines 119 and
+135). They are recorded in `docs/reports/routetree-strip-removed-2026-08-07.md`
+and their removal is a separate lane — **so a local push still resets the file
+today**, and the oscillation is reduced, not yet ended.
 
 ## Known open items you will trip over
 
