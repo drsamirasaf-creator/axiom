@@ -20285,13 +20285,6 @@ Measured, twice in one session, from a single read-only lane:
 | the alarm | what it actually was |
 |---|---|
 | `device.family = Spider`, `browser = Python-urllib 3.12`, production, two datasets · two endpoints · 111 s apart — *"a systematic enumeration"* | this session's own anonymous `urllib` probe, sweeping `analytics/{…}` then `real-options/{…}` in one script |
-| *"the Valuation page requests `/valuation/analytics/20`"* | **a URL this session constructed itself** to test a hypothesis, then read back as an observation of the frontend |
-
-⭐⭐ **THE SECOND IS THE DANGEROUS ONE.** The first cost an escalation that was
-withdrawn. The second nearly caused a **fix to a caller that is not broken** —
-and the dispatch that raised it had already written the warning against itself:
-*"a caller fixed to match a wrong route, or a route added to match a wrong
-caller, both produce a green screen and one of them is wrong."*
 
 ⛔ **THE RULE: a probe's own output is not evidence about the system.** Before an
 observed URL, user-agent or id becomes a premise, establish that **something
@@ -20299,6 +20292,36 @@ other than this session produced it**. A hypothesis written as a test input
 returns looking exactly like a measurement — same shape, same log line, same
 confidence — and the only thing distinguishing them is provenance, which is not
 recorded anywhere in the artefact.
+
+### ⛔⛔ AND THE LAW WAS IMMEDIATELY MISAPPLIED — CORRECTED 7 AUG
+
+This section originally carried a **second** example: that the browser's request
+to `/valuation/analytics/20` was also my own construction. **That was wrong, and
+the error is kept here rather than deleted because it is the more instructive
+half.**
+
+| | |
+|---|---|
+| founder screenshot, browser 404 on `/valuation/analytics/20` | **11:32:11** |
+| my probe walk | **11:59:40 and 12:01:31** |
+
+**The browser emitted it 27 minutes BEFORE any probe of mine existed.** The
+caller was genuinely broken and I concluded it was not.
+
+⭐⭐ **THE REASONING THAT FAILED: absence from an instrument was read as absence.**
+Sentry records 5xx. **A 404 is not a 5xx**, so no alert existed — and I treated
+"no independent trace" as "no independent event", when the instrument was simply
+blind to that class. Provenance discipline told me to ask *"did something other
+than me produce this?"*; I asked it, got silence from a tool that cannot answer
+it, and scored the silence as a no.
+
+⛔ **SO §III.14 HAS A SECOND HALF: a negative from an instrument is only evidence
+where that instrument can see.** Before concluding a signal was self-generated,
+name the instrument that would have recorded an independent one — and check that
+it covers the class. Sentry did not cover 404s, and nothing else was consulted.
+
+⭐ This is [[scanners-need-known-positives]] pointed at my own reasoning: a check
+that has never fired for a class has not cleared that class.
 
 ⭐ **This is the recording side of [[unrecorded-provenance-is-unrecoverable]]:**
 provenance that was never attached cannot be recovered later by effort. The

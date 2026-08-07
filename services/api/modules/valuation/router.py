@@ -137,7 +137,16 @@ def _provenance(ds, body, requested_mode, executed_mode, eff_data):
     }
 
 
-@router.post("/run", response_model=schemas.ValuationRunOut, status_code=201)
+# ⭐ 404 IS DECLARED BECAUSE IT IS REACHABLE. The schema advertised only 201 and
+# 422, so a client generated from it could not know this call refuses at all —
+# and the refusal is the FIRST statement in the handler. An undeclared status is
+# a contract that lies by omission.
+@router.post("/run", response_model=schemas.ValuationRunOut, status_code=201,
+             responses={404: {"description": "dataset not found — the id does "
+                                             "not exist, or belongs to another "
+                                             "tenant (deliberately "
+                                             "indistinguishable, so a refusal "
+                                             "cannot confirm existence)"}})
 def run_valuation(body: schemas.ValuationRequest, db: Session = Depends(get_db),
                   tenant: str = Depends(_tenant),
                authed: bool = Depends(_authed)):

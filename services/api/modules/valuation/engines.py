@@ -928,11 +928,15 @@ def real_options_suite(data: dict) -> dict:
     # option would assert three failures and misdescribe the cause; the reader
     # would look for three reasons where there is one.
     #
-    # ⛔ THIS BRANCH IS DEFENSIVE, NOT OBSERVED. `enterprise_value` is
-    # `pv_explicit + pv_terminal`, both floats, so it cannot be absent on any of
-    # the 33 stored datasets today. It is written because the suite must not
+    # ⛔⛔ RECORDED AS INSURANCE, NOT COVERAGE (ruled 7 Aug). `enterprise_value`
+    # is `pv_explicit + pv_terminal`, both floats, so this branch is UNREACHABLE
+    # on all 33 stored datasets. It is written because the suite must not
     # fabricate a shape if that ever changes, and it is driven by a test that
     # plants an absent underlying — an untested branch is worse than none.
+    #
+    # ⛔ NO SWEEP MAY COUNT THIS AS A PROVEN PATH. It has never executed against
+    # real data and its only exercise is a monkeypatched fixture. A coverage
+    # report that ticks it green is asserting something no dataset has shown.
     mode = "proforma" if data["periods"].get("forecast") else "auto_forecast"
     s0_probe = run(data, mode)["deterministic"]["enterprise_value"]
     if s0_probe is None:
