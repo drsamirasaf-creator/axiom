@@ -20591,6 +20591,32 @@ Brief and Transformation Readiness are *"what is true"* and stay on Dashboard.
 home and **carries the count** — the same discipline as ruling 1. A signpost that
 does not state the number is a detour.
 
+## ⛔⭐⭐ PMO §48 · STAGING — **SUPERSEDED** (ruled 6 Aug, recorded 7 Aug)
+
+**§48 staged the PMO module as MVP (phase 1) vs Advanced (phase 2).**
+**Founder ruling: everything goes into V1.0. §48's staging no longer governs
+what ships.**
+
+⛔ **IT IS NOT DELETED.** §48 remains the historical record of what was once
+scoped as phased — the same treatment the ratio registry gives its `v2:` line,
+which is kept intact beside `dupont_moved_to_v1` precisely so a later reader can
+see what the scope *was* before the ruling moved it. A deleted staging plan
+leaves the next reader unable to tell a deliberate promotion from an oversight.
+
+| | |
+|---|---|
+| ruled | **6 Aug 2026** — everything into V1.0 |
+| recorded here | 7 Aug 2026 |
+| §48's status | **SUPERSEDED — historical record, not a plan** |
+| what still cites it | the 6 Aug scope report's *"MVP list (§48 phase 1)"* note, which reads the built share against phase 1 |
+
+⭐ **The measured consequence, from the 6 Aug scope report:** against the FULL
+55-section spec the built share is 17 substantially + 15 partly = **31% + 27%**;
+against §48's phase-1 list alone it is **higher**, because most of phase 1 is
+already built. ⛔ Promoting everything to V1.0 therefore *lowers* the reported
+completion against the shipping scope without any code changing — a denominator
+move, and it must not be read as regression.
+
 ## ⭐⭐ 6 · THE FLAT-ROUTE PRECEDENT DID THE WORK
 
 Every rename above changed a **label**, never a **path**. Inbound references and
