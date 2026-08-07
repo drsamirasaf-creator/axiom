@@ -10688,6 +10688,35 @@ and more misleading failure than a missing table.** The model import now sits
 the ruling. ⭐⭐ **A guard that punishes stating the rule is worse than no guard.**
 Both narrowed to AST reads.
 
+### ⭐⭐ THE ADJACENCY — NOT SUPERSEDED, AND NOW TESTED (7 Aug)
+
+**The adjacency stands. The Feedback tab does not inherit it.**
+
+The 7 Aug feedback lane inserted a tab **between** Voice and Stakeholder
+Sentiment and nothing failed. The question put back was whether the new tab —
+which assembles sentiment *and* per-axis effectiveness *and* the counts — now
+satisfies §4u-c's argument **within itself**, making the adjacency redundant.
+
+⛔ **It does not, and the reason is this section's own ruling.** The argument is
+*"the aggregate tone sits beside the words that produced it."* The Feedback tab
+renders tone, per-axis scores, participant counts, and issue/idea **titles** — it
+renders **no verbatim comment**, because verbatim text does not travel. So the
+tab carries the aggregate **without** the words. The only surface where tone sits
+beside words is Voice next to Sentiment. ⭐ **The feature that looked like it
+superseded the adjacency is the one that most depends on it**: a reader who lands
+on Feedback sees a number with no way back to what produced it except the tab to
+its left.
+
+⭐⭐ **AND THE COMMENT LIED FOR A DAY.** After the tab was moved back by hand, the
+comment left in `DEPT_TABS` read *"a test asserts the two are IMMEDIATE
+neighbours."* **There was no such test.** A comment claiming an assertion is
+worse than silence — the next lane reads it and believes the position is
+defended. `scripts/check-voice-sentiment-adjacency.py` now asserts the **index
+delta** (§III.13 — membership passes with six tabs between them), red-proofed on
+the exact insertion, with the parser scoped to `DEPT_TABS`'s `k:` keys because
+the URL-param whitelist earlier in the same file lists the same three strings in
+a different order.
+
 ## ⭐⭐ HALCYON AND HELIOS — DELETED IN FULL (ruled 1 Aug)
 
 **CORE recorded them RETIRED and their rows stayed**, so the tenant carried three
