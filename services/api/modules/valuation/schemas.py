@@ -97,6 +97,18 @@ class ValuationRequest(BaseModel):
     # supplied plan. Shape: {periods:{forecast:[years]}, income_statement, balance_sheet, cash_flow}.
     forecast_override: dict | None = None
     basis_label: str | None = None   # e.g. "my plan (extended to 10y by AXIOM Ensemble)"
+    # ⛔⭐⭐ RENDERING AND RECORDING ARE DIFFERENT ACTS — FOUNDER RULING, 7 Aug.
+    # A stored ValuationRun records a DECISION: someone chose assumptions and
+    # pressed Run. A page load is not one. The valuation surface fires THREE
+    # background runs on arrival — proforma, auto_forecast, and the extended
+    # basis — purely to fill a comparison strip, and every one of them was being
+    # written to the tenant's history. The customer's audit trail, and the
+    # 50-row window a pack freezes, had become a log of navigation.
+    #
+    # ⭐ DEFAULT TRUE, so nothing that omits the field changes behaviour; the
+    # three seed calls opt out explicitly. The result comes back in FULL either
+    # way — this governs the WRITE, never the answer.
+    persist: bool = True
 
 
 class ValuationRunOut(BaseModel):

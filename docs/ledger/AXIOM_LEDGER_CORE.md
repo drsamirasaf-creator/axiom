@@ -20668,6 +20668,58 @@ its corpus — and was **wired into no CI step and no hook**. It never ran once.
 guard nobody runs is a document, and a document cannot re-take a measurement.
 See §III.25.
 
+## ⛔⭐⭐ §III.26 · A NET CATCHES MALFORMEDNESS, NEVER MISREADING (7 Aug)
+
+**The question is never "regex or parser". It is: DOES ANYTHING ELSE PARSE THE
+SAME FILE IN THE SAME PIPELINE?**
+
+⛔ **THE DISCRIMINATOR, MEASURED.** 39 guard and helper scripts across both repos
+read a structured file. One — `ci-steps.py` — regex-read `ci.yml`, and **nothing
+else in that pipeline ever parsed it**. The only parser was GitHub's, and its
+verdict arrived as a red X indistinguishable from the red X already there, so the
+script printed ticks for a file that could not load, for 59 commits. The other 23
+regex-scanning scripts read `.ts`, `.tsx`, `.css` and `.mjs` — **and `tsc
+--noEmit` and `bun run build` parse every one of those files in the same CI
+run.** Same technique, opposite exposure. The technique was never the variable.
+
+⭐ **SO THE RULE IS ABOUT COVERAGE, NOT PURITY.** Where a parser already reads
+the file, a regex is a cheap second reader and the parser is its net. Where no
+parser reads it, a regex is the only reader and there is no net at all — that is
+the case to fix, and it is fixed by *adding the parse*, not by rewriting the
+regex.
+
+## ⛔⭐⭐ AND THE RESIDUE IS THE HALF NOBODY GUARDS
+
+**A net catches MALFORMEDNESS. It never catches MISREADING.** A regular
+expression that reads a **well-formed** file **wrongly** is invisible to every
+parser in the chain, because there is nothing for a parser to object to.
+
+| evidence, both from this session's own work | |
+|---|---|
+| `ci-steps.py` | read a **malformed** file → the new parse step catches it |
+| ⛔ `check-boundary-contrast.py` | read a **perfectly valid** `styles.css` and unpacked its own `(file, token)` tuples as `(token, file)` — it reported a token as unused that was used on six lines. `bun run build` compiled that stylesheet without complaint, as it should have. |
+
+⭐⭐ **THE RULE: WHERE A REGEX IS RIGHT, THE CONTROLS ARE THE NET.** Both guards
+written this week found their own parsing bugs only because a control happened to
+fail; **neither had a control aimed at the parse itself.** A control must
+exercise the READ — feed the recogniser a known input and assert what it
+extracts — and not only the rule built on top of it. Testing the rule while
+trusting the parse is §III.15 one layer down.
+
+## ⛔⭐⭐ AND THE CENSUS TAKEN TO FIND THIS WAS ITSELF WRONG (§III.22)
+
+The first count said **2** scripts. It said 2 because the detector matched
+`json.loads` **literally** and could not see `import json as _json` — so
+`check-comparison-matrix.py`, which parses properly, was reported as
+regex-only. **The instrument was wrong, not the code**, and the true figure
+is 1.
+
+⭐ **§III.22 recurring inside a census taken to find §III.22** is the point worth
+keeping: *the property was "does this script parse", the proxy was "does the
+literal string `json.loads` appear", and the proxy failed on an aliased import —
+the most ordinary Python there is.* A census is a measurement and inherits every
+rule that applies to one, including this section's.
+
 ## ⛔⭐⭐ §III.25 · A GATE THAT IS ALWAYS RED IS OFF (7 Aug)
 
 **A red build carries information exactly once. After that it is furniture — and

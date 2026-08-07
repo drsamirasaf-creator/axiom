@@ -181,6 +181,14 @@ def run_valuation(body: schemas.ValuationRequest, db: Session = Depends(get_db),
     # the visitor still gets the full result, it is just never stored.
     if not authed:
         return _transient(body.dataset_id, body.mode, params, result)
+    # ⛔⭐⭐ A PAGE LOAD IS NOT A DECISION (founder ruling, 7 Aug). The valuation
+    # surface fires three background runs on arrival to fill a comparison strip;
+    # persisting those made the tenant's Run history — and the 50 rows a pack
+    # freezes — a log of NAVIGATION rather than of choices. `persist: false`
+    # returns the full result and writes nothing. Rendering and recording are
+    # different acts.
+    if not body.persist:
+        return _transient(body.dataset_id, body.mode, params, result)
     row = models.ValuationRun(tenant=tenant, dataset_id=body.dataset_id,
                               mode=body.mode, params=params, result=result,
                               provenance=_provenance(ds, body, body.mode,
