@@ -20620,6 +20620,131 @@ arithmetic is defensible and **unchanged**; the reading is recorded so it cannot
 drift unnoticed, and whether a financing flow should be allocated evenly at all
 is a ruling this lane does not take.
 
+## ⛔⭐⭐ §III.24 · A RECORDED MEASUREMENT IS NOT A CONTROL (7 Aug)
+
+**§III.15 says a guard testing a PROXY fails silently. This is the failure one
+level up: a MEASUREMENT, correctly taken and faithfully written down, becomes a
+claim about the present the moment it is recorded — and nothing re-takes it.**
+
+⛔ **THE EVIDENCE.** §4v.3 fixed the strategy map's invisible edges and recorded
+the result: *"8.79:1 light, 9.18:1 dark."* Measured two ways in the DuPont
+wiring lane — the composited alpha computed from the token definition, and the
+painted pixel read out of headless Chromium — the token was **2.79:1 light,
+3.86:1 dark**. The light side had never met the 3:1 it was fixed to meet.
+
+| | |
+|---|---|
+| what the number was, when written | a measurement |
+| what it became, once recorded | ⛔ **a claim about the present, with no expiry** |
+| what re-checked it | **nothing, for the life of the section** |
+| what an auditor reading CORE would conclude | **the map's edges pass WCAG** |
+| what a reader looking at the map would see | **an edge below the bar** |
+
+⭐⭐ **THIS IS WHY IT OUTRANKS AN ORDINARY WRONG NUMBER.** A recorded measurement
+is the thing a later lane *cites instead of re-measuring* — that is what a
+ledger is for. So a wrong one does not merely sit there: **it actively
+suppresses the re-measurement that would catch it.** Three lanes read that
+section and none re-ran the probe, because the number was already there.
+
+⛔ **AND IT PASSES EVERY AUDIT.** The section was internally consistent, cited a
+real fix, named a real token, and sat beside a guard written for the defect. The
+only thing that could disagree with it was the surface itself.
+
+⛔ **THE TEST FOR THIS CLASS:** *for every number in this ledger that describes a
+LIVE PROPERTY of the product — a contrast, a count, a coverage, a latency — is
+there something that re-takes it, or only the sentence that records it?* If only
+the sentence, the number is a historical note and must read as one: **dated, with
+its method, and with what would change it.**
+
+⭐ **THE COROLLARY, AND IT IS THE CHEAP HALF:** a measurement is worth far more
+when it ships with **the method that produced it**, because the method is what a
+later lane can re-run. "8.79:1" is unfalsifiable a month later; *"2.79:1, read
+off the painted pixel in headless Chromium via a `file://` probe"* can be
+disproved in ninety seconds — which is exactly how the 8.79 fell.
+
+⛔ **AND A GUARD DOES NOT DISCHARGE THIS UNLESS IT RUNS.** §4v.3's guard existed,
+resolved tokens against the **dark card only** — so the failing side was outside
+its corpus — and was **wired into no CI step and no hook**. It never ran once. A
+guard nobody runs is a document, and a document cannot re-take a measurement.
+See §III.25.
+
+## ⛔⭐⭐ §III.25 · A GATE THAT IS ALWAYS RED IS OFF (7 Aug)
+
+**A red build carries information exactly once. After that it is furniture — and
+the day it goes red for a NEW reason looks identical to every day before it.**
+
+⛔ **THE MEASUREMENT.** The frontend's CI has run **100 times** in the window
+GitHub retains. **4 succeeded.** The last green was `8dcf870`, 6 Aug 20:44
+(+0600). Since then: **90 commits, none of them on a green build.**
+
+⛔⭐⭐ **AND THERE ARE TWO DIFFERENT FAILURES INSIDE THAT RED, WHICH IS THE
+FINDING.** They are indistinguishable from the outside — both render as a red X
+against the commit:
+
+| era | commits | what "failure" meant | how long a run took |
+|---|---|---|---|
+| 6 Aug 20:44 → 7 Aug 18:27 | 31 | ⛔ **a REAL step failure** — `browser gate — known positives` exited 2, after the workflow had executed everything before it | 5–15 minutes |
+| **7 Aug 18:27 → now** | **59** | ⛔⭐⭐ **the workflow file did not PARSE. Not one step ran.** | seconds |
+
+⭐⭐ **THE SECOND ERA WAS CAUSED BY ONE UNQUOTED COLON, IN MY OWN COMMIT.**
+`0fc0e73` added a step named:
+
+```yaml
+- name: browser gate — rendered content, 3 auth modes (ORIGIN: the tree)
+```
+
+`ORIGIN: the tree` inside an unquoted scalar is a mapping to YAML. The file
+stopped parsing at line 194, column 68, and GitHub reported exactly what it had
+reported the day before: **failure**. ⛔ **A commit whose entire purpose was to
+make an origin explicit turned off every check in the repository**, and the
+status badge did not change colour, because there was no colour left to change.
+
+⛔⭐⭐ **AND THE LOCAL ECHO STAYED GREEN THROUGHOUT — THIS IS THE SHARPEST PART.**
+The pre-push hook does not keep its own copy of the step list; it reads
+`ci.yml`, which is correct and was done deliberately so the two cannot drift.
+But it reads it with **a regex over `run:` lines** (`ci-steps.py`), not with a
+YAML parser. So for 59 commits the local replay extracted every step from a file
+**GitHub could not load at all**, ran them, and printed ticks.
+
+| | GitHub | the local replay |
+|---|---|---|
+| how it reads `ci.yml` | **a YAML parser** | ⛔ **a regex over `run:` lines** |
+| what it saw | a syntax error at 194:68 | 24 runnable steps |
+| what it reported | `failure` | ⭐ **all green** |
+
+**The proxy was healthy while the thing it proxies was switched off** — §III.15
+at the level of a whole pipeline. A developer running the hook got positive
+confirmation that CI would pass, from an instrument that could not see the
+defect. ⭐ **Two readers of one file must parse it the same way, or one of them
+is answering a different question.**
+
+⛔ **THE COST, MEASURED.** Everything the frontend guards ran on one laptop for
+59 commits. In that window this repo took 45 upstream commits and accrued **17
+prettier errors and one excess `any`** (818 against a ceiling of 817) — which
+surfaced only when a human pushed and the *local* pre-push hook fired. The bill
+went to the next unrelated author: a lane that wrote a DuPont surface closed by
+re-wrapping `vite.config.ts` and typing a `prev` in `dashboard.tsx`. ⭐ **A gate
+that charges its arrears to whoever arrives next will eventually be bypassed by
+one of them.**
+
+⛔ **AND IT DEFEATED THE FIX FOR §4v.3 IN THE SAME MOTION.** That lane's guard
+was wired into a CI step — into this workflow, during the window in which this
+workflow did not parse. **The wiring was recorded as the load-bearing half of
+the fix, and it was load-bearing on nothing.** See §III.24: a recorded
+measurement is not a control, and neither is a recorded *wiring*.
+
+⭐⭐ **THE RULE, AND IT IS NOT "FIX YOUR BUILD".** *A red gate must be either
+green or explicitly, visibly disabled.* A permanently-red gate is strictly worse
+than a deleted one: it costs the same to run, it teaches every reader to ignore
+it, and it silently absorbs the next failure. **"It's been red for a while" is
+the sentence that precedes this.**
+
+⛔ **AND A WORKFLOW MUST BE PARSED BEFORE IT IS TRUSTED.** A YAML file is
+executable configuration, and this repo had no check that its own CI definition
+loads — the one file whose failure disables every other check. ⭐ **The cheap
+detector: a run that ends in SECONDS did not run anything.** Duration
+discriminates the two eras above instantly and nothing was reading it.
+
 ## ⭐⭐ §III.23 · A DURATION FROM TWO TIMESTAMPS MUST STATE BOTH ZONES (7 Aug)
 
 **A duration computed across two clocks is not a measurement. State both zones,
@@ -21923,8 +22048,36 @@ surface nobody revisited**, because it was the only stroke in the app using `ink
 A per-utility override list is a hand list of the same facts, and this was its
 missing entry.
 
-**Fixed** with a `--map-edge` token defined in both themes: **8.79:1 light,
-9.18:1 dark.**
+**Fixed** with a `--map-edge` token defined in both themes.
+
+### ⛔⭐⭐ CORRECTION, 7 Aug — THE RECORDED FIX DID NOT MEET THE BAR IT CLAIMED
+
+**This section carried "8.79:1 light, 9.18:1 dark" and both figures are wrong.**
+Re-measured in the DuPont wiring lane, two independent ways:
+
+| method | light | dark |
+|---|---|---|
+| ⛔ **as recorded here** | ~~8.79:1~~ | ~~9.18:1~~ |
+| composited alpha, computed from the token definition | **2.79:1** | **3.86:1** |
+| **the painted pixel**, headless Chromium reading a `file://` probe | **2.79:1** | **3.86:1** |
+
+The two methods agree with each other and disagree with the ledger. ⛔ **The
+light side never reached 3:1**, so the strategy map's edges stayed below WCAG
+1.4.11 from the lane that recorded them as fixed until the day they were
+re-measured. No route reconstructs 8.79 — an alpha over a light card cannot
+reach it against that card.
+
+⭐ **AND THE ALPHA IS WHY BOTH NUMBERS WERE UNSTABLE.**
+`color-mix(… transparent)` makes rendered contrast depend on **whatever surface
+the mark lands on**, so one token measures differently in two places and neither
+reading is wrong. The replacement, `--rule`, is a **solid** colour precisely so
+it can be measured once and asserted: **4.84:1 light, 4.50:1 dark**, both read
+off the painted pixel. `--map-edge` and `--chart-rule` are now aliases of it.
+
+⛔ **THE GUARD COULD NOT HAVE CAUGHT THIS EITHER**, for two reasons recorded in
+§III.24: it resolved tokens against the **dark card only**, so the failing side
+was outside its corpus — and it was **wired into no CI step and no hook**, so it
+never ran at all.
 
 ## ⭐ 3 · THE GUARD FOUND TWO MORE OF THE SAME CLASS
 
