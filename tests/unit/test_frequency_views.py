@@ -293,3 +293,32 @@ def test_absence_survives_interpolation():
                                 "quarterly", "sum")
     assert all(v["value"] is None and v["status"] is None
                for v in out.values())
+
+
+# ── the quarterly encoding, asserted on BOTH producers ──────────────────────
+
+def test_both_producers_use_the_SAME_quarterly_encoding():
+    """⛔⭐⭐ SECOND INSTANCE OF A DEFECT CORE ALREADY RECORDS. `bucket()` once
+    emitted `year*100 + q` for a quarter — the MONTHLY encoding — and was
+    corrected. `_children` carried the identical line and was not, because
+    NOTHING RENDERED A QUARTERLY CAPTION: the values were right, the keys were
+    wrong, and no surface read the keys until the label lane asked them to say
+    which period they were. It rendered "20210Q1".
+
+    ⭐ Asserted across both producers, so the two cannot drift apart again.
+    """
+    from services.api.modules.financials import periods as PR
+    kids = FV._children(2021, "annual", "quarterly", 4)
+    assert kids == [20211, 20212, 20213, 20214], kids
+    buckets = [b["period"] for b in FV.bucket([202101, 202104], "monthly", "quarterly")]
+    assert all(20210 < b < 20220 for b in buckets), buckets
+    # ⭐ and the formatter — the third owner — agrees with both
+    assert PR.format_period(kids[0], "quarterly") == "2021Q1"
+
+
+def test_a_quarterly_caption_never_renders_the_monthly_encoding():
+    """⭐ The known positive: prove the WRONG encoding produces the WRONG
+    caption, so this test cannot pass by the formatter being lenient."""
+    from services.api.modules.financials import periods as PR
+    assert PR.format_period(202101, "quarterly") == "20210Q1"   # the old defect
+    assert PR.format_period(20211, "quarterly") == "2021Q1"     # the fix

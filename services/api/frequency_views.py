@@ -51,10 +51,39 @@ _RANK = {v: i for i, v in enumerate(VIEWS)}
 INTERPOLATED = "interpolated"
 LINEAR = "linear"
 
+# ⛔⭐⭐ T3 — THE BANNER TOLD TWO FALSEHOODS AND THIS IS A SENTENCE FIX, NOT AN
+# ARITHMETIC ONE. It was a module-level constant that never saw the grain:
+#
+#   (a) it said "between reported QUARTERS" on a dataset the same panel labels
+#       ANNUAL. There are no reported quarters to be between.
+#   (b) it said INTERPOLATION. Measured: a FLOW is divided evenly (433.7/12 =
+#       36.14, twelve identical months) and a STOCK holds the year-end value
+#       flat and then steps. That is ALLOCATION and STEP — not a ramp between
+#       two observations, which is what "interpolation" describes.
+#
+# ⭐ Both methods are defensible and NEITHER IS CHANGED. Only the sentence
+# describing them is, and the grain it is describing now reaches it.
+_GRAIN_NOUN = {"annual": "annual figures", "quarterly": "reported quarters",
+               "monthly": "reported months"}
+
 METHOD_LABEL = {
     LINEAR: "estimated by linear interpolation between reported quarters, "
             "not reported data",
 }
+
+
+def method_label(method, from_freq, to_freq=None):
+    """What the estimate actually did, at the grain it actually did it.
+
+    ⛔ It takes the SOURCE grain because that is what the estimate is derived
+    FROM, and a label naming the wrong grain is the defect this replaces.
+    """
+    src = _GRAIN_NOUN.get(from_freq, f"reported {from_freq} figures")
+    if method != LINEAR:
+        return REFUSED_METHODS.get(method, "method not available")
+    return (f"estimated from {src}, not reported data — flows are ALLOCATED "
+            f"evenly across the sub-periods and stocks HOLD the period-end "
+            f"value and step; no figure is observed at this grain")
 
 
 def _vocab():
@@ -70,6 +99,82 @@ def aggregation_of(token):
     tripling this module exists to prevent.
     """
     return (_vocab().get(token) or {}).get("aggregation")
+
+
+# ── the labels a client renders, from the OWNERS that already hold them ─────
+# ⛔⭐⭐ RULED 7 Aug: the payload carries the display string for BOTH line names
+# and periods. The KEY stays the identifier; the label is RENDER-ONLY and is
+# never a pack input — see `tests/unit/test_label_boundary.py`, which fails if a
+# caption reaches `_cap_period_labels`.
+#
+# ⛔ NO SECOND MAP AND NO SECOND FORMATTER. `templates.LABELS` already holds all
+# 26 line names in both frameworks with zero gaps either way, and
+# `periods.format_period` already formats a period and had NO CALLER. Both are
+# wired; neither is reimplemented.
+#
+# ⭐⭐ AND THE FRAMEWORK TRAVELS WITH THEM, which is the whole reason a client
+# cannot decode a key locally: `us_gaap` and `ifrs` disagree on 9 of 26 captions
+# — Cost of Goods Sold vs Cost of Sales, Interest Expense vs Finance Costs,
+# Short-Term Debt vs Current Borrowings. A key alone cannot pick between them.
+def _framework_of(data):
+    """The declared framework, defaulting to us_gaap as `templates` does."""
+    fw = ((data or {}).get("company") or {}).get("framework") \
+        or (data or {}).get("standard") or "us_gaap"
+    return fw if fw in ("us_gaap", "ifrs") else "us_gaap"
+
+
+def line_labels(data):
+    """`{block: {field: caption}}` for every stored line, from templates.LABELS.
+
+    ⭐ Absent for a line the framework does not name — reported by omission
+    rather than by echoing the key back, so a client can tell "AXIOM has no
+    caption for this" from "the caption is the field name".
+    """
+    from .modules.financials import templates as T
+    fw = _framework_of(data)
+    lines = (T.LABELS.get(fw) or {}).get("lines") or {}
+    out = {}
+    for block in _BLOCK_PREFIX:
+        got = {f: lines[f] for f in (data.get(block) or {}) if f in lines}
+        if got:
+            out[block] = got
+    return out
+
+
+def period_labels(periods, frequency):
+    """`{period_key: caption}` — the ONE formatter, called."""
+    out = {}
+    for p in periods:
+        try:
+            out[str(p)] = PR.format_period(int(p), frequency)
+        except (TypeError, ValueError):
+            continue          # ⛔ a key that is not a period is skipped, not guessed
+    return out
+
+
+def periods_of(statements):
+    """Every period in a statements payload, whatever shape it arrived in.
+
+    ⛔⭐⭐ THE TWO PATHS RETURN DIFFERENT SHAPES AND I ASSUMED ONE. `aggregate_
+    statements` carries `buckets` (each with a `period`); `interpolate_
+    statements` carries none — its periods are the SERIES KEYS. Reading only
+    `buckets` produced EMPTY column headers on the quarterly and monthly views,
+    which are precisely the grains this lane exists to caption.
+
+    ⭐ So the periods are derived from the payload rather than from an assumption
+    about which producer made it.
+    """
+    bk = statements.get("buckets")
+    if bk:
+        return [b["period"] for b in bk]
+    seen = []
+    for block in (statements.get("blocks") or {}).values():
+        for series in block.values():
+            if isinstance(series, dict):
+                for k in series:
+                    if k not in seen:
+                        seen.append(k)
+    return sorted(seen)
 
 
 def enabled_views(frequency):
@@ -386,7 +491,15 @@ def interpolate_statements(data, to_freq, method=LINEAR):
 def _children(period, from_freq, to_freq, n):
     year, sub = PR.decode_period(period, from_freq)
     if from_freq == "annual" and to_freq == "quarterly":
-        return [year * 100 + q for q in range(1, 5)]
+        # ⛔⭐⭐ `year * 10 + q`, NOT `year * 100 + q`. THIS IS THE SECOND
+        # INSTANCE OF A DEFECT CORE ALREADY RECORDS: `bucket()` had exactly this
+        # line and emitted 202401 — the MONTHLY encoding — for a quarter.
+        # `decode_period` and `format_period` both read quarterly as year*10+q,
+        # so the old keys rendered as "20210Q1" instead of "2021Q1".
+        # ⭐ IT SURVIVED BECAUSE NOTHING RENDERED A QUARTERLY CAPTION. The
+        # values were right and the keys were wrong, and no surface read the
+        # keys until the label lane asked them to say what period they were.
+        return [year * 10 + q for q in range(1, 5)]
     if from_freq == "annual" and to_freq == "monthly":
         return [year * 100 + m for m in range(1, 13)]
     if from_freq == "quarterly" and to_freq == "monthly":

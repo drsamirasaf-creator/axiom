@@ -648,11 +648,20 @@ def frequency_view(dataset_id: int, view: str | None = None,
         raise HTTPException(422, f"view must be one of {list(FVW.VIEWS)}")
     chosen = next(v for v in views if v["view"] == target)
     out = {"base_frequency": base, "view": target, "views": views,
+           # ⛔⭐⭐ THE LABELS TRAVEL WITH THE FIGURES, and the FRAMEWORK with
+           # them — us_gaap and ifrs disagree on 9 of 26 captions, so a client
+           # holding only the key cannot pick between them. The key stays the
+           # identifier; the label is render-only and never a pack input.
+           "framework": FVW._framework_of(row.data),
+           "line_labels": FVW.line_labels(row.data),
+           # ⭐ Grain-aware from this lane: the constant never saw it.
            "method_labels": FVW.METHOD_LABEL,
            "refused_methods": FVW.REFUSED_METHODS,
            "interpolated": False, "statements": None}
     if chosen["enabled"]:
-        out["statements"] = FVW.aggregate_statements(row.data, target)
+        st = FVW.aggregate_statements(row.data, target)
+        out["statements"] = st
+        out["period_labels"] = FVW.period_labels(FVW.periods_of(st), target)
         return out
     if not interpolate:
         # ⭐ The disabled view is RETURNED as disabled with its reason, never
@@ -661,8 +670,11 @@ def frequency_view(dataset_id: int, view: str | None = None,
         return out
     out["interpolated"] = True
     out["method"] = FVW.LINEAR
-    out["method_label"] = FVW.METHOD_LABEL[FVW.LINEAR]
-    out["statements"] = FVW.interpolate_statements(row.data, target)
+    # ⭐ The grain reaches the sentence now — see `method_label`'s note.
+    out["method_label"] = FVW.method_label(FVW.LINEAR, base, target)
+    st = FVW.interpolate_statements(row.data, target)
+    out["statements"] = st
+    out["period_labels"] = FVW.period_labels(FVW.periods_of(st), target)
     return out
 
 
