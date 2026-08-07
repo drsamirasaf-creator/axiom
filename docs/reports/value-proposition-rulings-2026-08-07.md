@@ -195,3 +195,29 @@ and deploy-proof different claims.**
 | T2 sweep | **the tree** — source files in both repos, no runtime |
 | T3 chunk graph | **the served host (deploy)** |
 | T4 syntax + origin-print | **the tree** |
+
+---
+
+# ADDENDUM 2 — T1 re-run. **ORIGIN: the served host.** Still not rebuilt.
+
+**Measured per chunk, not by string presence.**
+
+| deployed chunk | size | tracked phrases it carries |
+|---|---|---|
+| `/assets/HoldingPage-BFsojH6t.js` | 1,583 B | **`strategy-execution platform`** — the OLD copy |
+| `/assets/InfoTip-B5oNorkv.js` | 78,883 B | **`Optimization, Certified`** — retired, still deployed |
+| `/assets/ThemeToggle-D9PZT_Sq.js` | 10,502 B | **`Optimization, Certified`** — retired, still deployed |
+
+⛔ **The deploy has not rebuilt.** 45 chunks, hashes unchanged across three runs,
+and the `HoldingPage` chunk still carries the pre-lane copy rather than the
+canonical line. **The retirement remains confirmed on the TREE only.**
+
+⭐ **And the chunk locations are the finding, not the string.** On the tree,
+`"Optimization, Certified"` lived in `platform.ts`, `glossary.ts` and
+`index.tsx` — a data file, a glossary and a marketing page. **Deployed, it lives
+in `InfoTip` and `ThemeToggle`**: the glossary rides into whichever chunk first
+imports it, and a theme toggle is not a marketing surface by any reading. **A
+sweep asking "does the string exist" would report the same answer for two very
+different products.**
+
+**T1 remains OWED** — re-run once the deploy carries `0867afc`.

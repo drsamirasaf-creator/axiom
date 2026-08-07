@@ -20505,6 +20505,42 @@ and a reader who does not know the scope will over-read it every time.
 against the served host does — which is why the sidebar question was settled by
 fetching the deployed chunk, not by any check.
 
+## ⭐⭐ §III.22 · A CENSUS TAKEN ON A PROXY IS NOT A CENSUS OF THE PROPERTY (7 Aug)
+
+**§III.15 is a GUARD that tests a proxy for the harm. This is the same failure
+arriving in a COUNT — and a count carries further, because it is quoted as a
+denominator long after the method is forgotten.**
+
+⛔ **THE EVIDENCE, and the missed items were the dangerous ones.**
+
+| | |
+|---|---|
+| the property | *"scripts that read `APP_URL` without naming the origin they ran against"* |
+| the **proxy** used to count them | *"scripts defaulting to `localhost:8080`"* |
+| the proxy's answer | **11** |
+| the property's answer | **16** |
+
+⭐⭐ **THE FIVE THE PROXY MISSED WERE THE WORST OF THE SET.** Two of them —
+`verify-number-presentation` and `verify-statement-parity` — already default to
+the **served host**. A reader trusting their output would believe they had a
+**deploy-scope** result, from a tool that never said so. **The proxy filtered on
+the port, and the port is exactly what the most dangerous cases did not share.**
+
+⛔ **SECOND INSTANCE THIS WEEK, IN THE SAME SHAPE.** The Revenue spec's section
+bound was given as *"1 to 92"* — a range asserted from **outside** the file. The
+file carries **93, 94 and 95**. A checker trusting that bound would have reported
+a clean 1–92 while silently ignoring three real sections. **Both cases share the
+structure: the count was taken on something CORRELATED with the property, and
+the correlation broke exactly where it mattered.**
+
+⭐ **THE TEST:** state the property in words, then ask *"is that what I
+enumerated, or something that usually accompanies it?"* If the second — the
+census is an estimate, and it must be reported as one.
+
+⛔ **AND A COUNT SUPPLIED BY A READER IS NOT A MEASUREMENT.** Both figures here
+arrived in a dispatch. Neither was wrong to offer; both were wrong to accept
+without re-deriving from the artefact.
+
 ## ⭐⭐ §III.21 · WHEN A NAME SEARCH ANSWERS PLAUSIBLY, ASK WHAT OWNS THE BEHAVIOUR (7 Aug)
 
 **Three instruments asked *"does this string appear somewhere?"* and all three
