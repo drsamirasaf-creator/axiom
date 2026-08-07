@@ -103,7 +103,30 @@ def require_prescience(get_current_user=None):
             user, _sess = _session_user(s, authorization)
             if user is None:
                 raise HTTPException(401, "Missing or invalid session token")
-            if not at_least(getattr(user, "plan", None), "prescience"):
+            plan = getattr(user, "plan", None)
+            # ⛔⭐⭐ AN UNKNOWN PLAN IS NOT A CUSTOMER WHO HAS NOT PAID (ruled
+            # 7 Aug). `rank()` returns -1 for anything not in `_RANK` — a NULL,
+            # a typo, a plan written by a future migration — and `at_least`
+            # therefore refuses it exactly as it refuses "free". ⛔ THAT TURNS AN
+            # OUTAGE INTO A FALSE ACCUSATION AGAINST SOMEONE WHO IS PAYING, and
+            # a 402 saying "this is included in Prescience" is precisely the
+            # wrong sentence to show a Prescience customer whose lookup failed.
+            #
+            # ⭐ So the three cases are separated: KNOWN-AND-SUFFICIENT passes,
+            # KNOWN-AND-BELOW is refused with the tier named, and UNKNOWN is
+            # ALLOWED and marked. Allowing is the safer failure here — showing a
+            # surface to someone who lapsed costs less than refusing someone who
+            # has not.
+            #
+            # ⛔ `rank()` still ranks an unknown BELOW free everywhere else; this
+            # does not change that ordering, it stops one gate from reading
+            # "unknown" as "declined". Measured 7 Aug: `users.plan` is
+            # 4 business / 7 free with no NULLs, so this path is unreachable
+            # today — which is exactly when to fix it.
+            if not is_known(plan):
+                return {"user": user, "tier_state": "unknown",
+                        "reason": f"plan {plan!r} is not a known tier"}
+            if not at_least(plan, "prescience"):
                 raise HTTPException(
                     402, detail={"error": "prescience_required",
                                  "message": ("This surface is included in AXIOM "
