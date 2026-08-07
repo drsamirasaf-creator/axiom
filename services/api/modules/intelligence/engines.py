@@ -2319,7 +2319,42 @@ def _certified_ignoring_bounds(payload):
     return all(c["pass"] for c in cps if c["name"] not in BOUND_REPORTING)
 
 
-def bound_checkpoints(values, specs, what="lever"):
+def clamp_levers(levers, specs):
+    """Hold a lever inside its range, and SAY SO. Returns `(clean, moves)`.
+
+    ⭐⭐ THE CLAMP STAYS. Refusing a what-if request would be worse: a CXO dragging
+    a slider past its stop wants the model to hold the line, not to 422.
+
+    ⛔ BUT A SILENT COERCION IS THE `or 0` CLASS. Clamping lands the value
+    EXACTLY on the bound, so `clamped` and `at a bound` were the same event at
+    probability 1 — and nothing recorded which had happened. A bound reading
+    therefore could not be read: *"the objective did not turn inside the range"*
+    and *"your input was moved onto the edge"* are different facts about
+    different things, and the payload carried nothing to tell them apart.
+
+    ⭐ Each move records the lever, the value SUPPLIED and the value USED. The
+    supplied value is kept because "we moved it" without "from where" is only
+    half a disclosure — a reader cannot tell a nudge from a rejection.
+
+    ⭐⭐ ONE OWNER FOR TWO CALLERS. `scenario` and `scenario_pro` carried
+    byte-identical copies of this expression; the second was found only by
+    searching for the BEHAVIOUR.
+    """
+    clean, moves = {}, []
+    for k, v in (levers or {}).items():
+        if k not in specs:
+            raise ValueError(f"unknown lever '{k}'")
+        spec = specs[k]
+        supplied = float(v)
+        used = max(spec["min"], min(spec["max"], supplied))
+        clean[k] = used
+        if abs(used - supplied) > 1e-12:
+            moves.append({"lever": k, "supplied": supplied, "used": used,
+                          "bound": "max" if used >= spec["max"] else "min"})
+    return clean, moves
+
+
+def bound_checkpoints(values, specs, what="lever", clamped=None):
     """§8m.2 C's TWO questions, for any value/range mapping. ONE owner.
 
     ⭐⭐ IT IS EXTRACTED BECAUSE THERE ARE FOUR PRODUCERS, NOT ONE. `optimal_levers`
@@ -2353,13 +2388,33 @@ def bound_checkpoints(values, specs, what="lever"):
             at_bound[k] = "min"
         if not (lo - 1e-9 <= v <= hi + 1e-9):
             outside.append(k)
-    return at_bound, outside, [
+    # ⭐⭐ A RELOCATED INPUT IS NOT A CORNER. Where the caller's value was clamped
+    # onto the bound, the reading is about the INPUT, not about the objective —
+    # so they are reported as two questions, each saying one thing.
+    # ⛔ `clamped` is None for producers that GRID rather than clamp (frontier),
+    # and their readings must never be pooled with these.
+    moved = {m["lever"] for m in (clamped or [])}
+    corners = {k: v for k, v in at_bound.items() if k not in moved}
+    cps = [
         {"name": "levers_inside_declared_ranges",
          "value": outside or True, "expected": True, "pass": not outside},
+        # ⭐ GENUINE corners only. Failing this on a clamped input would report an
+        # objective that never turned, when the truth is that the caller asked
+        # for something outside the box.
         {"name": "no_lever_at_a_bound",
-         "value": at_bound or True,
+         "value": corners or True,
          "expected": f"every {what} strictly inside its search range",
-         "pass": not at_bound}]
+         "pass": not corners}]
+    if clamped is not None:
+        cps.append(
+            {"name": "no_lever_was_clamped",
+             "value": clamped or True,
+             "expected": "every supplied value already inside its range",
+             "pass": not clamped,
+             "note": ("values outside their range are held at the bound rather "
+                      "than refused; each move lists the value supplied and "
+                      "the value used")})
+    return at_bound, outside, cps
 
 
 SCENARIO_LEVERS = {
@@ -2554,12 +2609,7 @@ def scenario(data: dict, levers: dict, n_paths: int = 1500) -> dict:
     from ..financials import proforma as pf
 
     # validate levers
-    clean = {}
-    for k, v in (levers or {}).items():
-        if k not in SCENARIO_LEVERS:
-            raise ValueError(f"unknown lever '{k}'")
-        spec = SCENARIO_LEVERS[k]
-        clean[k] = max(spec["min"], min(spec["max"], float(v)))
+    clean, lever_clamps = clamp_levers(levers, SCENARIO_LEVERS)
 
     data, mode = _ensure_forecast(data)   # levers need real forecast years
     shifted = _apply_levers(data, clean)
@@ -2613,7 +2663,8 @@ def scenario(data: dict, levers: dict, n_paths: int = 1500) -> dict:
     # it passed precisely at the corner it existed to catch — and `scenario`
     # CLAMPS its input to that range a few lines above, which is how a lever
     # arrives at a bound in the first place.
-    _at_bound, _outside, _bound_cps = bound_checkpoints(clean, SCENARIO_LEVERS)
+    _at_bound, _outside, _bound_cps = bound_checkpoints(
+        clean, SCENARIO_LEVERS, clamped=lever_clamps)
     checkpoints = [
         *_bound_cps,
         {"name": "distributions_present", "value": True, "expected": True,
@@ -2627,7 +2678,12 @@ def scenario(data: dict, levers: dict, n_paths: int = 1500) -> dict:
           f"probability of hitting all plan targets "
           f"{base['plan_attainment']['p_all_three']:.0%} \u2192 "
           f"{scen['plan_attainment']['p_all_three']:.0%}.")]
-    return {"levers_applied": clean, "active_levers": active,
+    return {"levers_applied": clean,
+            # ⭐ THE DISCLOSURE TRAVELS WITH THE FIGURE. An empty list means
+            # nothing was moved — which a reader can tell apart from "not asked",
+            # because the key is always present.
+            "lever_clamps": lever_clamps,
+            "active_levers": active,
             "base": base, "scenario": scen,
             "ev_change": round(ev_delta, 2),
             "ev_change_pct": round(ev_delta_pct, 4) if ev_delta_pct is not None else None,
@@ -2694,12 +2750,7 @@ def scenario_pro(data: dict, levers: dict, n_paths: int = 1200) -> dict:
     from ..financials import proforma as pf
     from ..financials import oci as oci_mod
 
-    clean = {}
-    for k, v in (levers or {}).items():
-        if k not in SCENARIO_LEVERS:
-            raise ValueError(f"unknown lever '{k}'")
-        spec = SCENARIO_LEVERS[k]
-        clean[k] = max(spec["min"], min(spec["max"], float(v)))
+    clean, lever_clamps = clamp_levers(levers, SCENARIO_LEVERS)
     active = {k: v for k, v in clean.items() if abs(v) > 1e-12}
 
     data, mode = _ensure_forecast(data)   # levers need real forecast years
@@ -2807,7 +2858,7 @@ def scenario_pro(data: dict, levers: dict, n_paths: int = 1200) -> dict:
     # declared range) rather than for the check's name; the name search had
     # found three.
     _pro_at_bound, _pro_outside, _pro_bound_cps = bound_checkpoints(
-        clean, SCENARIO_LEVERS)
+        clean, SCENARIO_LEVERS, clamped=lever_clamps)
     checkpoints = [
         *_pro_bound_cps,
         {"name": "waterfall_reconciles",
@@ -2837,7 +2888,12 @@ def scenario_pro(data: dict, levers: dict, n_paths: int = 1200) -> dict:
     except Exception:
         dynamic_reference = None
 
-    return {"levers_applied": clean, "active_levers": active,
+    return {"levers_applied": clean,
+            # ⭐ THE DISCLOSURE TRAVELS WITH THE FIGURE. An empty list means
+            # nothing was moved — which a reader can tell apart from "not asked",
+            # because the key is always present.
+            "lever_clamps": lever_clamps,
+            "active_levers": active,
             "steps": {k: SCENARIO_LEVERS[k]["step"] for k in SCENARIO_LEVERS},
             "dynamic_reference": dynamic_reference,
             "base_enterprise_value": round(base_ev, 2),

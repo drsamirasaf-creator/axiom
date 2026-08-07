@@ -175,3 +175,75 @@ def test_a_producer_with_no_bound_question_is_silent_not_passing():
     Reporting it as a pass would claim a check that never ran."""
     assert E._bound_verdict({"checkpoints": [{"name": "x", "pass": True}]}) is True
     assert E._bound_verdict({}) is True
+
+
+# ── the clamp says what it moved ────────────────────────────────────────────
+
+def test_the_clamp_records_the_value_supplied_and_the_value_used():
+    """⛔ "We moved it" without "from where" is half a disclosure — a reader
+    cannot tell a nudge from a rejection."""
+    spec = {"x": {"min": -1.0, "max": 1.0}}
+    clean, moves = E.clamp_levers({"x": 2.5}, spec)
+    assert clean == {"x": 1.0}
+    assert moves == [{"lever": "x", "supplied": 2.5, "used": 1.0, "bound": "max"}]
+    clean, moves = E.clamp_levers({"x": -9.0}, spec)
+    assert moves[0]["bound"] == "min" and moves[0]["supplied"] == -9.0
+
+
+def test_an_in_range_value_records_no_move():
+    """⭐ The known-negative. A recorder that logged every call would be noise,
+    and an empty list is what lets a reader trust a non-empty one."""
+    _c, moves = E.clamp_levers({"x": 0.25}, {"x": {"min": -1.0, "max": 1.0}})
+    assert moves == []
+
+
+def test_a_value_landing_exactly_on_the_bound_is_NOT_a_move():
+    """⛔ THE DISTINCTION THE WHOLE LANE TURNS ON. Supplying the bound itself is
+    a real corner; being pushed there is not. They must not both record a move."""
+    spec = {"x": {"min": -1.0, "max": 1.0}}
+    _c, moves = E.clamp_levers({"x": 1.0}, spec)
+    assert moves == [], "supplying the bound exactly was recorded as a clamp"
+
+
+# ⭐⭐ RED-PROOFED BOTH DIRECTIONS, as dispatched.
+
+def test_a_clamped_lever_reads_as_CLAMPED_not_as_a_corner():
+    d = meridian()
+    hi = E.SCENARIO_LEVERS["leverage"]["max"]
+    out = E.scenario_pro(d, {"leverage": hi + 0.5})
+    cps = {c["name"]: c["pass"] for c in out["checkpoints"]}
+    assert out["lever_clamps"], "the move was not recorded"
+    assert out["lever_clamps"][0]["supplied"] == hi + 0.5
+    assert cps["no_lever_was_clamped"] is False, "the clamp was not reported"
+    assert cps["no_lever_at_a_bound"] is True, \
+        "a RELOCATED INPUT was reported as an objective that did not turn"
+
+
+def test_an_untouched_lever_on_a_bound_reads_as_a_CORNER_not_a_clamp():
+    d = meridian()
+    hi = E.SCENARIO_LEVERS["leverage"]["max"]
+    out = E.scenario_pro(d, {"leverage": hi})
+    cps = {c["name"]: c["pass"] for c in out["checkpoints"]}
+    assert out["lever_clamps"] == [], "an in-range value was recorded as moved"
+    assert cps["no_lever_was_clamped"] is True
+    assert cps["no_lever_at_a_bound"] is False, \
+        "a GENUINE corner stopped being reported once clamps were separated"
+
+
+def test_both_scenario_surfaces_carry_the_disclosure():
+    """⛔ The key is ALWAYS present. Absent would read as 'not checked'."""
+    d = meridian()
+    for out in (E.scenario(d, {"revenue_growth": 0.02}),
+                E.scenario_pro(d, {"revenue_growth": 0.02})):
+        assert "lever_clamps" in out and out["lever_clamps"] == []
+
+
+def test_frontier_is_untouched_and_asks_no_clamp_question():
+    """⛔ frontier GRIDS, never clamps. Its 19/33 boundary readings are genuine
+    corners and must never be pooled with clamp artifacts."""
+    f = E.frontier(meridian())
+    names = {c["name"] for c in f["checkpoints"]}
+    assert "no_lever_was_clamped" not in names, \
+        "frontier grew a clamp question it has no clamp for"
+    assert "no_lever_at_a_bound" in names
+    assert "lever_clamps" not in f
