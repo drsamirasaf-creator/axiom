@@ -10,6 +10,7 @@ import os
 import pytest
 
 from services.api import dupont_tree as DT
+from services.api.modules.financials import engines as FE
 from services.api.modules.financials import ratio_registry as RR
 
 SCRATCH = os.environ.get(
@@ -126,3 +127,48 @@ def test_absence_propagates_upward_and_never_becomes_zero():
     for n in _walk(t["root"]):
         assert n["value"] != 0 or n["status"] == DT.OBSERVED, \
             f"{n['id']} turned an absence into a zero"
+
+
+def test_a_leaf_never_claims_a_period_its_parent_refuses():
+    """⛔⭐⭐ THE REGRESSION, FOUND BY MEASURING RATHER THAN BY A FAILURE.
+
+    `_operand` read `if basis == "average" and i > 0`, so at the FIRST period it
+    fell through to the point-value branch and returned a period-end number
+    still labelled `basis: "average"` — status OBSERVED, while `asset_turnover`
+    itself was ABSENT for exactly the missing opening balance. Measured on the
+    showcase: 2021 parent=absent, leaf=observed.
+
+    ⭐ §III.15. The basis label was a PROXY for the basis, and a proxy fails
+    silently — the number rendered, and only its name was wrong. This asserts
+    the HARM: a leaf and its parent agreeing about whether a period exists.
+    """
+    d = _data()
+    years = FE.derive_series(d)["years"]
+    n = FE.derive_series(d)["n_historical"]
+    for i in range(n):
+        t = DT.build_tree(d, period_index=i)
+        for factor in t["root"]["children"]:
+            for leaf in factor["children"]:
+                if leaf["status"] == DT.OBSERVED:
+                    continue
+                assert factor["status"] == DT.ABSENT, (
+                    f"{years[i]}: leaf {leaf['id']} is absent but its parent "
+                    f"{factor['id']} is {factor['status']}")
+        # ⛔ THE KNOWN POSITIVE for the average basis specifically.
+        first = DT._operand(d, years, i, "bs.total_assets", "average")
+        if i == 0:
+            assert first["status"] == DT.ABSENT and first["absence_reason"], (
+                "the first period reported an AVERAGE without an opening "
+                "balance — the branch this test exists for")
+        else:
+            assert first["status"] == DT.OBSERVED
+
+
+def test_every_absent_node_says_why():
+    """⭐ An absence with no reason is a blank cell the user cannot act on."""
+    d = _data()
+    years = FE.derive_series(d)["years"]
+    for i in range(FE.derive_series(d)["n_historical"]):
+        for n in _walk(DT.build_tree(d, period_index=i)["root"]):
+            if n["status"] == DT.ABSENT and not n["children"]:
+                assert n.get("absence_reason"), f"{n['id']} at {years[i]}"
