@@ -40,7 +40,13 @@ and `/risk-analysis` pass CI today with four keys between them.
 Prescience's four tabs today are `/prescience-ai?tab={brief,causal,multiverse,resilience}`.
 Following `/valuation`'s existing `tab` + `sub` precedent, after the move:
 
-> **`/optimization?tab=prescience&sub=multiverse`**
+> `/optimization` with **tab = `prescience`** and **sub = `multiverse`**
+
+⚠️ **Written in parts on purpose.** `check-inbound-refs` reads committed reports
+as a reference corpus and correctly rejected the assembled URL — the tab key
+does not exist yet, and a report asserting a live link to an unbuilt destination
+is the shape that guard was extended to catch. **The guard was right; the
+sentence was wrong.**
 
 ---
 

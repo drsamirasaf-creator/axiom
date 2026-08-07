@@ -20299,6 +20299,45 @@ known-positive (the same predicate still passing the real page) is what
 distinguishes "the control rejects bad input" from "the predicate rejects
 everything".
 
+## ⭐⭐ §III.19 · PLANT THE DEFECT WHERE IT CAN PROPAGATE (7 Aug)
+
+**A planted defect proves nothing unless the plant reaches the branch under
+test.** Pick the victim from the **already-affected set**, never from the top of
+the list.
+
+⛔ **THE EVIDENCE, from a red proof written to prove a state fires.** The
+`requirement_undeclared` control stripped the formula from `ratios[0]` —
+`axiom.gross_margin`, which **computes without it**. The quantity stayed
+`REACHABLE`, the undeclared branch was never entered, and the control passed
+while testing nothing. The victim had to come from the quantities **already
+blocked** on that dataset before the plant could propagate at all.
+
+⭐⭐ **§III.11 HAS NOW APPEARED INSIDE ASSERTIONS WRITTEN TO PREVENT §III.11,
+TWICE IN ONE DAY** — here, and in the equity-grid controls that `pytest.skip`-ed
+because Meridian's own grid has no refused corner. **A control is code, and code
+written to catch a class is not exempt from it.**
+
+### The audit, measured
+
+| | |
+|---|---|
+| test files | **170** |
+| paired-control functions in them | **417** |
+| controls that **assign into index 0** | **0** |
+| controls that **pick a victim at `[0]` and then mutate it** | **7** |
+
+⭐ The narrow shape does not occur; the **pick-then-mutate** shape does, seven
+times. That is the one that bit, because the pick looks like ordinary setup.
+
+⛔ **THE RULE:** before planting, ask *"is this victim already in the state the
+branch requires?"* If the branch needs an unreachable quantity, plant in an
+unreachable one. If it needs a refused grid corner, force a grid that refuses.
+**A plant chosen for convenience tests the plant, not the code.**
+
+⭐ And pair it with the check §III.11 already demands: **the control must be seen
+to fail.** Running the red proof is what exposed both of today's instances — in
+each case the "proof" passed unchanged with the defect planted.
+
 ## ⭐⭐ §III.18 · A PLAUSIBLE WRONG NUMBER IS MORE DANGEROUS THAN AN ABSURD ONE (7 Aug)
 
 **A checker with one pattern is a list of one, and cannot see a file it was not

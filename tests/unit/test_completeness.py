@@ -82,9 +82,13 @@ def test_every_unreachable_quantity_says_why_or_admits_it_cannot():
     """⛔ §7q — an absence with a plausible reason is the most informative
     signal. A quantity that is simply 'not reachable' teaches nothing."""
     s = C.score(_data())
+    # ⚠️ "silent" predated `absence_reason`. Those five DO say why now — the
+    # evaluator reports "literal 1.2 is not permitted" and "caller must supply:
+    # cagr". Reading the richer signal is the point of the fourth state.
     silent = [e["id"] for e in s["engines"]
               if not e["reachable"] and not e["missing_inputs"]
-              and not e["unresolved_inputs"] and not e["error"]]
+              and not e["unresolved_inputs"] and not e["error"]
+              and not e["absence_reason"] and not e["shortfall"]]
     # A small number is tolerable (a derived-series shortfall rather than a
     # missing input), but it must be VISIBLE, not the norm.
     unreachable = [e for e in s["engines"] if not e["reachable"]]
@@ -152,14 +156,15 @@ def test_not_supplied_is_never_inferred_from_an_empty_result():
 # ── T3: the third state is in the DENOMINATOR, not folded into the customer's
 # column ────────────────────────────────────────────────────────────────────
 
-def test_the_three_quantity_states_sum_to_the_denominator():
+def test_the_quantity_states_sum_to_the_denominator():
     """⛔ A surface showing only `computable` invites "the rest is missing data",
-    which is false for the undeclared ones."""
+    which is false for the undeclared AND the structurally short ones.
+    ⚠️ This asserted THREE states until the fourth landed; the sum is the
+    invariant, and the count is read from QUANTITY_STATES rather than typed."""
     s = C.score(_data())
-    assert s["computable"] + s["blocked"] + s["requirement_undeclared"] == \
-        s["declared"]
+    assert sum(s[k] for k in ("computable", "blocked", "structural_shortfall",
+                              "requirement_undeclared")) == s["declared"]
     assert s["states"] == C.QUANTITY_STATES
-    assert len(C.QUANTITY_STATES) == 3
 
 
 def test_our_undeclared_requirement_is_not_charged_to_the_customer():
@@ -247,8 +252,11 @@ def test_the_undeclared_state_ACTUALLY_FIRES_when_a_formula_is_missing(monkeypat
     # applies only to quantities that cannot be computed, so the victim is
     # picked from the ones already blocked on this dataset.
     baseline = C.score(_data())
+    # ⛔ §III.19 — the victim must be in the state the branch needs.
+    # A STRUCTURAL_SHORTFALL victim would be reclassified by its
+    # evaluator reason before the undeclared branch is reached.
     target = next(e["id"] for e in baseline["engines"]
-                  if e["state"] == C.BLOCKED)
+                  if e["state"] == C.BLOCKED and e["missing_inputs"])
 
     def stripped():
         out = json.loads(json.dumps(real()))
@@ -266,4 +274,67 @@ def test_the_undeclared_state_ACTUALLY_FIRES_when_a_formula_is_missing(monkeypat
     # ⛔ AND IT IS NOT CHARGED TO THE CUSTOMER.
     assert victim["missing_inputs"] == []
     assert target in s["unparsed_formulas"]
-    assert s["computable"] + s["blocked"] + s["requirement_undeclared"] == s["declared"]
+    assert sum(s[k] for k in ("computable", "blocked",
+                              "structural_shortfall",
+                              "requirement_undeclared")) == s["declared"]
+
+
+# ── T1: the fourth state — a shortfall that is ours, not the customer's ─────
+
+def test_the_fourth_state_exists_and_names_the_SHAPE_that_is_short():
+    """⛔ `axiom.revenue_cagr` has every input and cannot compute. Reporting it
+    as a missing field sends a customer to look for data they already have —
+    and single-period is the most likely condition of a first upload."""
+    assert C.STRUCTURAL_SHORTFALL in C.QUANTITY_STATES
+    assert len(C.QUANTITY_STATES) == 4
+    s = C.score(_data())
+    short = [e for e in s["engines"] if e["state"] == C.STRUCTURAL_SHORTFALL]
+    assert short, "no structural shortfall found — the state cannot be tested"
+    for e in short:
+        assert e["shortfall"], f"{e['id']} is short but names no shape"
+        assert e["missing_inputs"] == [], (
+            f"{e['id']} is an AXIOM-side shortfall and is being reported to the "
+            f"customer as missing input")
+
+
+def test_the_shortfall_reason_is_READ_from_the_evaluator_not_inferred():
+    """⭐⭐ `RR.Absent` carries `.reason` and `.token`, machine-readable, from the
+    production path. This module had been re-parsing formulas to infer what the
+    return value already said — a proxy beside a direct signal (§III.15)."""
+    s = C.score(_data())
+    for e in s["engines"]:
+        if e["state"] in (C.BLOCKED, C.STRUCTURAL_SHORTFALL):
+            assert e["absence_reason"] or e["error"], \
+                f"{e['id']} is absent with no reason read from the evaluator"
+
+
+def test_an_unclassified_absence_reason_is_announced_not_defaulted():
+    """⛔ §III.4 — a reason kind nobody has classified must not silently become
+    'the customer is missing data'."""
+    assert C.classify_absence("not supplied") == (C.BLOCKED, None)
+    assert C.classify_absence("caller must supply") == \
+        (C.STRUCTURAL_SHORTFALL, "evaluator_function")
+    assert C.classify_absence("literal 1.2 is not permitted") == \
+        (C.STRUCTURAL_SHORTFALL, "registry_literal")
+    # the known-negative: an unseen reason is refused, not guessed
+    assert C.classify_absence("some future reason nobody wrote") == (None, None)
+    assert C.score(_data())["unclassified_absences"] == []
+
+
+def test_the_four_states_sum_to_the_denominator():
+    s = C.score(_data())
+    assert (s["computable"] + s["blocked"] + s["structural_shortfall"]
+            + s["requirement_undeclared"]) == s["declared"]
+
+
+def test_the_shortfalls_are_IDENTICAL_across_companies_which_is_the_tell():
+    """⭐ A gap that is the same for every customer is OURS. The 9 structural
+    shortfalls do not vary with the upload — that is what distinguishes them
+    from the blocked set, which does."""
+    s = C.score(_data())
+    assert s["structural_shortfall"] == 9, (
+        f"got {s['structural_shortfall']}. Measured 7 Aug: 9 on every one of "
+        f"the four companies — 4 evaluator_function, 5 registry_literal.")
+    kinds = {e["shortfall"] for e in s["engines"]
+             if e["state"] == C.STRUCTURAL_SHORTFALL}
+    assert kinds == {"evaluator_function", "registry_literal"}

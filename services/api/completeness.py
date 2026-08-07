@@ -58,7 +58,50 @@ DIMENSION_STATES = (SUPPLIED, UNALLOCATED, NOT_SUPPLIED)
 REACHABLE = "reachable"
 BLOCKED = "blocked"                          # inputs known, and some are absent
 REQUIREMENT_UNDECLARED = "requirement_undeclared"   # we cannot say what it needs
-QUANTITY_STATES = (REACHABLE, BLOCKED, REQUIREMENT_UNDECLARED)
+STRUCTURAL_SHORTFALL = "structural_shortfall"       # ⭐ THE FOURTH STATE
+QUANTITY_STATES = (REACHABLE, BLOCKED, REQUIREMENT_UNDECLARED,
+                   STRUCTURAL_SHORTFALL)
+
+# ⛔⭐⭐ THE FOURTH STATE, AND WHERE IT CAME FROM. `axiom.revenue_cagr` has every
+# input and still cannot compute. It is not a missing field and not an
+# undeclared requirement — and reporting it as either sends a customer to look
+# for data they already have.
+#
+# ⭐⭐ AND THE EVALUATOR WAS ALREADY SAYING SO. `RR.Absent` carries `.reason` and
+# `.token`, machine-readable, from the production path. This module had been
+# INFERRING reasons by re-parsing formulas while the answer was in the return
+# value — a proxy built beside a direct signal (§III.15). The reason is now read,
+# not inferred.
+#
+# ⛔ THE REASON VOCABULARY IS THE EVALUATOR'S, NOT A LIST OF QUANTITIES. What is
+# classified here is which KIND of shortfall belongs to whom; which quantities
+# fall in each is derived every call. An unclassified reason FAILS LOUDLY rather
+# than landing in the customer's column by default — see `classify_absence`.
+_CUSTOMER_CLOSABLE = ("not collected", "not supplied", "missing", "absent")
+_AXIOM_SIDE = ("caller must supply", "literal")
+
+
+def classify_absence(reason):
+    """Whose gap is this — the customer's, or ours? Derived from the reason.
+
+    Returns `(state, shortfall_kind)`. ⛔ `None` for an unrecognised reason, so
+    the caller can refuse rather than guess: a reason nobody has classified must
+    not silently become "the customer is missing data".
+    """
+    r = (reason or "").strip().lower()
+    if not r:
+        return None, None
+    if any(r.startswith(p) for p in _CUSTOMER_CLOSABLE):
+        return BLOCKED, None
+    if r.startswith("caller must supply"):
+        # ⭐ The evaluator needs a function injected — `wacc_at`, `cagr`. Nothing
+        # in the customer's upload can change it.
+        return STRUCTURAL_SHORTFALL, "evaluator_function"
+    if r.startswith("literal"):
+        # ⭐ The registry formula carries a coefficient the evaluator refuses
+        # (Altman-Z's 1.2, Springate's 1.03). An AXIOM registry defect.
+        return STRUCTURAL_SHORTFALL, "registry_literal"
+    return None, None
 
 # ⛔⭐⭐ T4 — TWO SCORES, NEVER POOLED. The registry score counts AXIOM's computed
 # vocabulary; a spec-engine score would count units of a scope document. They are
@@ -181,13 +224,18 @@ def score(data, period_index=None):
     years = derived["years"]
     i = derived["n_historical"] - 1 if period_index is None else period_index
 
-    engines, unparsed = [], []
+    engines, unparsed, unclassified = [], [], []
     for qid, req in sorted(reqs.items()):
         # ⭐ THE VERDICT COMES FROM THE PRODUCTION PATH.
+        absence_reason = absence_token = None
         try:
             value = RR.evaluate_period(data, years, i, qid)
             reachable = not isinstance(value, RR.Absent)
             error = None
+            if not reachable:
+                # ⭐ READ the evaluator's own reason rather than inferring one.
+                absence_reason = getattr(value, "reason", None)
+                absence_token = getattr(value, "token", None)
         except Exception as exc:                      # noqa: BLE001
             reachable, error = False, f"{type(exc).__name__}: {exc}"
 
@@ -205,16 +253,33 @@ def score(data, period_index=None):
         # ⭐ T3 — THE THIRD STATE, kept out of the customer's column. A quantity
         # whose formula we could not parse is OUR undeclared requirement, not
         # their missing data.
+        shortfall = None
         if reachable:
             state = REACHABLE
         elif not req["inputs"]:
             state = REQUIREMENT_UNDECLARED
         else:
-            state = BLOCKED
+            # ⛔ THE EVALUATOR'S REASON DECIDES WHOSE GAP IT IS.
+            classified, shortfall = classify_absence(absence_reason)
+            if classified is None:
+                # ⭐ An unrecognised reason is recorded as unclassified rather
+                # than charged to the customer. It fails the guard below.
+                unclassified.append({"id": qid, "reason": absence_reason})
+                state = BLOCKED
+            else:
+                state = classified
+            if state == STRUCTURAL_SHORTFALL:
+                # ⛔ NOT reported as a missing input — nothing the customer
+                # uploads can close it.
+                missing = []
 
         engines.append({
             "id": qid, "name": req["name"], "category": req["category"],
             "state": state,
+            # ⭐ The SHAPE that is short, named — not "unavailable".
+            "shortfall": shortfall,
+            "absence_reason": absence_reason,
+            "absence_token": absence_token,
             "reachable": reachable,
             # ⭐ The named inputs, so a surface can group "six engines need
             # channel data" rather than listing six unrelated sentences.
@@ -227,6 +292,7 @@ def score(data, period_index=None):
 
     ok = sum(1 for e in engines if e["state"] == REACHABLE)
     blocked = sum(1 for e in engines if e["state"] == BLOCKED)
+    shortfall = sum(1 for e in engines if e["state"] == STRUCTURAL_SHORTFALL)
     undeclared = sum(1 for e in engines
                      if e["state"] == REQUIREMENT_UNDECLARED)
     total = len(engines)
@@ -238,6 +304,12 @@ def score(data, period_index=None):
         # data", which is false for the undeclared ones.
         "blocked": blocked,
         "requirement_undeclared": undeclared,
+        # ⛔ AXIOM'S OWN GAP, COUNTED APART. Nothing the customer uploads closes
+        # these; showing them as missing data is how a product looks broken.
+        "structural_shortfall": shortfall,
+        # ⭐ §III.4 — a reason kind nobody has classified is announced, not
+        # silently defaulted into the customer's column.
+        "unclassified_absences": unclassified,
         "states": QUANTITY_STATES,
         # ⛔⭐⭐ THE DENOMINATOR IS NAMED, NOT IMPLIED. "54%" with an unnamed
         # denominator is a number two readers will define differently — and this
