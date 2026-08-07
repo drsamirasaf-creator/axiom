@@ -123,3 +123,75 @@ changed, `"thewhole"` left as-is.
 `localhost:3000` and nothing sets it. I read the file this turn and changed
 nothing — the PMO lane that would have run it first was superseded. **Every
 browser proof until then remains a statement about the tree.**
+
+---
+
+# ADDENDUM — 7 Aug, after the canonical line landed
+
+## T2 · Both repos swept. **418 files** — 284 frontend, 134 backend.
+
+⚠️ **The previous sweep grepped the frontend only and missed `content.py`**, which
+was the real source of a customer-facing artefact. This one covers both.
+
+### Live positioning phrases, by owner
+
+| owner | file | phrases |
+|---|---|---|
+| **BACKEND** | `docs/brochure/AXIOM_Brochure_v3.html` | strategy-execution platform |
+| **BACKEND** | `docs/brochure/AXIOM_Capabilities_Brochure_v2.html` | strategy-execution platform · transformation loop · **canonical** |
+| **BACKEND** | `services/api/modules/platform/content.py` | **living digital twin** · **canonical** ×2 |
+| FRONTEND | `components/AboutBar.tsx` | **living digital twin** |
+| FRONTEND | `components/ComparisonMatrix.tsx` | strategy-execution platform |
+| FRONTEND | `components/FeaturesAndBenefits.tsx` | strategy-execution platform · transformation loop |
+| FRONTEND | `components/HoldingPage.tsx` | **canonical** |
+| FRONTEND | `lib/board-report.tsx` | **canonical** (fallback only) |
+| FRONTEND | `lib/glossary.ts` | enterprise-optimization workbench · **canonical** |
+| FRONTEND | `lib/platform.ts` | **canonical** |
+| FRONTEND | `routes/advisory.tsx` | transformation loop |
+| FRONTEND | `routes/index.tsx` | Adaptive eXecutable · strategy-execution platform · **canonical** |
+
+⭐ **Both retirements hold.** Every remaining `"Optimization, Certified"` and
+`"living mathematical model"` match is **a retirement comment**, verified line
+by line — no live string survives in either repo.
+
+### ⚠️ A phrase neither sweep had tracked
+
+**`"living digital twin"`** is live in **two** places and was in neither the
+four-surface nor the ten-surface count:
+
+- `services/api/modules/platform/content.py:21` — `for_organizations.definition`,
+  **backend-owned, and it reaches the About surface**
+- `src/components/AboutBar.tsx:58` — a page description
+
+⛔ **Not ruled retired, so it stands.** Reported because it is a **twelfth
+variant** of "what AXIOM is", and because its backend copy is the same shape as
+the board-report defect: **positioning language owned by the backend, rendered
+by the frontend, invisible to a frontend-only sweep.**
+
+## T3 · The deploy has NOT rebuilt. **ORIGIN: the served host.**
+
+| phrase | where it lives in the DEPLOYED graph |
+|---|---|
+| `"Optimization, Certified"` | **`/assets/InfoTip-B5oNorkv.js`** and **`/assets/ThemeToggle-D9PZT_Sq.js`** |
+| `"living mathematical model"` | **no chunk** |
+| **the canonical line** | **no chunk** |
+
+**45 chunks, identical hashes to the previous run.** The canonical line is absent
+and the chunk names are unchanged, so **the deploy still predates this lane's
+commits.** ⛔ **The retirement is confirmed on the tree and NOT yet on the
+deploy** — re-run once it rebuilds.
+
+⭐ **Where it lives is the answer, not whether it exists.** `"Optimization,
+Certified"` sits in the **glossary chunk** (`InfoTip` imports `GLOSSARY`) and in
+`ThemeToggle` — neither of which is a marketing surface. On the tree the same
+string lived elsewhere. **That is the chunking difference that makes tree-proof
+and deploy-proof different claims.**
+
+## Origins of every proof in this lane
+
+| proof | origin |
+|---|---|
+| T1 typecheck / lint / 16 CI steps | **the tree** (local) |
+| T2 sweep | **the tree** — source files in both repos, no runtime |
+| T3 chunk graph | **the served host (deploy)** |
+| T4 syntax + origin-print | **the tree** |
