@@ -674,6 +674,43 @@ def derived_series(dataset_id: int, db: Session = Depends(get_db),
     return engines.derive_series(row.data)
 
 
+@router.get("/datasets/{dataset_id}/completeness",
+            responses={404: {"description": "dataset not found — the id does "
+                                            "not exist, or belongs to another "
+                                            "tenant (deliberately "
+                                            "indistinguishable)"}})
+def dataset_completeness(dataset_id: int, db: Session = Depends(get_db),
+                         tenant: str = Depends(_tenant),
+                         scoped: int | None = Depends(_scoped)):
+    """Which declared quantities this dataset can answer, and WHY not.
+
+    ⛔ "54% complete" is a grade; "54%, and these six need current assets you
+    have not supplied" is a next action. This returns the second — see
+    `completeness.score` and `missing_input_index`.
+
+    ⭐ The upload metadata travels with the score because the blank state needs
+    both in one call: a reader asking "why is this empty" is asking about the
+    last upload as often as about the fields.
+    """
+    from ... import completeness as CP
+    row = _get_dataset(db, tenant, dataset_id, scoped)
+    scored = CP.score(row.data)
+    scored["next_actions"] = CP.missing_input_index(scored)
+    scored["dataset"] = {
+        "id": row.id,
+        "name": row.name,
+        "frequency": getattr(row, "frequency", None),
+        "template_version": getattr(row, "template_version", None),
+        # ⭐ Two different timestamps, both reported. "When did you upload" and
+        # "when was the data last written" answer different questions, and a
+        # surface showing one as the other misdates the customer's own work.
+        "uploaded_at": getattr(row, "uploaded_at", None),
+        "data_written_at": getattr(row, "data_written_at", None),
+        "original_filename": getattr(row, "original_filename", None),
+    }
+    return scored
+
+
 @router.post("/datasets/{dataset_id}/forecast")
 def forecast_dataset(dataset_id: int, body: schemas.ForecastRequest,
                      db: Session = Depends(get_db),
