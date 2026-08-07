@@ -20521,6 +20521,53 @@ axes with declared weights that renormalise when an axis is missing. **If the
 workbook's 13 are ever mapped onto the platform's 13, that is the precedent to
 copy, and it is a DECLARED mapping, not a derived one.**
 
+## ⛔⭐⭐ §16.7 · THE FLOOR IS ASYMMETRIC ACROSS THE THREE EXTERNAL VOICES (founder ruling, 8 Aug)
+
+**Three rulings, and the third is the one a later lane will try to undo:**
+
+1. ⭐ **NO MINIMUM RESPONDENT COUNT TO FIELD AN INSTRUMENT.** A stakeholder
+   survey runs whatever the population size. Fielding and publishing are
+   different acts.
+2. ⭐ **NO PUBLICATION FLOOR ON CUSTOMERS.** Customer populations are large
+   enough that an average does not identify a respondent.
+3. ⛔ **THE FLOOR IS RETAINED ON SUPPLIERS AND PARTNERS.** Small, **NAMED**
+   populations — *a CEO knows their suppliers by name*, so **"n=2 rated us 3.2"
+   is identifying**. This is §4u-c's protection reaching the population it was
+   written for.
+
+### ⛔ THE ASYMMETRY IS THE POINT. DO NOT HARMONISE IT.
+
+**A later lane will meet three populations under two rules and read it as an
+inconsistency to tidy. It is not.** The floor protects a *respondent*, and
+whether an average identifies one is a fact about the **population**, not about
+the table it is stored in:
+
+| population | size | does a mean identify a respondent? |
+|---|---|---|
+| customers | large, unnamed | ⭐ **no** — a mean over hundreds names nobody |
+| suppliers, partners | **small and NAMED** | ⛔ **yes** — the reader can enumerate the population from memory |
+
+⭐⭐ **THIS IS THE STANDING RULING MADE OPERATIONAL**: *KFLOOR FOLLOWS THE
+RESPONDENT, NOT THE TABLE.* That ruling exists **precisely so the floor can
+differ by population** — a rule that could not differ would have made it
+meaningless.
+
+⛔ **AND IT CANNOT BE EXPRESSED TODAY.** `assessment_engine.KFLOOR = 3` is a
+**module-level constant**, one value for every slice in the product. Delivering
+this ruling requires the floor to become **per-population**, not a global — and
+until it does, the asymmetry is recorded and unenforced.
+
+⭐ **Complement inference still applies wherever the floor does**: two groups
+published and one withheld reconstruct the third by subtraction. The engine
+already carries this reasoning — Meridian's HR sat *at* n=3, not below it, and
+was hidden only to cover Supply Chain's n=2 — and a per-population floor must
+keep it.
+
+⛔ **NOTE FOR THE RECORD:** Meridian is seeded above KFLOOR=3 everywhere, so **no
+floor is visible on the demo either way.** This ruling governs **real customer
+data**, not the demo — and a demo that never shows suppression cannot be used as
+evidence that suppression works.
+
 ## ⭐⭐ §16.6 · THE EXTERNAL INSTRUMENTS ARE OFF THE SPINE BY DESIGN (8 Aug)
 
 **26 of 30 stakeholder instruments carry none of the shared 13. They therefore
