@@ -191,9 +191,38 @@ def analyse(data, supplied=None):
             "Agreement across the periods shown is EVIDENCE of an identity, not "
             "proof of one. A proof requires computer algebra, which this "
             "product does not carry."),
+        # ⛔⭐⭐ THE COUNT IS A READING OF THIS DATASET, NOT A PROPERTY OF THE
+        # REGISTRY — and it must say so where it is rendered, not in a footnote.
+        # The constant filter is what makes it dataset-dependent: quantities are
+        # set aside because they do not move HERE, and on a company whose tax
+        # rate or WACC changes over the period they would re-enter the test and
+        # could change the count. A number that moves with the data must never
+        # read as a structural fact.
+        "dataset_dependent": True,
+        "dataset_dependent_note": _fragility(constant, proportional),
         # ⛔⭐⭐ THE NEGATIVE RESULT, STATED AS ONE.
         "finding": _finding(len(series), independent, identities),
     }
+
+
+def _fragility(constant, proportional):
+    """Why this count can differ on another company — named, with the cases."""
+    bits = [("This count is a reading of THIS dataset, not a property of the "
+             "registry. It can differ on another company.")]
+    if constant:
+        bits.append(
+            f"{len(constant)} quantity(ies) never vary here "
+            f"({', '.join(constant)}) and are excluded from the "
+            f"proportionality test; on a company where they move they re-enter "
+            f"it and may reveal or dissolve a relationship.")
+    for p in proportional:
+        bits.append(
+            f"{p['b']} is a constant multiple of {p['a']} here only because "
+            f"some third quantity is not moving — on a dataset where it moves, "
+            f"the two are unrelated by a constant.")
+    bits.append("Only the exact identities are expected to hold on any dataset, "
+                "and even those are evidence rather than proof.")
+    return " ".join(bits)
 
 
 def _finding(computing, independent, identities):

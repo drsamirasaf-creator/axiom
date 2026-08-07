@@ -191,3 +191,78 @@ def test_stress_inherits_the_same_boundary(auth_client, dsid):
                                  "assumptions": {"wacc": 0.15},
                                  "radii": [0.1]})
     assert bad.status_code == 422, "the /stress boundary still drops unknown keys"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⛔⭐⭐ §7q — THE GRID'S REFUSAL CARRIES ITS REASON (8 Aug)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _grid_run():
+    import json as _json, os as _os
+    import pytest as _pytest
+    from services.api.modules.valuation import engines as VE
+    path = (_os.environ.get("AXIOM_SCRATCH", "/private/tmp/claude-501/"
+            "-Users-samirasaf/5dfccbe2-516b-41df-b70a-8355f80ec452/scratchpad")
+            + "/meridian-45.json")
+    if not _os.path.exists(path):
+        _pytest.skip("the showcase dataset is not cached in this environment")
+    d = _json.load(open(path, encoding="utf-8"))
+    # ⭐ terminal growth forced high so the corner where g >= WACC actually
+    # refuses — a fixture with no refused cell cannot test a refusal.
+    return VE.run(d, "proforma", {"terminal_growth": 0.13}, {"n_paths": 200})
+
+
+def test_every_refused_grid_cell_says_why():
+    """⛔⭐⭐ "This cell is absent" without "the model declines where growth
+    meets the discount rate" is the EVA panel's defect at 25x the frequency.
+    `NO_TERMINAL_VALUE` sat fifteen lines above the loop that threw the
+    exception away and appended a bare None."""
+    from services.api.modules.valuation import engines as VE
+    s = _grid_run()["sensitivity"]
+    grid, why = s["ev_grid"], s["ev_grid_absent"]
+    assert len(grid) == len(why) and all(len(a) == len(b) for a, b in zip(grid, why))
+    refused = [(i, j) for i, row in enumerate(grid)
+               for j, c in enumerate(row) if c is None]
+    assert refused, ("no cell refused on this fixture, so this test cannot "
+                     "tell a carried reason from a discarded one")
+    for i, j in refused:
+        r = why[i][j]
+        assert r, f"cell {(i, j)} is absent with no reason"
+        assert VE.NO_TERMINAL_VALUE in r, f"cell {(i, j)} lost the explanation"
+        # ⭐ the engine's own message travels too, not only the constant
+        assert "WACC" in r
+
+
+def test_a_computed_cell_carries_NO_reason():
+    """⛔ A reason beside a value would read as a warning about a number that
+    is fine. Absence and explanation must be exactly co-located."""
+    s = _grid_run()["sensitivity"]
+    for i, row in enumerate(s["ev_grid"]):
+        for j, c in enumerate(row):
+            assert (c is None) == (s["ev_grid_absent"][i][j] is not None), \
+                f"cell {(i, j)} has a value and a reason, or neither"
+
+
+def test_the_ratios_surface_states_a_missing_wacc_ONCE():
+    """⛔ ONE REFUSAL, NOT FORTY-FIVE EM DASHES (§7q). A single missing field
+    empties every WACC-dependent quantity; the surface says so once, at the
+    level where it is true."""
+    import os as _os, tempfile as _tf
+    _os.environ.setdefault("DATABASE_URL", "sqlite:///" + _tf.mktemp(suffix=".db"))
+    from fastapi.testclient import TestClient
+    from services.api.main import app
+    from tests.fixtures.refcases import meridian
+    with TestClient(app) as c:
+        tok = c.post("/api/v1/auth/register",
+                     json={"email": "wacc-once@example.test",
+                           "password": "correct-horse-battery"}).json()["token"]
+        c.headers.update({"Authorization": f"Bearer {tok}"})
+        did = c.post("/api/v1/financials/datasets",
+                     json={"name": "wacc-once", "data": meridian()}).json()["id"]
+        p = c.get(f"/api/v1/metrics/ratios/{did}").json()
+    # ⭐ the fixture is a PUBLIC company with no debt book — the case that
+    # produces the swallow. §III.27: two inputs, or none.
+    assert "wacc_absent" in p, "the surface cannot report a missing rate at all"
+    assert p["wacc_absent"], "the cause was discarded again"
+    assert "_debt_book" in p["wacc_absent"], \
+        "the reason no longer names the field a caller would supply"

@@ -1071,11 +1071,17 @@ def ratios_surface(dataset_id: int, db: Session = Depends(get_db),
     # ⭐ THE CALLER SUPPLIES WACC, because the registry delegates it to
     # ratios.wacc_at and the evaluator will not reach for a caller's data. This
     # is the ENGINE's own wacc for this dataset — one number, one owner.
+    # ⛔⭐⭐ THE REASON TRAVELS (§7q). `except Exception: supplied = {}` discarded
+    # the one sentence that names the missing field, and every WACC-dependent
+    # ratio then reported an absence that could not say what to supply. Same
+    # swallow as the EVA panel's, on a surface that shows 45 quantities rather
+    # than two.
+    supplied, wacc_absent = {}, None
     try:
         supplied = {"wacc_at": engines.wacc(dict(data.get("company") or {},
                                                  _debt_book=None))["wacc"]}
-    except Exception:
-        supplied = {}
+    except Exception as e:                                   # noqa: BLE001
+        wacc_absent = str(e)
 
     _standard = ((data.get("company") or {}).get("standard") or "us_gaap")
     out, absent = [], []
@@ -1123,6 +1129,11 @@ def ratios_surface(dataset_id: int, db: Session = Depends(get_db),
                                            if p.get("absent")), None)})
     return {
         "dataset_id": dataset_id,
+        # ⛔ ONE REFUSAL, NOT FORTY-FIVE EM DASHES (§7q). When a single missing
+        # field empties every WACC-dependent quantity, the surface says so ONCE
+        # at the level where it is true, rather than leaving a reader to infer a
+        # common cause from a page of blanks. `None` when the rate resolved.
+        "wacc_absent": wacc_absent,
         "registry_version": rr.load().get("registry_version"),
         "periods": [{"year": y, "label": _label(y),
                      "projection": i >= n_hist} for i, y in enumerate(years)],

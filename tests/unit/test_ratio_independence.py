@@ -130,3 +130,20 @@ def test_a_dataset_too_short_to_compare_says_so_rather_than_claiming_zero():
     assert out["denominator"]["computing"] == 0 or out["independent"] >= 0
     if out["denominator"]["computing"] == 0:
         assert "nothing can be said" in out["finding"].lower()
+
+
+def test_the_count_declares_that_it_is_DATASET_DEPENDENT(out):
+    """⛔⭐⭐ A NUMBER THAT CHANGES WITH THE DATA MUST NOT READ AS A STRUCTURAL
+    FACT. The constant filter is what makes this count a reading rather than a
+    property: `net_margin` and `pbt_margin` differ by (1 - effective_tax_rate),
+    a constant factor HERE only because this company's rate never moves. On a
+    company whose rate changes, the pair re-enters the test and the count can
+    differ. The payload must say so where it is rendered."""
+    assert out["dataset_dependent"] is True
+    note = out["dataset_dependent_note"]
+    assert "not a property of the registry" in note
+    # ⭐ and it must NAME the quantities whose stillness drives the exclusion,
+    # not merely assert fragility in the abstract
+    for rid in out["excluded_constant"]:
+        assert rid in note, f"{rid} was excluded but is not named in the note"
+    assert "evidence rather than proof" in note

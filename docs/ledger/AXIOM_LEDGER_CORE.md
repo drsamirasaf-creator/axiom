@@ -20668,6 +20668,92 @@ its corpus — and was **wired into no CI step and no hook**. It never ran once.
 guard nobody runs is a document, and a document cannot re-take a measurement.
 See §III.25.
 
+## ⭐⭐ §III.4 · AN EMPTY CORPUS MUST FAIL, AND A HAND-SYNCED LIST IS SUSPECT (anchored 8 Aug)
+
+⛔ **THIS RULE HAD NO HEADING UNTIL TODAY AND IS CITED 31 TIMES** — 16 in the
+ledger, 15 in the code. It has been load-bearing since July and every citation
+pointed at nothing. Its content, recovered from the sites that use it:
+
+⭐ **"0 of 0" AND "0 of 77" PRINT THE SAME TICK.** A check whose corpus is empty
+passes silently and looks identical to a check that examined everything and
+found nothing wrong. **Every guard states its denominator, and an empty corpus
+is a FAILURE, not a pass.** (`causal_map.py:178`: *"print the same tick and mean
+opposite things"*.)
+
+⭐ **AND A HAND-SYNCED LIST IS THE SAME DEFECT WITH A LONGER FUSE.** Any list
+maintained in parallel with the thing it describes — a column list beside a
+model, a step list beside a workflow, a nav array beside the routes — drifts the
+moment either side changes, **and it drifts silently, because a shorter list
+still prints all-ticks.** (`pack.py:258`: *"a column added later would silently"*
+go uncaptured.) The remedy is derivation from the one owner, or a count
+asserted against the owner.
+
+⛔ **THE TEST:** *what is this check's denominator, where did it come from, and
+would I notice if it became zero?*
+
+## ⭐⭐ §7q · AN ABSENCE WITH A PLAUSIBLE REASON IS THE MOST INFORMATIVE SIGNAL (anchored 8 Aug)
+
+⛔ **CITED IN ROUGHLY A DOZEN DISPATCHES AND IN FOUR PLACES IN THE CODE, AND
+DEFINED NOWHERE UNTIL NOW.** Its content, as the code already applies it:
+
+⭐⭐ **A BLANK CELL SAYS "SOMETHING IS WRONG". AN ABSENCE WITH ITS REASON SAYS
+WHAT TO DO NEXT** — and the second is worth more than a number would be, because
+a number ends the enquiry and a stated gap starts one.
+`completeness.py:219`: *"not supplied is a next action."*
+
+⛔ **THE CAUSE IS THE ACTIONABLE HALF; THE CONSEQUENCE IS ONLY THE FRAME.** Both
+belong in the sentence, in that order of importance:
+
+| | |
+|---|---|
+| consequence — the frame | *"without a cost of capital there is no charge to take"* |
+| ⭐ **cause — the action** | *"the debt basis for a public company was not supplied"* |
+
+A reader given only the consequence learns that the panel is empty and **cannot
+tell that one field would fill it.** Measured 8 Aug: that exact sentence was
+shipping to 3 of 33 datasets while the engine's own exception — which named the
+missing field and the remedy — was caught and discarded one line later.
+
+⛔ **ONE REFUSAL, NOT THREE EM DASHES** (`valuation/engines.py:925`). When one
+missing input empties several figures, say it **once, at the level where it is
+true**, rather than blanking each figure independently and leaving the reader to
+infer a common cause.
+
+## ⛔⭐⭐ §III.29 · A FABRICATED ANCHOR IS WORSE THAN A STALE MEASUREMENT (8 Aug)
+
+**§III.24 records that a wrong number survives because later lanes cite it
+instead of re-measuring. This is the failure one step further out: a citation
+with nothing behind it CANNOT be re-measured at all, and it borrows the
+ledger's authority without ever entering the ledger.**
+
+⛔ **MEASURED, 8 Aug. 42 distinct anchors cited in this session's dispatches:**
+
+| | |
+|---|---|
+| resolve to a CORE heading | **35** |
+| resolve in a SPEC, not CORE | **4** — `§19`, `§37` (revenue spec), `§5.1`, `§18` (PMO spec). ⭐ **Not fabricated — a different document**, and the distinction matters |
+| ⛔ **resolve nowhere** | **3** — `§7q`, `§7n`, `§III.4` |
+
+⭐⭐ **AND THE WORST OF THE THREE IS THE ONE NOBODY QUESTIONED.** `§III.4` is
+cited **31 times across the ledger and the code**; `§7q` four times in code and
+a dozen times in dispatch; `§7n` three. **The most load-bearing was the least
+suspected**, because a rule everyone applies correctly never prompts anyone to
+look it up. Both are now anchored above, with content recovered from the sites
+that use them — which was possible **only because the usage was consistent.**
+
+⛔ **A MISATTRIBUTION IS NOT A FABRICATION, AND BOTH APPEARED HERE.** `§37` was
+cited for structural break detection; the revenue spec puts that at **§19**, and
+§37 is Machine-Learning Activity-Based Costing. The anchor exists and the claim
+attached to it did not. ⭐ **A citation has two halves — that the target exists,
+and that it says what is claimed — and checking only the first is how a
+misattribution propagates.**
+
+⛔ **THE RULE:** *before a rule is cited a second time, it must have a heading.*
+A referenced-but-undefined anchor is a promise to a future reader that the
+reasoning was written down somewhere. **If it was not, the citation is doing the
+work of an argument without making one** — and unlike a stale number, nothing
+about it ever comes up false.
+
 ## ⛔⭐⭐ §III.27 · YOUR OWN PROBE IS NOT EVIDENCE (8 Aug)
 
 **A hypothesis written as a test INPUT comes back looking like a measurement.**

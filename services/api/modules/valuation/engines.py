@@ -259,16 +259,33 @@ def run(data: dict, mode: str, assumptions: dict | None = None,
     # Sensitivity grid (Product §8.13): WACC x terminal growth
     wacc_grid = [_r(wacc_value + d) for d in (-0.02, -0.01, 0.0, 0.01, 0.02)]
     g_grid = [_r(g_term + d) for d in (-0.01, -0.005, 0.0, 0.005, 0.01)]
-    ev_grid = []
+    # ⛔⭐⭐ THE REASON TRAVELS PER CELL (§7q). `NO_TERMINAL_VALUE` has sat
+    # fifteen lines above since the grid was written, and this loop threw the
+    # exception away and appended a bare `None` — so a reader saw an em dash in
+    # four of twenty-five cells with nothing to say why. "This cell is absent"
+    # without "the model declines where growth meets the discount rate" is the
+    # same defect the EVA panel had, at twenty-five times the frequency.
+    #
+    # ⭐ THE REFUSAL IS CORRECT AND THAT IS THE POINT: Gordon growth has a zero
+    # or negative denominator at g >= WACC, so there IS no enterprise value at
+    # that corner. A reader who knows that reads the corner as the model being
+    # honest; a reader who does not reads it as the grid being broken.
+    ev_grid, ev_grid_absent = [], []
     for wv in wacc_grid:
-        row = []
+        row, why_row = [], []
         for gv in g_grid:
             try:
                 pe, _, pt = _dcf(fcff, wv, gv)
                 row.append(_r(pe + pt, 2))
-            except ValueError:
+                why_row.append(None)
+            except ValueError as e:                          # noqa: PERF203
                 row.append(None)
+                # ⭐ THE ENGINE'S OWN MESSAGE, plus the standing explanation.
+                # `_dcf` says "WACC must exceed terminal growth"; the constant
+                # says what that means for the reader.
+                why_row.append(f"{NO_TERMINAL_VALUE} ({e})")
         ev_grid.append(row)
+        ev_grid_absent.append(why_row)
 
     # ---- Risk-adjusted layer -------------------------------------------
     n_paths = int(mc.get("n_paths", 2000))
@@ -393,6 +410,9 @@ def run(data: dict, mode: str, assumptions: dict | None = None,
         "deterministic": deterministic,
         "sensitivity": {"wacc_values": wacc_grid, "terminal_growth_values": g_grid,
                         "ev_grid": ev_grid,
+                        # ⛔ ONE REASON PER REFUSED CELL, positionally aligned
+                        # with `ev_grid`, `None` where the cell computed.
+                        "ev_grid_absent": ev_grid_absent,
                         # equity = EV - net debt - preferred - minority: the
                         # bridge terms are balance-sheet constants, so the
                         # equity grid is the EV grid shifted by them
