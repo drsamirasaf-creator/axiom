@@ -4485,10 +4485,42 @@ def _resolve_department(db, company_id, name):
     return None
 
 
+def company_root_department(db, company_id):
+    """This company's ROOT — the one department with no parent.
+
+    ⭐⭐ THE DEFAULT PARENT IS DERIVED PER COMPANY, NEVER A CONSTANT. Meridian's
+    root happens to be id 12, and hardcoding that would parent another tenant's
+    departments into Meridian's tree — a cross-company write dressed as a
+    default. The rule is structural instead: *a new department hangs off
+    whatever this company already calls its root*.
+
+    ⛔ Returns None when the company has NO department yet. That is correct and
+    load-bearing: the first department created IS the root, and giving it a
+    parent would need one to exist.
+
+    ⛔ Returns None when several are unparented, because then "the root" is not a
+    fact about this company — it is a question. Guessing one would pick a parent
+    by insertion order, and `check-department-tree.py` is what makes that state
+    visible instead.
+    """
+    roots = [d for d in live_departments(db, company_id).all() if d.parent_id is None]
+    return roots[0] if len(roots) == 1 else None
+
+
 def _ensure_department(db, company_id, name, *, head_name=None, head_title=None,
-                       head_email=None, is_standard=False):
+                       head_email=None, is_standard=False, parent_id=None):
     """Get-or-create a company department, matching on the STABLE id via the
     alias layer rather than on a hash of the display name.
+
+    ⛔⭐⭐ THE PARENT. This had NO parent parameter at all, so every department
+    auto-created from a workbook row was unparented BY CONSTRUCTION — not by an
+    authorization that forgot a field, but because there was no field to pass.
+    Three of Meridian's nine rendered detached at the bottom of the org chart
+    for exactly that reason.
+
+    ⭐ An explicit `parent_id` wins; otherwise the company's own root is used
+    (`company_root_department`). ⛔ The FIRST department of a company gets no
+    parent and must not — it is the root.
 
     Three cases, all handled here:
       * same name      -> resolves to the existing row, fields refreshed
@@ -4505,9 +4537,12 @@ def _ensure_department(db, company_id, name, *, head_name=None, head_title=None,
         return None
     dep = _resolve_department(db, company_id, name)
     if dep is None:
+        if parent_id is None:
+            root = company_root_department(db, company_id)
+            parent_id = root.id if root is not None else None
         dep = Department(company_id=company_id, dept_key=_new_dept_key(), name=name,
                          head_name=head_name, head_title=head_title, head_email=head_email,
-                         is_standard=is_standard)
+                         is_standard=is_standard, parent_id=parent_id)
         db.add(dep)
         db.flush()
         _dept_alias_add(db, company_id, dep.id, name)
