@@ -290,6 +290,15 @@ jobs:
       # earlier version of this check unable to fire (§III.11), found by red-proofing.
       - name: widened writes reach a row-level seam
         run: python scripts/check-steward-seam-reached.py
+      # ⛔⭐⭐ goal_key IS THE OBJECTIVE'S TEXT HASH, NEVER ITS ORDINAL. A check
+      # and a test fixture both bound objective_id — which no link carries — so
+      # every objective read as unlinked and the suite stayed GREEN because the
+      # wrong check and the wrong fixture agreed. Fixtures are in scope
+      # deliberately; that is where it hid.
+      # ⛔ Its own first version could not catch the case that motivated it: the
+      # defect is a membership test, not a comparison. Found by red-proofing.
+      - name: goal_key binds the text hash, not the ordinal
+        run: python scripts/check-goal-key-convention.py
       - name: source vocabulary (one default across the dual-path family)
         run: python scripts/check-source-vocabulary.py
       # ⭐ EVERY OBJECT A TEMPLATE CARRIES MUST BE ABLE TO RECORD A CONFLICT.
