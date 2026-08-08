@@ -330,3 +330,37 @@ def test_every_kind_the_module_can_emit_has_a_resolver(_app):
     assert emitted, "no kinds found — the derivation is broken, not the code"
     missing = sorted(emitted - set(WS.RESOLVER))
     assert not missing, f"{missing} can be emitted and nobody resolves them"
+
+
+def test_a_stale_snapshot_is_not_listed_three_times(_app):
+    """⛔⭐⭐ OBJECTIVES ARE SNAPSHOT-SCOPED. A re-upload mints new rows and the
+    old ones stay, so one objective exists once per dataset version. Meridian's
+    Finance department holds the same objective on datasets 42, 43 and 45, and
+    the workspace listed all three — which a steward reads as duplicate data.
+
+    It is not duplicate data. It is three versions of one objective, and only
+    the active dataset's is current.
+    """
+    from services.api.modules.financials.models import FinancialDataset
+    db = SessionLocal()
+    try:
+        ent, a, _b, _admin, _st = _setup(db, "snapshots")
+        ds = FinancialDataset(tenant=ent.tenant, enterprise_id=ent.id, name=ent.name,
+                              standard="us_gaap", ownership="private", source="upload",
+                              data={}, validation={"warnings": []}, version=2,
+                              is_active=True, frequency="annual")
+        db.add(ds); db.commit(); db.refresh(ds)
+        text = "Grow recurring revenue"
+        for dsid in (1, 2, ds.id):          # two stale snapshots and the live one
+            db.add(Objective(company_id=ent.id, dataset_id=dsid, objective_id="O1",
+                             obj_key=_goal_key(text), objective=text,
+                             department_id=a.id, row_index=1,
+                             uploaded_at=datetime.utcnow(), archived=False))
+        db.commit()
+
+        out = WS.for_department(db, ent.id, a.id)
+        rows = [i for i in out["items"] if i["kind"] == "objective_without_initiative"]
+        assert len(rows) == 1, (
+            f"the same objective was listed {len(rows)} times — one per snapshot")
+    finally:
+        db.close()

@@ -110,20 +110,32 @@ def for_department(db, company_id: int, department_id: int, now=None,
                       "note": note, "resolved_by": who, "caller_can_act": can,
                       "resolver_note": None if can else RESOLVER_NOTE.get(who)})
 
-    objs = db.query(Objective).filter_by(company_id=company_id,
-                                         department_id=department_id,
-                                         archived=False).all()
+    # ⛔⭐⭐ SCOPED TO THE ACTIVE DATASET. Objectives, key results and KPIs are
+    # SNAPSHOT-scoped: a re-upload mints new rows and the old ones stay, so
+    # Finance and Accounting holds the same objective on datasets 42, 43 and 45.
+    # Without this filter the workspace listed each of them three times and a
+    # steward read it as duplicate data. It was not duplicate data — it was
+    # three versions of one objective, and only one is current.
+    from .accounts import _active_company_dataset
+    _ds = _active_company_dataset(db, company_id)
+    _dsid = _ds.id if _ds is not None else None
+    objs = [o for o in db.query(Objective).filter_by(
+                company_id=company_id, department_id=department_id,
+                archived=False).all()
+            if _dsid is None or o.dataset_id == _dsid]
     oids = {str(o.objective_id) for o in objs}
-    kpis = db.query(KpiPlan).filter_by(company_id=company_id,
-                                       department_id=department_id,
-                                       archived=False).all()
+    kpis = [k for k in db.query(KpiPlan).filter_by(
+                company_id=company_id, department_id=department_id,
+                archived=False).all()
+            if _dsid is None or k.dataset_id == _dsid]
     kkeys = {k.kpi_key for k in kpis}
     inis = db.query(Initiative).filter_by(company_id=company_id,
                                           department_id=department_id).all()
     iids = {i.id for i in inis}
     krs = [k for k in db.query(KeyResult).filter_by(company_id=company_id,
                                                     archived=False).all()
-           if str(k.objective_id) in oids]
+           if str(k.objective_id) in oids
+           and (_dsid is None or k.dataset_id == _dsid)]
 
     def live(q):
         return [r for r in q.all() if getattr(r, "revoked_at", None) is None]
