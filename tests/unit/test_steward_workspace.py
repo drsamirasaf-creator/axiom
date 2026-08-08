@@ -158,7 +158,12 @@ def test_a_department_with_nothing_outstanding_says_so(_app):
                          created_at=datetime.utcnow(),
                          rag_updated_at=datetime.utcnow())
         db.add(ini); db.commit(); db.refresh(ini)
-        db.add(GoalInitiativeLink(company_id=ent.id, goal_key=str(o.objective_id),
+        # ⛔ goal_key IS obj_key — "a normalized hash of the objective/goal text"
+        # (the model), and accounts.py:5415 writes `goal_key=obj_key`. This
+        # fixture used objective_id, which no link ever carries, and so agreed
+        # with a check that made the same mistake. Two wrongs matching is how a
+        # green test protects a defect.
+        db.add(GoalInitiativeLink(company_id=ent.id, goal_key=o.obj_key,
                                   initiative_id=ini.id, source="in_app", created_by=1))
         db.commit()
 

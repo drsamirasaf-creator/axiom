@@ -145,9 +145,16 @@ def for_department(db, company_id: int, department_id: int, now=None,
     KRL = live(db.query(KrInitiativeLink).filter_by(company_id=company_id))
 
     # ── objectives with no initiative beneath them ───────────────────────────
+    # ⛔⭐⭐ `goal_key` IS `obj_key`, NOT `objective_id`. The model says so —
+    # "goal_key = a normalized hash of the objective/goal text" — and the product
+    # writes `goal_key=obj_key` (accounts.py:5415). This compared against
+    # `objective_id` (O2, O9…), which no link ever carries, so EVERY objective
+    # read as unlinked no matter how many links it had. The stable key is the
+    # text hash precisely so a re-upload keeps its links; the per-snapshot
+    # ordinal would lose them.
     with_ini = {str(l.goal_key) for l in GI if l.initiative_id in iids}
     for o in objs:
-        if str(o.objective_id) not in with_ini:
+        if str(o.obj_key) not in with_ini:
             add("objective_without_initiative", o.objective,
                 "No project sits beneath this objective, so nothing is being done about it.",
                 # ⛔ NOT /objective/{key} — that page is READ-ONLY. The
