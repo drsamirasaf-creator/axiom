@@ -91,7 +91,7 @@ the source, **ten** navigate to a page of their own regardless of the filter:
 | `check_optimal_range` | `/optimization?tab=frontier` |
 | `check_objective_labels` | `/optimization?tab=solver` |
 | ⛔ **`check_frequency_views`** | **`/financial-forecasts`** |
-| `check_strategy_map` | `/department/13?tab=map` |
+| `check_strategy_map` | `/department/{id}?tab=map` |
 | `check_profitability` | `/profitability` |
 | `check_ratio_explainer` | `/dashboard?tab=ratios` |
 | `check_wacc_moves_the_answer` · `check_shares_move_per_share` | `/valuation` |
