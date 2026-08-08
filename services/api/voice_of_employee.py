@@ -137,9 +137,19 @@ def for_department(db, company_id, department_id, *, cycle_id=None):
     if cyc is None:
         return {**base, "absent": "no closed assessment cycle yet"}
 
-    rows = (db.query(AssessmentResponse)
-              .filter_by(cycle_id=cyc.id)
-              .filter(AssessmentResponse.department == dept.name).all())
+    # ⛔⭐⭐ RESOLVED THROUGH THE ALIAS SET, NEVER BY THE RAW NAME. This was
+    # `AssessmentResponse.department == dept.name` — a string join — and it is
+    # the FOURTH reader of department-attributed responses, the only one that
+    # did not resolve. A response carries whatever the department was called
+    # when it was submitted, so on Meridian "Finance", "HR", "Technology" and
+    # "Supply Chain" matched nothing against their canonical names and four
+    # departments rendered "No comments this cycle" over hundreds of seeded
+    # comments. The trap is documented on `_dept_coverage` and on
+    # `_department_sentiment_map`; this is it reached from a third direction.
+    from .accounts import _dept_variant_norms, _norm_dept_name
+    _want = _dept_variant_norms(db, company_id, dept)
+    rows = [r for r in db.query(AssessmentResponse).filter_by(cycle_id=cyc.id).all()
+            if r.department and _norm_dept_name(r.department) in _want]
     # ⭐ THE FLOOR COUNTS DISTINCT PARTICIPANTS, NOT COMMENTS. Five comments from
     # one person is n=1 — five sentences from one identifiable person is a worse
     # exposure than five from five. Inherited from §4u-b verbatim.
