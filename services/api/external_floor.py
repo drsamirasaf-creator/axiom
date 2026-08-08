@@ -209,3 +209,117 @@ def attribute(orientation, consented, party_name):
             f"unknown orientation {orientation!r} — attribution requires an "
             f"explicitly EXTERNAL instrument, and an unclassified one is not it")
     return party_name if consented else None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⛔⭐⭐ THE DECLINING SUBSET — DECLINING DOES NOT ESCAPE THE FLOOR
+# ═══════════════════════════════════════════════════════════════════════════
+# Nine external parties consenting and one declining makes the tenth THE MOST
+# IDENTIFIABLE PARTY IN THE SYSTEM: the group is named, the decliner is the one
+# name absent from it, and the arithmetic below recovers their answer exactly.
+#
+# ⭐ THE ADVERSARY IS EXPLICIT, and it is not a clever attack — it is one
+# subtraction. Given the published group mean over N parties and the individual
+# values of the K consenting ones, the decliners' mean is
+#
+#     (N * mean - sum(consenting)) / (N - K)
+#
+# which is EXACT at N-K = 1 and narrowing for small N-K.
+
+
+def decliner_derivable(n_parties, group_mean, consenting_values):
+    """Can a reader recover the declining subset's reading? -> dict.
+
+    ⭐ Stated as a MEASUREMENT rather than a policy, so a surface can decide what
+    to publish and a test can assert the decision held.
+    """
+    k = len(consenting_values)
+    n_declining = n_parties - k
+    if n_parties <= 0 or n_declining <= 0 or group_mean is None:
+        return {"derivable": False, "n_declining": max(n_declining, 0),
+                "reason": "no declining party, or nothing published"}
+    if k == 0:
+        return {"derivable": False, "n_declining": n_declining,
+                "reason": "no consenting values are published, so nothing "
+                          "can be subtracted"}
+    recovered = (n_parties * group_mean - sum(consenting_values)) / n_declining
+    return {
+        "derivable": True,
+        "n_declining": n_declining,
+        # ⛔ EXACT when one party declined; a mean over the subset otherwise —
+        # and a mean over two is still close enough to name a view.
+        "exact": n_declining == 1,
+        "recovered": round(recovered, 4),
+        "reason": (f"the group mean over {n_parties} parties minus the "
+                   f"{k} published consenting values recovers the remaining "
+                   f"{n_declining} by subtraction"),
+    }
+
+
+def safe_publication(n_parties, values_by_party, consented_parties):
+    """What may be published so the declining subset is not recoverable.
+
+    ⛔ THE OPTIONS ARE THE FOUNDER'S; this implements the one that is safe under
+    the adversary above, and NAMES what it withheld so the choice is visible:
+    ⭐ **the aggregate publishes; individual named values do not, whenever any
+    party declined.** Publishing both is what makes the subtraction possible,
+    and it is the combination — not either alone — that leaks.
+    """
+    parties = {k: v for k, v in (values_by_party or {}).items() if v is not None}
+    declining = [p for p in parties if p not in set(consented_parties or ())]
+    agg = round(sum(parties.values()) / len(parties), 4) if parties else None
+    if not declining:
+        return {"aggregate": agg, "named": dict(parties), "withheld": [],
+                "why": None}
+    # ⛔ the aggregate alone is safe; the named values alongside it are not
+    return {
+        "aggregate": agg,
+        "named": {},
+        "withheld": sorted(parties),
+        "why": (f"{len(declining)} of {len(parties)} parties declined to be "
+                f"named. Publishing the aggregate AND the consenting values "
+                f"would recover the declining subset by subtraction, so the "
+                f"named values are withheld and only the aggregate publishes."),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⛔⭐⭐ CONSENT IS SCOPED — IT DOES NOT CARRY FORWARD
+# ═══════════════════════════════════════════════════════════════════════════
+# A party consents to be named ON A PARTICULAR INSTRUMENT, IN A PARTICULAR
+# CYCLE. A re-fielded instrument next quarter is a NEW consent: the relationship
+# may have changed, the contract may be up for renewal, and the answer they are
+# about to give is not the one they agreed to publish.
+
+
+def consent_valid_for(consent, instrument_key, cycle_id):
+    """Does this stored consent authorise naming HERE? -> bool.
+
+    ⛔ EVERY field must match. A consent with no scope recorded is NOT a
+    wildcard — it is an unscoped record, and an unscoped record authorises
+    nothing.
+    """
+    if not consent or not consent.get("consented"):
+        return False
+    scope_i = consent.get("instrument_key")
+    scope_c = consent.get("cycle_id")
+    if scope_i is None or scope_c is None:
+        return False
+    return scope_i == instrument_key and scope_c == cycle_id
+
+
+def revoke_consent(consent, now=None, note=None):
+    """⛔ REVOCABLE — but it does not rewrite what was already published.
+
+    ⭐ A pack is immutable and a board saw what it saw; retracting a name from a
+    published artefact is not possible and pretending otherwise would be the
+    lie. Revocation stops FUTURE publication and is recorded with its time, so a
+    reader of an old artefact can see that consent was later withdrawn.
+    """
+    from datetime import datetime
+    out = dict(consent or {})
+    out["consented"] = False
+    out["revoked_at"] = (now or datetime.utcnow()).isoformat()
+    out["revoked_note"] = note
+    out["already_published_unaffected"] = True
+    return out

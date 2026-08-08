@@ -238,3 +238,102 @@ def test_the_refusal_RAISES_rather_than_returning_None():
         assert "never be attributed" in str(e) and "ANONYMOUS" in str(e)
     else:
         pytest.fail("an internal attribution returned instead of refusing")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⛔⭐⭐ THE DECLINING SUBSET — THE ADVERSARY, EXPLICIT
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_the_decliner_IS_derivable_from_the_aggregate_and_the_names():
+    """⛔⭐⭐ THE ATTACK, ASSERTED RATHER THAN ASSUMED. Nine parties consent and
+    one declines; the group mean over ten and the nine published values recover
+    the tenth EXACTLY, by one subtraction. If this test ever stops finding it,
+    the mechanism below is guarding nothing."""
+    consenting = [6, 7, 5, 8, 6, 7, 6, 5, 7]          # nine consenting parties
+    hidden = 2.0                                       # the decliner
+    group_mean = (sum(consenting) + hidden) / 10
+    out = XF.decliner_derivable(10, group_mean, consenting)
+    assert out["derivable"] is True
+    assert out["exact"] is True, "one decliner is recovered EXACTLY, not narrowed"
+    assert out["recovered"] == pytest.approx(hidden), (
+        "the adversary did not recover the decliner — the fixture no longer "
+        "exercises the attack this mechanism exists to prevent")
+
+
+def test_two_decliners_are_narrowed_rather_than_recovered_exactly():
+    """⭐ Not exact, and ⛔ not safe either — a mean over two is still close
+    enough to name a view."""
+    consenting = [6, 7, 5, 8]
+    hidden = [2.0, 3.0]
+    n = len(consenting) + len(hidden)
+    gm = (sum(consenting) + sum(hidden)) / n
+    out = XF.decliner_derivable(n, gm, consenting)
+    assert out["derivable"] is True and out["exact"] is False
+    assert out["recovered"] == pytest.approx(2.5)
+
+
+def test_publishing_the_aggregate_ALONE_defeats_the_adversary():
+    """⛔ IT IS THE COMBINATION THAT LEAKS, NOT EITHER ALONE. With no consenting
+    values published there is nothing to subtract."""
+    out = XF.decliner_derivable(10, 6.0, [])
+    assert out["derivable"] is False
+    assert "nothing" in out["reason"]
+
+
+def test_safe_publication_withholds_the_NAMES_and_keeps_the_aggregate():
+    """⭐ The aggregate survives — it is what the instrument was fielded for —
+    and the named values are withheld with the reason stated."""
+    values = {"a": 6, "b": 7, "c": 5, "d": 2}
+    out = XF.safe_publication(4, values, consented_parties=["a", "b", "c"])
+    assert out["aggregate"] == pytest.approx(5.0)
+    assert out["named"] == {}, "named values published beside the aggregate — " \
+        "the decliner is recoverable by subtraction"
+    assert set(out["withheld"]) == set(values)
+    assert "subtraction" in out["why"]
+    # ⛔ and the withheld set must actually defeat the attack
+    assert XF.decliner_derivable(4, out["aggregate"], [])["derivable"] is False
+
+
+def test_with_NOBODY_declining_the_names_publish():
+    """⭐ THE KNOWN POSITIVE. A mechanism that withheld always would pass every
+    test above and be useless."""
+    values = {"a": 6, "b": 7, "c": 5}
+    out = XF.safe_publication(3, values, consented_parties=["a", "b", "c"])
+    assert out["named"] == values and out["withheld"] == []
+    assert out["why"] is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⛔ CONSENT IS SCOPED
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_consent_does_NOT_carry_forward_to_a_new_cycle():
+    """⛔⭐⭐ A re-fielded instrument next quarter is a NEW consent. The
+    relationship may have changed and the contract may be up for renewal — the
+    answer they are about to give is not the one they agreed to publish."""
+    c = {"consented": True, "instrument_key": "suppliers", "cycle_id": 11}
+    assert XF.consent_valid_for(c, "suppliers", 11) is True
+    assert XF.consent_valid_for(c, "suppliers", 12) is False, (
+        "consent carried silently into the next cycle")
+    assert XF.consent_valid_for(c, "partners", 11) is False, (
+        "consent carried across instruments")
+
+
+def test_an_UNSCOPED_consent_authorises_nothing():
+    """⛔ A record with no scope is not a wildcard."""
+    assert XF.consent_valid_for({"consented": True}, "suppliers", 11) is False
+    assert XF.consent_valid_for(
+        {"consented": True, "instrument_key": "suppliers"}, "suppliers", 11) is False
+    assert XF.consent_valid_for(None, "suppliers", 11) is False
+
+
+def test_revocation_stops_future_publication_and_does_not_rewrite_the_past():
+    """⭐ A pack is immutable and a board saw what it saw. Retracting a name
+    from a published artefact is impossible, and pretending otherwise would be
+    the lie — so revocation is recorded with its time instead."""
+    c = {"consented": True, "instrument_key": "suppliers", "cycle_id": 11}
+    r = XF.revoke_consent(c, note="contract ended")
+    assert r["consented"] is False
+    assert XF.consent_valid_for(r, "suppliers", 11) is False
+    assert r["revoked_at"] and r["revoked_note"] == "contract ended"
+    assert r["already_published_unaffected"] is True
