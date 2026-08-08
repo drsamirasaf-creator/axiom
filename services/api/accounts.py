@@ -2233,9 +2233,35 @@ require_super = require_platform("super")
 
 
 def _gate_account(db, company_id: int):
-    """Raise 402 if the paying account behind this company is not in good standing."""
+    """Raise 402 if the paying account behind this company is not in good standing.
+
+    ⛔⭐⭐ THE SHOWCASE IS EXEMPT, BY ITS OWN IDENTITY. `CompanyAccess` is a
+    BILLING artefact — `_slots_used` counts its rows against purchased slots and
+    `_company_account`'s docstring says a missing one means "showcase/demo" — so
+    the ABSENCE of a row IS the demo state, not a gap in it. Giving the showcase
+    a row would either consume a paying customer's slot or hand the demo a
+    subscription and a slot ledger.
+
+    ⭐ SCOPED TO `_is_showcase_company`, THE THIRD USE OF ONE PATTERN, not a
+    fourth mechanism: `require_report_read` and the Prescience gate already
+    exempt the showcase the same way. It reads the ENTERPRISE'S OWN `tenant`
+    column and is fail-closed — any lookup error returns False, i.e. treat it as
+    a real, access-controlled company.
+
+    ⛔ NOT A REQUEST-READABLE FLAG, NOT AN ENV VAR, NOT A "DEMO MODE". A
+    condition a caller could influence would be a route to bypass billing on a
+    real company; this one is a property of the row in the database and no
+    header, body or token can move it.
+
+    ⛔ AND THE EXEMPTION IS THE ROW, NOT THE CHECK. A showcase company that
+    somehow HAS a CompanyAccess row still falls through to the account check
+    below, so a paused account is still refused — the exemption removes the
+    "no row" 404 and nothing else.
+    """
     access = db.query(CompanyAccess).filter_by(company_id=company_id).first()
     if not access:
+        if _is_showcase_company(db, company_id):
+            return None, None
         raise HTTPException(404, "Company is not provisioned for access control")
     account = db.get(Account, access.account_id)
     if not account or account.status in ("paused", "canceled"):
