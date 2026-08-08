@@ -81,7 +81,7 @@ The dispatch's rule caught exactly what it was written for.
 | `/objective/{obj_key}` | ⛔ **READ-ONLY.** `objective.$objKey.tsx` imports only **types** from `OkrPanels` and carries no write call |
 | `/key-result/{kr_key}` | ⛔ **READ-ONLY**, same shape |
 | `/initiative/{id}` | ⛔ **READ-ONLY** |
-| `/department/13?tab=signoff` | ⛔ **NO SUCH TAB.** The department tabs are map · okrs · kpis · initiatives · voice · sentiment · feedback · swot · people · trend |
+| `/department/{id}?tab=signoff` | ⛔ **NO SUCH TAB.** The department tabs are map · okrs · kpis · initiatives · voice · sentiment · feedback · swot · people · trend |
 
 ⭐ **Where the editing actually lives**, derived from `src/lib/okr.ts`'s callers:
 `OkrPanels` / `OkrEditors` hold every objective, key-result and KPI mutation and
@@ -96,7 +96,7 @@ AS SHOWN — every tab, not the one that happens to be open."*
 objective_without_initiative  -> /dashboard
 key_result_without_kpi        -> /dashboard
 status_never_set              -> /initiatives
-not_signed_off                -> /department/13
+not_signed_off                -> /department/{id}
 ```
 
 ⭐ **The test that asserted the old destination was corrected with its reason,
