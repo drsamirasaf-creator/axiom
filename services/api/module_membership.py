@@ -50,6 +50,12 @@ DEPENDS_ON = {"execute": "strategize"}
 
 # ── ANALYZE — mandatory, never toggled ──────────────────────────────────
 PATHS_ANALYZE: tuple[str, ...] = (
+    # ⭐ The steward's workspace — READ ONLY. It lists work across ANALYZE,
+    # STRATEGIZE and EXECUTE objects and is declared ANALYZE because it only ever
+    # diagnoses what is outstanding; the doing happens on the surfaces it links
+    # to, each of which carries its own module.
+    "/companies/{company_id}/departments/{department_id}/workspace",
+    "/companies/{company_id}/workspace",
     "/api/v1/benchmarks/compare",
     "/api/v1/financials/datasets/{dataset_id}/eva-distribution",
     "/api/v1/financials/datasets/{dataset_id}/plan-vs-methods",
