@@ -6708,6 +6708,36 @@ def _dept_counts(db, company_id):
     return counts
 
 
+@router.get("/companies/{company_id}/workspace")
+def steward_workspace(company_id: int,
+                      member=Depends(require_company_member),
+                      user: User = Depends(get_current_user), db=Depends(get_db)):
+    """The steward's ONE page — what is owed and what is stale, per department.
+
+    ⛔ READ AND LINK ONLY. Every item carries an `href` to the surface that
+    already edits that object. Eleven widened endpoints exist; a second surface
+    writing the same rows would be the two-owners class.
+
+    ⛔ THE VISIBLE SET IS THE WRITABLE SET. `workspace.for_caller` asks
+    `_steward_or_admin` per department — the same seam the eleven writes use — so
+    a steward sees their own department and an admin sees all, and nobody is
+    shown work they cannot do.
+    """
+    from . import workspace as _ws
+    return _ws.for_caller(db, company_id, user)
+
+
+@router.get("/companies/{company_id}/departments/{department_id}/workspace")
+def department_workspace(company_id: int, department_id: int,
+                         member=Depends(require_company_member),
+                         user: User = Depends(get_current_user), db=Depends(get_db)):
+    """One department's list. ⛔ Refuses through the SAME seam as the writes, so a
+    steward on department A is refused on B here exactly as they are there."""
+    from . import workspace as _ws
+    _steward_or_admin(db, company_id, user, department_id, "This department")
+    return _ws.for_department(db, company_id, department_id)
+
+
 @router.get("/companies/{company_id}/departments")
 def list_departments(company_id: int, member=Depends(_summary_access), db=Depends(get_db)):
     """The company org chart — flat list of departments (parent_id nests them) with
