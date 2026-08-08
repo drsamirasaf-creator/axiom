@@ -262,6 +262,28 @@ def ensure_override_schema(engine):
     return {"action": "rebuilt", "rows_preserved": 0, "was_missing": sorted(missing)}
 
 
+# ── who may ENDORSE, and who may only DECLARE ────────────────────────────────
+# ⭐⭐ THE UNDERLYING MODEL, IN THREE WORDS. Every role in AXIOM is one of three
+# kinds of person at one scope:
+#
+#     DECLARE     steward (department) · deputy (enterprise)
+#     ENDORSE     CXO (department)     · CEO (enterprise)
+#     ADMINISTER  company admin (workspace)
+#
+# ⛔ SIGN-OFF NEVER DELEGATES. That is the whole invariant, and these two sets
+# are where it is enforced: `department_authority` reads ENDORSING_ROLES and
+# nothing else, so a delegating grant cannot reach a sign-off however the
+# calling code is later rewritten.
+#
+# ⭐ Roles COMPOSE. Grants are rows (§7.2), so one person may hold a delegating
+# grant on their own department and an endorsing grant on another — a chief of
+# staff who is also a CXO — and the two rows never interfere. The sets classify
+# GRANTS, not people, which is what makes composition free rather than a feature.
+ENDORSING_ROLES = frozenset({"cxo"})
+DELEGATING_ROLES = frozenset({"delegate", "steward", "deputy"})
+GRANT_ROLES = ENDORSING_ROLES | DELEGATING_ROLES
+
+
 # ── the grant model (§4x §7, Stage 2) ────────────────────────────────────────
 
 class DepartmentAuthority(Base):
@@ -372,6 +394,17 @@ def grant_department(db, company_id, department_id, *, user_id, granted_by,
         raise GrantError(
             "Platform staff cannot issue department authority — granting is how "
             "authoring is obtained, so the exclusion has to hold at both steps.")
+    # ⛔ AN UNKNOWN ROLE FAILS CLOSED. `role` is a free String(24) column, so a
+    # typo — "CXO", "cx0", "chief" — would previously have stored cleanly and
+    # then been invisible to ENDORSING_ROLES, producing a grant that looks issued
+    # on every screen and authorises nothing. Refusing here means the two ways to
+    # get a non-endorsing grant are both deliberate: ask for a delegating role,
+    # or be told the role does not exist.
+    if role not in GRANT_ROLES:
+        raise GrantError(
+            f"Unknown authority role {role!r}. Endorsing roles: "
+            f"{sorted(ENDORSING_ROLES)}; delegating roles: "
+            f"{sorted(DELEGATING_ROLES)}.")
     # ⭐ AN ADMIN CANNOT GRANT THEMSELVES. §7.1's separation — the admin decides
     # who speaks for a department and can never speak for one — is the spine the
     # whole feature rests on, and self-granting routes around it in one request:
@@ -906,7 +939,7 @@ class AuthorityError(Exception):
 
 
 def department_authority(db, company_id: int, user_id: int, department_id: int) -> bool:
-    """Is this user the CXO of THIS department?
+    """Is this user entitled to ENDORSE for THIS department?
 
     EXPLICIT GRANT ONLY — deliberately NOT an email match against
     Department.head_email. _on_behalf_suffix matches head by email string, which
@@ -914,13 +947,33 @@ def department_authority(db, company_id: int, user_id: int, department_id: int) 
     department's head email would silently transfer the right to author board
     figures. Stage 2 adds ax_department_authority rows; until it exists this
     returns False for everyone, which fails closed — no one can author anything.
+
+    ⛔⭐⭐ AND THE ROLE IS PART OF THE QUESTION. This used to ask only "does a
+    live grant row exist?", which is a PROXY for authority-to-endorse, not the
+    property itself (§III.15). The `role` column already carried the comment
+    "cxo | delegate" — a value it was designed to hold as a DISPLAY LABEL — so a
+    delegate grant would have conferred the right to sign a board figure, and
+    nothing in the code said otherwise. The proxy and the property agreed only
+    because no non-CXO grant had ever been issued.
+
+    ⭐ THE WORK DELEGATES; THE ENDORSEMENT DOES NOT. A steward maintains and the
+    CXO signs; a deputy operates and the CEO signs. Both are grant rows and
+    neither is visible to this function, so "who stood behind this number" can
+    never answer "the CEO's analyst".
     """
     grant = getattr(Base, "_department_authority_model", None)
     if grant is None:
         return False                      # Stage 2 not yet built: fail closed
     row = (db.query(grant)
-             .filter_by(company_id=company_id, user_id=user_id,
-                        department_id=department_id, revoked_at=None).first())
+             .filter(grant.company_id == company_id,
+                     grant.user_id == user_id,
+                     grant.department_id == department_id,
+                     grant.revoked_at.is_(None),
+                     # ⛔ THE ENDORSEMENT FILTER. A delegating grant is a real row
+                     # with a real lifecycle and is simply not an answer to this
+                     # question.
+                     grant.role.in_(tuple(ENDORSING_ROLES)))
+             .first())
     return row is not None
 
 
