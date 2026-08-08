@@ -157,3 +157,55 @@ def publish_set(groups):
                                 "the floor and publishing every other member "
                                 "would reconstruct it by subtraction")}
     return out
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⛔⭐⭐ ATTRIBUTION — EXTERNAL ONLY, AND THE BOUNDARY MUST NOT BLUR
+# ═══════════════════════════════════════════════════════════════════════════
+# FOUNDER RULING, 8 Aug: external stakeholders are ATTRIBUTED, not anonymous.
+# External parties generally WANT to be named — a supplier flagging a problem
+# wants management to know who is unhappy and about what, and anonymity defeats
+# the purpose of the instrument.
+#
+# ⛔ INTERNAL GROUPS ARE UNCHANGED. Employees, Managers and Supervisors, Senior
+# Executives and Board Members remain anonymous under §4u-c. The instruments
+# already carry `orientation: internal|external`, and THAT FIELD IS THE
+# BOUNDARY. An internal response can never become attributed, whatever consent
+# is recorded against it — because the consent an employee gave was to an
+# anonymous instrument, and a later flag cannot retroactively change what they
+# agreed to.
+INTERNAL = "internal"
+EXTERNAL = "external"
+
+
+class InternalAttributionRefused(Exception):
+    """⛔ Raised, never silently ignored. Dropping the request would let a
+    caller believe the attribution took effect — the same reasoning §4u-c gives
+    for `assign()` RAISING on a comment kwarg rather than stripping it."""
+
+
+def may_attribute(orientation, consented):
+    """Can this response carry a name? -> bool. ⛔ Both conditions, never one.
+
+    ⭐ Consent is necessary and NOT sufficient: an internal respondent who ticks
+    a box is still internal, and §4u-c governs them.
+    """
+    if orientation != EXTERNAL:
+        return False
+    return bool(consented)
+
+
+def attribute(orientation, consented, party_name):
+    """The name to publish, or None. ⛔ REFUSES on an internal response rather
+    than returning None, so a caller cannot read silence as 'no name available'
+    when the truth is 'this may never be named'."""
+    if orientation == INTERNAL:
+        raise InternalAttributionRefused(
+            "an internal response can never be attributed — §4u-c governs "
+            "employees, managers, senior executives and board members, and the "
+            "consent they gave was to an ANONYMOUS instrument")
+    if orientation != EXTERNAL:
+        raise InternalAttributionRefused(
+            f"unknown orientation {orientation!r} — attribution requires an "
+            f"explicitly EXTERNAL instrument, and an unclassified one is not it")
+    return party_name if consented else None

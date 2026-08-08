@@ -193,3 +193,48 @@ def test_the_internal_KFLOOR_is_untouched():
     used |= {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
     assert "KFLOOR" not in used, \
         "the external mechanism reads the internal constant"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⛔⭐⭐ THE ATTRIBUTION BOUNDARY — INTERNAL CAN NEVER BECOME ATTRIBUTED
+# ═══════════════════════════════════════════════════════════════════════════
+
+def test_an_internal_response_can_NEVER_be_attributed():
+    """⛔ THE ASSERTION THE RULING DEMANDS. `orientation` is the boundary and it
+    must not blur. An employee's consent was given to an ANONYMOUS instrument,
+    and a later flag cannot retroactively change what they agreed to."""
+    assert XF.may_attribute("internal", consented=True) is False, (
+        "an internal response became attributable because someone set a "
+        "consent flag — §4u-c governs employees regardless")
+    with pytest.raises(XF.InternalAttributionRefused):
+        XF.attribute("internal", True, "Acme")
+
+
+def test_an_external_response_is_attributed_only_WITH_consent():
+    """⛔ CONSENT IS THE RESPONDENT'S, NOT THE COMPANY'S. A supplier named to
+    their customer's CEO without agreeing is a commercial consequence."""
+    assert XF.may_attribute("external", consented=True) is True
+    assert XF.may_attribute("external", consented=False) is False
+    assert XF.attribute("external", True, "Acme") == "Acme"
+    assert XF.attribute("external", False, "Acme") is None
+
+
+def test_an_unclassified_orientation_REFUSES_rather_than_defaulting():
+    """⛔ An instrument nobody classified is not evidence that naming is safe —
+    the same stricter-default reasoning as the floor."""
+    with pytest.raises(XF.InternalAttributionRefused):
+        XF.attribute(None, True, "Acme")
+    assert XF.may_attribute(None, consented=True) is False
+
+
+def test_the_refusal_RAISES_rather_than_returning_None():
+    """⭐ §4u-c's own reasoning for `assign()` raising on a comment kwarg rather
+    than stripping it: silently dropping would let a caller believe it took
+    effect. A None here would read as 'no name available' when the truth is
+    'this may never be named'."""
+    try:
+        XF.attribute("internal", True, "Acme")
+    except XF.InternalAttributionRefused as e:
+        assert "never be attributed" in str(e) and "ANONYMOUS" in str(e)
+    else:
+        pytest.fail("an internal attribution returned instead of refusing")
