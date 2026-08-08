@@ -297,6 +297,13 @@ jobs:
       # deliberately; that is where it hid.
       # ⛔ Its own first version could not catch the case that motivated it: the
       # defect is a membership test, not a comparison. Found by red-proofing.
+      # ⭐ CLAUDE.md is the first thing a lane reads, so it will be CITED
+      # INSTEAD OF RE-MEASURED — and a recorded measurement is not a control
+      # (§III.24). The defence is to keep it POINTERS rather than copies, and
+      # then assert the pointers. It cannot check the prose; the deploy rule is
+      # a fact about Lovable's account, outside both repos.
+      - name: CLAUDE.md points at paths that exist
+        run: python scripts/check-claude-md-paths.py
       - name: goal_key binds the text hash, not the ordinal
         run: python scripts/check-goal-key-convention.py
       - name: source vocabulary (one default across the dual-path family)
