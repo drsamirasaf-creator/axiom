@@ -90,14 +90,17 @@ def for_department(db, company_id: int, department_id: int, now=None) -> dict:
         if str(o.objective_id) not in with_ini:
             add("objective_without_initiative", o.objective,
                 "No project sits beneath this objective, so nothing is being done about it.",
-                f"/objective/{o.obj_key}")
+                # ⛔ NOT /objective/{key} — that page is READ-ONLY. The
+                # editors live in OkrPanels/OkrEditors, rendered on the
+                # dashboard, which is where a steward can actually act.
+                "/dashboard")
 
     # ── key results with no KPI ──────────────────────────────────────────────
     for k in krs:
         if not k.kpi_key or k.kpi_key not in kkeys:
             add("key_result_without_kpi", k.key_result,
                 "This key result has no KPI of this department behind it, so nothing measures it.",
-                f"/key-result/{k.kr_key}")
+                "/dashboard")
 
     # ── strategy-map nodes connected to nothing ──────────────────────────────
     # ⭐ The SAME connectivity the map builder projects — a node is connected
@@ -109,14 +112,14 @@ def for_department(db, company_id: int, department_id: int, now=None) -> dict:
         if k.kpi_key not in touched_kpi:
             add("kpi_connected_to_nothing", k.kpi_name,
                 "This KPI is on the strategy map with no connection to an objective or project.",
-                f"/kpi/{k.id}")
+                "/dashboard")
     touched_ini = ({l.initiative_id for l in GI} | {l.initiative_id for l in KI}
                    | {l.initiative_id for l in KRL})
     for i in inis:
         if i.id not in touched_ini:
             add("project_connected_to_nothing", i.title,
                 "This project traces to no objective or KPI, so its contribution cannot be shown.",
-                f"/initiative/{i.id}")
+                "/initiatives")
 
     # ── status updates past their age ────────────────────────────────────────
     OPEN = {"proposed", "in_progress", "active", "on_hold"}
@@ -127,11 +130,11 @@ def for_department(db, company_id: int, department_id: int, now=None) -> dict:
         if age is None:
             add("status_never_set", i.title,
                 "This project has never had a status update.",
-                f"/initiative/{i.id}")
+                "/initiatives")
         elif age > STATUS_STALE_DAYS:
             add("status_stale", i.title,
                 f"Last status update was {age} days ago.",
-                f"/initiative/{i.id}", note=f"{age}d")
+                "/initiatives", note=f"{age}d")
 
     # ── participants invited and not responded ───────────────────────────────
     cyc = current_cycle_with_responses(db, company_id)
@@ -157,7 +160,11 @@ def for_department(db, company_id: int, department_id: int, now=None) -> dict:
     if signed is None:
         add("not_signed_off", "This department is not signed off",
             "The CXO has not endorsed this department's current state.",
-            f"/department/{department_id}?tab=signoff")
+            # ⛔ NOT ?tab=signoff — no such tab exists. SignoffPanel renders
+            # ABOVE the tab strip, deliberately: sign-off attests to the
+            # department AS SHOWN, every tab, not the one that happens to be
+            # open. The bare department path is the destination.
+            f"/department/{department_id}")
 
     counts: dict[str, int] = {}
     for it in items:

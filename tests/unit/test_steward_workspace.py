@@ -81,7 +81,11 @@ def test_an_objective_with_no_project_beneath_it_is_listed_with_a_link(_app):
         assert "objective_without_initiative" in kinds, out
         item = next(i for i in out["items"] if i["kind"] == "objective_without_initiative")
         assert item["label"] == "Grow margin"
-        assert item["href"] == f"/objective/{o.obj_key}", \
+        # ⛔ THE DESTINATION IS WHERE THE OBJECT IS EDITED, NOT WHERE IT IS
+        # DISPLAYED. /objective/{key} exists and is READ-ONLY — it imports only
+        # types from OkrPanels. The editors (OkrPanels/OkrEditors) render on the
+        # dashboard, so that is where a steward can actually act.
+        assert item["href"] == "/dashboard", \
             "every item must link to where the object is ALREADY edited"
         assert item["why"], "an item without a reason is a chore, not a prompt"
         assert out["state"] == "outstanding"
