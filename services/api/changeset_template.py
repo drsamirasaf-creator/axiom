@@ -78,6 +78,25 @@ def _dept_items(db, company_id, departments):
     return out
 
 
+def collisions_in(items) -> list:
+    """The items that disagree with an in-app edit, whatever produced them.
+
+    ⭐ A NAMED PREDICATE, not an inline comprehension at the call site. The
+    upload endpoint decides whether to park on this, and a rule that decides
+    whether a customer's data is applied should be a function with a test rather
+    than a filter expression buried in a request handler.
+
+    Accepts dicts (fresh from `build_items`) or ChangesetItem rows (read back),
+    because the parking decision is made in both places.
+    """
+    out = []
+    for i in items or ():
+        v = i.get("validation", CLEAN) if isinstance(i, dict) else getattr(i, "validation", CLEAN)
+        if v == COLLISION:
+            out.append(i)
+    return out
+
+
 def _row_items(db, company_id, ds_id, objectives, key_results, kpis):
     out = []
     cur_obj = {o.obj_key: o for o in db.query(Objective).filter_by(
@@ -118,12 +137,57 @@ def _row_items(db, company_id, ds_id, objectives, key_results, kpis):
                         "validation": COLLISION,
                         "validation_detail": "Absent from this upload — carried forward "
                                              "flagged, never deleted."})
+    # ⛔⭐⭐ KEY RESULTS EMITTED `create` FOR EVERY ROW AND COMPARED NOTHING.
+    # A steward edits a target in-app, the template carries the old target, and
+    # the row went through as a create — silently replaced, with the reviewer
+    # shown a "new key result" that was neither new nor reviewed as a change.
+    # Objectives and KPIs beside it did the comparison; this one never did.
+    #
+    # ⭐ THE KEY IS (parent obj_key, normalised text), matching
+    # `_reconcile_okr_upload` exactly. A KR's text is only unique under its
+    # objective — "Reduce cost per unit" can live under two — so keying on the
+    # text alone would collapse two departments' key results into one row.
+    oid2key = {o.get("objective_id"): _goal_key(o["objective"]) for o in objectives}
+    cur_kr = {}
+    if ds_id:
+        obj_by_oid = {o.objective_id: o for o in cur_obj.values()}
+        for r in db.query(KeyResult).filter_by(company_id=company_id, dataset_id=ds_id).all():
+            parent = obj_by_oid.get(r.objective_id)
+            if parent is not None:
+                cur_kr[(parent.obj_key, _norm_kpi_key(r.key_result))] = r
+    seen_kr = set()
     for kr in key_results:
-        out.append({"category": "key_results", "op": "create",
-                    "entity_key": _norm_kpi_key(kr["key_result"]),
-                    "entity_label": kr["key_result"][:120],
-                    "new_value": {"key_result": kr["key_result"], "unit": kr.get("unit"),
-                                  "target": kr.get("target"), "current": kr.get("current")}})
+        key = (oid2key.get(kr.get("objective_id")), _norm_kpi_key(kr["key_result"]))
+        seen_kr.add(key)
+        new = {"key_result": kr["key_result"], "unit": kr.get("unit"),
+               "target": kr.get("target"), "current": kr.get("current")}
+        cur = cur_kr.get(key)
+        if cur is None:
+            out.append({"category": "key_results", "op": "create",
+                        "entity_key": key[1], "entity_label": kr["key_result"][:120],
+                        "new_value": new})
+            continue
+        old = {"key_result": cur.key_result, "unit": cur.unit,
+               "target": cur.target, "current": cur.current}
+        diff = {kk: vv for kk, vv in new.items() if old.get(kk) != vv}
+        if diff:
+            coll = (cur.source == "in_app")
+            out.append({"category": "key_results", "op": "update",
+                        "entity_key": key[1], "entity_label": kr["key_result"][:120],
+                        "old_value": {kk: old.get(kk) for kk in diff},
+                        "new_value": diff,
+                        "validation": COLLISION if coll else CLEAN,
+                        "validation_detail": ("This key result was edited in-app; the "
+                                              "template proposes different content.")
+                                             if coll else None})
+    for key, cur in cur_kr.items():
+        if key not in seen_kr:
+            out.append({"category": "key_results", "op": "flag_absent",
+                        "entity_key": key[1], "entity_label": cur.key_result[:120],
+                        "old_value": {"key_result": cur.key_result}, "new_value": None,
+                        "validation": COLLISION,
+                        "validation_detail": "Absent from this upload — carried forward "
+                                             "flagged, never deleted."})
     cur_kpi = {_norm_kpi_key(k.kpi_name): k for k in db.query(KpiPlan).filter_by(
         company_id=company_id, dataset_id=ds_id).all()} if ds_id else {}
     for k in kpis:
@@ -139,10 +203,20 @@ def _row_items(db, company_id, ds_id, objectives, key_results, kpis):
                    "ytd_actual": cur.ytd_actual, "full_year_target": cur.full_year_target}
             diff = {kk: vv for kk, vv in new.items() if old.get(kk) != vv}
             if diff:
+                # ⛔ THE KPI UPDATE CARRIED NO `validation` AT ALL, so a diverging
+                # in-app KPI reviewed as CLEAN — while `_reconcile_okr_upload`,
+                # the other owner of this rule, recorded exactly that case as a
+                # conflict. Two owners of one concept, disagreeing about the
+                # same upload.
+                coll = (cur.source == "in_app")
                 out.append({"category": "kpis", "op": "update", "entity_key": key,
                             "entity_label": k["kpi_name"][:120],
                             "old_value": {kk: old.get(kk) for kk in diff},
-                            "new_value": diff})
+                            "new_value": diff,
+                            "validation": COLLISION if coll else CLEAN,
+                            "validation_detail": ("This KPI was edited in-app; the "
+                                                  "template proposes different content.")
+                                                 if coll else None})
     return out
 
 

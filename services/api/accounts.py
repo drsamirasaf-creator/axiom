@@ -51,6 +51,8 @@ def get_db():
 # security
 # ======================================================================
 import hashlib
+from .provenance import (  # noqa: E402
+    DEFAULT_SOURCE, SOURCE_IN_APP, SOURCE_TEMPLATE, is_in_app)
 from .response_schemas import (  # noqa: E402
     AssessmentSummaryOut, AssessmentCurrentOut, InitiativeListOut,
     ObjectivesOut, UrgentItemsOut, AssessmentSwotOut,
@@ -421,7 +423,7 @@ class AssessmentInstrument(Base):
     # ⭐ internal|external — asserted here, inherited from the items it selects
     orientation = Column(String(16), nullable=True)
     revision = Column(Integer, default=1, nullable=False)
-    source = Column(String(16), default="template", nullable=False)   # template|in_app
+    source = Column(String(16), default=DEFAULT_SOURCE, nullable=False)   # template|in_app
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     created_by = Column(Integer, nullable=True)
     # ⛔ REMOVAL IS A REVOKE, NEVER A DELETE (§4v.1 ruling 1). An instrument that
@@ -453,7 +455,7 @@ class AssessmentInstrumentItem(Base):
     position = Column(Integer, nullable=True)
     # shared | unique — which block of the workbook this row came from
     block = Column(String(16), nullable=True)
-    source = Column(String(16), default="template", nullable=False)   # template|in_app
+    source = Column(String(16), default=DEFAULT_SOURCE, nullable=False)   # template|in_app
     # ⛔ a template that no longer mentions this row FLAGS it; it never deletes it
     flagged_absent = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -571,7 +573,10 @@ class Participant(Base):
     seniority = Column(String(40), nullable=True)               # §4u band (assessors)
     is_ceo = Column(Boolean, default=False, nullable=False)
     status = Column(String(16), default="staged", nullable=False)   # staged|invited|active
-    source = Column(String(16), default="upload", nullable=False)   # upload|in_app
+    # ⛔ WAS default="upload" — the same path as every sibling's "template",
+    # spelled differently, so reconciliation code asking `source == "template"`
+    # was wrong on this table alone. One vocabulary now: services/api/provenance.py.
+    source = Column(String(16), default=DEFAULT_SOURCE, nullable=False)   # template|in_app
     not_in_latest = Column(Boolean, default=False, nullable=False)  # absent from the most recent upload (flag, never delete)
     is_demo = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -1298,7 +1303,10 @@ class AxisObjectiveLink(Base):
     company_id = Column(Integer, index=True, nullable=False)
     l1_code = Column(String(40), index=True, nullable=False)
     obj_key = Column(String(64), index=True, nullable=False)
-    source = Column(String(16), default="in_app", nullable=False)
+    # ⛔ WAS default="in_app". A row whose origin nobody recorded would have
+    # WON a reconciliation it should have lost. The safe default is the
+    # one that loses.
+    source = Column(String(16), default=DEFAULT_SOURCE, nullable=False)   # template|in_app
     declared_by = Column(Integer, nullable=True)
     declared_by_label = Column(String(160), nullable=True)
     declared_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -1350,7 +1358,7 @@ class Objective(Base):
     owner_person_name = Column(String(160), index=True, nullable=True)
     uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     # in-app CRUD provenance + reconciliation (all additive, boot-migrated)
-    source = Column(String(16), default="template", nullable=False)   # template | in_app
+    source = Column(String(16), default=DEFAULT_SOURCE, nullable=False)   # template | in_app
     created_by_user_id = Column(Integer, nullable=True)
     created_by_name = Column(String(160), nullable=True)
     created_at = Column(DateTime, nullable=True)
@@ -1390,7 +1398,7 @@ class KeyResult(Base):
     current = Column(Float, nullable=True)
     due_date = Column(String(40), nullable=True)
     uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    source = Column(String(16), default="template", nullable=False)
+    source = Column(String(16), default=DEFAULT_SOURCE, nullable=False)
     created_by_user_id = Column(Integer, nullable=True)
     created_by_name = Column(String(160), nullable=True)
     created_at = Column(DateTime, nullable=True)
@@ -1472,7 +1480,7 @@ class KpiObjectiveLink(Base):
     company_id = Column(Integer, index=True, nullable=False)
     kpi_key = Column(String(64), index=True, nullable=False)
     goal_key = Column(String(64), index=True, nullable=False)
-    source = Column(String(16), default="template", nullable=False)   # template|in_app
+    source = Column(String(16), default=DEFAULT_SOURCE, nullable=False)   # template|in_app
     flagged_absent = Column(Boolean, default=False, nullable=False)
     created_by = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -1497,7 +1505,7 @@ class KpiInitiativeLink(Base):
     company_id = Column(Integer, index=True, nullable=False)
     kpi_key = Column(String(64), index=True, nullable=False)
     initiative_id = Column(Integer, index=True, nullable=False)
-    source = Column(String(16), default="template", nullable=False)   # template|in_app
+    source = Column(String(16), default=DEFAULT_SOURCE, nullable=False)   # template|in_app
     flagged_absent = Column(Boolean, default=False, nullable=False)
     created_by = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -1534,7 +1542,7 @@ class GoalInitiativeLink(Base):
     company_id = Column(Integer, index=True, nullable=False)
     goal_key = Column(String(64), index=True, nullable=False)
     initiative_id = Column(Integer, index=True, nullable=False)
-    source = Column(String(16), default="template", nullable=False)   # template|in_app
+    source = Column(String(16), default=DEFAULT_SOURCE, nullable=False)   # template|in_app
     flagged_absent = Column(Boolean, default=False, nullable=False)
     created_by = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -1566,7 +1574,7 @@ class KrInitiativeLink(Base):
     company_id = Column(Integer, index=True, nullable=False)
     kr_key = Column(String(64), index=True, nullable=False)
     initiative_id = Column(Integer, index=True, nullable=False)
-    source = Column(String(16), default="template", nullable=False)
+    source = Column(String(16), default=DEFAULT_SOURCE, nullable=False)
     flagged_absent = Column(Boolean, default=False, nullable=False)
     created_by = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -1732,7 +1740,7 @@ class KpiPlan(Base):
     direction = Column(String(16), default="higher_better",
                        server_default="higher_better", nullable=False)
     uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    source = Column(String(16), default="template", nullable=False)
+    source = Column(String(16), default=DEFAULT_SOURCE, nullable=False)
     created_by_user_id = Column(Integer, nullable=True)
     created_by_name = Column(String(160), nullable=True)
     created_at = Column(DateTime, nullable=True)
@@ -4167,6 +4175,35 @@ async def data_upload(company_id: int, file: UploadFile = File(...),
                     "uploaded_by_user_id": getattr(user, "id", None),
                     "uploaded_at": datetime.utcnow().isoformat()},
         user=user)
+    # ⛔⭐⭐ A COLLISION PARKS THE UPLOAD. This was `decide(..., scope="all")`
+    # unconditionally: the changeset machinery computed every collision, recorded
+    # it, and then the same request approved all of it — so the review screen
+    # that exists to show conflicts never opened, and a stale spreadsheet's
+    # divergence was accepted by the person who uploaded it without them ever
+    # being told there was one.
+    #
+    # ⭐ "IN-APP WINS" IS NOT WEAKENED BY THIS. The applier still keeps the
+    # in-app row. What parking adds is the second half the rule always needed:
+    # the CFO holding the true number can now ACCEPT THE TEMPLATE'S value, per
+    # row, and `decide()` records who did it and when (§4v.1). Without a route
+    # to accept, "in-app wins" means a stale in-app edit beats a corrected
+    # spreadsheet forever.
+    #
+    # ⛔ A CLEAN UPLOAD IS UNCHANGED — still one request, still applied. Parking
+    # every upload would make the common case worse to fix the rare one.
+    from .changeset_template import collisions_in
+    collisions = collisions_in(cs.items)
+    if collisions:
+        by_cat = {}
+        for i in collisions:
+            by_cat[i.category] = by_cat.get(i.category, 0) + 1
+        return {"status": "parked_for_review", "changeset_id": cs.id,
+                "conflicts": len(collisions), "conflicts_by_category": by_cat,
+                "warnings": warnings,
+                "note": ("This upload disagrees with edits made in the app. Nothing "
+                         "has been applied. Review each difference and choose the "
+                         "app's value or the template's; your choice is recorded "
+                         "with your name and the date.")}
     decide(db, cs, decision=APPROVED, scope="all", user=user)
     # The raw bytes ride in memory (never into the JSON payload — a 5 MB workbook
     # has no business in a row) so the applier can stash the original in R2.

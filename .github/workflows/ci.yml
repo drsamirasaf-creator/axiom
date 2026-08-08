@@ -273,6 +273,22 @@ jobs:
       # ⛔ AXIOM_FRONTEND_OPTIONAL=1 lets the ROUTE half skip on a runner with no
       # frontend checkout — and the script PRINTS that it skipped, so a green
       # tick here is not read as route coverage.
+      # ⭐ ONE `source` VOCABULARY. Eleven tables carried three defaults for one
+      # concept — ax_participants said "upload" where its siblings said
+      # "template" — so reconciliation code asking `source == "template"` was
+      # wrong on one table, and a row defaulting to "in_app" would WIN a
+      # reconciliation it should lose. The check pins the VALUE as a literal:
+      # comparing the columns against the constant they import compares it with
+      # itself.
+      - name: source vocabulary (one default across the dual-path family)
+        run: python scripts/check-source-vocabulary.py
+      # ⭐ EVERY OBJECT A TEMPLATE CARRIES MUST BE ABLE TO RECORD A CONFLICT.
+      # Both sides derived: the denominator from apply_upload's own keyword-only
+      # parameters, the numerator from the categories _row_items can emit as a
+      # COLLISION. A new template sheet becomes a new parameter and this goes red
+      # until the conflict path grows with it.
+      - name: upload conflict coverage (fraction, denominator printed)
+        run: python scripts/check-upload-conflict-coverage.py
       - name: module membership (paths enforced; ROUTE half skipped — no frontend here)
         env:
           AXIOM_FRONTEND_OPTIONAL: "1"

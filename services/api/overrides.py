@@ -977,6 +977,44 @@ def department_authority(db, company_id: int, user_id: int, department_id: int) 
     return row is not None
 
 
+def department_declare_authority(db, company_id: int, user_id: int,
+                                 department_id: int) -> bool:
+    """May this user DECLARE for this department — maintain its work?
+
+    ⭐⭐ THE SIBLING OF `department_authority`, AND DELIBERATELY WIDER. Declaring
+    and endorsing are different acts:
+
+        DECLARE   a steward maintains objectives, KPIs, projects, strategy-map
+                  edges — the day-to-day work of saying what the department is
+                  doing.
+        ENDORSE   the CXO stands behind it. `department_authority` answers this
+                  one, reads ENDORSING_ROLES only, and is NOT changed here.
+
+    ⛔ THE INVARIANT THIS MUST NOT BREAK: gaining declare authority must never
+    confer sign-off. A steward added to a department becomes able to draw an edge
+    and remains unable to sign a board figure — the two functions read different
+    role sets against the same table, so widening one cannot widen the other.
+
+    ⭐ ANY LIVE GRANT DECLARES. Endorsing roles declare too: a CXO who signs off
+    their department can obviously also maintain it, and a model where the CXO
+    had to be granted twice would be one the first deployment worked around.
+    """
+    grant = getattr(Base, "_department_authority_model", None)
+    if grant is None:
+        return False                      # Stage 2 not yet built: fail closed
+    row = (db.query(grant)
+             .filter(grant.company_id == company_id,
+                     grant.user_id == user_id,
+                     grant.department_id == department_id,
+                     grant.revoked_at.is_(None),
+                     # ⭐ Both sets, and still not "any string": an unknown role
+                     # is refused at grant time, so a typo cannot reach here and
+                     # silently declare.
+                     grant.role.in_(tuple(GRANT_ROLES)))
+             .first())
+    return row is not None
+
+
 def can_author(db, company_id: int, user, target_scope: str, department_id: int | None):
     """THE AUTHORITY RULE. A CFO must not be able to override HR's numbers.
 

@@ -179,3 +179,67 @@ def test_enterprise_scope_is_unreachable_for_everyone(_app):
             can_author(db, ent.id, cfo, "enterprise", dep.id)
     finally:
         db.close()
+
+
+# ── the DECLARE / ENDORSE split (§4v.1 ruling 3, diverged 8 Aug) ─────────────
+
+def test_a_steward_may_declare_and_may_not_endorse(_app):
+    """⛔⭐⭐ THE INVARIANT, IN ONE FIXTURE. Gaining declare authority must never
+    confer sign-off.
+
+    `may_declare` used to delegate to `department_authority`. When that narrowed
+    to ENDORSING_ROLES the steward lost the ability to draw a strategy-map edge —
+    wrong under the R&R, which has edges MAINTAINED by the steward and APPROVED
+    by the CXO. The two now read different role sets against the same table, and
+    this asserts BOTH halves at once: widening one must not widen the other.
+    """
+    from services.api.axis_objective import may_declare
+    from services.api.overrides import department_declare_authority
+    db = SessionLocal()
+    try:
+        ent, dep = _setup(db, "declare")
+        admin, steward = _user(db, "admin-s@x.test"), _user(db, "steward@x.test")
+        grant_department(db, ent.id, dep.id, user_id=steward.id,
+                         granted_by=admin.id, role="steward")
+        db.commit()
+
+        assert department_declare_authority(db, ent.id, steward.id, dep.id) is True
+        assert may_declare(db, ent.id, steward, department_id=dep.id) is True
+
+        # ⛔ and NOT one step further
+        assert department_authority(db, ent.id, steward.id, dep.id) is False
+        with pytest.raises(AuthorityError):
+            can_author(db, ent.id, steward, "department", dep.id)
+    finally:
+        db.close()
+
+
+def test_a_cxo_declares_too(_app):
+    """⭐ Endorsing roles declare as well. A CXO who signs off their department
+    can obviously also maintain it, and a model needing two grants for that is
+    one the first deployment works around."""
+    from services.api.axis_objective import may_declare
+    db = SessionLocal()
+    try:
+        ent, dep = _setup(db, "cxo-declares")
+        admin, cfo = _user(db, "admin-cd@x.test"), _user(db, "cfo-cd@x.test")
+        grant_department(db, ent.id, dep.id, user_id=cfo.id,
+                         granted_by=admin.id, role="cxo")
+        db.commit()
+        assert may_declare(db, ent.id, cfo, department_id=dep.id) is True
+        assert department_authority(db, ent.id, cfo.id, dep.id) is True
+    finally:
+        db.close()
+
+
+def test_nobody_declares_without_a_grant(_app):
+    """GREEN control for the declare half — otherwise the tests above would pass
+    against a function that returned True for everyone."""
+    from services.api.axis_objective import may_declare
+    db = SessionLocal()
+    try:
+        ent, dep = _setup(db, "no-grant")
+        stranger = _user(db, "stranger@x.test")
+        assert may_declare(db, ent.id, stranger, department_id=dep.id) is False
+    finally:
+        db.close()

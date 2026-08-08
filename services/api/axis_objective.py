@@ -67,18 +67,29 @@ def label_for(*, declared_by, delta):
 
 def may_declare(db, company_id, user, *, department_id):
     """⭐ §4v.1 ruling 3 — declaring a link is a DISTINCT permission from
-    overriding a figure. Same holder today, recorded separately so the two can
-    diverge without a migration.
+    overriding a figure.
+
+    ⭐⭐ THE SEAM HAS NOW DIVERGED, WHICH IS WHAT IT WAS FOR. This read
+    `department_authority` and carried the note *"same holder today, recorded
+    separately so the two can diverge without a migration."* When
+    `department_authority` narrowed to ENDORSING_ROLES, declaration inherited the
+    narrowing and a steward could no longer draw an edge — the wrong answer under
+    the R&R, which has strategy-map edges MAINTAINED by the steward and APPROVED
+    by the CXO.
+
+    ⛔ It now reads `department_declare_authority`, which accepts any live grant.
+    Endorsement is untouched: gaining declare authority confers no sign-off, and
+    a test mutation-proves it rather than trusting that the two calls stay apart.
 
     ⛔ PLATFORM STAFF REFUSED. We must never declare a customer's causal claim
     about their own business, whatever the operator bypass grants elsewhere.
     """
-    from .overrides import _is_platform_staff, department_authority
+    from .overrides import _is_platform_staff, department_declare_authority
     if _is_platform_staff(user):
         return False
     if department_id is None or db is None:
         return False
-    return department_authority(db, company_id, user.id, department_id)
+    return department_declare_authority(db, company_id, user.id, department_id)
 
 
 def walk(counts: dict) -> dict:
