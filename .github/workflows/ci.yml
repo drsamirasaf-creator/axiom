@@ -280,6 +280,16 @@ jobs:
       # reconciliation it should lose. The check pins the VALUE as a literal:
       # comparing the columns against the constant they import compares it with
       # itself.
+      # ⛔⭐⭐ A HANDLER THAT FORGOT THE SEAM LOOKS LIKE ONE THAT CALLED IT AND
+      # REFUSED. The steward widening moved three endpoints off require_company_admin;
+      # the seam's own tests prove the seam and cannot prove a handler consulted it.
+      # In-scope routes are DERIVED — a write, not admin-gated, mutating a model that
+      # carries department_id — so a fourth widened endpoint enters the denominator by
+      # being written, not by being remembered.
+      # ⛔ require_company_member is NOT counted as authorization: counting it made an
+      # earlier version of this check unable to fire (§III.11), found by red-proofing.
+      - name: widened writes reach a row-level seam
+        run: python scripts/check-steward-seam-reached.py
       - name: source vocabulary (one default across the dual-path family)
         run: python scripts/check-source-vocabulary.py
       # ⭐ EVERY OBJECT A TEMPLATE CARRIES MUST BE ABLE TO RECORD A CONFLICT.
