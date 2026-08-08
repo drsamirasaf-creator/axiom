@@ -29,12 +29,53 @@ from datetime import datetime, timedelta
 #: can find when it turns out to be wrong.
 STATUS_STALE_DAYS = 30
 
+#: WHO RESOLVES EACH CHECK, and the gate that decides it.
+#:
+#: ⛔⭐⭐ FIVE OF EIGHT CHECKS LIST WORK A STEWARD CANNOT DO — not one. Derived by
+#: walking each check to the endpoint that RESOLVES it and asking whether that
+#: endpoint reaches `_steward_or_admin`:
+#:
+#:   key_result_without_kpi        PATCH /key-results/{id}            ⭐ steward
+#:   status_never_set / _stale     POST /initiatives/{id}/status      ⭐ steward
+#:   objective_without_initiative  PUT  /objectives/{key}/initiatives ⛔ admin
+#:   kpi_connected_to_nothing      POST /kpis/{id}/links              ⛔ admin
+#:   project_connected_to_nothing  PUT  /initiatives/{id}/objectives  ⛔ admin
+#:   participants_not_responded    POST /assessment/invites/{id}/remind ⛔ admin
+#:   not_signed_off                the sign-off itself                ⛔ CXO
+#:
+#: ⭐ THE FOUR ADMIN ONES SHARE A REASON: each declares how TWO departments' work
+#: connects, or reaches a roster keyed by a department STRING. They were excluded
+#: from the widening deliberately, and this map records that rather than
+#: rediscovering it per call site.
+#:
+#: ⛔ AND `resolved_by` IS NOT `can_act`. A row states who resolves it; whether
+#: THIS caller is that person is computed per request, because the same row reads
+#: differently to a steward and to an admin.
+RESOLVER = {
+    "key_result_without_kpi":       ("steward", "steward"),
+    "status_never_set":             ("steward", "steward"),
+    "status_stale":                 ("steward", "steward"),
+    "objective_without_initiative": ("cxo", "company_admin"),
+    "kpi_connected_to_nothing":     ("cxo", "company_admin"),
+    "project_connected_to_nothing": ("cxo", "company_admin"),
+    "participants_not_responded":   ("admin", "company_admin"),
+    "not_signed_off":               ("cxo", "cxo_signoff"),
+}
+
+#: What the row says when the caller is not the person who resolves it.
+RESOLVER_NOTE = {
+    "cxo": "Your CXO resolves this — it declares how work connects, which is "
+           "theirs to state, not yours to maintain.",
+    "admin": "A company administrator resolves this.",
+}
+
 
 def _age_days(ts, now):
     return None if ts is None else (now - ts).days
 
 
-def for_department(db, company_id: int, department_id: int, now=None) -> dict:
+def for_department(db, company_id: int, department_id: int, now=None,
+                   caller_is_admin: bool = False) -> dict:
     """Everything owed or stale for ONE department.
 
     ⛔ Every count is derived from the same rows the editing surfaces read —
@@ -59,8 +100,15 @@ def for_department(db, company_id: int, department_id: int, now=None) -> dict:
     items: list[dict] = []
 
     def add(kind, label, why, href, note=None):
+        who, gate = RESOLVER.get(kind, ("admin", "company_admin"))
+        # ⛔ THE LINK IS NEVER REMOVED, and never left to refuse silently. The
+        # destination is where the object is edited; `resolved_by` says whose
+        # job it is, so a steward reads "the CXO resolves this" rather than
+        # clicking through to a 403.
+        can = gate == "steward" or (gate == "company_admin" and caller_is_admin)
         items.append({"kind": kind, "label": label, "why": why, "href": href,
-                      "note": note})
+                      "note": note, "resolved_by": who, "caller_can_act": can,
+                      "resolver_note": None if can else RESOLVER_NOTE.get(who)})
 
     objs = db.query(Objective).filter_by(company_id=company_id,
                                          department_id=department_id,
@@ -195,11 +243,12 @@ def for_caller(db, company_id: int, user, now=None) -> dict:
     out, denied = [], 0
     for dep in live_departments(db, company_id).order_by(None).all():
         try:
-            _steward_or_admin(db, company_id, user, dep.id, "This department")
+            role = _steward_or_admin(db, company_id, user, dep.id, "This department")
         except HTTPException:
             denied += 1
             continue
-        out.append(for_department(db, company_id, dep.id, now=now))
+        out.append(for_department(db, company_id, dep.id, now=now,
+                                  caller_is_admin=(role == "admin")))
     out.sort(key=lambda d: (-(d.get("total") or 0), d.get("department") or ""))
     return {"company_id": company_id,
             "departments": out,

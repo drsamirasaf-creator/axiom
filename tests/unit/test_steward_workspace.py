@@ -254,3 +254,79 @@ def test_every_item_carries_a_link_and_a_reason(_app):
             assert i["label"], f"{i['kind']} has no label"
     finally:
         db.close()
+
+
+# ── whose row is it? ────────────────────────────────────────────────────────
+
+def test_a_cross_department_row_is_marked_the_cxos_and_keeps_its_link(_app):
+    """⛔⭐⭐ THE ROW STATES WHOSE IT IS. Linking an objective to a project is
+    resolved by `PUT /objectives/{key}/initiatives`, which stayed ADMIN-ONLY
+    because it can span two departments — so a steward reading this row cannot
+    act on it.
+
+    ⛔ The link is NOT removed and NOT left to refuse: the destination stays,
+    and the row says who resolves it. A row that silently 403s teaches a steward
+    the page is broken; a row that says "your CXO resolves this" teaches them
+    who to ask.
+    """
+    db = SessionLocal()
+    try:
+        ent, a, _b, _admin, _st = _setup(db, "whose")
+        _objective(db, ent, a)
+        out = WS.for_department(db, ent.id, a.id)      # caller_is_admin defaults False
+        row = next(i for i in out["items"] if i["kind"] == "objective_without_initiative")
+        assert row["resolved_by"] == "cxo"
+        assert row["caller_can_act"] is False
+        assert row["href"], "the link must survive — it is where the object is edited"
+        assert "CXO" in (row["resolver_note"] or ""), row
+    finally:
+        db.close()
+
+
+def test_a_stewards_own_row_is_actionable_and_carries_no_note(_app):
+    """GREEN control. Without it, the test above would pass against a workspace
+    that marked EVERY row as somebody else's."""
+    db = SessionLocal()
+    try:
+        ent, a, _b, _admin, _st = _setup(db, "mine")
+        o = _objective(db, ent, a)
+        db.add(KeyResult(company_id=ent.id, dataset_id=1, objective_id=o.objective_id,
+                         kr_key="KR7", key_result="Cut cost", kpi_key=None,
+                         row_index=1, uploaded_at=datetime.utcnow(), archived=False))
+        db.commit()
+        out = WS.for_department(db, ent.id, a.id)
+        row = next(i for i in out["items"] if i["kind"] == "key_result_without_kpi")
+        assert row["resolved_by"] == "steward"
+        assert row["caller_can_act"] is True
+        assert row["resolver_note"] is None, "an actionable row must not be captioned"
+    finally:
+        db.close()
+
+
+def test_the_same_row_reads_differently_to_an_admin(_app):
+    """⭐ `resolved_by` is a property of the ROW; `caller_can_act` is a property
+    of the REQUEST. An admin can act on the cross-department row, and the payload
+    must say so rather than repeating the steward's caption to everyone."""
+    db = SessionLocal()
+    try:
+        ent, a, _b, _admin, _st = _setup(db, "asadmin")
+        _objective(db, ent, a)
+        out = WS.for_department(db, ent.id, a.id, caller_is_admin=True)
+        row = next(i for i in out["items"] if i["kind"] == "objective_without_initiative")
+        assert row["resolved_by"] == "cxo", "the row's owner does not change"
+        assert row["caller_can_act"] is True, "an admin CAN act on it"
+        assert row["resolver_note"] is None
+    finally:
+        db.close()
+
+
+def test_every_kind_the_module_can_emit_has_a_resolver(_app):
+    """⛔ A kind with no entry would silently default to admin. Asserted against
+    the kinds the CODE can emit, derived from its own source — so a new check
+    cannot ship without someone deciding whose it is."""
+    import re, inspect
+    src = inspect.getsource(WS)
+    emitted = set(re.findall(r'add\("([a-z_]+)"', src))
+    assert emitted, "no kinds found — the derivation is broken, not the code"
+    missing = sorted(emitted - set(WS.RESOLVER))
+    assert not missing, f"{missing} can be emitted and nobody resolves them"
