@@ -63,6 +63,11 @@ EXPECTED_SIDEBAR_LINKS = [
     #
     # ⭐ PATHS DID NOT MOVE. This list is about LABELS; every route and inbound
     # link resolves exactly as before.
+    # ⭐ "My workspace" JOINS 8 Aug — the steward's one page, ruled by the R&R:
+    # "a steward should have ONE place, not nine pages to remember to visit."
+    # It reads and links only; the eleven widened endpoints remain the sole
+    # editing path. Updated in the SAME commit as the nav change, never ahead.
+    "My workspace",
     "Dashboard", "Feedback", "Profitability",
     "Valuation", "Planning",
     "Optimization",
