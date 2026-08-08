@@ -264,6 +264,19 @@ jobs:
         run: python scripts/check-ownership-agreement.py
       - name: prospect routes (control; live app not fetched)
         run: python scripts/check-prospect-routes.py
+      # ⭐ MODULE MEMBERSHIP — the SERVED-PATH half is enforced here and the
+      # route half names itself as unchecked. Membership used to be read off the
+      # nav index's `section` field, which was wrong for 3 of the 11
+      # destinations carrying one; /what-is-axiom, a marketing explainer, sat
+      # inside EXECUTE. This step asserts every served path is in exactly one
+      # bucket and that the undeclared count never grows.
+      # ⛔ AXIOM_FRONTEND_OPTIONAL=1 lets the ROUTE half skip on a runner with no
+      # frontend checkout — and the script PRINTS that it skipped, so a green
+      # tick here is not read as route coverage.
+      - name: module membership (paths enforced; ROUTE half skipped — no frontend here)
+        env:
+          AXIOM_FRONTEND_OPTIONAL: "1"
+        run: python scripts/check-module-membership.py
       - run: pytest -q
       # Proves the tests guarding the assessment read path are not vacuous, by
       # reintroducing a plausible defect per test and requiring each to fail.
