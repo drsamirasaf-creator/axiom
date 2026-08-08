@@ -5113,13 +5113,16 @@ class ObjectiveUpdateIn(BaseModel):
 
 @router.patch("/companies/{company_id}/objectives/{obj_key}")
 def update_objective(company_id: int, obj_key: str, body: ObjectiveUpdateIn,
-                     member=Depends(require_company_admin),
+                     member=Depends(require_company_member),
                      user: User = Depends(get_current_user), db=Depends(get_db)):
     """Edit an objective on the active dataset. Editing the objective TEXT re-keys it
     (obj_key = hash of text); any initiative links are migrated to the new key."""
     ds = _active_company_dataset(db, company_id)
     if not ds:
         raise HTTPException(409, "No active dataset.")
+    # ⛔ The department comes from the OBJECTIVE, never from the request.
+    _steward_or_admin(db, company_id, user,
+                      _dept_of_objective(db, company_id, obj_key)[0], "This objective")
     obj = db.query(Objective).filter_by(company_id=company_id, dataset_id=ds.id, obj_key=obj_key).first()
     if not obj:
         raise HTTPException(404, "objective not found in the active dataset")
@@ -5212,12 +5215,15 @@ def add_key_result(company_id: int, obj_key: str, body: KRCreateIn,
 
 @router.patch("/companies/{company_id}/key-results/{kr_id}")
 def update_key_result(company_id: int, kr_id: int, body: KRUpdateIn,
-                      member=Depends(require_company_admin),
+                      member=Depends(require_company_member),
                       user: User = Depends(get_current_user), db=Depends(get_db)):
     ds = _active_company_dataset(db, company_id)
     kr = db.query(KeyResult).filter_by(id=kr_id, company_id=company_id).first()
     if not kr or (ds and kr.dataset_id != ds.id):
         raise HTTPException(404, "key result not found in the active dataset")
+    # ⛔ A KR inherits its objective's department; it has none of its own.
+    _steward_or_admin(db, company_id, user,
+                      _dept_of_key_result(db, company_id, kr_id)[0], "This key result")
     for f in ("key_result", "unit", "baseline", "target", "current", "due_date"):
         v = getattr(body, f)
         if v is not None:
@@ -5308,12 +5314,16 @@ def create_kpi(company_id: int, body: KpiCreateIn,
 
 @router.patch("/companies/{company_id}/kpis/{kpi_id}")
 def update_kpi(company_id: int, kpi_id: int, body: KpiUpdateIn,
-               member=Depends(require_company_admin),
+               member=Depends(require_company_member),
                user: User = Depends(get_current_user), db=Depends(get_db)):
     ds = _active_company_dataset(db, company_id)
     kpi = db.query(KpiPlan).filter_by(id=kpi_id, company_id=company_id).first()
     if not kpi or (ds and kpi.dataset_id != ds.id):
         raise HTTPException(404, "KPI not found in the active dataset")
+    # ⛔ Checked against the KPI'S OWN department, BEFORE the re-pointing below —
+    # otherwise a steward could move another department's KPI to their own and
+    # thereby acquire it.
+    _steward_or_admin(db, company_id, user, kpi.department_id, "This KPI")
     if body.department_id is not None:
         kpi.department_id = _dept_id_valid(db, company_id, body.department_id)
     if body.direction is not None:
@@ -8405,6 +8415,67 @@ def may_revoke_leadership(*, leader_user_id, actor_user_id: int,
     if actor_is_admin:
         return True
     return leader_user_id is not None and leader_user_id == actor_user_id
+
+
+def _steward_or_admin(db, company_id, user, department_id, what="this"):
+    """A company admin, OR a live grant on THIS department. Nothing else.
+
+    ⭐⭐ THE INVERSION. PMO §5 read naively means walking 103 admin-gated writes
+    and deciding each one's capability — 103 judgements, each a chance to open a
+    hole. But they already mean "admin only" and are already CORRECT for admins.
+    The work is WIDENING the few a steward needs, and this is the one seam that
+    does it.
+
+    ⛔ NOT A SECOND MECHANISM. It delegates to `department_declare_authority`,
+    which reads GRANT_ROLES — endorsing and delegating alike. Declaring is
+    maintenance; a steward may do it. ⛔ `department_authority` (ENDORSING_ROLES,
+    cxo only) is NOT consulted here and is not widened by this: a steward who
+    gains the right to edit a KPI gains no right to sign anything off, and a
+    test mutation-proves the two cannot move together.
+
+    ⛔ THE DEPARTMENT IS THE TARGET'S OWN, resolved by the caller from the row
+    being written — never taken from the request. A department id a caller could
+    supply would let a steward name department B and edit it.
+
+    ⛔ AND AN UNSCOPED TARGET IS REFUSED, not waved through. A row with no
+    department cannot be checked against a per-department grant, so a steward is
+    told no; an admin still passes. Failing open here would make every
+    department-less row editable by every steward in the company.
+    """
+    if _is_company_admin(db, user, company_id):
+        return "admin"
+    if department_id is None:
+        raise HTTPException(403, f"{what} is not attached to a department, so only "
+                                 f"a company admin may change it.")
+    from .overrides import department_declare_authority
+    if department_declare_authority(db, company_id, getattr(user, "id", None),
+                                    department_id):
+        return "steward"
+    raise HTTPException(403, "You may maintain your own department's work. This "
+                             "belongs to another department — a company admin, or "
+                             "someone granted authority for it, can change it.")
+
+
+def _dept_of_objective(db, company_id, obj_key):
+    """The department an objective belongs to, or None."""
+    o = (db.query(Objective)
+           .filter_by(company_id=company_id, obj_key=obj_key, archived=False).first())
+    if o is None:
+        o = (db.query(Objective)
+               .filter_by(company_id=company_id, objective_id=obj_key).first())
+    return (o.department_id if o is not None else None), o
+
+
+def _dept_of_key_result(db, company_id, kr_id):
+    """⛔ A KEY RESULT HAS NO DEPARTMENT OF ITS OWN — it inherits its objective's.
+    Resolved here rather than at each call site, so the inheritance is stated
+    once and cannot be spelled differently in two handlers."""
+    kr = db.query(KeyResult).filter_by(company_id=company_id, id=kr_id).first()
+    if kr is None:
+        return None, None
+    o = db.query(Objective).filter_by(company_id=company_id,
+                                      objective_id=kr.objective_id).first()
+    return (o.department_id if o is not None else None), kr
 
 
 def _leader_or_admin(company_id, iid, user, db):
