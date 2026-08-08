@@ -138,3 +138,42 @@ def test_maintaining_confers_no_signoff(_app):
             can_author(db, ent.id, steward, "department", a.id)
     finally:
         db.close()
+
+
+# ── the widened set, after the 11 further conversions ───────────────────────
+
+def test_declare_authority_still_confers_no_signoff_after_the_widening(_app):
+    """⛔⭐⭐ THE INVARIANT, RE-ASSERTED AFTER THE SET GREW FROM 3 TO 14.
+
+    Widening is where an endorsement leak would enter unnoticed: each conversion
+    hands a steward one more thing to do, and the question "may they sign?" is
+    never asked at the call site. It is asked here, once, against the same grant
+    that now unlocks fourteen endpoints.
+    """
+    db = SessionLocal()
+    try:
+        ent, a, _b, _admin, steward = _setup(db, "postwiden")
+        # the grant that now reaches 14 endpoints
+        assert _steward_or_admin(db, ent.id, steward, a.id) == "steward"
+        # and still reaches none of the endorsement path
+        assert department_authority(db, ent.id, steward.id, a.id) is False
+        with pytest.raises(AuthorityError):
+            can_author(db, ent.id, steward, "department", a.id)
+    finally:
+        db.close()
+
+
+def test_an_unscoped_row_stays_admin_only_across_the_widened_set(_app):
+    """⛔ Several newly widened targets can be department-less — a company-wide
+    issue, an initiative with no department. Every one of them must fail closed
+    for a steward and stay reachable by an admin, or the widening would have
+    handed every steward the company's unowned work."""
+    db = SessionLocal()
+    try:
+        ent, _a, _b, admin, steward = _setup(db, "unscoped-wide")
+        with pytest.raises(HTTPException) as e:
+            _steward_or_admin(db, ent.id, steward, None, "This issue")
+        assert e.value.status_code == 403
+        assert _steward_or_admin(db, ent.id, admin, None, "This issue") == "admin"
+    finally:
+        db.close()

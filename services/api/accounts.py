@@ -5087,7 +5087,7 @@ def _dept_id_valid(db, company_id: int, dept_id: int | None) -> int | None:
 
 @router.post("/companies/{company_id}/objectives", status_code=201)
 def create_objective(company_id: int, body: ObjectiveCreateIn,
-                     member=Depends(require_company_admin),
+                     member=Depends(require_company_member),
                      user: User = Depends(get_current_user), db=Depends(get_db)):
     """Create an IN-APP objective in the ACTIVE dataset. Stamped source='in_app' with
     creator + timestamp so it is distinguishable from template rows and SURVIVES a
@@ -5095,6 +5095,10 @@ def create_objective(company_id: int, body: ObjectiveCreateIn,
     as a person reference. Attaches an optional first key result."""
     if not (body.objective or "").strip():
         raise HTTPException(422, "objective text is required")
+    # ⭐ ON A CREATE THE BODY IS THE TARGET. There is no row yet, so the
+    # department it is being created INTO is the thing to authorise — a steward
+    # may create only in their own. An unscoped create fails closed for them.
+    _steward_or_admin(db, company_id, user, body.department_id, "An objective")
     ds = _active_company_dataset(db, company_id)
     if not ds:
         raise HTTPException(409, "No active dataset — upload financials first.")
@@ -5177,10 +5181,12 @@ def update_objective(company_id: int, obj_key: str, body: ObjectiveUpdateIn,
 
 @router.delete("/companies/{company_id}/objectives/{obj_key}")
 def delete_objective(company_id: int, obj_key: str, archive: bool = True,
-                     member=Depends(require_company_admin),
+                     member=Depends(require_company_member),
                      user: User = Depends(get_current_user), db=Depends(get_db)):
     """Archive (default) or hard-delete an objective and its key results on the active
     dataset. Archived rows are hidden from reads but retained; ?archive=false deletes."""
+    _steward_or_admin(db, company_id, user,
+                      _dept_of_objective(db, company_id, obj_key)[0], "This objective")
     ds = _active_company_dataset(db, company_id)
     if not ds:
         raise HTTPException(409, "No active dataset.")
@@ -5213,11 +5219,14 @@ class KRUpdateIn(BaseModel):
 
 @router.post("/companies/{company_id}/objectives/{obj_key}/key-results", status_code=201)
 def add_key_result(company_id: int, obj_key: str, body: KRCreateIn,
-                   member=Depends(require_company_admin),
+                   member=Depends(require_company_member),
                    user: User = Depends(get_current_user), db=Depends(get_db)):
     """Add an in-app key result to an objective on the active dataset."""
     if not (body.key_result or "").strip():
         raise HTTPException(422, "key result text is required")
+    # ⭐ The PARENT's department, not the caller's: a key result has none of its own.
+    _steward_or_admin(db, company_id, user,
+                      _dept_of_objective(db, company_id, obj_key)[0], "This objective")
     ds = _active_company_dataset(db, company_id)
     if not ds:
         raise HTTPException(409, "No active dataset.")
@@ -5261,11 +5270,13 @@ def update_key_result(company_id: int, kr_id: int, body: KRUpdateIn,
 
 @router.delete("/companies/{company_id}/key-results/{kr_id}")
 def delete_key_result(company_id: int, kr_id: int, archive: bool = True,
-                      member=Depends(require_company_admin),
+                      member=Depends(require_company_member),
                       user: User = Depends(get_current_user), db=Depends(get_db)):
     kr = db.query(KeyResult).filter_by(id=kr_id, company_id=company_id).first()
     if not kr:
         raise HTTPException(404, "key result not found")
+    _steward_or_admin(db, company_id, user,
+                      _dept_of_key_result(db, company_id, kr_id)[0], "This key result")
     if archive:
         kr.archived = True
     else:
@@ -5314,11 +5325,12 @@ class KpiUpdateIn(BaseModel):
 
 @router.post("/companies/{company_id}/kpis", status_code=201)
 def create_kpi(company_id: int, body: KpiCreateIn,
-               member=Depends(require_company_admin),
+               member=Depends(require_company_member),
                user: User = Depends(get_current_user), db=Depends(get_db)):
     """Create an in-app KPI on the active dataset, with department + targets."""
     if not (body.kpi_name or "").strip():
         raise HTTPException(422, "KPI name is required")
+    _steward_or_admin(db, company_id, user, body.department_id, "A KPI")
     ds = _active_company_dataset(db, company_id)
     if not ds:
         raise HTTPException(409, "No active dataset — upload financials first.")
@@ -5365,11 +5377,12 @@ def update_kpi(company_id: int, kpi_id: int, body: KpiUpdateIn,
 
 @router.delete("/companies/{company_id}/kpis/{kpi_id}")
 def delete_kpi(company_id: int, kpi_id: int, archive: bool = True,
-               member=Depends(require_company_admin),
+               member=Depends(require_company_member),
                user: User = Depends(get_current_user), db=Depends(get_db)):
     kpi = db.query(KpiPlan).filter_by(id=kpi_id, company_id=company_id).first()
     if not kpi:
         raise HTTPException(404, "KPI not found")
+    _steward_or_admin(db, company_id, user, kpi.department_id, "This KPI")
     if archive:
         kpi.archived = True
     else:
@@ -7503,11 +7516,15 @@ def list_initiatives(company_id: int, department: int | None = None,
 
 @router.patch("/companies/{company_id}/initiatives/{iid}")
 def patch_initiative(company_id: int, iid: int, body: InitiativePatch,
-                     member=Depends(require_company_admin),
+                     member=Depends(require_company_member),
                      user: User = Depends(get_current_user), db=Depends(get_db)):
     ini = db.get(Initiative, iid)
     if not ini or ini.company_id != company_id:
         raise HTTPException(404, "initiative not found")
+    # ⛔ The INITIATIVE'S OWN department, read before any field in the body is
+    # applied — otherwise a body carrying department_id could move another
+    # department's initiative into the steward's own and thereby acquire it.
+    _steward_or_admin(db, company_id, user, ini.department_id, "This project")
     for f in ("importance", "urgency"):
         v = getattr(body, f)
         if v is not None and v not in _PRIORITY:
@@ -7588,11 +7605,12 @@ def patch_initiative(company_id: int, iid: int, body: InitiativePatch,
 
 @router.post("/companies/{company_id}/initiatives/{iid}/status")
 def set_initiative_status(company_id: int, iid: int, body: InitiativeStatusIn,
-                          member=Depends(require_company_admin),
+                          member=Depends(require_company_member),
                           user: User = Depends(get_current_user), db=Depends(get_db)):
     ini = db.get(Initiative, iid)
     if not ini or ini.company_id != company_id:
         raise HTTPException(404, "initiative not found")
+    _steward_or_admin(db, company_id, user, ini.department_id, "This project")
     if body.status not in _STATUSES:
         raise HTTPException(422, "invalid status")
     if body.status == ini.status:
@@ -7995,13 +8013,14 @@ def get_raci(company_id: int, iid: int, member=Depends(_summary_access),
 
 @router.post("/companies/{company_id}/initiatives/{iid}/raci", status_code=201)
 def declare_raci(company_id: int, iid: int, body: RaciIn,
-                 member=Depends(require_company_admin),
+                 member=Depends(require_company_member),
                  user: User = Depends(get_current_user), db=Depends(get_db)):
     """The department's authority holder assigns (§4v.1's separate link
     permission). Platform staff refused: we must never name who is accountable
     for a customer's work."""
     from . import axis_objective as AO
     ini = _get_company_initiative(db, company_id, iid)
+    _steward_or_admin(db, company_id, user, ini.department_id, "This project")
     if body.role not in RACI_ROLES:
         raise HTTPException(422, f"role must be one of {', '.join(RACI_ROLES)}")
     party = (body.party or "").strip()
@@ -8233,7 +8252,7 @@ def attach_comment(company_id: int, issue_id: int, body: IssueCommentIn,
 
 @router.post("/companies/{company_id}/issues/{issue_id}/status")
 def set_issue_status(company_id: int, issue_id: int, body: IssueStatusIn,
-                     member=Depends(require_company_admin),
+                     member=Depends(require_company_member),
                      user: User = Depends(get_current_user), db=Depends(get_db)):
     from . import issues as _iss
     if body.status not in _iss.ISSUE_STATES:
@@ -8246,6 +8265,10 @@ def set_issue_status(company_id: int, issue_id: int, body: IssueStatusIn,
     iss = db.query(Issue).filter_by(id=issue_id, company_id=company_id).first()
     if iss is None:
         raise HTTPException(404, "issue not found")
+    # ⛔ A COMPANY-WIDE ISSUE HAS NO DEPARTMENT, so it fails closed for a steward
+    # and stays admin-only — which is right: an issue nobody's department owns is
+    # not one department's to close.
+    _steward_or_admin(db, company_id, user, iss.department_id, "This issue")
     iss.status = body.status
     iss.status_note = body.note
     iss.status_changed_by = user.id
@@ -9044,13 +9067,14 @@ def list_csfs(company_id: int, iid: int, member=Depends(require_company_member),
 
 @router.put("/companies/{company_id}/initiatives/{iid}/csfs")
 def put_csfs(company_id: int, iid: int, body: CSFPut,
-             member=Depends(require_company_admin),
+             member=Depends(require_company_member),
              user: User = Depends(get_current_user), db=Depends(get_db)):
     """Admin defines/edits CSF text (2-5). Reconciles by id: updates kept ones
     (status preserved), adds new (status=holding), deletes omitted."""
     ini = db.get(Initiative, iid)
     if not ini or ini.company_id != company_id:
         raise HTTPException(404, "initiative not found")
+    _steward_or_admin(db, company_id, user, ini.department_id, "This project")
     # §PES: target ≥3 CSFs is GUIDANCE (surfaced client-side), not blocking — only an
     # upper sane bound is enforced here.
     if len(body.csfs) > 10:
